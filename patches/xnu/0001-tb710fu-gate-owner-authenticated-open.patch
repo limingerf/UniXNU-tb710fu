@@ -1,0 +1,28 @@
+Subject: [PATCH] tb710fu gate owner authenticated open
+
+Base: UniXNU 0c1bac3d51a3009dca1708b15a5198f4b43d057a; XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f
+Apply after the complete selected arch / SoC / macOS OS series.
+Gate the owner-verified authenticated-open fallback when its real storage provider is unselected. The normal APFS authentication result remains unchanged.
+No replacement function, global, authorization result, or security stub is added.
+
+diff --git a/bsd/vfs/vfs_syscalls.c b/bsd/vfs/vfs_syscalls.c
+--- a/bsd/vfs/vfs_syscalls.c
++++ b/bsd/vfs/vfs_syscalls.c
+@@ -5390,7 +5390,7 @@
+ 	return error;
+ }
+ 
+-#if XNU_TARGET_OS_OSX   /* owner root globals: bsd_init (XNU_OWNER_ROOT_TRUST is passed to bsd_init.o only) */
++#if XNU_TARGET_OS_OSX && defined(XNU_TB710FU_OWNER_AUTH_OPEN) && XNU_TB710FU_OWNER_AUTH_OPEN
+ /*
+  * An authenticated open (openat_authenticated_np, kernelmanagerd realizing a driver extension, among others) asks the file system to
+  * prove the file comes from a sealed volume (FSIOC_AUTH_FS); APFS answers EAUTH for the owner-verified root, which has no Apple seal.
+@@ -5445,7 +5445,7 @@
+ 
+ 	int error = openat_dprotected_internal(vfs_context_current(), uap->path, uap->flags, uap->mode,
+ 	    uap->class, uap->dpflags, uap->fd, uap->authfd, UIO_USERSPACE, retval);
+-#if XNU_TARGET_OS_OSX   /* owner root globals: bsd_init (XNU_OWNER_ROOT_TRUST is passed to bsd_init.o only) */
++#if XNU_TARGET_OS_OSX && defined(XNU_TB710FU_OWNER_AUTH_OPEN) && XNU_TB710FU_OWNER_AUTH_OPEN
+ 	if (error == EAUTH && (uap->dpflags & O_DP_AUTHENTICATE)) {
+ 		error = native_owner_root_authenticated_open(uap, retval);
+ 	}

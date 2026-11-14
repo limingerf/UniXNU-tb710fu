@@ -1,0 +1,17 @@
+# Evidence inventory only. This is not an input file consumed by UniXNU.
+model = "Lenovo TB710FU"
+soc = "SM8650Q-AB"
+enabled_mpidr_reference = ["0x000", "0x300", "0x400", "0x500", "0x600", "0x700"]
+cpu_reference_commit = "4d04410798b538fbe4b50664e3a66d9500a2ed31"
+native_pac_el1_qualified = false
+runtime_dtb_qualified = false
+ufs_driver_qualified = false
+macos_userspace_qualified = false
+
+[previous_uefi_observations]
+fd_base = 0xA7100000
+fd_size = 0x300000
+boot_header_version = 4
+custom_display_driver = false
+vendor_hardware_dxe = false
+note = "Previously recorded evidence; requires clean source import and a new hardware test before use"

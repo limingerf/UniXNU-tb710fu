@@ -1,0 +1,21 @@
+# Native source crypto is deliberate: current official sheng macOS uses the same mode.
+# The OS default 'prelinked' drops prng_random definitions still used by OSKext.
+CONFIG_XNU_BUILD_ARCHIVES=y
+CONFIG_XNU_CRYPTO_BOOTSTRAP="source"
+CONFIG_XNU_KERNEL_CHAINED_FIXUPS=y
+CONFIG_XNU_DT_PANIC_REGION=y
+CONFIG_XNU_ARMVIRT_PLATFORM=n
+
+# No block provider is qualified yet. Do not enable security/crypto probes to hide
+# missing owner-root globals or pretend that the TB710FU UFS driver exists.
+CONFIG_XNU_SOURCE_STORAGE=n
+CONFIG_XNU_NATIVE_UFS=n
+CONFIG_XNU_NATIVE_RAM_BLOCK=n
+CONFIG_XNU_VERIFIED_ROOT_PROBE=n
+CONFIG_XNU_OWNER_ROOT_AUDIT=n
+CONFIG_XNU_OWNER_ROOT_TRUST=n
+CONFIG_XNU_OWNER_CACHE_MOUNT=n
+CONFIG_XNU_OWNER_DATA_MOUNT=n
+CONFIG_XNU_BOOT_PROGRESS=n
+CONFIG_XNU_NATIVE_ADRENO=n
+CONFIG_XNU_NATIVE_LEGACY_DISPLAY=n

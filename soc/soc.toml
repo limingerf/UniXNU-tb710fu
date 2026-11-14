@@ -1,0 +1,7 @@
+schema_version = 2
+
+[soc]
+name = "sm8650"
+codename = "pineapple"
+description = "Minimal SM8650 capability identity; no peripheral drivers or board topology are implied"
+source_revision = "4d04410798b538fbe4b50664e3a66d9500a2ed31"

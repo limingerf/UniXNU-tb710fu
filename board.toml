@@ -1,0 +1,32 @@
+schema_version = 2
+
+[board]
+name = "tb710fu"
+soc = "SM8650Q-AB"
+soc_source = "sm8650"
+os_profile = "macos-27.3-26C5035r"
+description = "Lenovo TB710FU: minimal macOS 27 kernel bring-up, storage and hardware boot unqualified"
+example = false
+
+[components]
+include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink"]
+
+[kernel]
+defconfig = "tb710fu_macos_defconfig"
+config_fragments = ["arch:configs/common.config", "os:configs/macos.config"]
+patch_series = [
+  "arch:patches/xnu/series",
+  "device:patches/pre-os/series",
+  "os:patches/xnu/series",
+  "device:patches/xnu/series",
+]
+archives = [
+  "build-corecrypto-14.py",
+  "build-corecrypto-14.py --namespace",
+  "component:ArmDTPlatform",
+  "component:ArmCpu",
+  "build-libpthread-kernel.py",
+]
+
+[package.defconfig]
+"macos-27.3-26C5035r" = "tb710fu_macos_defconfig"
