@@ -8,4 +8,4 @@
 - A successful native-only build is not a prelinked kernel, a successful prelink is not hardware boot, and a menu is not macOS userspace. Report the exact stage.
 - First build a minimal kernel on the supported macOS runner. Do not add GPU, audio, wireless or unrelated hardware to fix a compiler/linker error.
 - Disable optional providers coherently; never add empty security, crypto or hardware stubs to hide missing dependencies.
-- Use one bounded GitHub run at a time. Diagnose the first actual failure before dispatching another run.
+- Use one bounded GitHub run per independent target at a time. Kernel and firmware may run independently; do not dispatch duplicate runs for the same target. Diagnose the first actual failure before retrying that target.

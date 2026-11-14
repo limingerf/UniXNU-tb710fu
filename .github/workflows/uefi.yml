@@ -1,0 +1,58 @@
+name: TB710FU reviewed UEFI
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tb710fu-uefi-cloud
+  cancel-in-progress: false
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+defaults:
+  run:
+    shell: bash
+jobs:
+  firmware:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: UniXNU/UniXNU
+          ref: 0c1bac3d51a3009dca1708b15a5198f4b43d057a
+          path: .work/UniXNU
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: UniXNU/uefi-sheng
+          ref: 66421cb7bb5694843aec8de1ca3d1de4c20cca38
+          path: .work/uefi-sheng
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+      - name: Install official CLANGPDB host tools
+        run: |
+          set -euo pipefail
+          brew install llvm lld mtools dtc nasm acpica
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix lld)/bin" >> "$GITHUB_PATH"
+      - name: Build audited source-only firmware and verify nested modules
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 tools/ci_firmware.py build
+      - name: Collect firmware evidence
+        if: always()
+        run: python3 tools/ci_firmware.py collect
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: tb710fu-uefi-${{ github.run_id }}
+          path: .work/firmware-artifacts/
+          if-no-files-found: error
+          retention-days: 3

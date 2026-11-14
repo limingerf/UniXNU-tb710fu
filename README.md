@@ -14,6 +14,10 @@
 - `prelink`：先编译 native，再运行官方 macOS kernelcache 预链接；闭包另行验证。
 - 日志、源码锁、内核和 SHA-256 保存在本私有仓的 Actions artifact，默认保留三天。
 
+UEFI 使用独立的 **TB710FU reviewed UEFI** workflow。它应用 `firmware/overlay` 与
+独立 SimpleFb 修复，再调用官方 `build firmware`；产物包括3MiB FD与真实FV/FFS模块验证报告。
+首轮 native 已成功，独立校验记录在 `docs/evidence/native-build.json`；完整预链接单独验收。
+
 最小 kernel 构建无需 PAT、平台种子、Data seed 或 trust cache 的 Actions secret。
 默认 `github.token` 只用于源码 API；本机保存的个人令牌不会送入 workflow。
 
