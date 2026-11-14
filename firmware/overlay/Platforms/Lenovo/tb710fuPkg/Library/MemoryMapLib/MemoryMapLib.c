@@ -38,9 +38,11 @@ gMemoryDescriptor[] = {
   {"DXE_Heap",            0xB8000000, 0x1B000000, AddMem, SYS_MEM, SYS_MEM_CAP, Conv,   WRITE_BACK_XN},
   {"Display_Reserved",    0xD5100000, 0x02B00000, AddMem, MEM_RES, SYS_MEM_CAP, Reserv, WRITE_THROUGH_XN},
   {"TZApps_Reserved",     0xD8800000, 0x1B000000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
-  // High DDR for DarwinBoot's 2 GiB owned window (board.toml owned_memory_size). The live FDT
-  // lists 0x8C0000000 + 0x140000000 as DDR; RamManagerDxe added it, but it needs the vendor
-  // drivers (TB710FU_VENDOR_HW). 3 GiB leaves room for the 2 MiB-aligned window placement.
+  // ref23235249 author observation: a live FDT on that reference device reported
+  // DDR at 0x8C0000000 + 0x140000000. That author selected this 3 GiB subset
+  // for an aligned 2 GiB DarwinBoot owned window without vendor RamManagerDxe.
+  // This clean project has no independently qualified live FDT or physical RAM
+  // range evidence for this entry. Preserve it as reference policy pending proof.
   {"RAM_High",            0x8C0000000, 0xC0000000, AddMem, SYS_MEM, SYS_MEM_CAP, Conv,   WRITE_BACK_XN},
 
   // Other Memory Regions

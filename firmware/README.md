@@ -16,9 +16,17 @@ RAM disk and FAT stack, and the existing ABL scanout. It does not import
 Enabling a vendor hardware/display gate is a build error: implementing a
 vendor path requires a separate reviewed change with real, hash-checked
 inputs. No empty binary or driver may satisfy a missing dependency.
-`DEVICE_MODEL=0` selects this single-model package. `ENABLE_SECUREBOOT=0`
-describes this UEFI image policy only; it does not change Android ABL/AVB.
-Enabling UEFI Secure Boot requires a separate qualified policy/key integration.
+Use numeric `DEVICE_MODEL=0` for compatibility with the pinned firmware
+builder's host model-index contract: `build_uefi.py` declares an integer
+model, defaults `--model` to 0, checks it against `status.model_count=1`,
+and forwards it to the build. The string tb710fu is the device name, not
+that integer model index. No native consumer of DEVICE_MODEL was found in
+this TB710FU/Lanai/Silicium path, so 0 does not establish a native board
+selector or CPU topology. A direct EDK II invocation merely receives the
+macro; the canonical host-tool contract is the reason for retaining 0.
+`ENABLE_SECUREBOOT=0` describes this UEFI image policy only; it does not
+change Android ABL/AVB. Enabling UEFI Secure Boot requires a separate
+qualified policy/key integration.
 
 The expected FD is exactly `0x300000` bytes at `0xA7100000`. Its board DSC is
 `Platforms/Lenovo/tb710fuPkg/tb710fu.dsc`; the expected output is

@@ -62,9 +62,24 @@ part of its existing open-source boot architecture. That upstream module is
 not a new placeholder for a missing board driver. It is not evidence of UEFI
 Secure Boot enforcement; Android ABL/AVB trust and UEFI image policy are
 separate stages. No new signing or trust claim is made.
-The single-model build default is `DEVICE_MODEL=0`; UEFI image Secure Boot
-defaults to 0 and enabling it fails this overlay's preflight policy until
-real key/policy inputs have been reviewed. Neither setting changes ABL/AVB.
+The earlier unqualified claim that DEVICE_MODEL selects this board is
+replaced with the actual host-tool contract. In pinned `build_uefi.py`,
+line 44 declares `BuildContext.device_model: int`; line 78 parses `--model`
+with `type=int, default=0`; line 231 forwards `DEVICE_MODEL` to the build;
+lines 450-457 read `status.model_count` and reject an index greater than or
+equal to that count. For this resource TOML's `model_count=1`, the normal
+nonnegative host model index is **0**. The device name tb710fu is not a valid
+integer argument to that CLI.
+
+The old TB Stuart DeviceBuild.py line 159 only forwards the variable through
+`BLD_*_DEVICE_MODEL`. No native reader was found in the TB DSC/Lanai/Silicium
+path. Other boards such as giulia do compare numeric model macros, but their
+DSCs are not included by this board. Thus the recommendation is numeric 0
+for canonical builder compatibility, not a claim that it selects a native
+TB identity, changes affinities or starts cores. A direct EDK II call has no
+observed TB runtime consumer of this macro at the reviewed base.
+UEFI image Secure Boot defaults to 0 and enabling it fails this overlay's
+policy until real key/policy inputs are reviewed; that does not change ABL/AVB.
 
 ## FD and memory policy
 
@@ -86,6 +101,8 @@ The table preserves the same-device reference's 40 entries, including:
   The reference reports a larger contiguous live-FDT DDR run there and uses
   this subset for an aligned 2 GiB DarwinBoot owned window. The clean project
   has not independently qualified that live FDT or allocation.
+  The high-DDR C comment now attributes the observation to the ref23235249
+  author rather than claiming this project measured it.
 
 The static checker confirms nonzero ranges, arithmetic bounds, pairwise
 non-overlap and exclusion of the reviewed ramoops/rmtfs/hwfence/display ranges
@@ -93,6 +110,11 @@ from conventional allocations. It cannot prove the actual DDR hardware map.
 An 8 GiB SKU label or Linux MemTotal is not a substitute for the selected live
 firmware's banks and reserved holes. Do not enable hardware boot until these
 inputs and the loader allocation map are reconciled.
+The reviewed previous evidence contains no captured `/proc/iomem` System RAM
+ranges that independently establish RAM_High. Its reference-detail text and
+menu-achieved report trace the high region to the reference implementation.
+The old round-2 report proposes reading `/proc/iomem` as a next step; that
+proposal is not a captured measurement. No device access is performed here.
 
 The complete retained address/size/type inventory appears below. Its source
 fields, HOB options and attributes remain in the C table and are checked

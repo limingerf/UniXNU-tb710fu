@@ -46,18 +46,24 @@ def api(token, method, endpoint, body=None):
         },
         data=None if body is None else json.dumps(body).encode(),
     )
-    try:
-        with urllib.request.build_opener(NoRedirect).open(request, timeout=45) as response:
-            data = response.read()
-            return json.loads(data) if data else {'status': response.status}
-    except urllib.error.HTTPError as error:
+    attempts = 3 if method == 'GET' else 1
+    for attempt in range(attempts):
         try:
-            message = json.loads(error.read()).get('message', '')
-        except ValueError:
-            message = 'GitHub API error'
-        raise SystemExit(f'GitHub API HTTP {error.code}: {message}') from None
-    except OSError as error:
-        raise SystemExit(f'GitHub network request failed: {type(error).__name__}') from None
+            with urllib.request.build_opener(NoRedirect).open(request, timeout=45) as response:
+                data = response.read()
+                return json.loads(data) if data else {'status': response.status}
+        except urllib.error.HTTPError as error:
+            try:
+                message = json.loads(error.read()).get('message', '')
+            except (ValueError, http.client.HTTPException):
+                message = 'GitHub API error'
+            raise SystemExit(f'GitHub API HTTP {error.code}: {message}') from None
+        except (OSError, http.client.HTTPException, json.JSONDecodeError) as error:
+            if attempt + 1 < attempts:
+                time.sleep(attempt + 1)
+                continue
+            note = '; verify remote state before retrying this mutation' if method != 'GET' else ''
+            raise SystemExit(f'GitHub network request failed: {type(error).__name__}{note}') from None
 
 
 def download(token, endpoint, destination):

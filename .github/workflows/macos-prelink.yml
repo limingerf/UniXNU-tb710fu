@@ -5,7 +5,6 @@ on:
       native_run_id:
         description: Successful native run with an unexpired artifact and identical kernel inputs
         required: true
-        default: '43615291360'
 permissions:
   contents: read
   actions: read

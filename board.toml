@@ -48,7 +48,8 @@ packages = [
 ]
 
 [firmware.defines]
-DEVICE_MODEL = "tb710fu"
+# Integer model index used by the pinned canonical host builder; this board has one model.
+DEVICE_MODEL = "0"
 ENABLE_SECUREBOOT = "0"
 MEMORY_PROTECTION = "TRUE"
 SHIP_MODE = "FALSE"

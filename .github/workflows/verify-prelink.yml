@@ -1,0 +1,44 @@
+name: Verify completed macOS fileset
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed native-plus-prelink run whose fileset artifact should be verified without recompiling
+        required: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: tb710fu-prelink-verification
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Check out the exact production loader parser
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: UniXNU/DarwinBoot
+          ref: 5243c68ec332a227fe3680cd5da6d5a0e127035c
+          path: .work/DarwinBoot
+          persist-credentials: false
+      - name: Verify the actual fileset, closure, input hashes and native architecture
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]
+          python3 tools/verify_kernel.py --run-id "$SOURCE_RUN_ID"
+      - name: Exercise the production DarwinBoot parser on this exact fileset
+        run: python3 .work/DarwinBoot/Test/test-kernel-parser.py "$GITHUB_WORKSPACE/.work/verified-prelink/kernel.macho"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: tb710fu-verified-prelink-${{ github.run_id }}
+          path: .work/verified-prelink/
+          if-no-files-found: error
+          retention-days: 3

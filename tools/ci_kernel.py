@@ -167,15 +167,14 @@ def main():
         command(driver + ['build', 'prelink'] + common, source, output / 'build-prelink.log')
     kernel = work / 'kernel/kernel.macho'
     data = kernel.read_bytes()
-    magic, cputype, subtype, filetype = struct.unpack_from('<IIII', data)
-    if magic != 0xfeedfacf or cputype != 0x100000c or filetype != 2:
-        raise SystemExit('Build did not produce an ARM64 MH_EXECUTE kernel')
-    if subtype & 0x00ffffff != 2:
-        raise SystemExit('Build did not produce the required arm64e subtype')
     native = args.mode == 'native'
+    from verify_kernel import verify_image
+    official = json.loads(kernel.with_suffix('.json').read_text())
+    checked = verify_image(data, 'native-only' if native else 'prelinked', official)
     record = {'stage': 'native-only' if native else 'prelinked', 'profile': PROFILE,
               'source_commit': actual, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
-              'cpu_subtype': hex(subtype), 'prelink_skipped': native, 'hardware_boot_verified': False}
+              'cpu_subtype': checked['cpu_subtype'], 'mach_o_filetype': checked['mach_o_filetype'],
+              'prelink_skipped': native, 'hardware_boot_verified': False}
     (output / 'build-result.json').write_text(json.dumps(record, indent=2) + '\n')
     print(json.dumps(record, indent=2), flush=True)
     shutil.copytree(work / 'kernel', output / 'kernel', dirs_exist_ok=True)

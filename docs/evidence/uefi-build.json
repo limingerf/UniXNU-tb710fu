@@ -1,0 +1,129 @@
+{
+  "run_id": 43618658596,
+  "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43618658596",
+  "device_revision": "4497de4724af619b9cd5ec74d9ec6a8354d459f9",
+  "artifact_id": 14123476746,
+  "independently_verified_sha256": "24007b776b52c9df3643bf035a1ae91f46aa261b6d3705a9712de6aefd2e4798",
+  "required_module_count": 9,
+  "volumes": [
+    {
+      "sha256": "f733f86f10cf747c0b81cf6a80b616f2664273581d5bfff81790cc8e0242186c",
+      "bytes": 5926912,
+      "ffs_files": 51,
+      "depth": 3
+    },
+    {
+      "sha256": "24007b776b52c9df3643bf035a1ae91f46aa261b6d3705a9712de6aefd2e4798",
+      "bytes": 3145728,
+      "ffs_files": 2,
+      "depth": 0
+    }
+  ],
+  "firmware": {
+    "stage": "firmware-built",
+    "target": "AARCH64 DEBUG CLANGPDB",
+    "uefi_source_commit": "66421cb7bb5694843aec8de1ca3d1de4c20cca38",
+    "framework_commit": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+    "fd_base": "0xA7100000",
+    "bytes": 3145728,
+    "sha256": "24007b776b52c9df3643bf035a1ae91f46aa261b6d3705a9712de6aefd2e4798",
+    "required_modules": [
+      {
+        "inf": "UniXNUPkg/Application/UniXNU/UniXNU.inf",
+        "file_guid": "9b665204-a133-47a2-9396-9e2b370a4e25"
+      },
+      {
+        "inf": "UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.inf",
+        "file_guid": "29b950cf-586d-49ea-9d71-f88645ccdaf6"
+      },
+      {
+        "inf": "UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.inf",
+        "file_guid": "75ca63ad-fbae-4a06-92a0-f937c671251d"
+      },
+      {
+        "inf": "DarwinBootPkg/Driver/DarwinBoot.inf",
+        "file_guid": "1b64af87-8415-4b57-9b16-680d70913b9f"
+      },
+      {
+        "inf": "MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf",
+        "file_guid": "6b38f7b4-ad98-40e9-9093-aca2b5a253c4"
+      },
+      {
+        "inf": "MdeModulePkg/Universal/Disk/PartitionDxe/PartitionDxe.inf",
+        "file_guid": "1fa1f39e-feff-4aae-bd7b-38a070a3b609"
+      },
+      {
+        "inf": "FatPkg/EnhancedFatDxe/Fat.inf",
+        "file_guid": "961578fe-b6b7-44c3-af35-6bc705cd2b1f"
+      },
+      {
+        "inf": "MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf",
+        "file_guid": "cd3bafb6-50fb-4fe8-8e4e-ab74d2c1a600"
+      },
+      {
+        "inf": "SiliciumPkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf",
+        "file_guid": "dcfd1e6d-788d-4ffc-8e1b-ca2f75651a92"
+      }
+    ],
+    "volumes": [
+      {
+        "sha256": "f733f86f10cf747c0b81cf6a80b616f2664273581d5bfff81790cc8e0242186c",
+        "bytes": 5926912,
+        "ffs_files": 51,
+        "depth": 3
+      },
+      {
+        "sha256": "24007b776b52c9df3643bf035a1ae91f46aa261b6d3705a9712de6aefd2e4798",
+        "bytes": 3145728,
+        "ffs_files": 2,
+        "depth": 0
+      }
+    ],
+    "overlay": [
+      {
+        "path": "Platforms/Lenovo/tb710fuPkg/Include/APRIORI.inc",
+        "sha256": "fcc50cbee41bb8e7b2afd412e2ad89cc994971760e0cd2afd61c9c9dd4e842f0"
+      },
+      {
+        "path": "Platforms/Lenovo/tb710fuPkg/Include/DXE.inc",
+        "sha256": "a7f1be2eeab47ac5d3c2cf75673d67f039ac7ea50999975f1d639a69d3af46cf"
+      },
+      {
+        "path": "Platforms/Lenovo/tb710fuPkg/Library/ConfigurationMapLib/ConfigurationMapLib.c",
+        "sha256": "a447473df409a5f131d3f1b9fad8da518f7ea8edeb5eb8ae0b06d6cbac647268"
+      },
+      {
+        "path": "Platforms/Lenovo/tb710fuPkg/Library/ConfigurationMapLib/ConfigurationMapLib.inf",
+        "sha256": "d43514ac5ee1f0758fe3bec0e73c5ff2f4f9b31e0d3546377c54e9214cc6a7b7"
+      },
+      {
+        "path": "Platforms/Lenovo/tb710fuPkg/Library/MemoryMapLib/MemoryMapLib.c",
+        "sha256": "5c7d0e4c3215079b8c0feb86f78a614fc777aa6ebce4e99335c187814ddc42c8"
+      },
+      {
+        "path": "Platforms/Lenovo/tb710fuPkg/Library/MemoryMapLib/MemoryMapLib.inf",
+        "sha256": "159424f05f845ecb993029636bd30ac167784697855a654bf95c7a202a3378ae"
+      },
+      {
+        "path": "Platforms/Lenovo/tb710fuPkg/Tools/check-board.py",
+        "sha256": "c426a1adda7662276499923980466a59d54cb98e24ca98814ec2323317428c5c"
+      },
+      {
+        "path": "Platforms/Lenovo/tb710fuPkg/tb710fu.dsc",
+        "sha256": "ce4ad9d2a653cfad79b57f8d2bd3569b9f6a883e20ea957056b8e5b40213a991"
+      },
+      {
+        "path": "Platforms/Lenovo/tb710fuPkg/tb710fu.fdf",
+        "sha256": "885a37974c9a8041f95846b7c9f4935cc3a4f0f7339955d15596a2b169544c55"
+      },
+      {
+        "path": "Resources/Configs/tb710fu.toml",
+        "sha256": "4dc5ea18b34fe02cbed2fb8c1071275516e094dc5a5190f65635ba8b0faa8a0c"
+      }
+    ],
+    "vendor_binary_inputs": false,
+    "uefi_secure_boot": "development-disabled",
+    "abl_changed": false,
+    "hardware_boot_verified": false
+  }
+}

@@ -17,6 +17,10 @@
     "commit": "440589b0c31625f17edf363e24b3c82c51c70bb9",
     "reason": "Use the pinned official framework gitlink with macOS fileset symbol-name matching instead of the stale component catalog revision"
   },
+  "darwin_boot": {
+    "repository": "UniXNU/DarwinBoot",
+    "commit": "5243c68ec332a227fe3680cd5da6d5a0e127035c"
+  },
   "hardware_reference": {
     "repository": "SpendyYT/tb710fu-linux",
     "commit": "4d04410798b538fbe4b50664e3a66d9500a2ed31"
