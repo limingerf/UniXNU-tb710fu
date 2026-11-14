@@ -37,7 +37,9 @@ still requires qualified stock DT and ramdisk inputs.
 See [the audit](../docs/UEFI_AUDIT.md) for memory provenance, all retained or
 rejected differences, inherited framework limitations and qualification
 gates. A cloud compile proves source integration and FD structure only.
-There is no clean-project device boot, GOP, input, UFS or XNU handoff claim.
+The source tree now includes a read-only SPMI physical-key `ConIn` driver and a
+host model test; this proves the input translation contract only. There is no
+clean-project device boot, GOP, physical input, UFS or XNU handoff claim.
 
 No device command, signing, flashing, slot change or partition operation is
 part of preparing or building these sources.

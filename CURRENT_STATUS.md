@@ -10,6 +10,7 @@
 | 同版本DarwinBoot生产解析器 | 通过 | 同一run对实际142,753,792字节产物执行官方Test/test-kernel-parser.py |
 | 重审UEFI云编译 | 通过 | [固件run43618658596](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43618658596)：AARCH64 DEBUG CLANGPDB |
 | FD本地独立复验 | 通过 | 3,145,728字节、两个真实FV、9个必需模块GUID全部匹配 |
+| UEFI实体按键修复候选 | 本地主机测试通过，待云编译 | Tb710fuKeyInputDxe：SPMI v7状态读取→ConIn；GCC/Clang和ASan/UBSan通过，实机未验 |
 | 实机启动/PAC/GOP/UFS/用户态 | 未验收 | 当前任务未运行设备命令、刷写或更改分区 |
 
 ## 产物
@@ -41,6 +42,15 @@
 
 高位DDR来自同型号参考作者记录；当前设备live FDT、实际scanout stride/格式和所有权
 仍需证据。源码检查和编译通过不构成物理内存可用或显示正常的证明。
+
+## UEFI按键修复 · 2026-11-15
+
+用户报告构建的UEFI实体按键无响应；此前overlay没有读取PMIC三键的输入提供者。
+已在独立板级overlay加入Tb710fuKeyInputDxe，逐文件来源SHA-256见
+[输入源码记录](docs/evidence/uefi-input-sources.json)，设计和验证边界见
+[输入审查](docs/UEFI_INPUT.md)。音量加/减映射上/下，电源映射Enter。
+新增驱动同时进入DSC/FDF，CI在编译前跑主机模型并核对真实压缩FV中的第10个必需模块。
+本轮未访问设备；源码与主机验证不能证明实际按键恢复。云构建run/FD哈希随后单独记录。
 
 ## 下一阶段
 

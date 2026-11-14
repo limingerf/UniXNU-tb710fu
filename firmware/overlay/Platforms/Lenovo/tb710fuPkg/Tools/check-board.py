@@ -83,9 +83,14 @@ def main():
         'FatPkg/EnhancedFatDxe/Fat.inf',
         'MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf',
         'SiliciumPkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf',
+        'tb710fuPkg/Drivers/Tb710fuKeyInputDxe/Tb710fuKeyInputDxe.inf',
     ]
     for path in required:
         require('INF ' + path in fv, 'Required module missing from FDF: ' + path)
+    key_inf = required[-1]
+    require(key_inf in dsc, 'Board DSC does not compile the physical-key input')
+    apriori = (board / 'Include/APRIORI.inc').read_text(encoding='utf-8')
+    require(apriori.index(key_inf) < apriori.index('MdeModulePkg/Universal/BdsDxe/BdsDxe.inf'), 'Input must dispatch before BDS')
     forbidden = ('Binaries/', 'ClockDxe.inf', 'SPMIDxe.inf', 'DisplayDxe.inf', 'RamManagerDxe.inf')
     for path in overlay.rglob('*'):
         if not path.is_file():
@@ -101,7 +106,7 @@ def main():
     if args.uefi_root:
         common = args.uefi_root / 'Silicon/Silicium/SiliciumPkg/SiliciumPkg.dsc.inc'
         inherited = common.read_text(encoding='utf-8')
-        for path in required[4:]:
+        for path in required[4:9]:
             require(path in inherited, 'Inherited DSC does not build ' + path)
         require('HobLib|MdePkg/Library/DxeHobLib/DxeHobLib.inf' in inherited, 'Inherited HobLib differs from audited baseline')
     if args.fd:

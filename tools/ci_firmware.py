@@ -22,6 +22,7 @@ REQUIRED = [
     'FatPkg/EnhancedFatDxe/Fat.inf',
     'MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf',
     'SiliciumPkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf',
+    'tb710fuPkg/Drivers/Tb710fuKeyInputDxe/Tb710fuKeyInputDxe.inf',
 ]
 
 
@@ -44,6 +45,11 @@ def main():
         actual = subprocess.check_output(['git', '-C', str(path), 'rev-parse', 'HEAD'], text=True).strip()
         if actual != expected:
             raise SystemExit('Unexpected source revision: ' + str(path))
+    key_test = ROOT / 'firmware/overlay/Platforms/Lenovo/tb710fuPkg/Drivers/Tb710fuKeyInputDxe/Test/tb710fu_keys_host.c'
+    key_binary = output / 'tb710fu-keys-host'
+    command(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-pedantic', '-fsanitize=address,undefined',
+             '-fno-omit-frame-pointer', key_test, '-o', key_binary], ROOT, output / 'input-test-build.log')
+    command([key_binary], ROOT, output / 'input-test.log')
     for patch in sorted((ROOT / 'firmware/patches').glob('*.patch')):
         command(['git', '-C', uefi, 'apply', '--check', patch], ROOT)
         command(['git', '-C', uefi, 'apply', patch], ROOT)
@@ -79,11 +85,15 @@ def main():
     overlay = [{'path': str(path.relative_to(ROOT / 'firmware/overlay')), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
                for path in sorted((ROOT / 'firmware/overlay').rglob('*')) if path.is_file() and '__pycache__' not in path.parts]
     report = {'stage': 'firmware-built', 'target': 'AARCH64 DEBUG CLANGPDB',
+              'device_source_commit': os.environ.get('GITHUB_SHA') or subprocess.check_output(
+                  ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
               'uefi_source_commit': LOCK['uefi']['commit'], 'framework_commit': LOCK['unixnu']['commit'],
               'fd_base': '0xA7100000', 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
               'required_modules': modules, 'volumes': parsed['volumes'], 'overlay': overlay,
               'vendor_binary_inputs': False, 'uefi_secure_boot': 'development-disabled',
               'abl_changed': False, 'hardware_boot_verified': False}
+    report['input'] = {'driver': REQUIRED[-1], 'host_model_test': 'PASS',
+                       'physical_keys_verified': False, 'pmic_configuration_writes': False}
     (output / 'firmware-result.json').write_text(json.dumps(report, indent=2) + '\n')
     shutil.copy2(fd, output / 'SILICIUM_UEFI.fd')
     command(['git', '-C', str(uefi), 'submodule', 'status', '--recursive'], ROOT, output / 'uefi-submodules.log')
@@ -94,7 +104,7 @@ def main():
     summary = os.environ.get('GITHUB_STEP_SUMMARY')
     if summary:
         with open(summary, 'a') as stream:
-            stream.write(f'### TB710FU UEFI\n\nFD SHA-256: `{report["sha256"]}`\n\nNine required modules verified in nested FFS volumes. Hardware boot is not yet qualified.\n')
+            stream.write(f'### TB710FU UEFI\n\nFD SHA-256: `{report["sha256"]}`\n\n{len(REQUIRED)} required modules verified in nested FFS volumes. Hardware boot is not yet qualified.\n')
 
 
 if __name__ == '__main__':

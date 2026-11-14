@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Source-only effective gate=0 module list from reference 23235249d71604f8a6f743680ef8fd1003fe7189.
-# Vendor hardware/display branches removed after audit; no binary placeholders.
+# Vendor hardware/display branches removed after audit; the board input driver is source-only.
 APRIORI DXE {
   INF MdeModulePkg/Core/Dxe/DxeMain.inf
   INF MdeModulePkg/Universal/PCD/Dxe/Pcd.inf
@@ -38,6 +38,8 @@ APRIORI DXE {
   INF MdeModulePkg/Universal/DevicePathDxe/DevicePathDxe.inf
   INF MdeModulePkg/Universal/CapsuleRuntimeDxe/CapsuleRuntimeDxe.inf
   INF MdeModulePkg/Universal/HiiDatabaseDxe/HiiDatabaseDxe.inf
+  # Timer and variable services are ready; register the physical-key ConIn first.
+  INF tb710fuPkg/Drivers/Tb710fuKeyInputDxe/Tb710fuKeyInputDxe.inf
   INF MdeModulePkg/Universal/BdsDxe/BdsDxe.inf
 
 

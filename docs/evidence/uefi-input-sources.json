@@ -1,0 +1,65 @@
+{
+  "purpose": "UEFI physical-key driver source provenance; not hardware verification",
+  "sources": [
+    {
+      "repository": "SpendyYT/tb710fu-linux",
+      "commit": "4d04410798b538fbe4b50664e3a66d9500a2ed31",
+      "path": "arch/arm64/boot/dts/qcom/sm8650-lenovo-tb710fu.dts",
+      "sha256": "603cad73f173bf978ecd0ed861a6390523dc0bbbfacda236d4d772fd66ad81ca"
+    },
+    {
+      "repository": "SpendyYT/tb710fu-linux",
+      "commit": "4d04410798b538fbe4b50664e3a66d9500a2ed31",
+      "path": "arch/arm64/boot/dts/qcom/sm8650.dtsi",
+      "sha256": "a1606dfe264a11411afbdf7a0b9da6b28deaaa6254eae79a6aee45d7ab24d817"
+    },
+    {
+      "repository": "SpendyYT/tb710fu-linux",
+      "commit": "4d04410798b538fbe4b50664e3a66d9500a2ed31",
+      "path": "arch/arm64/boot/dts/qcom/pmk8550.dtsi",
+      "sha256": "0f8d7eeba311710b88baa47fac4601fedd6ea9528f1dc7820bb45ef7685289c7"
+    },
+    {
+      "repository": "SpendyYT/tb710fu-linux",
+      "commit": "4d04410798b538fbe4b50664e3a66d9500a2ed31",
+      "path": "arch/arm64/boot/dts/qcom/pm8550.dtsi",
+      "sha256": "9ebe9d8795e65afb63be042c66c073a3908f2799604e1d38bf8477a1e3a32c67"
+    },
+    {
+      "repository": "SpendyYT/tb710fu-linux",
+      "commit": "4d04410798b538fbe4b50664e3a66d9500a2ed31",
+      "path": "drivers/spmi/spmi-pmic-arb.c",
+      "sha256": "320e71b64915eb4e32be90b49fd65f12da2241e877bf4f68f0c0c1eb4ab3e28d"
+    },
+    {
+      "repository": "SpendyYT/tb710fu-linux",
+      "commit": "4d04410798b538fbe4b50664e3a66d9500a2ed31",
+      "path": "drivers/input/misc/pm8941-pwrkey.c",
+      "sha256": "2b28b7605514436427c7fbb72a57e271a2e3673ea2c9e73f26576df6b64f9029"
+    },
+    {
+      "repository": "SpendyYT/tb710fu-linux",
+      "commit": "4d04410798b538fbe4b50664e3a66d9500a2ed31",
+      "path": "drivers/pinctrl/qcom/pinctrl-spmi-gpio.c",
+      "sha256": "a41528396fcf3cbc5951a7ee92d6f7e41a65b232d81eae360754dba46bab3345"
+    },
+    {
+      "repository": "UniXNU/uefi-sheng",
+      "commit": "66421cb7bb5694843aec8de1ca3d1de4c20cca38",
+      "path": "Platforms/Xiaomi/shengPkg/Drivers/ShengKeyInputDxe/ShengKeyInputDxe.c",
+      "sha256": "3eb2322435fcac2911e1d5a70dabb9b3d4715569a563f4646e16a231e332e8e5"
+    },
+    {
+      "repository": "UniXNU/uefi-sheng",
+      "commit": "66421cb7bb5694843aec8de1ca3d1de4c20cca38",
+      "path": "Platforms/Xiaomi/shengPkg/Drivers/ShengKeyInputDxe/ShengSpmiKeys.h",
+      "sha256": "5d5dce1b7352407a8b565ca73c3d848257a380d967354708353bd4c05e835128"
+    },
+    {
+      "repository": "UniXNU/uefi-sheng",
+      "commit": "66421cb7bb5694843aec8de1ca3d1de4c20cca38",
+      "path": "Platforms/Xiaomi/shengPkg/Drivers/ShengKeyInputDxe/ShengKeyInputDxe.inf",
+      "sha256": "2e0e0b2dcb042f3350a256cffb2e6b08bba94e4f17431724975e2feff14208fd"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Source-only effective gate=0 module list from reference 23235249d71604f8a6f743680ef8fd1003fe7189.
-# Vendor hardware/display branches removed after audit; no binary placeholders.
+# Vendor hardware/display branches removed after audit; the board input driver is source-only.
   INF MdeModulePkg/Core/Dxe/DxeMain.inf
   INF MdeModulePkg/Universal/PCD/Dxe/Pcd.inf
 
@@ -40,6 +40,8 @@
   INF UniXNUPkg/Application/UniXNU/UniXNU.inf
 
 
+  # Publish the physical-key console before the boot manager connects ConIn.
+  INF tb710fuPkg/Drivers/Tb710fuKeyInputDxe/Tb710fuKeyInputDxe.inf
   INF MdeModulePkg/Universal/BdsDxe/BdsDxe.inf
 
 
