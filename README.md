@@ -1,6 +1,9 @@
 ﻿# TB710FU / UniXNU clean bring-up
 
 为 Lenovo TB710FU / SM8650Q-AB 六核设备重新建立的干净适配工程。
+
+**最新结果见 [CURRENT_STATUS.md](CURRENT_STATUS.md)：内核编译、严格预链接、生产加载器解析与UEFI云构建均已通过。**
+
 当前重点是在 GitHub macOS runner 产出可核验的 arm64e 内核。
 硬件启动、UFS、根卷、macOS 用户态与桌面分别验收。
 
@@ -15,7 +18,8 @@
 - 日志、源码锁、内核和 SHA-256 保存在本私有仓的 Actions artifact，默认保留三天。
 
 UEFI 使用独立的 **TB710FU reviewed UEFI** workflow。它应用 `firmware/overlay` 与
-独立 SimpleFb 修复，再调用官方 `build firmware`；产物包括3MiB FD与真实FV/FFS模块验证报告。
+独立 SimpleFb 修复，再调用官方 `build firmware`；已通过云编译及本地复验，产物为3MiB FD，
+9个必需模块在两个真实FV中验证通过，记录在 `docs/evidence/uefi-build.json`。
 首轮 native 已成功，独立校验记录在 `docs/evidence/native-build.json`；完整预链接单独验收。
 
 最小 kernel 构建无需 PAT、平台种子、Data seed 或 trust cache 的 Actions secret。

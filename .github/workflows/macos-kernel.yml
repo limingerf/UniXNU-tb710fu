@@ -63,6 +63,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 tools/ci_kernel.py prelink
+      - name: Verify the fileset with the production DarwinBoot parser
+        if: inputs.stage == 'prelink'
+        run: |
+          set -euo pipefail
+          work=$(cat .work/resolved-work.txt)
+          python3 .work/UniXNU/drivers/DarwinBoot/Test/test-kernel-parser.py "$work/kernel/kernel.macho" 2>&1 | tee .work/artifacts/loader-parser.log
       - name: Collect the selected logs and artifacts
         if: always()
         run: python3 tools/ci_kernel.py collect

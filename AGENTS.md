@@ -1,5 +1,7 @@
 # Working rules
 
+Read CURRENT_STATUS.md first. It is the authoritative status entry; preserve exact source/run/hash provenance and do not mistake historical wrapper failures for compiler failures.
+
 - This is the clean TB710FU SM8650Q-AB macOS 27 port. Preserve the previous workspace as evidence only.
 - Follow the pinned official UniXNU schema, component recipes and macOS documentation. Do not edit fetched source caches or silently replace official scripts.
 - Keep device configuration, SoC facts, OS compatibility fixes and UEFI integration separate. Every nontrivial patch needs its source, reason and verification.
