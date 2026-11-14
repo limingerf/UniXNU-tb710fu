@@ -8,7 +8,6 @@ import shutil
 import struct
 import subprocess
 import sys
-import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = json.loads((ROOT / 'upstream.lock.json').read_text())
@@ -42,8 +41,14 @@ def main():
     driver = [sys.executable, str(source / 'unixnu')]
     common = ['-D', str(ROOT), '--os', PROFILE]
     if args.mode == 'collect':
+        resolved = ROOT / '.work/resolved-work.txt'
+        if resolved.is_file():
+            work = Path(resolved.read_text().strip())
         if (work / 'logs').is_dir():
             shutil.copytree(work / 'logs', output / 'logs', dirs_exist_ok=True)
+        if (work / '.config').is_file():
+            shutil.copy2(work / '.config', output / 'resolved.config')
+        shutil.copy2(ROOT / 'upstream.lock.json', output / 'upstream.lock.json')
         for name in ('xnu-inputs.json', 'xnu-patches.list'):
             if (work / name).is_file():
                 shutil.copy2(work / name, output / name)

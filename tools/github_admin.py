@@ -52,6 +52,30 @@ def api(token, method, endpoint, body=None):
         raise SystemExit(f'GitHub network request failed: {type(error).__name__}') from None
 
 
+def download(token, endpoint, destination):
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, request, fp, code, message, headers, newurl):
+            return None
+
+    request = urllib.request.Request(
+        'https://api.github.com/' + endpoint.lstrip('/'),
+        headers={'Authorization': 'Bearer ' + token, 'User-Agent': 'TB710FU-clean-build'},
+    )
+    try:
+        response = urllib.request.build_opener(NoRedirect).open(request, timeout=45)
+    except urllib.error.HTTPError as error:
+        if error.code not in (301, 302, 303, 307, 308):
+            raise SystemExit(f'GitHub download HTTP {error.code}') from None
+        location = error.headers['Location']
+        # Signed artifact/log URLs are fetched without the GitHub authorization header.
+        response = urllib.request.urlopen(location, timeout=120)
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with response, destination.open('wb') as stream:
+        shutil.copyfileobj(response, stream)
+    print(f'Downloaded {destination.stat().st_size} bytes to {destination}')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--env-file')
@@ -60,10 +84,16 @@ def main():
     call.add_argument('method', choices=['GET', 'POST', 'PUT', 'PATCH'])
     call.add_argument('endpoint')
     call.add_argument('--body-file')
+    fetch = sub.add_parser('download')
+    fetch.add_argument('endpoint')
+    fetch.add_argument('--output', required=True)
     push = sub.add_parser('push')
     push.add_argument('--branch', default='main')
     args = parser.parse_args()
     token = credential(args.env_file)
+    if args.command == 'download':
+        download(token, args.endpoint, args.output)
+        return
     if args.command == 'api':
         body = json.loads(Path(args.body_file).read_text(encoding='utf-8-sig')) if args.body_file else None
         result = api(token, args.method, args.endpoint, body)
@@ -78,7 +108,20 @@ def main():
     env['GIT_CONFIG_VALUE_0'] = 'AUTHORIZATION: basic ' + encoded
     env['GIT_TERMINAL_PROMPT'] = '0'
     root = Path(__file__).resolve().parents[1]
-    subprocess.run([git, '-C', str(root), 'push', '-u', 'origin', args.branch], env=env, check=True)
+    result = subprocess.run([git, '-C', str(root), 'push', '-u', 'origin', args.branch], env=env)
+    if result.returncode:
+        # An interrupted response can occur after the remote ref has already advanced.
+        # Check the exact ref before treating it as a failed push or retrying it.
+        local = subprocess.check_output([git, '-C', str(root), 'rev-parse', args.branch], text=True).strip()
+        remote_url = subprocess.check_output([git, '-C', str(root), 'remote', 'get-url', 'origin'], text=True).strip()
+        prefix = 'https://github.com/'
+        if not remote_url.startswith(prefix):
+            raise SystemExit(result.returncode)
+        repository = remote_url[len(prefix):].removesuffix('.git')
+        remote = api(token, 'GET', f'repos/{repository}/git/ref/heads/{args.branch}')
+        if remote['object']['sha'] != local:
+            raise SystemExit(result.returncode)
+        print('Remote revision verified at ' + local)
 
 
 if __name__ == '__main__':

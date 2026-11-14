@@ -1,0 +1,203 @@
+schema_version = 1
+
+[device]
+name = "tb710fu"
+soc = "SM8650Q-AB"
+os_profile = "macos-27.3-26C5035r"
+summary = "Clean native-only macOS 27 kernel build for Lenovo TB710FU. Hardware boot, prelink and macOS userspace remain unqualified."
+
+[[area]]
+id = "configuration"
+status = "implemented"
+components = ["ArmDTPlatform", "ArmCpu", "XnuPrelink"]
+paths = ["board.toml", "feeds.toml", "configs/**", "soc/**", "upstream.lock.json", ".github/**", ".gitignore", ".gitattributes", "AGENTS.md"]
+inputs = ["Pinned official UniXNU and XNU revisions in upstream.lock.json; the macos-27.3-26C5035r profile; the repository-local soc feed."]
+configuration = ["board.toml selects ArmDTPlatform, ArmCpu and XnuPrelink. Its explicit archive and patch arrays replace inherited arrays; preserve the recorded order.", "The patch order is arch, device pre-OS, OS, then device XNU. The kernel configuration includes arch common and OS macOS fragments."]
+procedure = ["1. Resolve the pinned official checkout and profile without editing fetched source caches.", "2. Generate the selected defconfig and inspect the resolved status and component dependencies.", "3. Run the bounded native-only macOS CI build and retain the source revisions, invocation and first actual failure or kernel artifact."]
+findings = ["The clean board identity matches this record. Only three canonical components are selected; no board peripheral driver is included.", "The previous workspace mixes initial skeletons and later experiments. It is evidence only and is not a feed for this clean build."]
+completion = ["Official record validation and resolved status pass with the intended identity, component closure, OS profile, archives and patch order."]
+limits = ["Source configuration is implemented; no successful clean native kernel build or device execution is claimed by this record."]
+next_action = ["Record the first clean macOS runner result with its full source revision and accessible build log."]
+evidence = [{ kind = "source", reference = "board.toml", result = "Defines the clean schema-2 identity, selected components and ordered kernel inputs." }, { kind = "source", reference = "upstream.lock.json", result = "Pins the official UniXNU, XNU, OS profile and mainline hardware reference." }]
+
+[[area]]
+id = "firmware"
+status = "planned"
+components = []
+paths = ["uefi/**", "firmware/**", "proprietary-files.txt", "scripts/*firmware*", "scripts/*bootimg*"]
+inputs = ["A clean pinned UEFI base and reviewed TB710FU overlay; locally held stock boot-chain backups; a qualified firmware DTB and framebuffer handoff."]
+configuration = ["No firmware, boot-image or payload integration is selected in the initial native-only board configuration."]
+procedure = ["1. Review the previous TB710FU overlay against the pinned official UEFI integration guide.", "2. Trace each required firmware input to the local stock backup and record hashes without committing binaries.", "3. Build firmware offline before any separately authorized hardware test."]
+findings = ["Previous evidence records FD base 0xA7100000, FD size 0x300000 and Android boot header version 4. These are import candidates, not clean-build verification.", "The previous overlay disables custom display and vendor hardware DXE to preserve ABL scanout; enabling the whole vendor dependency chain was associated with loss of display."]
+completion = ["A pinned firmware build preserves reviewed memory reservations and enters the intended loader with a usable log channel on this board."]
+limits = ["No UEFI overlay or stock binary is imported here. A previous UniXNU menu observation does not qualify this kernel or macOS userspace."]
+next_action = ["Inventory and hash the previous UEFI overlay and its local binary inputs before proposing a separate firmware integration change."]
+evidence = [{ kind = "source", reference = "docs/HARDWARE.md", result = "Identifies previous firmware sources and their qualification limits." }, { kind = "source", reference = "hardware.toml", result = "Records historical UEFI settings as observations requiring clean import and a new hardware test." }]
+
+[[area]]
+id = "cpu"
+status = "planned"
+components = ["ArmCpu"]
+paths = ["dts/*cpu*", "package/*Cpu*", "scripts/*cpu*", "scripts/*gic*"]
+inputs = ["Board-specific enabled MPIDRs, PSCI method, GIC redistributor affinities, timer frequency and per-core EL1 PAC evidence."]
+configuration = ["ArmCpu is selected for compilation. No board DTS or SMP success is supplied by the native-only build."]
+procedure = ["1. Compare the selected stock DTB and DTBO with the pinned same-device Linux reference.", "2. Qualify the primary core, PSCI and timer before enabling secondary cores.", "3. In a later authorized device test, record each enabled MPIDR, GICR affinity, timer/IPI checkpoint and required PAC behavior."]
+findings = ["The same-device reference disables physical affinities 0x100 and 0x200, leaving 0x000, 0x300, 0x400, 0x500, 0x600 and 0x700. Linux logical CPU numbering must not replace physical affinity values.", "Previous Android evidence reports six logical CPUs and EL0 paca/pacg features. It does not establish per-core EL1 PAC operation or successful XNU SMP."]
+completion = ["Every enabled core reaches its entry checkpoint with matching affinity, working local timer and IPI, and the selected arm64e requirements pass."]
+limits = ["No core has been qualified by this clean project. The timer frequency and GICR mapping still require board evidence."]
+next_action = ["Parse the selected local stock DTB/DTBO and retain a redacted CPU, PSCI, timer and GIC fact table."]
+evidence = [{ kind = "source", reference = "https://github.com/SpendyYT/tb710fu-linux/blob/4d04410798b538fbe4b50664e3a66d9500a2ed31/arch/arm64/boot/dts/qcom/sm8650.dtsi", result = "Same-device reference declares the six enabled affinities and the SM8650 PSCI/GIC resources; this is source evidence." }]
+
+[[area]]
+id = "memory"
+status = "planned"
+components = ["ArmDTPlatform"]
+paths = ["dts/**", "package/*Memory*", "package/*Smmu*", "scripts/*memory*", "scripts/*smmu*"]
+inputs = ["Selected live firmware DT, DDR banks, stock reserved ranges, UEFI memory descriptors, loader allocations and DMA ownership."]
+configuration = ["The clean build has no board DTS and does not invent a DRAM window, reservation map or DMA translation."]
+procedure = ["1. Extract actual DDR and reserved ranges from qualified stock inputs.", "2. Compare them with the same-device reference and previous UEFI memory table.", "3. Account for all loader, display, secure firmware and DMA allocations before configuring an owned-memory window."]
+findings = ["The previous handwritten minimal DTS has a zero-length memory declaration and an invalid ranges encoding; it is excluded from the clean project.", "The previous UEFI overlay includes display demura and high-DDR reservations. Their values require comparison with this device's selected firmware DT before reuse."]
+completion = ["All memory and handoff ranges are accounted for, non-overlapping and correctly attributed; each enabled DMA engine has documented addressing and cache rules."]
+limits = ["No clean-project DT or DMA engine is qualified. Mainline reserved-memory alone cannot establish the live firmware DDR layout."]
+next_action = ["Generate a range comparison from local stock DTB/DTBO and UEFI inputs without reusing the invalid handwritten DTS."]
+evidence = [{ kind = "source", reference = "docs/HARDWARE.md", result = "Separates stock inputs, mainline reference data and rejected previous DTS content." }]
+
+[[area]]
+id = "storage"
+status = "planned"
+components = []
+paths = ["package/*Ufs*", "scripts/*ufs*", "scripts/*storage*", "scripts/*userdata*", "scripts/*root*"]
+inputs = ["UFS controller and PHY resources, clocks, resets, supplies, SMMU stream, DMA path, actual LUN/block geometry and an approved root-volume layout."]
+configuration = ["No UFS component, root partition, persistent Data region or storage write path is selected for the native-only build."]
+procedure = ["1. Reconcile the same-device UFS source with prior local stock inventory.", "2. Qualify controller and read-only known-block access in a separately authorized hardware phase.", "3. Review root and persistent Data layout independently before any storage write work."]
+findings = ["The reference uses SM8650 UFS host at 0x01d84000 and PHY at 0x01d80000. Previous Android inventory reports 4096-byte logical and physical blocks.", "The previous Android userdata uses F2FS with file and metadata encryption; filesystem free space does not establish free GPT space or a safe shrink path."]
+completion = ["Controller, link and DMA qualify; known blocks and capacity match the device; the selected root mounts and launchd starts; persistence is tested separately if implemented."]
+limits = ["No native UFS driver or root mount is verified. This task does not authorize signing, partitioning, formatting or device writes."]
+next_action = ["Prepare a source-level UFS resource and interface comparison after the native kernel build is resolved."]
+evidence = [{ kind = "source", reference = "https://github.com/SpendyYT/tb710fu-linux/blob/4d04410798b538fbe4b50664e3a66d9500a2ed31/arch/arm64/boot/dts/qcom/sm8650-lenovo-tb710fu.dts", result = "Declares board UFS supplies and reset GPIO; this is not proof of a macOS storage driver." }]
+
+[[area]]
+id = "display"
+status = "planned"
+components = []
+paths = ["package/*Display*", "package/*Framebuffer*", "package/*Backlight*", "scripts/*display*", "scripts/*gop*", "scripts/*framebuffer*"]
+inputs = ["Preserved ABL framebuffer address, size, stride, format and orientation; NT36532 dual-DSI/DSC resources and board backlight supplies."]
+configuration = ["No GOP framebuffer, DSI, backlight or presentation component is selected for this native-only build."]
+procedure = ["1. Establish a stable firmware scanout and its actual framebuffer geometry.", "2. Match the selected XNU framebuffer interface and OS ABI.", "3. Add panel or backlight operations only after basic framebuffer output is qualified."]
+findings = ["The mainline panel reference is NT36532, 3200 by 2000, dual DSI and DSC. Source timing parameters do not establish ABL stride or XNU presentation.", "The previous vendor-DXE experiment could overwrite ABL display state, so its full driver chain is not imported."]
+completion = ["A known frame has correct geometry and colors; userspace presentation and brightness each pass their own checks."]
+limits = ["No clean-build framebuffer or panel result exists."]
+next_action = ["Document a qualified firmware framebuffer descriptor before choosing a display component."]
+evidence = [{ kind = "source", reference = "https://github.com/SpendyYT/tb710fu-linux/blob/4d04410798b538fbe4b50664e3a66d9500a2ed31/drivers/gpu/drm/panel/panel-nt36532-wqhd-dual-dsi-dsc.c", result = "Provides panel protocol, mode and power-sequence reference for later review." }]
+
+[[area]]
+id = "input"
+status = "planned"
+components = []
+paths = ["package/*Touch*", "package/*Button*", "package/*Keyboard*", "scripts/*touch*", "scripts/*hid*"]
+inputs = ["Novatek SPI touch protocol, IRQ/reset wiring, firmware source, contact reporting and display coordinate mapping; button and accessory protocols."]
+configuration = ["No input component or firmware dependency is enabled."]
+procedure = ["1. Review the same-device SPI driver and firmware-loading sequence.", "2. Match the target OS HID interface before implementing a provider.", "3. Qualify contact IDs, release events, coordinates and buttons separately."]
+findings = ["The same-device board declares novatek,NVT-ts-spi on SPI4. Its Linux configuration selects TOUCHSCREEN_NT36532_SPI rather than the different novatek-nvt-ts driver."]
+completion = ["Multiple contacts keep stable IDs, releases arrive, coordinates match the display and declared buttons emit correct HID reports."]
+limits = ["Touch, buttons, keyboard and stylus have no clean-project implementation. Linux input support does not establish XNU HID support."]
+next_action = ["Record the exact touch firmware and protocol dependencies before selecting or porting an input component."]
+evidence = [{ kind = "source", reference = "docs/HARDWARE.md", result = "Identifies the correct board touch reference and distinguishes source reports from native support." }]
+
+[[area]]
+id = "gpu"
+status = "planned"
+components = []
+paths = ["package/*Gpu*", "package/*Gmu*", "package/*Adreno*", "scripts/*gpu*", "scripts/*metal*"]
+inputs = ["Adreno 750 GPU/GMU revision, signed firmware, power ownership, SMMU/DMA mappings, submission and fence interfaces, target Metal ABI."]
+configuration = ["No GPU, GMU, Metal or GPU presentation component is selected."]
+procedure = ["1. Compare hardware and firmware requirements of existing implementations.", "2. Qualify mapping and a bounded submission before enabling rendering.", "3. Qualify the macOS frontend and presentation independently."]
+findings = ["Linux GPU support is a hardware reference only. A different OS's successful Adreno submission does not qualify macOS 27 Metal or class layouts."]
+completion = ["A known submission completes with correct mappings and fences, then a selected macOS client renders and presents a known image."]
+limits = ["GPU work is deferred until the native build and basic boot are qualified."]
+next_action = ["Keep GPU dependencies disabled during compiler and linker diagnosis."]
+evidence = [{ kind = "source", reference = "board.toml", result = "The selected components exclude GPU providers." }]
+
+[[area]]
+id = "network"
+status = "planned"
+components = []
+paths = ["package/*Wifi*", "package/*Bluetooth*", "package/*Mhi*", "scripts/*wifi*", "scripts/*bluetooth*"]
+inputs = ["WCN7850 PCIe Wi-Fi and UART Bluetooth resources, firmware provenance, interrupts, DMA and target OS network interfaces."]
+configuration = ["Wi-Fi, Bluetooth and their firmware loaders are not selected."]
+procedure = ["1. Verify the exact board firmware and power dependencies.", "2. Match each controller to an existing component interface and target ABI.", "3. Qualify firmware boot, transport and sustained traffic independently."]
+findings = ["The mainline board describes WCN7850 with Wi-Fi on PCIe and Bluetooth on UART14. Linux ath12k support is not a native network implementation."]
+completion = ["Wi-Fi scans and associates with sustained transmit/receive traffic; Bluetooth transport and selected profiles pass separate tests."]
+limits = ["No clean-project network implementation or device result exists."]
+next_action = ["Defer wireless implementation until the native-only kernel and initial boot are resolved."]
+evidence = [{ kind = "source", reference = "docs/HARDWARE.md", result = "Records the same-device network wiring source without importing firmware blobs." }]
+
+[[area]]
+id = "cellular"
+status = "planned"
+components = []
+paths = ["package/*Modem*", "package/*Ipa*", "scripts/*modem*"]
+inputs = ["A confirmed SKU modem/SIM inventory before declaring cellular applicable or not applicable."]
+configuration = ["No modem, QRTR/QMI, IPA/QMAP or cellular session provider is selected."]
+procedure = ["1. Establish the actual board's modem and SIM scope from qualified evidence.", "2. Mark this area not-applicable only if the hardware inventory supports that conclusion; otherwise keep its firmware and interface work separate."]
+findings = ["Cellular capability is not inferred from the presence of generic modem reservations in a shared SoC description."]
+completion = ["The SKU scope is documented; applicable registration and data-session claims have their own evidence."]
+limits = ["Cellular hardware is not assessed in the clean native-only task."]
+next_action = ["Record the SKU's radio scope before any cellular implementation or not-applicable classification."]
+evidence = []
+
+[[area]]
+id = "audio"
+status = "planned"
+components = []
+paths = ["package/*Adsp*", "package/*Audio*", "package/*Gpr*", "scripts/*adsp*", "scripts/*audio*"]
+inputs = ["ADSP firmware/services, WCD9395 codec, four AW88461 amplifiers, clocks, power supplies and route configuration."]
+configuration = ["No audio, DSP, codec or amplifier component is selected."]
+procedure = ["1. Reconcile the board's DSP and codec source requirements.", "2. Match the target OS audio interface and firmware services.", "3. Qualify each playback and capture route, including start and stop."]
+findings = ["The mainline reference describes WCD9395 and four AW88461 amplifiers; its ASoC routes and UCM data are reference inputs rather than XNU drivers."]
+completion = ["Each declared route carries the intended format through playback or capture and handles start/stop without unsafe output."]
+limits = ["No clean-project DSP boot or audio route is qualified."]
+next_action = ["Keep audio dependencies out of native kernel build diagnosis."]
+evidence = [{ kind = "source", reference = "docs/HARDWARE.md", result = "Identifies same-device audio parts and source limits." }]
+
+[[area]]
+id = "power"
+status = "planned"
+components = []
+paths = ["package/*Power*", "package/*Battery*", "package/*Rpmh*", "scripts/*power*", "scripts/*battery*"]
+inputs = ["Board PMIC/regulator inventory, clock and firmware ownership, battery units and evidence for each proposed state transition."]
+configuration = ["No board PMGR, clock, battery, suspend or secondary-CPU power provider is selected."]
+procedure = ["1. Map each requested operation to actual hardware and its current owner.", "2. Qualify the macOS 27 interface before implementing operations.", "3. Test each implemented state transition with its dependent devices."]
+findings = ["The previous reference's ShengPlatformPower is an OS-specific ABI qualification fixture with unsupported hardware methods. It must not be imported as a functioning power driver."]
+completion = ["Each advertised power operation and battery reading matches hardware observations, with explicit limits on unsupported transitions."]
+limits = ["No PMGR class sizes, vtable slots, empty success stubs or power claims are carried into this clean project."]
+next_action = ["Review a target-ABI implementation only when a specific boot requirement establishes the need."]
+evidence = [{ kind = "source", reference = "docs/HARDWARE.md", result = "Documents rejected ABI-specific power fixture reuse." }]
+
+[[area]]
+id = "packaging"
+status = "planned"
+components = ["XnuPrelink"]
+paths = ["tools/ci_kernel.py", "scripts/package*", "scripts/*payload*", "scripts/*image*", "patches/**"]
+inputs = ["Pinned macOS 27.3 profile and XNU source, supported macOS runner, selected ABI and complete native archive plan. Later prelink needs separately qualified IPSW members."]
+configuration = ["The immediate artifact is the native-only kernel. XnuPrelink is selected as a build tool but a completed prelink, payload, boot image or userspace is not claimed."]
+procedure = ["1. Run one bounded native-only cloud build with the recorded official inputs.", "2. Verify the actual kernel artifact and preserve its hash and build log.", "3. Treat prelink, Data seed, trust caches, firmware, payload and image assembly as subsequent gates with their own inputs and evidence."]
+findings = ["The target profile is macos-27.3-26C5035r. A successful native link does not establish compatibility with a prelinked Apple image or successful device boot."]
+completion = ["The native kernel artifact is reproducible and identified by hash; every later image stage meets its own official format and ABI checks before being reported complete."]
+limits = ["No stock firmware, IPSW member, signing key, platform seed or device image is committed. Native-only CI does not authorize flashing."]
+next_action = ["Attach the bounded cloud run and actual kernel artifact result to this area after the run completes."]
+evidence = [{ kind = "source", reference = "upstream.lock.json", result = "Pins the target profile, XNU source and expected Apple kernelcache hash for later image work." }]
+
+[[area]]
+id = "diagnostics"
+status = "planned"
+components = []
+paths = ["hardware.toml", "docs/**", "tools/github_admin.py", "tools/check-*", "scripts/read-*", "scripts/probe-*", "unixnu.lock"]
+inputs = ["Complete source revisions, bounded CI logs and artifact hashes; later device logs identifying firmware, image and the last confirmed stage."]
+configuration = ["hardware.toml is an evidence inventory, not a UniXNU runtime configuration. docs/HARDWARE.md separates historical observations from clean-project qualification."]
+procedure = ["1. Run the official porting-record checker against this repository.", "2. Preserve the first actual CI failure and diagnose it before another build.", "3. Add device evidence only after a separately authorized test, recording firmware/image identity and an actual checkpoint."]
+findings = ["Previous Android and UEFI observations are useful provenance but cannot be promoted to clean-build device verification. No device evidence entry is asserted here."]
+completion = ["Each reported milestone has a reproducible invocation, full source revision and accessible matching evidence; secrets and personal identifiers remain excluded."]
+limits = ["No native-only CI result or clean-project device checkpoint is recorded yet. Recovery and ramoops behavior require separate device qualification."]
+next_action = ["Save the official checker result and then the first cloud build log without publishing credentials or stock binary backups."]
+evidence = [{ kind = "source", reference = "docs/HARDWARE.md", result = "Defines evidence categories, excluded identifiers and qualification gates." }]
