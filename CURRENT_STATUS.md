@@ -8,21 +8,21 @@
 | 官方macOS严格预链接 | 通过 | mapping_complete=true，missing={}，stubbed={}，allow_missing=false |
 | 最终fileset字节/结构/闭包 | 通过 | [验证run43620431387](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43620431387)：86个组件、79个可执行成员 |
 | 同版本DarwinBoot生产解析器 | 通过 | 同一run对实际142,753,792字节产物执行官方Test/test-kernel-parser.py |
-| 重审UEFI云编译 | 通过 | [固件run43618658596](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43618658596)：AARCH64 DEBUG CLANGPDB |
-| FD本地独立复验 | 通过 | 3,145,728字节、两个真实FV、9个必需模块GUID全部匹配 |
-| UEFI实体按键修复候选 | 本地主机测试通过，待云编译 | Tb710fuKeyInputDxe：SPMI v7状态读取→ConIn；GCC/Clang和ASan/UBSan通过，实机未验 |
+| UEFI输入修复云编译 | 通过 | [run43636909923](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43636909923)：AARCH64 DEBUG CLANGPDB，主机测试及10个必需模块通过 |
+| FD本地独立复验 | 通过 | 3,145,728字节、两个真实FV、10个必需模块GUID及14个overlay文件哈希全部匹配 |
+| UEFI实体按键修复候选 | 云编译及主机测试通过，实机待验 | Tb710fuKeyInputDxe：SPMI v7状态读取→ConIn；GCC/Clang和ASan/UBSan通过，实机未验 |
 | 实机启动/PAC/GOP/UFS/用户态 | 未验收 | 当前任务未运行设备命令、刷写或更改分区 |
 
 ## 产物
 
 - 预链接内核：验证run的artifact `tb710fu-verified-prelink-43620431387`。
   SHA-256：`c601ca5ceecfd1536f05634aa71ef700440d167cd2a4dbcd0a06e3a45400e131`。
-- UEFI：固件run的artifact `tb710fu-uefi-43618658596`，文件 `SILICIUM_UEFI.fd`。
-  SHA-256：`24007b776b52c9df3643bf035a1ae91f46aa261b6d3705a9712de6aefd2e4798`。
+- UEFI按键修复候选：run43636909923的artifact `tb710fu-uefi-43636909923`，文件 `SILICIUM_UEFI.fd`。
+  SHA-256：`4fc321fb77ebad6f63970ae617228eef6be3bf98d98af5cfd4497ea51cd85b9b`。
 - 私有Actions产物当前保留三天；源码、固定版本与哈希记录长期入库。
 - 本机已保存首轮native、FD与报告至 `.local/`；完整预链接内核交付在上述私有artifact。
 
-机器可读记录：`docs/evidence/native-build.json`、`prelinked-build.json`、`uefi-build.json`。
+机器可读记录：`docs/evidence/native-build.json`、`prelinked-build.json`、`uefi-build.json`、`uefi-input-build.json`。先前UEFI run43618658596及其FD哈希保留于uefi-build.json，不覆盖历史证据。
 
 ## 历史红色run的原因
 
@@ -50,7 +50,7 @@
 [输入源码记录](docs/evidence/uefi-input-sources.json)，设计和验证边界见
 [输入审查](docs/UEFI_INPUT.md)。音量加/减映射上/下，电源映射Enter。
 新增驱动同时进入DSC/FDF，CI在编译前跑主机模型并核对真实压缩FV中的第10个必需模块。
-本轮未访问设备；源码与主机验证不能证明实际按键恢复。云构建run/FD哈希随后单独记录。
+本轮未访问设备；源码与主机验证不能证明实际按键恢复。云run43636909923及FD哈希已记录于`docs/evidence/uefi-input-build.json`。
 
 ## 下一阶段
 

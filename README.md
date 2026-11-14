@@ -19,7 +19,8 @@
 
 UEFI 使用独立的 **TB710FU reviewed UEFI** workflow。它应用 `firmware/overlay` 与
 独立 SimpleFb 修复，再调用官方 `build firmware`；已通过云编译及本地复验，产物为3MiB FD，
-9个必需模块在两个真实FV中验证通过，记录在 `docs/evidence/uefi-build.json`。
+最新按键修复候选run43636909923包含10个必需模块，两个真实FV及14个overlay文件哈希复验通过；
+证据在 `docs/evidence/uefi-input-build.json`。实体按键响应仍需该FD的实机验证，历史构建记录保留。
 首轮 native 已成功，独立校验记录在 `docs/evidence/native-build.json`；完整预链接单独验收。
 
 最小 kernel 构建无需 PAT、平台种子、Data seed 或 trust cache 的 Actions secret。
