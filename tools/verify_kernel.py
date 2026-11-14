@@ -56,7 +56,11 @@ def verify_image(data, stage, report, lock=LOCK):
         require(report.get('stub_symbol') is None, 'A synthetic stub provider is not accepted')
         require(report.get('candidate_bytes') == len(data) and report.get('candidate_sha256') == digest, 'Fileset record size/hash mismatch')
         require(report['inputs']['kernelcache_sha256'] == lock['kernelcache_sha256'], 'Wrong macOS kernelcache input')
-        require('com.apple.kernel' in entries and set(report['closure']) <= set(entries), 'Missing native kernel or retained closure entry')
+        require('com.apple.kernel' in entries, 'Missing native kernel fileset entry')
+        # The dependency closure includes codeless bundles. The official emitter
+        # filters existing executable entries by that closure; it does not create
+        # Mach-O headers for bundles without an executable.
+        require(set(entries) <= set(report['closure']) | {'com.apple.kernel'}, 'Unexpected executable fileset entry outside the retained closure')
         native_header = struct.unpack_from('<4I', data, entries['com.apple.kernel'])
         require(native_header == (magic, cpu, subtype, 2), 'Embedded native MH_EXECUTE header does not match the fileset architecture')
     return {'stage': stage, 'mach_o_filetype': kind, 'cpu_subtype': hex(subtype),
