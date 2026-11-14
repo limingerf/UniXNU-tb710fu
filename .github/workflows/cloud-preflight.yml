@@ -1,0 +1,31 @@
+name: Cloud toolchain preflight
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tb710fu-macos-cloud
+  cancel-in-progress: false
+jobs:
+  preflight:
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Check the official macOS toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sw_vers
+          uname -m
+          ls -d /Applications/Xcode_*.app
+          test -d /Applications/Xcode_26.6.app/Contents/Developer
+          export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk macosx --show-sdk-version
+          python3 --version
+          df -h .
+          printf 'Verified runner prerequisites for the pinned official workflow.\n' >> "$GITHUB_STEP_SUMMARY"
