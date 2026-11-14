@@ -14,6 +14,7 @@
 | `_native_exit_trace` 未定义 | 最小板级没有 BootUiTraceProbe 的可选诊断 hook | 对整个可选调用加 gate，保留普通 exec/exit 日志，无空函数 |
 | boot-progress 补丁不能应用 | OS 序列预期存在共享平台电源块 | 先应用固定官方上下文补丁，保持 XNU_SHENG_PMGR=0 |
 | arm64/arm64e 与 ptrauth 冲突 | 旧 Linux 路径、手工归档和 stale headers 混用 | 从干净 macOS26/Xcode26.6 开始，不迁移旧编译缓存 |
+| 预链接工具来源不一致 | 官方主仓 gitlink 为 440589b0，catalog fallback 仍是 c645d76b；后者缺 macOS fileset 名称匹配路径 | feeds 显式锁定官方 gitlink 的 440589b0，不依赖是否初始化子模块来偶然选版本 |
 
 两个本地 gate 的语义见 `patches/xnu/README.md`。后续接入真实 owner-verified storage 或
 exit trace 时必须同时启用 provider 和对应编译定义，再做运行验证。当前最小内核不具备这些板级功能。

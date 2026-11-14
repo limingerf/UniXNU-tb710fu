@@ -2,3 +2,11 @@
 name = "sm8650"
 kind = "soc"
 local = "soc"
+
+# The framework's actual gitlink includes macOS fileset symbol-name matching.
+# Its component catalog still names an older revision; do not fall back to it.
+[[source]]
+name = "XnuPrelink"
+kind = "kit"
+git = "https://github.com/UniXNU/XnuPrelink.git"
+commit = "440589b0c31625f17edf363e24b3c82c51c70bb9"

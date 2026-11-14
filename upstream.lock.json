@@ -7,6 +7,11 @@
   "os_profile": "macos-27.3-26C5035r",
   "xnu_commit": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
   "kernelcache_sha256": "d1003b5143ffd88439b4d45b6017f587171cfe6855660bed05370a2ea5db9fe9",
+  "xnu_prelink": {
+    "repository": "UniXNU/XnuPrelink",
+    "commit": "440589b0c31625f17edf363e24b3c82c51c70bb9",
+    "reason": "Use the pinned official framework gitlink with macOS fileset symbol-name matching instead of the stale component catalog revision"
+  },
   "hardware_reference": {
     "repository": "SpendyYT/tb710fu-linux",
     "commit": "4d04410798b538fbe4b50664e3a66d9500a2ed31"

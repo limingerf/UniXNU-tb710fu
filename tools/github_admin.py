@@ -1,14 +1,22 @@
 """Local GitHub API and push helper. Never stores or prints the token."""
 import argparse
 import base64
+import http.client
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, message, headers, newurl):
+        return None
 
 
 def credential(env_file):
@@ -39,7 +47,7 @@ def api(token, method, endpoint, body=None):
         data=None if body is None else json.dumps(body).encode(),
     )
     try:
-        with urllib.request.urlopen(request, timeout=45) as response:
+        with urllib.request.build_opener(NoRedirect).open(request, timeout=45) as response:
             data = response.read()
             return json.loads(data) if data else {'status': response.status}
     except urllib.error.HTTPError as error:
@@ -53,10 +61,6 @@ def api(token, method, endpoint, body=None):
 
 
 def download(token, endpoint, destination):
-    class NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, request, fp, code, message, headers, newurl):
-            return None
-
     request = urllib.request.Request(
         'https://api.github.com/' + endpoint.lstrip('/'),
         headers={'Authorization': 'Bearer ' + token, 'User-Agent': 'TB710FU-clean-build'},
@@ -68,7 +72,47 @@ def download(token, endpoint, destination):
             raise SystemExit(f'GitHub download HTTP {error.code}') from None
         location = error.headers['Location']
         # Signed artifact/log URLs are fetched without the GitHub authorization header.
-        response = urllib.request.urlopen(location, timeout=120)
+        destination = Path(destination)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        partial = destination.with_name(destination.name + '.part')
+        offset, total = 0, None
+        with partial.open('wb') as stream:
+            while total is None or offset < total:
+                request = urllib.request.Request(location, headers={
+                    'Accept-Encoding': 'identity',
+                    'Range': f'bytes={offset}-{offset + 262143}',
+                })
+                for attempt in range(3):
+                    try:
+                        with urllib.request.urlopen(request, timeout=45) as part:
+                            match = re.fullmatch(r'bytes (\d+)-(\d+)/(\d+)', part.headers.get('Content-Range', ''))
+                            if match:
+                                start, end, expected = map(int, match.groups())
+                                if start != offset or (total is not None and expected != total):
+                                    raise SystemExit('Artifact range identity changed')
+                                total = expected
+                            elif offset == 0 and part.status == 200:
+                                total = int(part.headers['Content-Length'])
+                            else:
+                                raise SystemExit('Artifact server did not honor the requested byte range')
+                            try:
+                                data = part.read()
+                            except http.client.IncompleteRead as truncated:
+                                data = truncated.partial
+                        if not data or len(data) > total - offset:
+                            raise OSError('Incomplete artifact response')
+                        break
+                    except OSError as signed_error:
+                        if attempt == 2:
+                            raise SystemExit(f'Signed download failed at byte {offset}: {type(signed_error).__name__}') from None
+                        time.sleep(1)
+                stream.write(data)
+                offset += len(data)
+        if partial.stat().st_size != total:
+            raise SystemExit('Artifact size check failed')
+        partial.replace(destination)
+        print(f'Downloaded {total} bytes to {destination}')
+        return
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with response, destination.open('wb') as stream:
