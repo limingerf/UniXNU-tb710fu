@@ -1,0 +1,19 @@
+{
+  "run_id": 43615291360,
+  "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43615291360",
+  "device_revision": "e49125aff5bfde03c8d2cd2d30790a4f3035bd21",
+  "artifact_id": 14122621133,
+  "artifact_name": "tb710fu-native-43615291360",
+  "independently_verified_sha256": "4e65a8b08d5d70393b3c0f5d3f78b973bce1d15eb7f4d6f921c320b28124abce",
+  "kernel": {
+    "stage": "native-only",
+    "profile": "macos-27.3-26C5035r",
+    "source_commit": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+    "bytes": 25133408,
+    "sha256": "4e65a8b08d5d70393b3c0f5d3f78b973bce1d15eb7f4d6f921c320b28124abce",
+    "cpu_subtype": "0xc0000002",
+    "prelink_skipped": true,
+    "hardware_boot_verified": false
+  },
+  "hardware_boot_verified": false
+}

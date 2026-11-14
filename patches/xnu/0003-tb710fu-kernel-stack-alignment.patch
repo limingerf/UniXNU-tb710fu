@@ -1,0 +1,48 @@
+Subject: [PATCH] arm64: publish actual guarded-stack alignment for reviewed kext sites
+
+Source: UniXNU/UniXNU-sheng@68800685763d755c368775b848dd703fb3f8a3ce
+Path: patches/xnu-12377/zzzz-sheng-ipados27-bringup.patch
+Scope: verbatim osfmk/kern/stack.c section only; no board hardware code.
+Base: XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f after UniXNU 0c1bac3d arch / SoC / macOS OS series.
+
+The pinned XnuPrelink 26C5035r fixture redirects the AMFI stack-room
+check to unixnu_kernel_stack_shift. Publish its real value from the actual
+guarded stack allocation alignment; retain normal PAGE_SHIFT_CONST for
+page arithmetic. This is the official implementation, not a dummy export.
+Rebuild the native kernel before prelinking; an old artifact cannot acquire
+this data symbol or its stack_init behavior by a prelink-only retry.
+
+diff --git a/osfmk/kern/stack.c b/osfmk/kern/stack.c
+index 1111ccf..069db94 100644
+--- a/osfmk/kern/stack.c
++++ b/osfmk/kern/stack.c
+@@ -154,6 +154,13 @@ roundup_pow2(vm_offset_t size)
+ static vm_offset_t stack_alloc_internal(void);
+ static void stack_free_stack(vm_offset_t);
+ 
++/*
++ * log2 of the stack allocation alignment (stack_addr_mask + 1). Original components measure the stack room left as
++ * sp & ((1 << shift) - 1) and read PAGE_SHIFT_CONST for the shift, which is right only where the lower guard pages
++ * keep the stack base aligned (16 KiB pages). XnuPrelink binds those reads here (reviewed sites in its fixtures).
++ */
++__attribute__((used)) SECURITY_READ_ONLY_LATE(uint32_t) unixnu_kernel_stack_shift;
++
+ static void
+ stack_init(void)
+ {
+@@ -173,8 +180,14 @@ stack_init(void)
+ 		    (void *) kernel_stack_size, PAGE_SIZE);
+ 	}
+ 
+-	stack_addr_mask = roundup_pow2(kernel_stack_size) - 1;
++	/*
++	 * Align the whole allocation (two guard pages below the stack, one above) rather than the stack size alone:
++	 * with 4 KiB pages the stack then starts at least 8 KiB above an aligned address, so sp & stack_addr_mask
++	 * never comes near zero inside a stack (see unixnu_kernel_stack_shift).
++	 */
++	stack_addr_mask = roundup_pow2(kernel_stack_size + ptoa(3)) - 1;
+ 	kernel_stack_mask = ~stack_addr_mask;
++	unixnu_kernel_stack_shift = (uint32_t)__builtin_ctzl(stack_addr_mask + 1);
+ }
+ STARTUP(TUNABLES, STARTUP_RANK_MIDDLE, stack_init);
+ 

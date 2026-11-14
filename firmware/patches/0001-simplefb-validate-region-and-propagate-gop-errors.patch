@@ -1,0 +1,110 @@
+diff --git a/Silicon/Silicium/SiliciumPkg/Drivers/SimpleFbDxe/SimpleFb.c b/Silicon/Silicium/SiliciumPkg/Drivers/SimpleFbDxe/SimpleFb.c
+--- a/Silicon/Silicium/SiliciumPkg/Drivers/SimpleFbDxe/SimpleFb.c
++++ b/Silicon/Silicium/SiliciumPkg/Drivers/SimpleFbDxe/SimpleFb.c
+@@ -91,16 +91,25 @@
+   OUT UINT32               *Height,
+   OUT UINT32               *ColorDepth)
+ {
+-  EFI_MEMORY_REGION_DESCRIPTOR FrameBufferRegion;
+-
+-  // Locate "Display Reserved" Memory Region
+-  LocateMemoryRegionByName ("Display Reserved", &FrameBufferRegion);
+-  LocateMemoryRegionByName ("Display_Reserved", &FrameBufferRegion);
+-
+-  // Verify Frame Buffer Region
+-  if (!FrameBufferRegion.Address) {
+-    DEBUG ((EFI_D_ERROR, "Failed to Locate \"Display Reserved\" Memory Region!\n"));
+-    return EFI_NOT_FOUND;
++  EFI_MEMORY_REGION_DESCRIPTOR FrameBufferRegion = { 0 };
++  EFI_STATUS                   Status;
++  UINTN                        BytesPerPixel;
++  UINTN                        FrameBufferSize;
++
++  // Locate "Display Reserved" Memory Region, with the legacy alias as a fallback.
++  Status = LocateMemoryRegionByName ("Display Reserved", &FrameBufferRegion);
++  if (Status == EFI_NOT_FOUND) {
++    Status = LocateMemoryRegionByName ("Display_Reserved", &FrameBufferRegion);
++  }
++  if (EFI_ERROR (Status)) {
++    DEBUG ((EFI_D_ERROR, "Failed to Locate Display Reserved Memory Region! Status = %r\n", Status));
++    return Status;
++  }
++
++  // Never publish a GOP backed by an absent or empty memory region.
++  if (FrameBufferRegion.Address == 0 || FrameBufferRegion.Length == 0) {
++    DEBUG ((EFI_D_ERROR, "Display Reserved Memory Region is empty!\n"));
++    return EFI_DEVICE_ERROR;
+   }
+ 
+   // Get Frame Buffer Details
+@@ -114,6 +123,24 @@
+     DEBUG ((EFI_D_ERROR, "Minimal Supported Resolution = 640x475\n"));
+ 
+     return EFI_UNSUPPORTED;
++  }
++
++  // Keep the existing packed-pixel layout; reject unsupported depths before math.
++  if (*ColorDepth != 16 && *ColorDepth != 24 && *ColorDepth != 32) {
++    DEBUG ((EFI_D_ERROR, "Color Depth %u is not Supported!\n", *ColorDepth));
++    return EFI_UNSUPPORTED;
++  }
++
++  BytesPerPixel = *ColorDepth / 8;
++  if ((UINTN)*Width > MAX_UINTN / *Height / BytesPerPixel) {
++    DEBUG ((EFI_D_ERROR, "Frame Buffer Size overflows UINTN!\n"));
++    return EFI_BAD_BUFFER_SIZE;
++  }
++  FrameBufferSize = (UINTN)*Width * *Height * BytesPerPixel;
++  if ((UINT64)FrameBufferSize > FrameBufferRegion.Length ||
++      FrameBufferRegion.Address > MAX_UINT64 - ((UINT64)FrameBufferSize - 1)) {
++    DEBUG ((EFI_D_ERROR, "Frame Buffer exceeds Display Reserved Memory Region!\n"));
++    return EFI_BAD_BUFFER_SIZE;
+   }
+ 
+   // Pass Frame Buffer Address
+@@ -166,7 +193,7 @@
+ 
+   // Set Frame Buffer Range
+   mFrameBuffer.Mode->FrameBufferBase = BaseAddress;
+-  mFrameBuffer.Mode->FrameBufferSize = Width * Height * (ColorDepth / 8);
++  mFrameBuffer.Mode->FrameBufferSize = (UINTN)Width * Height * (ColorDepth / 8);
+ 
+   // Set Mode Info Version
+   mFrameBuffer.Mode->Info->Version = 0;
+@@ -237,19 +264,19 @@
+ VOID
+ FreeMemoryBuffers ()
+ {
+-  // Free Buffer
+-  if (mFrameBuffer.Mode->Info != NULL) {
+-    gBS->FreePool (mFrameBuffer.Mode->Info);
+-  }
+-
+-  // Free Buffer
++  // An allocation failure may leave Mode unset or Info unset.
+   if (mFrameBuffer.Mode != NULL) {
++    if (mFrameBuffer.Mode->Info != NULL) {
++      gBS->FreePool (mFrameBuffer.Mode->Info);
++    }
+     gBS->FreePool (mFrameBuffer.Mode);
++    mFrameBuffer.Mode = NULL;
+   }
+ 
+   // Free Buffer
+   if (FrameBufferConfiguration != NULL) {
+     FreePool (FrameBufferConfiguration);
++    FrameBufferConfiguration = NULL;
+   }
+ }
+ 
+@@ -292,8 +319,8 @@
+   // Register GOP Protocol
+   Status = gBS->InstallMultipleProtocolInterfaces (&ImageHandle, &gEfiDevicePathProtocolGuid, &DisplayDevicePath, &gEfiGraphicsOutputProtocolGuid, &mFrameBuffer, NULL);
+   if (EFI_ERROR (Status)) {
+-    DEBUG ((EFI_D_ERROR, "Failed to Register GOP Protocol!\n"));
+-    ASSERT_EFI_ERROR (Status);
++    DEBUG ((EFI_D_ERROR, "Failed to Register GOP Protocol! Status = %r\n", Status));
++    goto cleanup;
+   }
+ 
+   return EFI_SUCCESS;

@@ -53,3 +53,15 @@ UniXNU `0c1bac3d` has no `patches/xnu-12377/sheng-platform-power.patch`; its old
 - Path: `patches/xnu-12377/sheng-platform-power.patch`
 
 It adds the guarded `extern void sheng_pmgr_run(void); sheng_pmgr_run();` block after `bsd_bufferinit()`. The OS `zzz-boot-progress.patch` expects that actual block as context. Keep the macro disabled on TB710FU: importing the guarded context does not qualify or enable SM8550 PMGR hardware. Place the canonical patch in the chosen SoC sequence before the OS sequence; this directory does not duplicate it.
+
+## Actual stack-alignment export required by the 26C5035r reviewed site
+
+`0003-tb710fu-kernel-stack-alignment.patch` extracts only the `osfmk/kern/stack.c` section, verbatim, from `UniXNU/UniXNU-sheng@68800685763d755c368775b848dd703fb3f8a3ce:patches/xnu-12377/zzzz-sheng-ipados27-bringup.patch`. Apply it after the complete official OS sequence and the two optional-provider gates. No board hardware code from the large source patch is included.
+
+The initial strict prelink failed in `fileset_emit.reviewed_sites()` because the native artifact lacked `_unixnu_kernel_stack_shift`. The matching `fileset-26C5035r-symbols.json` fixture identifies AppleMobileFileIntegrity's GOT slot at `0xfffffe00081d4630`: its CoreEntitlements DER iterator uses the loaded shift to test remaining stack room. A page shift of 12 is not the guarded-stack allocation alignment on this 4 KiB kernel. Other users must retain the real `PAGE_SHIFT_CONST` for page arithmetic.
+
+The official implementation aligns the whole allocation, including two lower guard pages and one upper guard page, via `roundup_pow2(kernel_stack_size + ptoa(3))`. It exports `unixnu_kernel_stack_shift` and initializes it from that actual alignment during `stack_init`. It does not use a fake constant or replacement stack-check function.
+
+All fixtures matching the exact macOS kernelcache SHA256 `d1003b5143ffd88439b4d45b6017f587171cfe6855660bed05370a2ea5db9fe9` were inspected: there is one matching fixture, with **one required site, zero reviewed functions and zero reviewed data entries**. That site requires only `_unixnu_kernel_stack_shift`. `llvm-nm --defined-only` confirmed it is absent from the original native artifact SHA256 `4e65a8b08d5d70393b3c0f5d3f78b973bce1d15eb7f4d6f921c320b28124abce` (25,133,408 bytes). No second same-kind required site export is waiting behind it in this pinned fixture. This does not certify the 139 unpaired global name-map targets or the retained closure; later strict emitter checks still need actual reports.
+
+Validation performed: start from pinned pristine XNU `stack.c`, apply every selected official arch/OS patch affecting it, then `git apply --check` and actual apply of this extracted patch. Verify exactly one real export declaration, one actual initialization and the correct allocation-mask formula in the resulting source. The native kernel **must be recompiled** and then strictly prelinked with the new native hash/map. The previous artifact cannot be fixed by prelink-only retry. No compile or device test was performed by this patch audit.

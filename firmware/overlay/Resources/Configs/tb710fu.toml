@@ -1,0 +1,22 @@
+# TB710FU source-only firmware configuration. See docs/UEFI_AUDIT.md.
+# Board reference: bmk-keyeast/UniXNU-tb710fu@23235249d71604f8a6f743680ef8fd1003fe7189.
+
+[status]
+model_count = 1
+
+[boot_shim]
+requires_kernel_header = true
+
+[uefi_fd]
+base = 0xA7100000
+size = 0x300000
+
+[boot_image_kernel]
+kernel_compression = "gzip"
+append_dtb = true
+
+[boot_image]
+header_version = 4
+pagesize = 4096
+# OS version / patch metadata must come from the selected image inputs,
+# not the old experimental workspace. No stock metadata is invented here.
