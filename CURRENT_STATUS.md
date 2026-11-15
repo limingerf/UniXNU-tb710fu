@@ -122,6 +122,27 @@ LZMA 压成 23 MiB，仍走 vendor_boot 的 payload ramdisk，由 DarwinBoot 解
 `Binaries` 不能进 `[firmware.submodules]`，否则 build firmware 重复 init 与
 materialised 目录冲突。
 
+## 内核日志通道：ramoops · 2026-11-15
+
+内核在 EL1 执行后屏幕无输出（交接后无 UEFI 显示驱动）。为拿到内核日志，
+按 macOS 27 的真实补丁基线移植了参考移植的 ramoops console 补丁
+（`patches/xnu/0004-tb710fu-ramoops-console.patch`）。
+
+关键：macOS 27 profile 在设备补丁前先应用 55 个上游 xnu-12377 补丁，
+补丁必须基于**已应用的树**（`xnu-work` @ `ac9718fb`）生成；基于裸 feed
+生成的版本应用失败（实测）。已验证 0001–0004 整个设备序列按顺序干净应用。
+
+云构建：native run 43709117408 success、严格 prelink run 43710067378
+success。预链接 `kernel.macho` 142,753,792 B（SHA-256 `cc690c9a…`），
+字节内确认含 `tb710fu_ramoops` 等符号。LZMA 压缩 24,054,955 B 往返一致。
+启动参数带 `ramoops=0xac340000 ramoops_reset_after=120`。
+
+交付三件套已重建，14 项刷入前审计全 PASS；只需刷 vendor_boot_b
+（`72d8577c…`）与 vbmeta_b（`c210d711…`），boot_b（`6bcc95a3…`）未变。
+详见 [ramoops 文档](docs/RAMOOPS.md)。
+
+**未验证**：zone 能否跨复位存活、Android 侧 pstore 是否出现、内核实际停点。
+
 ## 下一阶段
 
 先补本机DT与最小启动/日志输入，再做UEFI→DarwinBoot→单核EL1/PAC验证。真实UFS、
