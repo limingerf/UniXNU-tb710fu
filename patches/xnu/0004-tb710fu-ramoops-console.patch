@@ -1,0 +1,461 @@
+diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
+old mode 100644
+new mode 100755
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -1,3 +1,4 @@
++#include <kern/tb710fu_ramoops.h>
+ #include <kern/boot_progress.h>
+ /*
+  * Copyright (c) 2007-2024 Apple Inc. All rights reserved.
+@@ -583,6 +584,8 @@ arm_init(
+ 
+ 	boot_progress_stage("arm_vm_init enter");
+ 	arm_vm_init(xmaxmem, args);
++	/* TB710FU: the zone is map-able once the kernel VM is up. */
++	tb710fu_ramoops_init();
+ 	boot_progress_stage("arm_vm_init returned");
+ 
+ 	if (debug_boot_arg) {
+diff --git a/osfmk/kern/debug.c b/osfmk/kern/debug.c
+old mode 100644
+new mode 100755
+--- a/osfmk/kern/debug.c
++++ b/osfmk/kern/debug.c
+@@ -55,6 +55,7 @@
+  */
+ 
+ #include <mach_assert.h>
++#include <kern/tb710fu_ramoops.h>
+ #include <mach_kdp.h>
+ #include <kdp/kdp.h>
+ #include <kdp/kdp_core.h>
+@@ -1370,6 +1371,8 @@ panic_trap_to_debugger(const char *panic_format_str, va_list *panic_args, unsign
+ void __attribute__((noinline, optnone))
+ panic_spin_forever(void)
+ {
++	/* TB710FU: flush the zone and reset, so the panic survives to Android. */
++	tb710fu_ramoops_panic_reset();
+ 	for (;;) {
+ #if defined(__arm__) || defined(__arm64__)
+ 		/* On arm32, which doesn't have a WFE timeout, this may not return.  But that should be OK on this path. */
+@@ -1390,6 +1393,9 @@ panic_stackshot_release_lock(void)
+ static void
+ kdp_machine_reboot_type(unsigned int type, uint64_t debugger_flags)
+ {
++	if (type == kPEPanicRestartCPU) {
++		tb710fu_ramoops_panic_reset();
++	}
+ 	if ((type == kPEPanicRestartCPU) && (debugger_flags & DEBUGGER_OPTION_SKIP_PANICEND_CALLOUTS)) {
+ 		PEHaltRestart(kPEPanicRestartCPUNoCallouts);
+ 	} else {
+diff --git a/osfmk/console/serial_console.c b/osfmk/console/serial_console.c
+old mode 100644
+new mode 100755
+--- a/osfmk/console/serial_console.c
++++ b/osfmk/console/serial_console.c
+@@ -1,3 +1,4 @@
++#include <kern/tb710fu_ramoops.h>
+ #include <kern/boot_progress.h>
+ /*
+  * Copyright (c) 2000-2020 Apple, Inc. All rights reserved.
+@@ -256,6 +257,11 @@ get_cons_ops_index(void)
+ static inline void
+ _cnputc(char c, bool poll)
+ {
++	/* TB710FU: mirror the console into the ramoops zone; skip the CR that
++	 * precedes every LF so the ring keeps whole lines. */
++	if (c != '\r') {
++		tb710fu_ramoops_putc(c);
++	}
+ 	if (boot_progress_active()) { boot_progress_putc(c); return; }
+ 	bool in_debugger = (kernel_debugger_entry_count > 0);
+ 	const uint32_t idx = get_cons_ops_index();
+diff --git a/osfmk/conf/files b/osfmk/conf/files
+old mode 100644
+new mode 100755
+--- a/osfmk/conf/files
++++ b/osfmk/conf/files
+@@ -120,6 +120,7 @@ osfmk/kern/compact_id.c			standard
+ osfmk/kern/core_analytics.c		standard
+ osfmk/kern/counter_common.c		standard
+ osfmk/kern/debug.c			standard
++osfmk/kern/tb710fu_ramoops.c		standard
+ osfmk/kern/ext_paniclog.c 	standard
+ osfmk/kern/energy_perf.c		standard
+ osfmk/kern/exception.c		standard
+diff --git a/osfmk/kern/tb710fu_ramoops.c b/osfmk/kern/tb710fu_ramoops.c
+new file mode 100644
+--- /dev/null
++++ b/osfmk/kern/tb710fu_ramoops.c
+@@ -0,0 +1,357 @@
++// SPDX-License-Identifier: MIT
++/*
++ * TB710FU: mirror the kernel console into the Linux ramoops "console" zone, so the
++ * stock Android kernel exposes it after a reset as /sys/fs/pstore/console-ramoops-0.
++ *
++ * Zone format (Linux fs/pstore/ram_core.c): a 12-byte header {sig, start, size}, a
++ * text ring of data_size bytes, then Reed-Solomon parity: ecc_size bytes per
++ * block_size data bytes, and one more ecc_size block for the header. RS over
++ * GF(2^8), polynomial 0x11d, first consecutive root 0, primitive element 1.
++ *
++ * boot-args:
++ *   ramoops=<PA>               physical address of the console zone (enables it)
++ *   ramoops_size=<bytes>       zone size (default 0x40000)
++ *   ramoops_ecc=<bytes>        parity bytes per block, 0 = none (default 16)
++ *   ramoops_panic_delay=<s>    after a panic, wait this long, then reset (default 15)
++ *   ramoops_reset_after=<s>    reset this long after early boot (0 = never, default)
++ */
++#include <stdint.h>
++#include <stddef.h>
++
++#ifndef TB710FU_RAMOOPS_HOSTTEST
++#include <kern/tb710fu_ramoops.h>
++#include <kern/startup.h>
++#include <kern/thread_call.h>
++#include <kern/clock.h>
++#include <mach/mach_time.h>
++#include <machine/machine_routines.h>
++#include <pexpert/pexpert.h>
++#define RAMOOPS_STATIC static
++#else
++#define RAMOOPS_STATIC
++#endif
++
++#define RAMOOPS_SIG     0x43474244u     /* "DBGC" xor console zone sig 0 */
++#define RS_NN           255
++#define RS_BLOCK        128
++#define RS_MAX_ROOTS    64
++
++/* --- Reed-Solomon (Phil Karn's formulation, as used by Linux encode_rs8) ---------- */
++
++static uint8_t  rs_alpha_to[RS_NN + 1];
++static uint16_t rs_index_of[RS_NN + 1];
++static uint16_t rs_genpoly[RS_MAX_ROOTS + 1];
++static int      rs_nroots;
++
++static inline int
++rs_modnn(int x)
++{
++	while (x >= RS_NN) {
++		x -= RS_NN;
++		x = (x >> 8) + (x & RS_NN);
++	}
++	return x;
++}
++
++RAMOOPS_STATIC int
++rs_init(int nroots)
++{
++	int sr = 1, i, j, root;
++
++	if (nroots <= 0 || nroots > RS_MAX_ROOTS) {
++		return -1;
++	}
++	rs_nroots = nroots;
++	rs_index_of[0] = RS_NN;
++	rs_alpha_to[RS_NN] = 0;
++	for (i = 0; i < RS_NN; i++) {
++		rs_index_of[sr] = (uint16_t)i;
++		rs_alpha_to[i] = (uint8_t)sr;
++		sr <<= 1;
++		if (sr & 0x100) {
++			sr ^= 0x11d;
++		}
++		sr &= RS_NN;
++	}
++	rs_genpoly[0] = 1;
++	for (i = 0, root = 0; i < nroots; i++, root += 1) {
++		rs_genpoly[i + 1] = 1;
++		for (j = i; j > 0; j--) {
++			if (rs_genpoly[j] != 0) {
++				rs_genpoly[j] = rs_genpoly[j - 1] ^
++				    rs_alpha_to[rs_modnn(rs_index_of[rs_genpoly[j]] + root)];
++			} else {
++				rs_genpoly[j] = rs_genpoly[j - 1];
++			}
++		}
++		rs_genpoly[0] = rs_alpha_to[rs_modnn(rs_index_of[rs_genpoly[0]] + root)];
++	}
++	for (i = 0; i <= nroots; i++) {
++		rs_genpoly[i] = rs_index_of[rs_genpoly[i]];
++	}
++	return 0;
++}
++
++/* Parity of data[0..len) into par[0..nroots); reads data with volatile byte loads. */
++RAMOOPS_STATIC void
++rs_encode(const volatile uint8_t *data, size_t len, volatile uint8_t *out)
++{
++	uint8_t par[RS_MAX_ROOTS] = { 0 };
++	int n = rs_nroots;
++
++	for (size_t i = 0; i < len; i++) {
++		uint16_t fb = rs_index_of[data[i] ^ par[0]];
++		if (fb != RS_NN) {
++			for (int j = 1; j < n; j++) {
++				par[j] ^= rs_alpha_to[rs_modnn(fb + rs_genpoly[n - j])];
++			}
++		}
++		for (int j = 0; j < n - 1; j++) {
++			par[j] = par[j + 1];
++		}
++		par[n - 1] = (fb != RS_NN) ? rs_alpha_to[rs_modnn(fb + rs_genpoly[0])] : 0;
++	}
++	for (int j = 0; j < n; j++) {
++		out[j] = par[j];
++	}
++}
++
++/* --- persistent_ram zone ------------------------------------------------------------ */
++
++static volatile uint8_t *zone;          /* mapped zone base, NULL = disabled */
++static uint32_t data_size;              /* text ring bytes */
++static uint32_t ecc_size;
++static uint32_t ecc_blocks;             /* Linux's count: header parity follows them */
++static uint32_t wpos, wsize;           /* mirrors header start/size */
++static uint32_t cur_block = UINT32_MAX; /* block holding unencoded text */
++
++#define HDR_BYTES 12
++
++static inline volatile uint8_t *zone_data(void) { return zone + HDR_BYTES; }
++
++static void
++put32(volatile uint8_t *p, uint32_t v)
++{
++	p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); p[2] = (uint8_t)(v >> 16); p[3] = (uint8_t)(v >> 24);
++}
++
++static uint32_t
++get32(const volatile uint8_t *p)
++{
++	return p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24);
++}
++
++static void
++encode_block(uint32_t b)
++{
++	uint32_t off = b * RS_BLOCK, len = RS_BLOCK;
++
++	if (!ecc_size || b == UINT32_MAX) {
++		return;
++	}
++	if (off + len > data_size) {
++		len = data_size - off;
++	}
++	rs_encode(zone_data() + off, len, zone_data() + data_size + b * ecc_size);
++}
++
++static void
++encode_header(void)
++{
++	put32(zone + 4, wpos);
++	put32(zone + 8, wsize);
++	if (ecc_size) {
++		rs_encode(zone, HDR_BYTES, zone_data() + data_size + ecc_blocks * ecc_size);
++	}
++}
++
++/*
++ * Attach to the zone. An existing valid buffer (an earlier boot, or Android's own
++ * console) is appended to, the way Linux treats it; anything else starts empty.
++ */
++RAMOOPS_STATIC int
++ramoops_zone_open(volatile uint8_t *base, uint32_t size, uint32_t ecc)
++{
++	uint32_t buf = size - HDR_BYTES;
++
++	if (size <= HDR_BYTES + 2 * RS_BLOCK) {
++		return -1;
++	}
++	ecc_size = ecc;
++	ecc_blocks = 0;
++	data_size = buf;
++	if (ecc) {
++		if (rs_init((int)ecc)) {
++			return -1;
++		}
++		/* DIV_ROUND_UP(buffer_size - ecc_size, block_size + ecc_size), ram_core.c */
++		ecc_blocks = (buf - ecc + RS_BLOCK + ecc - 1) / (RS_BLOCK + ecc);
++		data_size = buf - (ecc_blocks + 1) * ecc;
++	}
++	zone = base;
++	wpos = get32(zone + 4);
++	wsize = get32(zone + 8);
++	if (get32(zone) != RAMOOPS_SIG || wsize > data_size || wpos > wsize) {
++		put32(zone, RAMOOPS_SIG);
++		wpos = wsize = 0;
++	}
++	cur_block = UINT32_MAX;
++	encode_header();
++	return 0;
++}
++
++RAMOOPS_STATIC void
++ramoops_zone_flush(void)
++{
++	if (zone == NULL) {
++		return;
++	}
++	encode_block(cur_block);
++	encode_header();
++}
++
++RAMOOPS_STATIC void
++ramoops_zone_putc(char c)
++{
++	uint32_t b = wpos / RS_BLOCK;
++
++	if (b != cur_block) {
++		encode_block(cur_block);        /* leaving a block: its parity is final */
++		cur_block = b;
++	}
++	zone_data()[wpos] = (uint8_t)c;
++	wpos = (wpos + 1 == data_size) ? 0 : wpos + 1;
++	if (wsize < data_size) {
++		wsize++;
++	}
++	if (c == '\n') {
++		ramoops_zone_flush();
++	}
++}
++
++#ifndef TB710FU_RAMOOPS_HOSTTEST
++
++/* Console output before the zone is mapped (arm_vm_init) is replayed into it. */
++static char early[4096];
++static uint32_t early_len;
++static uint32_t panic_delay = 15, reset_after, reset_warm, selftest;
++
++/*
++ * PSCI SYSTEM_RESET with x1..x3 zeroed, as the entry probe does (that reset works on the
++ * device). The first version left x1..x3 as they were and the CPU hung in the call on
++ * both SYSTEM_RESET and SYSTEM_RESET2 (Gunyah sits in front of TrustZone on SM8650).
++ * ramoops_reset_warm=1 tries SYSTEM_RESET2 / SYSTEM_WARM_RESET first.
++ */
++static void __attribute__((noreturn))
++psci_system_reset(void)
++{
++	if (reset_warm) {
++		register uint64_t w0 __asm__("x0") = 0xC4000012;  /* PSCI SYSTEM_RESET2 (SMC64) */
++		register uint64_t w1 __asm__("x1") = 0;           /* SYSTEM_WARM_RESET */
++		register uint64_t w2 __asm__("x2") = 0;
++		register uint64_t w3 __asm__("x3") = 0;
++		__asm__ volatile ("dsb sy; smc #0" : "+r"(w0), "+r"(w1), "+r"(w2), "+r"(w3) : : "memory");
++	}
++	register uint64_t x0 __asm__("x0") = 0x84000009;  /* PSCI SYSTEM_RESET */
++	register uint64_t x1 __asm__("x1") = 0;
++	register uint64_t x2 __asm__("x2") = 0;
++	register uint64_t x3 __asm__("x3") = 0;
++	__asm__ volatile ("dsb sy; smc #0" : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3) : : "memory");
++	for (;;) {
++		__asm__ volatile ("wfe");
++	}
++}
++
++void
++tb710fu_ramoops_putc(char c)
++{
++	if (zone != NULL) {
++		ramoops_zone_putc(c);
++	} else if (early_len < sizeof(early)) {
++		early[early_len++] = c;
++	}
++}
++
++void
++tb710fu_ramoops_init(void)
++{
++	uint64_t pa = 0;
++	uint32_t size = 0x40000, ecc = 16;
++
++	if (!PE_parse_boot_argn("ramoops", &pa, sizeof(pa)) || pa == 0) {
++		early_len = sizeof(early);  /* disabled: stop buffering */
++		return;
++	}
++	PE_parse_boot_argn("ramoops_size", &size, sizeof(size));
++	PE_parse_boot_argn("ramoops_ecc", &ecc, sizeof(ecc));
++	PE_parse_boot_argn("ramoops_panic_delay", &panic_delay, sizeof(panic_delay));
++	PE_parse_boot_argn("ramoops_reset_after", &reset_after, sizeof(reset_after));
++	PE_parse_boot_argn("ramoops_reset_warm", &reset_warm, sizeof(reset_warm));
++	PE_parse_boot_argn("ramoops_selftest", &selftest, sizeof(selftest));
++	if (ramoops_zone_open((volatile uint8_t *)ml_io_map((vm_offset_t)pa, size), size, ecc)) {
++		zone = NULL;
++		return;
++	}
++	static const char banner[] = "\n=== TB710FU XNU boot (UniXNU ramoops) ===\n";
++	for (const char *s = banner; *s; s++) {
++		ramoops_zone_putc(*s);
++	}
++	for (uint32_t i = 0; i < early_len; i++) {
++		ramoops_zone_putc(early[i]);
++	}
++	ramoops_zone_flush();
++	if (selftest) {
++		/* ramoops_selftest=1: prove the zone survives this reset type, then reboot at once. */
++		static const char line[] = "ramoops selftest: PSCI reset now, warm=";
++		for (const char *s = line; *s; s++) {
++			ramoops_zone_putc(*s);
++		}
++		ramoops_zone_putc(reset_warm ? '1' : '0');
++		ramoops_zone_putc('\n');
++		psci_system_reset();
++	}
++}
++
++void
++tb710fu_ramoops_panic_reset(void)
++{
++	uint64_t deadline;
++
++	if (zone == NULL) {
++		return;
++	}
++	ramoops_zone_flush();
++	nanoseconds_to_absolutetime((uint64_t)panic_delay * NSEC_PER_SEC, &deadline);
++	deadline += mach_absolute_time();
++	while (mach_absolute_time() < deadline) {
++	}
++	psci_system_reset();
++}
++
++static void
++reset_timer_fired(__unused thread_call_param_t p0, __unused thread_call_param_t p1)
++{
++	static const char msg[] = "\n=== ramoops_reset_after expired: resetting ===\n";
++	for (const char *s = msg; *s; s++) {
++		ramoops_zone_putc(*s);
++	}
++	ramoops_zone_flush();
++	psci_system_reset();
++}
++
++static void
++arm_reset_timer(void)
++{
++	uint64_t deadline;
++	thread_call_t call;
++
++	if (zone == NULL || reset_after == 0) {
++		return;
++	}
++	call = thread_call_allocate(reset_timer_fired, NULL);
++	clock_interval_to_deadline(reset_after, 1000000000u, &deadline);
++	thread_call_enter_delayed(call, deadline);
++}
++STARTUP(EARLY_BOOT, STARTUP_RANK_LAST, arm_reset_timer);
++
++#endif /* TB710FU_RAMOOPS_HOSTTEST */
+diff --git a/osfmk/kern/tb710fu_ramoops.h b/osfmk/kern/tb710fu_ramoops.h
+new file mode 100644
+--- /dev/null
++++ b/osfmk/kern/tb710fu_ramoops.h
+@@ -0,0 +1,8 @@
++// SPDX-License-Identifier: MIT
++#ifndef KERN_TB710FU_RAMOOPS_H
++#define KERN_TB710FU_RAMOOPS_H
++/* Console mirror into the Linux ramoops console zone (boot-arg ramoops=<PA>). */
++void tb710fu_ramoops_init(void);          /* after arm_vm_init */
++void tb710fu_ramoops_putc(char c);        /* every console character */
++void tb710fu_ramoops_panic_reset(void);   /* flush, wait, PSCI SYSTEM_RESET */
++#endif

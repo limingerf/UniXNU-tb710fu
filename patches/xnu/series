@@ -1,3 +1,4 @@
 0001-tb710fu-gate-owner-authenticated-open.patch
 0002-tb710fu-gate-optional-exit-trace.patch
 0003-tb710fu-kernel-stack-alignment.patch
+0004-tb710fu-ramoops-console.patch
