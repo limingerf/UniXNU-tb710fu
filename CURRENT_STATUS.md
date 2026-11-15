@@ -1,5 +1,10 @@
 # Current status · 2026-11-15
 
+> 最新实机阶段更正（2026-11-15）：用户确认的实际绿条来自 DarwinEnter，
+> 说明 ExitBootServices 已返回，但尚无 XNU 入口执行证据。CurrentEL/CPU ID
+> 和 LockCapsuleInterface 均属加载器/UEFI 输出，不能当作 XNU 输出。
+> 本轮长按电源后 ramoops 头无效，原因未确定。见 [入口探针](docs/XNU_ENTRY_PROBE.md)。
+
 这是当前工程的单一状态入口。编译、静态加载检查和实机运行分开记录。
 
 | 检查点 | 结果 | 证据 |
@@ -204,3 +209,14 @@ GCC/Clang 严格 C11、GCC ASan/UBSan 主机解码测试、40 项内存图和 11
 本地独立复验：两个真实 FV、11 个必需模块 GUID、23 个 overlay 文件哈希全部匹配。
 机器记录：`docs/evidence/uefi-log-viewer-build.json`。本版是保留 LZMA 加载路径的
 可测试 FD，未签名、未刷入；日志查看器实机状态仍未验证。
+
+## 绿条停屏复核与无重编译入口探针 · 2026-11-15
+
+用户报告实际绿条、长按电源强制重启，未经过 Android/TWRP；日志工具原文
+`sig 4107024 start1072 size6808`。此头不能作为有效 persistent_ram console 解码，
+但无法据此区分未初始化与复位后数据丢失。当前证据不足以归因为根卷缺失。
+
+已用固定官方入口探针生成现有 cc690c9a 预链接内核的诊断副本：蓝色标记
+XNU 入口、紫色标记开启 MMU 前。不新增自动复位。仅 129 字节变化，同版生产
+解析器通过，LZMA 往返和 payload FAT/读回通过。详见 `docs/XNU_ENTRY_PROBE.md`。
+本地 unsigned vendor_boot 已准备；本轮未签名、未刷写，探针未上机。

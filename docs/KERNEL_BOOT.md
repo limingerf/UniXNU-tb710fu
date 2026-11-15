@@ -1,5 +1,11 @@
 # XNU 实机进入内核 · 2026-11-15
 
+> 阶段更正（2026-11-15）：CurrentEL、CPU ID 及“Exiting boot services”
+> 在固定 DarwinBoot 源码中属于加载器输出。实际绿条只确认 ExitBootServices
+> 返回并开始 DarwinEnter，不能证明已执行 XNU 入口。本文早先由这些内容得出的
+> “XNU EL1 已验证”推断不成立；独立内核横幅需另行核对原始证据。
+> 本轮真实停屏和诊断副本见 [XNU_ENTRY_PROBE.md](XNU_ENTRY_PROBE.md)。
+
 ## 结论
 
 **TB710FU 在实机上执行到了 XNU 内核，处于 EL1。** 这是本工程第一次到达该
