@@ -1,11 +1,10 @@
 # Current status · 2026-11-15
 
-> 最新实机反馈（2026-11-16）：reporter 4 轮播与 OneSend 收件已通过。
-> 切换前报告 ARG0=8c88f9000、旧 TTBR1=8c0ddc000；普通启动也保留
-> 相同最后阶段。此处仍是观察边界，没有真实异常 PC/ESR。用户要求停止
-> 扩展探针，直接审查内核。官方相关4K/非Apple修复已在原生输入记录中；
-> 上游PR249针对开启MMU前的容量耗尽，与已确认阶段不符。
-> 源码核查见 docs/evidence/upstream-vm-review.json；原故障未解决。
+> 最新交付（2026-11-16）：PR249 的16→22页容量修复已适配到本机
+> xnu-12377补丁序列。完整native/严格prelink云run43763928457成功，
+> 独立核对机器码22页、依赖闭包、生产解析器与artifact哈希通过。
+> 原生启动候选已本地签名，out/kernel-pr249-final；无附加诊断段和
+> 导出暂停入口。原卡启动尚未证实修复，实机待验。见 [内核交付](docs/KERNEL_PR249.md)。
 
 这是当前工程的单一状态入口。编译、静态加载检查和实机运行分开记录。
 
@@ -413,3 +412,16 @@ GitHub digest一致，接收源与报告源身份匹配。非native/prelink或�
 后模型到达pmap_bootstrap。DT/熵/特权指令/PAC有模型限制，不当作实机
 切换成功，也未据此加入猜测性的MMU补丁。下一份完整构建不附加__KDIAG
 或主动导出暂停；PR249容量修复与原故障修复分开验收。
+
+
+完整native/prelink云run43763928457 success（源f95c34942e9317e97e8bba819e364e75a6a80b41）。
+原生SHA 7b263aeee5f78af52ff6a9286d0a9e5f175212850114ba5696461fa5f537e9cf；
+严格预链接SHA 9daf5064924a2a085b1e8ee4e0871df5b9fc86dac516c8d7de9a85484f2ca8ee。
+mapping_complete=true、missing={}、stubbed={}、allow_missing=false；生产
+DarwinBoot解析通过。实际启动清零机器码为22页，未含__KDIAG，arm_init和
+panic原始PACIBSP保留。artifact SHA/digest匹配，LZMA原始流读回一致。
+
+新交付 out/kernel-pr249-final/vendor_boot.img（92232f89…）与匹配
+vbmeta.img（89243b22…）沿用已有本地签名授权生成；签名和引用通过，
+其他22描述符/header/公钥不变。FAT32 66512簇，原ADT和默认菜单哈希
+均未变，没有导出暂停参数或新探针。未操作设备，原故障实机待验。

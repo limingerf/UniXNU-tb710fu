@@ -1,0 +1,107 @@
+{
+  "stage": "fresh-native-and-strict-prelink-verified",
+  "run_id": 43763928457,
+  "source_commit": "f95c34942e9317e97e8bba819e364e75a6a80b41",
+  "framework_commit": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+  "prelinked_bytes": 142753792,
+  "prelinked_sha256": "9daf5064924a2a085b1e8ee4e0871df5b9fc86dac516c8d7de9a85484f2ca8ee",
+  "native_sha256": "7b263aeee5f78af52ff6a9286d0a9e5f175212850114ba5696461fa5f537e9cf",
+  "mapping_complete": true,
+  "missing": {},
+  "stubbed": {},
+  "allow_missing": false,
+  "selected_last_patch": {
+    "path": "/Users/runner/work/UniXNU-tb710fu/UniXNU-tb710fu/patches/xnu/0005-native-4k-bootstrap-pool-9g.patch",
+    "sha256": "9e496bd6ee9aaad341899e202630a8a90c4efe79cc8ea33b5ea2e56598254732"
+  },
+  "compiled_boot_clear_count_pages": 22,
+  "bootstrap_pool_bytes": 90112,
+  "root_segments": [
+    "__TEXT",
+    "__PRELINK_TEXT",
+    "__DATA_CONST",
+    "__DATA_SPTM",
+    "__TEXT_EXEC",
+    "__PRELINK_INFO",
+    "__DATA",
+    "__LINKEDIT",
+    "__KLDDATA",
+    "__BOOTDATA"
+  ],
+  "diagnostic_segment_added": false,
+  "arm_init_and_panic_original_PACIBSP": true,
+  "production_parser": "PASS in cloud",
+  "artifact": {
+    "id": 14181622446,
+    "name": "tb710fu-prelink-43763928457",
+    "zip_sha256": "d2aad6a2c9fadb1ffcffaf454464d72572bc8c14c6c14a4e51fbcdcdc4ecc2bd",
+    "github_digest": "sha256:d2aad6a2c9fadb1ffcffaf454464d72572bc8c14c6c14a4e51fbcdcdc4ecc2bd"
+  },
+  "hardware_verified": false,
+  "original_hang_fixed": false,
+  "compression": {
+    "result": "PASS",
+    "source_kernel_bytes": 142753792,
+    "source_kernel_sha256": "9daf5064924a2a085b1e8ee4e0871df5b9fc86dac516c8d7de9a85484f2ca8ee",
+    "lzma_bytes": 24067635,
+    "lzma_sha256": "861dbf1c95b6e27e4c8d8d36a289a5e912096df323bf1c860082b8f2ec9ccf77",
+    "both_full_and_raw_LZMA_roundtrip": "PASS",
+    "diagnostic_segment_added": false,
+    "boot_args_changed": false
+  },
+  "packaging": {
+    "unsigned_bytes": 37859328,
+    "unsigned_sha256": "7fe959e967d2f7fe357d444909123b356f6cd9267472e2220120099f2d448355",
+    "payload_sha256": "7a3174891e8c6ec4804c7376eb18e88bf5bed25572a57f92c594a15e40170e66",
+    "kernel_sha256": "9daf5064924a2a085b1e8ee4e0871df5b9fc86dac516c8d7de9a85484f2ca8ee",
+    "kernel_bytes": 142753792,
+    "kernel_file_readback": "PASS",
+    "original_config_and_ADT_hashes": {
+      "unixnu.toml": "a14b5a8fa15e9e8a29e160a2e87d36f72cb31bcb95140072f92359986c13a356",
+      "Payloads/kernel.macho.adt": "4c56fb2a23d9177aa6b5820d3aba46ca66db90f8168bb6520bdd598ba097bc7b"
+    },
+    "output_config_and_ADT_hashes": {
+      "unixnu.toml": "a14b5a8fa15e9e8a29e160a2e87d36f72cb31bcb95140072f92359986c13a356",
+      "Payloads/kernel.macho.adt": "4c56fb2a23d9177aa6b5820d3aba46ca66db90f8168bb6520bdd598ba097bc7b"
+    },
+    "reporter_selftest_appended": false,
+    "reporter_animated_export_appended": false,
+    "original_entries_and_default_preserved": true,
+    "source_vendor_sha256": "836ca997d766dedfef0531f7283026b443d2227302148fdd107852e25354df15",
+    "device_operations": false
+  },
+  "signing": {
+    "stage": "signed-kernel-probe-pair",
+    "vendor_boot_bytes": 100663296,
+    "vendor_boot_sha256": "92232f89a2bba35b015f104800e35698c6e1c5ea35ef2c5311c62f9cc62f7a14",
+    "vbmeta_bytes": 8000,
+    "vbmeta_sha256": "89243b22dfc247cedd6fad7bfd1329d21c6f270540b24b3f2f4cfa4fff062136",
+    "source_vbmeta_sha256": "3992de82a3a03584b0e03c43bd66060ef93684122bb8867c893ed6c45ea85331",
+    "unsigned_vendor_sha256": "7fe959e967d2f7fe357d444909123b356f6cd9267472e2220120099f2d448355",
+    "signature_checks": "PASS",
+    "unchanged_other_raw_descriptors": 22,
+    "identical_vbmeta_header": true,
+    "descriptor_counts_by_tag": {
+      "0": 13,
+      "1": 4,
+      "2": 3,
+      "4": 3
+    },
+    "public_key_unchanged": true,
+    "signing_payload_readback": "PASS",
+    "device_operations": false,
+    "hardware_verified": false
+  },
+  "fat_check": {
+    "result": "PASS",
+    "clusters": 66512,
+    "minimum": 65525,
+    "xnu_entry_present": true
+  },
+  "kernel_and_config_readback": "PASS: unsigned payload raw-decodes to exact cloud kernel; signing preserves unsigned bytes",
+  "no_export_or_selftest_menu": true,
+  "no_new_kernel_probes": true,
+  "local_signing_authorization_reused": true,
+  "device_operations": false,
+  "hardware_boot_verified": false
+}
