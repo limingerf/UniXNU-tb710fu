@@ -91,7 +91,60 @@ def main():
     require(key_inf in dsc, 'Board DSC does not compile the physical-key input')
     apriori = (board / 'Include/APRIORI.inc').read_text(encoding='utf-8')
     require(apriori.index(key_inf) < apriori.index('MdeModulePkg/Universal/BdsDxe/BdsDxe.inf'), 'Input must dispatch before BDS')
-    forbidden = ('Binaries/', 'ClockDxe.inf', 'SPMIDxe.inf', 'DisplayDxe.inf', 'RamManagerDxe.inf')
+
+    # The source-only baseline must not reference vendor binaries. The one reviewed
+    # exception is the opt-in UFS publication chain behind TB710FU_ENABLE_UFS: those
+    # modules are the stock Qualcomm PE32 DXE drivers under Binaries/tb710fu and are
+    # gated so the default build is byte-for-byte the audited source-only volume.
+    ufs_enabled = re.search(r'^\s*TB710FU_ENABLE_UFS\s*=\s*1\s*$', dsc, re.M) is not None
+    if ufs_enabled:
+        # Only these exact modules may appear, and only under the UFS gate.
+        allowed_vendor = (
+            'Binaries/tb710fu/QcomPkg/Drivers/SmemDxe/SmemDxe.inf',
+            'Binaries/tb710fu/QcomPkg/Drivers/HWIODxe/HWIODxe.inf',
+            'Binaries/tb710fu/QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf',
+            'Binaries/tb710fu/QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf',
+            'Binaries/tb710fu/QcomPkg/Drivers/NpaDxe/NpaDxe.inf',
+            'Binaries/tb710fu/QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf',
+            'Binaries/tb710fu/QcomPkg/Drivers/ClockDxe/ClockDxe.inf',
+            'Binaries/tb710fu/QcomPkg/Drivers/UFSDxe/UFSDxe.inf',
+        )
+        for path in allowed_vendor:
+            require('INF ' + path in fv, 'UFS chain module missing from DXE/APRIORI: ' + path)
+            require(path in dsc, 'UFS chain module not declared in DSC Components: ' + path)
+        # The 2026-11-11 all-vendor black-screen set must stay out even with UFS on.
+        still_forbidden = ('DALSYSDxe.inf', 'VcsDxe.inf', 'DisplayDxe.inf',
+                           'GpiDxe.inf', 'SPIDxe.inf', 'I2CDxe.inf', 'SdccDxe.inf',
+                           'RamManagerDxe.inf')
+        for token in still_forbidden:
+            require(token not in fv and token not in dsc,
+                    'Black-screen vendor module must stay out of the UFS gate: ' + token)
+        forbidden = still_forbidden
+    else:
+        forbidden = ('Binaries/', 'ClockDxe.inf', 'SPMIDxe.inf', 'DisplayDxe.inf', 'RamManagerDxe.inf')
+
+    def strip_ufs_gate(text):
+        """Drop everything between !if $(TB710FU_ENABLE_UFS) == 1 and its !endif.
+
+        The UFS chain is opt-in and reviewed separately, so the source-only
+        baseline check must judge the volume the default build actually makes.
+        """
+        out = []
+        depth = 0
+        for line in text.splitlines(keepends=True):
+            stripped = line.strip()
+            if depth == 0 and re.match(r'^!if\s+.*TB710FU_ENABLE_UFS.*==\s*1', stripped):
+                depth = 1
+                continue
+            if depth:
+                if re.match(r'^!if\b', stripped):
+                    depth += 1
+                elif re.match(r'^!endif\b', stripped):
+                    depth -= 1
+                continue
+            out.append(line)
+        return ''.join(out)
+
     for path in overlay.rglob('*'):
         if not path.is_file():
             continue
@@ -99,7 +152,7 @@ def main():
         require(path.suffix.lower() not in ('.efi', '.fd', '.img', '.pem', '.key'), 'Binary or key in source overlay')
         if path.suffix.lower() not in ('.c', '.h', '.inf', '.dsc', '.fdf', '.inc', '.toml'):
             continue
-        content = path.read_text(encoding='utf-8')
+        content = strip_ufs_gate(path.read_text(encoding='utf-8'))
         require(not any(token in content for token in forbidden), 'Forbidden firmware path in ' + str(path.relative_to(overlay)))
         require(not re.search(r'(?<![A-Za-z0-9])/(?:opt|home|mnt|Users)/', content) and not re.search(r'(?<![A-Za-z0-9])[A-Za-z]:[/\\]', content), 'Absolute local path in board source')
 

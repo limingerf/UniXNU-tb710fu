@@ -22,9 +22,21 @@
   FLASH_DEFINITION               = tb710fuPkg/tb710fu.fdf
 
   # These gates are intentionally closed. The source-only volume contains
-  # no vendor ClockDxe, SPMIDxe, DisplayDxe, ButtonsDxe or firmware blobs.
+  # no vendor clock driver, PMIC service, display driver, button driver or
+  # firmware blobs.
   USE_CUSTOM_DISPLAY_DRIVER      = 0
   TB710FU_VENDOR_HW              = 0
+  # Minimal UFS publish path (the stock Qualcomm IO/clock/UFS DXE chain only).
+  #
+  # 0 = Mu drivers only (current audited baseline; ABL keeps scanout).
+  # 1 = also load the smallest stock Qualcomm chain that lets the UFS host
+  #     driver publish the UFS block device, so firmware can read/write devinfo
+  #     and partitions. Deliberately excludes the display, graphics, DAL,
+  #     SPI/I2C, SDCC and PIL/Tz modules: the 2026-11-11 all-vendor boot went
+  #     black while those loaded (see docs/UEFI_AUDIT.md). This gate does NOT
+  #     re-enable that set, and Tools/check-board.py enforces both the allow
+  #     list and the exclusions.
+  TB710FU_ENABLE_UFS             = 0
   SOC_TYPE                       = 3
   DEVICE_MODEL                   = 0
   ENABLE_SECUREBOOT              = 0
@@ -82,3 +94,18 @@
   DarwinBootPkg/Driver/DarwinBoot.inf
   # Source-only PMIC status reads; no vendor initialization dependency chain.
   tb710fuPkg/Drivers/Tb710fuKeyInputDxe/Tb710fuKeyInputDxe.inf
+
+!if $(TB710FU_ENABLE_UFS) == 1
+  # Stock Qualcomm prebuilt DXE modules that publish UFS. These are PE32
+  # binaries under the firmware binary set, not sources, so the board package
+  # only declares them for the volume. See Include/DXE.inc for the rationale
+  # and the deliberately excluded 2026-11-11 black-screen set.
+  Binaries/tb710fu/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
+  Binaries/tb710fu/QcomPkg/Drivers/HWIODxe/HWIODxe.inf
+  Binaries/tb710fu/QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf
+  Binaries/tb710fu/QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf
+  Binaries/tb710fu/QcomPkg/Drivers/NpaDxe/NpaDxe.inf
+  Binaries/tb710fu/QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf
+  Binaries/tb710fu/QcomPkg/Drivers/ClockDxe/ClockDxe.inf
+  Binaries/tb710fu/QcomPkg/Drivers/UFSDxe/UFSDxe.inf
+!endif

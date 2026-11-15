@@ -25,10 +25,26 @@ REQUIRED = [
     'tb710fuPkg/Drivers/Tb710fuKeyInputDxe/Tb710fuKeyInputDxe.inf',
 ]
 
+# Opt-in UFS publication chain (board.toml TB710FU_ENABLE_UFS=1). These are the
+# stock Qualcomm prebuilt DXE drivers under Binaries/tb710fu; they are verified in
+# the real nested FFS volumes exactly like the source-only modules above.
+UFS_REQUIRED = [
+    'QcomPkg/Drivers/SmemDxe/SmemDxe.inf',
+    'QcomPkg/Drivers/HWIODxe/HWIODxe.inf',
+    'QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf',
+    'QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf',
+    'QcomPkg/Drivers/NpaDxe/NpaDxe.inf',
+    'QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf',
+    'QcomPkg/Drivers/ClockDxe/ClockDxe.inf',
+    'QcomPkg/Drivers/UFSDxe/UFSDxe.inf',
+]
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('mode', choices=['build', 'collect'])
+    parser.add_argument('--ufs', action='store_true',
+                        help='build with the opt-in UFS publication chain (TB710FU_ENABLE_UFS=1)')
     args = parser.parse_args()
     source, uefi = ROOT / '.work/UniXNU', ROOT / '.work/uefi-sheng'
     output = ROOT / '.work/firmware-artifacts'
@@ -54,6 +70,16 @@ def main():
         command(['git', '-C', uefi, 'apply', '--check', patch], ROOT)
         command(['git', '-C', uefi, 'apply', patch], ROOT)
     shutil.copytree(ROOT / 'firmware/overlay', uefi, dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+    if args.ufs:
+        # Flip the reviewed opt-in gate in the deployed copy only. The repository
+        # default stays 0, so the source-only baseline is unchanged and the UFS
+        # variant is identified by this flag in the evidence report.
+        dsc = uefi / 'Platforms/Lenovo/tb710fuPkg/tb710fu.dsc'
+        text = dsc.read_text(encoding='utf-8')
+        replaced, count = re.subn(r'^(\s*TB710FU_ENABLE_UFS\s*=\s*)0(\s*)$', r'\g<1>1\2', text, flags=re.M)
+        if count != 1:
+            raise SystemExit('Could not enable TB710FU_ENABLE_UFS exactly once in the deployed DSC')
+        dsc.write_text(replaced, encoding='utf-8')
     driver = [sys.executable, str(source / 'unixnu')]
     common = ['-D', str(ROOT), '--os', PROFILE]
     command(driver + ['defconfig', 'tb710fu_macos_defconfig'] + common, source, output / 'defconfig.log')
@@ -82,6 +108,21 @@ def main():
         if not match or match.group(1).lower() not in parsed['file_guids']:
             raise SystemExit('Required module not found in actual nested FFS volumes: ' + name)
         modules.append({'inf': name, 'file_guid': match.group(1).lower()})
+    ufs_modules = []
+    if args.ufs:
+        # The vendor set lives under the Binaries/tb710fu package root, which is not
+        # in the board's [firmware.packages] list; resolve it against the UEFI checkout.
+        for name in UFS_REQUIRED:
+            inf = uefi / 'Binaries/tb710fu' / name
+            if not inf.is_file():
+                raise SystemExit('UFS chain INF missing from the pinned UEFI checkout: ' + name)
+            match = re.search(r'^\s*FILE_GUID\s*=\s*([0-9A-Fa-f-]{36})', inf.read_text(), re.M)
+            if not match or match.group(1).lower() not in parsed['file_guids']:
+                raise SystemExit('UFS chain module not found in actual nested FFS volumes: ' + name)
+            ufs_modules.append({'inf': 'Binaries/tb710fu/' + name, 'file_guid': match.group(1).lower()})
+        for name in modules:
+            if name['inf'].endswith(('DisplayDxe.inf', 'DALSYSDxe.inf', 'VcsDxe.inf')):
+                raise SystemExit('Black-screen vendor module present in the UFS volume: ' + name['inf'])
     overlay = [{'path': str(path.relative_to(ROOT / 'firmware/overlay')), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
                for path in sorted((ROOT / 'firmware/overlay').rglob('*')) if path.is_file() and '__pycache__' not in path.parts]
     report = {'stage': 'firmware-built', 'target': 'AARCH64 DEBUG CLANGPDB',
@@ -90,8 +131,9 @@ def main():
               'uefi_source_commit': LOCK['uefi']['commit'], 'framework_commit': LOCK['unixnu']['commit'],
               'fd_base': '0xA7100000', 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
               'required_modules': modules, 'volumes': parsed['volumes'], 'overlay': overlay,
-              'vendor_binary_inputs': False, 'uefi_secure_boot': 'development-disabled',
-              'abl_changed': False, 'hardware_boot_verified': False}
+              'vendor_binary_inputs': bool(args.ufs), 'uefi_secure_boot': 'development-disabled',
+              'abl_changed': False, 'hardware_boot_verified': False,
+              'ufs_chain': {'enabled': bool(args.ufs), 'modules': ufs_modules}}
     report['input'] = {'driver': REQUIRED[-1], 'host_model_test': 'PASS',
                        'physical_keys_verified': False, 'pmic_configuration_writes': False}
     (output / 'firmware-result.json').write_text(json.dumps(report, indent=2) + '\n')
@@ -104,7 +146,8 @@ def main():
     summary = os.environ.get('GITHUB_STEP_SUMMARY')
     if summary:
         with open(summary, 'a') as stream:
-            stream.write(f'### TB710FU UEFI\n\nFD SHA-256: `{report["sha256"]}`\n\n{len(REQUIRED)} required modules verified in nested FFS volumes. Hardware boot is not yet qualified.\n')
+            chain = f'\nUFS chain enabled: {len(ufs_modules)} stock Qualcomm modules verified.' if args.ufs else ''
+            stream.write(f'### TB710FU UEFI\n\nFD SHA-256: `{report["sha256"]}`\n\n{len(REQUIRED)} required modules verified in nested FFS volumes.{chain}\n\nHardware boot is not yet qualified.\n')
 
 
 if __name__ == '__main__':

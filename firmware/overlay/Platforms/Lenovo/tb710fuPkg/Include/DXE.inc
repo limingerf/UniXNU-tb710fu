@@ -58,3 +58,31 @@
   INF MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
   INF MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
   INF MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
+
+!if $(TB710FU_ENABLE_UFS) == 1
+  # Minimal stock Qualcomm chain for UFS publication. DEPEX on every one of
+  # these is TRUE, so APRIORI.inc decides the order; keeping the same relative
+  # order here keeps DXE.inc and APRIORI.inc consistent.
+  #
+  # Coverage:
+  #   HWIODxe      - HWIO protocol (UFS register accessors)
+  #   NpaDxe       - NPA protocol (UFS clock votes)
+  #   ClockDxe     - clock driver (UFS core/PHY clocks)
+  #   RpmhDxe      - RPMh (clock/power resource requests)
+  #   UFSDxe       - the UFS host controller driver itself
+  #   CmdDbDxe     - command DB (RPMh dependency)
+  #   PwrUtilsDxe  - power utilities
+  #   SmemDxe      - shared memory (SoC info for UFS init)
+  #
+  # Excluded on purpose (2026-11-11 black-screen set):
+  #   DALSYSDxe, VcsDxe, GpiDxe, SPIDxe, I2CDxe, SdccDxe, DisplayDxe,
+  #   CPRDxe, PIL/PILProxy, Tz, FeatureEnabler, Rsc.
+  INF Binaries/tb710fu/QcomPkg/Drivers/HWIODxe/HWIODxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/NpaDxe/NpaDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/ClockDxe/ClockDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/UFSDxe/UFSDxe.inf
+!endif
