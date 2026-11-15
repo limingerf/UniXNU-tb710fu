@@ -57,15 +57,48 @@ EFI/UniXNU/Payloads/kernel.macho.adt        11,536 B
 侧车也因此解析为 `kernel.macho.adt`），但内容是 LZMA 压缩流——
 DarwinBoot 补丁的 `IsLzmaKernel()` 探测 0x5D 头后解压。
 
+## 首次实机结果：菜单没有 xnu（已定位并修复）
+
+第一次刷入后菜单只有内置动作（Return / Restart / Power off / Tools），没有
+`xnu` 条目。原因不是内核也不是 ADT，而是 **payload 卷本身挂载失败**。
+
+### 根因：FAT32 簇数低于固件下限
+
+| 卷 | 簇数 | FAT 类型 | 结果 |
+| --- | --- | --- | --- |
+| 25 MiB（首次） | **50,380** | FAT32 | **EnhancedFatDxe 拒绝挂载** |
+| 33 MiB（修复） | **66,512** | FAT32 | 可挂载 |
+
+`mformat -F` 强制 FAT32，但 25 MiB 只产生 50,380 簇，低于 FAT32 的 65,525
+下限。固件拒绝挂载 → UniXNU 读不到 `unixnu.toml` → 回退内置配置。屏幕上
+表现为"没有 xnu 条目"，与"内核缺失"无法区分。
+
+### 修复
+
+payload 重建为 **33 MiB FAT32（66,512 簇）**，仍在 81 MiB 预算内
+（余量 48.1 MiB）。toml / LZMA 内核 / ADT 三份文件读回全部逐字节一致。
+
+新增 `tools/check_payload_fat.py`：从 BPB 重算簇数，按 EnhancedFatDxe 的
+FAT 类型规则判定，可选断言指定 8.3 目录项存在。已双向验证——33 MiB 通过，
+25 MiB 报出确切原因。
+
 ## 交付三件套
 
 | 文件 | 字节 | SHA-256 |
 | --- | --- | --- |
 | `out/lzma-keys/tb710fu-boot-uefi-lzma.signed.img` | 100,663,296 | `6b034728de91db493fa3d406e214ce41f47b314a224f88ab41d389206f81d278` |
-| `out/lzma-keys/vendor_boot.signed.img` | 100,663,296 | `de52de5da94e8bbc4edd2889e87face950ba308a4dda6614a14703a88d1e2635` |
-| `out/lzma-keys/vbmeta.img` | 8,000 | `f9dfebe25a289a8505d11573a5b55d62489c46d43ed9138720ae48cc5d2c84a6` |
+| `out/lzma-keys/vendor_boot.signed.img` | 100,663,296 | `4e296d5fc077ee02f4d173d676dc86669ca65f7eb419f1acf9131872cbf4e5bc` |
+| `out/lzma-keys/vbmeta.img` | 8,000 | `1e621fc579226849569701a8011a3bb3107130a9ac7ce31840a011f68670da31` |
 
-vbmeta 的 vendor_boot digest 已交叉校验：`d0751fe8…` 与重算值一致。
+vbmeta 的 vendor_boot digest 已交叉校验：`ee686b39…` 与重算值一致。
+
+### 刷入前审计（14 项全 PASS）
+
+- boot.img：magic / v4 / ramdisk=0 / 96 MiB / AVB footer，内嵌 FD
+  `62136857…` 与 CI run 43701443770 完全一致
+- vendor_boot：magic / v4 page=4096 / ramdisk 34,603,008 @0x2400000 / 字节一致
+- payload FAT：66,512 簇 / 三个目录项齐备
+- vbmeta：23 条描述符 / testkey / SHA256_RSA4096
 
 ## 仍未验证
 
