@@ -36,6 +36,8 @@ def main():
     args = p.parse_args()
     root = Path(__file__).resolve().parents[1]
     src = root / 'diagnostics/early-report'
+    source_snapshot = {str(q.relative_to(root)): sha(q.read_bytes()) for q in sorted(src.rglob('*'))
+                       if q.is_file() and '__pycache__' not in q.parts}
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
     candidate = output / 'kernel-early-report.macho'
@@ -86,28 +88,47 @@ def main():
                     '_arm_vm_init']
     if args.checkpoint_before_vm:
         traced_names.remove('_arm_vm_init')
+    # No return into the appended segment after arm_vm_init changes TTBR1.
+    specs = [('_arm_init', name, 1) for name in traced_names]
+    specs += [('_arm_vm_init', name, occurrence) for name, occurrence in [
+        ('_early_random', 1), ('_SecureDTLookupEntry', 1), ('_SecureDTGetProperty', 1),
+        ('_SecureDTGetProperty', 2), ('_arm_vm_outside_add', 1),
+        ('_getsegdatafromheader', 1), ('_vm_set_page_size', 1),
+        ('_arm_vm_prot_init', 1), ('_qsort', 1), ('_set_mmu_ttb_alternate', 1)]]
+    switch_site, _ = tool.find_call(data, kernel_symbols, '_arm_vm_init', '_set_mmu_ttb_alternate', 1)
     traced = []
     trace_source = '.section .text.calltrace,"ax"\n'
     definitions = []
-    for index, name in enumerate(traced_names):
-        site, target = tool.find_call(data, kernel_symbols, '_arm_init', name, 1)
-        if site > call:
-            raise SystemExit('Trace point lies beyond final diagnostic stop')
+    for index, (parent, name, occurrence) in enumerate(specs):
+        site, target = tool.find_call(data, kernel_symbols, parent, name, occurrence)
+        if parent == '_arm_vm_init' and site > switch_site:
+            raise SystemExit('Trace must not enter appended code after TTBR1 switch')
+        tail = name in ('_arm_vm_init', '_set_mmu_ttb_alternate')
+        handoff = name == '_set_mmu_ttb_alternate'
         label, symbol, resume = 'diag_trace_' + str(index), 'diag_original_' + str(index), 'diag_return_' + str(index)
+        description = name[1:] if parent == '_arm_init' else 'vm/' + name[1:] + '#' + str(occurrence)
         trace_source += ('.global ' + label + '\n.hidden ' + symbol + '\n.hidden ' + resume + '\n' +
                          label + ':\n  adrp x16,diag_last_stage\n  add x16,x16,:lo12:diag_last_stage\n' +
                          '  mov x17,#' + str(index * 2 + 1) + '\n  str x17,[x16]\n' +
-                         '  adr x17,' + label + '_enter_text\n  bl diag_live_call\n' +
-                         '  bl ' + symbol + '\n' +
-                         '  adrp x16,diag_last_stage\n  add x16,x16,:lo12:diag_last_stage\n' +
-                         '  mov x17,#' + str(index * 2 + 2) + '\n  str x17,[x16]\n' +
-                         '  adr x17,' + label + '_return_text\n  bl diag_live_call\n' +
-                         '  adrp x30,' + resume + '\n  add x30,x30,:lo12:' + resume + '\n  b ' + resume + '\n' +
-                         label + '_enter_text:\n  .asciz "XNU enter: ' + name[1:] + '"\n' +
-                         label + '_return_text:\n  .asciz "XNU returned: ' + name[1:] + '"\n.balign 4\n')
+                         '  adr x17,' + label + '_enter_text\n  bl diag_live_call\n')
+        if handoff:
+            trace_source += ('  adrp x16,diag_kernel_vectors\n  add x16,x16,:lo12:diag_kernel_vectors\n' +
+                             '  msr vbar_el1,x16\n  isb\n')
+        if tail:
+            trace_source += ('  adrp x30,' + resume + '\n  add x30,x30,:lo12:' + resume + '\n  b ' + symbol + '\n')
+        else:
+            trace_source += ('  bl ' + symbol + '\n' +
+                             '  adrp x16,diag_last_stage\n  add x16,x16,:lo12:diag_last_stage\n' +
+                             '  mov x17,#' + str(index * 2 + 2) + '\n  str x17,[x16]\n' +
+                             '  adr x17,' + label + '_return_text\n  bl diag_live_call\n' +
+                             '  adrp x30,' + resume + '\n  add x30,x30,:lo12:' + resume + '\n  b ' + resume + '\n')
+        trace_source += (label + '_enter_text:\n  .asciz "XNU enter: ' + description + '"\n' +
+                         label + '_return_text:\n  .asciz "XNU returned: ' + description + '"\n.balign 4\n')
         definitions += ['--defsym=' + symbol + '=' + hex(target), '--defsym=' + resume + '=' + hex(site + 4)]
-        traced.append({'name': name, 'site': hex(site), 'callee': hex(target), 'label': label,
-                       'before_stage': index * 2 + 1, 'after_stage': index * 2 + 2})
+        traced.append({'name': name, 'parent': parent, 'occurrence': occurrence,
+                       'site': hex(site), 'callee': hex(target), 'label': label,
+                       'before_stage': index * 2 + 1, 'after_stage': None if tail else index * 2 + 2,
+                       'original_LR_tail_transfer': tail, 'restore_kernel_VBAR': handoff})
     ncmds, sizeofcmds = struct.unpack_from('<II', data, 16)
     command_at = 32 + sizeofcmds
     if any(data[command_at:command_at + 72]):
@@ -182,7 +203,8 @@ def main():
     # Synchronous EL1 faults enter our own VBAR table installed at arm_init.
     panic = names['_panic']
     panic_word = struct.unpack_from('<I', original, tool.file_offset(panic))[0]
-    struct.pack_into('<I', data, tool.file_offset(panic), tool.branch(panic, table['diag_panic']))
+    # Keep the original panic entry executable after diagnostic TTBR1 handoff.
+    # Pre-handoff synchronous exceptions still use diag_vectors.
     # No default BRK: exception/panic reports must describe the real kernel.
     if args.checkpoint_before_vm:
         struct.pack_into('<I', data, tool.file_offset(call), 0xd4200000 | (0xb713 << 5))
@@ -211,12 +233,16 @@ def main():
     if lzma.decompress(encoded[13:], format=lzma.FORMAT_RAW, filters=filters) != data:
         raise SystemExit('Raw stream round-trip')
     candidate.with_suffix('.lzma').write_bytes(encoded)
+    if source_snapshot != {str(q.relative_to(root)): sha(q.read_bytes()) for q in sorted(src.rglob('*'))
+                           if q.is_file() and '__pycache__' not in q.parts}:
+        raise SystemExit('Reporter sources changed during build; do not distribute this output')
     record = {'stage': 'terminal-early-exception-and-Onesend-diagnostic', 'original_sha256': sha(original),
               'kernel_sha256': sha(data), 'kernel_bytes': len(data), 'lzma_sha256': sha(encoded),
               'lzma_bytes': len(encoded), 'segment_va': hex(base), 'segment_fileoff': fileoff,
               'segment_bytes': size, 'payload_bytes': len(payload),
               'arm_init_va': hex(arm), 'arm_init_original_instruction': 'PACIBSP replayed',
               'panic_va': hex(panic), 'panic_original_word': hex(panic_word),
+              'panic_hook_installed': False, 'reporter_ends_before_TTBR1_switch': True,
               'checkpoint_va': hex(call), 'checkpoint_original_bl': hex(original_call),
               'checkpoint_callee': hex(callee),
               'checkpoint_installed': args.checkpoint_before_vm,
@@ -224,10 +250,12 @@ def main():
               'call_trace': traced,
               'symbols': {k: hex(v) for k, v in table.items() if k.startswith('diag_')},
               'qr_source': manifest,
-              'reporter_sources': {str(p.relative_to(root)): sha(p.read_bytes()) for p in sorted(src.rglob('*')) if p.is_file() and '__pycache__' not in p.parts},
-              'user_display_request': 'one compact strip; fault replaces screen with report',
+              'reporter_sources': source_snapshot,
+              'user_display_request': 'overwriting text and live QR before VM switch; fault replaces screen',
               'report_is_full_console_log': False, 'static_single_OS_frame': True,
-              'strict_alignment': True, 'live_stage_text': True,
+              'strict_alignment': True, 'live_stage_text': True, 'live_stage_QR': True,
+              'live_QR_first_stage': 27, 'VM_boundary_stage': 47,
+              'kernel_vectors': hex(names['_ExceptionVectorsBase']),
               'hardware_verified': False, 'functional_fix_claimed': False}
     (output / 'build-report.json').write_text(json.dumps(record, indent=2) + '\n')
     print(json.dumps({k: record[k] for k in ['kernel_sha256', 'kernel_bytes', 'segment_bytes', 'checkpoint_va']}, indent=2))

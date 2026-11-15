@@ -28,3 +28,26 @@ root=Path('.local/early-fault-qr')
 (root/'frame.bin').write_bytes(frame);(root/'report.log').write_bytes(text)
 (root/'host-check.json').write_text(json.dumps({'result':'PASS','report_bytes':n,'envelope_bytes':size,'frame_bytes':len(frame),'crc32_checks':'frame/envelope/body PASS','qr_status':status,'heap_bytes':ctypes.c_size_t.in_dll(lib,'diag_test_heap_used').value,'limits':'host C + unchanged QR encoder; not a real CPU fault'},indent=2)+'\n')
 print(text.decode());print((root/'host-check.json').read_text())
+
+# Repeated continuing snapshots must reset the bounded arena and encode fresh data.
+lib.diag_prepare_live_frame.argtypes=[ctypes.POINTER(State),ctypes.c_char_p]
+ctypes.c_uint64.in_dll(lib,'diag_report_phase').value=0
+for stage in (27,29,47,27):
+ ctypes.c_uint64.in_dll(lib,'diag_last_stage').value=stage
+ message=('XNU stage '+str(stage)).encode()
+ lib.diag_prepare_live_frame(ctypes.byref(s),message)
+ assert ctypes.c_size_t.in_dll(lib,'diag_test_qr_status').value==0
+ live=ctypes.string_at(ctypes.c_void_p.in_dll(lib,'diag_test_frame').value,752)
+ size=struct.unpack_from('<I',live,20)[0];env=live[28:28+size]
+ assert struct.unpack_from('<I',live,748)[0]==zlib.crc32(live[:748])
+ assert struct.unpack_from('<I',live,24)[0]==zlib.crc32(env)
+ nl,ml=struct.unpack_from('<HH',env,6);body=env[26+nl+ml:]
+ assert env[26:26+nl]==b'TB710FU-live-stage.log'
+ assert b'XNU LIVE CHECKPOINT (continues)' in body and message in body and b'ESR=' not in body
+ assert struct.unpack_from('<I',env,14)[0]==zlib.crc32(body)
+ assert ctypes.c_size_t.in_dll(lib,'diag_test_heap_used').value<524288
+ assert ctypes.c_uint64.in_dll(lib,'diag_report_phase').value==0
+result=json.loads((root/'host-check.json').read_text())
+result['repeated_live_snapshot_frames']='PASS: 27/29/47/27; fresh body, bounded arena, CRCs, no invented exception'
+(root/'host-check.json').write_text(json.dumps(result,indent=2)+'\n')
+print(result['repeated_live_snapshot_frames'])

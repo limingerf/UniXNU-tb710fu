@@ -25,6 +25,9 @@ EFI_GRAPHICS_OUTPUT_BLT_PIXEL *diag_test_bitmap;
 EFI_STATUS diag_test_qr_status;
 UINT64 diag_report_phase;
 UINT64 diag_last_stage;
+UINT64 diag_live_inputs[3]; /* Original x0, x1, and kernel SP. */
+UINT64 diag_live_phase;
+static CHAR8 last_message[112];
 static TB_REPORT first_state;
 
 VOID *memcpy(VOID *o, CONST VOID *v, UINTN n) {
@@ -44,7 +47,7 @@ VOID *AllocatePool(UINTN n) {
 }
 VOID *AllocateZeroPool(UINTN n){VOID *p=AllocatePool(n);if(p)memset(p,0,n);return p;}
 VOID *AllocateCopyPool(UINTN n,CONST VOID *d){VOID *p=AllocatePool(n);if(p)memcpy(p,d,n);return p;}
-VOID FreePool(VOID *p){(VOID)p;} /* One fatal report, bounded arena, no reuse. */
+VOID FreePool(VOID *p){(VOID)p;} /* Arena reset before each serialized snapshot. */
 
 static VOID append(CONST CHAR8 *p){while(*p&&text_used<sizeof(text)-1)text[text_used++]=*p++;text[text_used]=0;}
 static VOID number(UINT64 v){CONST CHAR8 h[]="0123456789abcdef";for(int s=60;s>=0;s-=4){CHAR8 b[2]={h[(v>>s)&15],0};append(b);}}
@@ -53,9 +56,11 @@ static UINT32 crc(CONST UINT8 *p,UINTN n){UINT32 c=~0U;for(UINTN i=0;i<n;i++){c^
 static VOID le16(UINT8 *p,UINT16 v){p[0]=v;p[1]=v>>8;}
 static VOID le32(UINT8 *p,UINT32 v){for(int i=0;i<4;i++)p[i]=v>>(i*8);}
 
-static VOID make_frame(VOID) {
-  CONST CHAR8 name[]="TB710FU-early-fault.log",mime[]="text/plain";
-  UINT8 envelope[720];UINTN nl=sizeof(name)-1,ml=sizeof(mime)-1;
+static VOID make_frame(BOOLEAN live) {
+  CONST CHAR8 *name=live?"TB710FU-live-stage.log":"TB710FU-early-fault.log";
+  CONST CHAR8 mime[]="text/plain";
+  UINT8 envelope[720];UINTN nl=0,ml=sizeof(mime)-1;
+  while(name[nl])nl++;
   UINTN total=26+nl+ml+text_used;
   memset(envelope,0,sizeof(envelope));memset(frame,0,sizeof(frame));
   memcpy(envelope,"LMS1",4);envelope[4]=2;
@@ -87,23 +92,46 @@ static VOID draw_text(TB_REPORT *s,CONST CHAR8 *t,UINTN x,UINTN y,UINTN scale){
   }
 }
 
+/* This path does not invent an exception. A QR already on screen survives a
+ * later spin without needing an exception handler or a watchdog. */
+VOID diag_prepare_live_frame(TB_REPORT *s,CONST CHAR8 *message){
+  text_used=0;arena_used=0;diag_live_phase=1;
+  append("XNU LIVE CHECKPOINT (continues)\n");
+  append("build cc690c9a / reporter 3\n");append(message);append("\n");
+  field("STAGE",diag_last_stage);field("ARG0",diag_live_inputs[0]);
+  field("ARG1",diag_live_inputs[1]);field("KERNEL_SP",diag_live_inputs[2]);
+  field("BOOTARGS_PA",s->BootArgsPa);field("FB_PA",s->Framebuffer);
+  append("last observed stage, not a fault PC or full console log\n");
+  if(diag_last_stage==47)append("reporter ends before TTBR1 switch; later progress is not observed\n");
+  diag_test_text_length=text_used;make_frame(TRUE);diag_live_phase=2;
+  EFI_GRAPHICS_OUTPUT_BLT_PIXEL *bitmap=NULL;
+  diag_test_qr_status=QrEncodeData(QrAutoVersion,QrECLevel_L,QrByteMode,0,frame,sizeof(frame),121,&bitmap);
+  diag_test_bitmap=bitmap;diag_test_heap_used=arena_used;diag_live_phase=3;
+}
+
 #ifndef TB_REPORT_HOST_TEST
 extern UINT8 diag_image_base[] __attribute__((visibility("hidden")));
+static VOID diag_apply_relocations(VOID);
 static UINT64 live_tables[1024] __attribute__((aligned(4096)));
-/* A short-lived TTBR0 mapping for GOP only. Kernel code/stack stay on TTBR1;
- * MMU and caches stay enabled, and original roots/control are restored.
- * No writes to original kernel page tables or hardware configuration.
- */
+/* Temporary TTBR0 maps only the displayed GOP region. Kernel mappings, MMU,
+ * caches and original page tables stay intact; original TTBR0/TCR restored. */
 VOID diag_live_text(TB_REPORT *s, CONST CHAR8 *message){
+  UINTN n=0;while(message[n]&&n<sizeof(last_message)-1){last_message[n]=message[n];n++;}last_message[n]=0;
+  BOOLEAN qr=diag_last_stage>=27;
+  UINTN scale=(s->Height>112?(s->Height-112)/121:0);
+  if(scale>(s->Width>32?(s->Width-32)/121:0))scale=(s->Width-32)/121;
+  if(scale>5)scale=5;
+  UINTN side=scale*121,rows=qr?96+side:48;
   UINT64 old_tcr,old_ttbr,table_pa;
-  UINT64 fb=s->Framebuffer,bytes=s->RowBytes*48;
-  if(!fb||s->Width<320||s->Width>8192||s->RowBytes<s->Width*4||s->RowBytes>65536||
-     ((fb>>30)!=((fb+bytes-1)>>30)))return;
+  UINT64 fb=s->Framebuffer,bytes=s->RowBytes*rows;
+  if(!fb||s->Width<320||s->Width>8192||s->Height<320||s->Height>8192||!scale||
+     s->RowBytes<s->Width*4||s->RowBytes>65536||rows>s->Height||
+     fb>~0ULL-bytes||((fb>>30)!=((fb+bytes-1)>>30)))return;
   table_pa=s->PayloadPa+(UINT64)(UINTN)live_tables-(UINT64)(UINTN)diag_image_base;
   memset(live_tables,0,sizeof(live_tables));
   live_tables[(fb>>30)&511]=(table_pa+4096)|3;
   for(UINT64 pa=fb&~0x1fffffULL;pa<fb+bytes;pa+=0x200000)
-    live_tables[512+((pa>>21)&511)]=pa|0x6000000000070dULL; /* AF, SH, Attr3 Device, PXN/UXN */
+    live_tables[512+((pa>>21)&511)]=pa|0x6000000000070dULL;
   UINT64 line;
   __asm__ volatile("mrs %0,ctr_el0":"=r"(line));
   line=4ULL<<((line>>16)&15);
@@ -112,8 +140,23 @@ VOID diag_live_text(TB_REPORT *s, CONST CHAR8 *message){
   __asm__ volatile("mrs %0,tcr_el1\nmrs %1,ttbr0_el1":"=r"(old_tcr),"=r"(old_ttbr));
   UINT64 temporary=(old_tcr&~0xffffULL)|0x3519;
   __asm__ volatile("dsb sy\nmsr ttbr0_el1,%0\nmsr tcr_el1,%1\nisb\ntlbi vmalle1\ndsb sy\nisb"::"r"(table_pa),"r"(temporary):"memory");
-  for(UINTN y=0;y<48;y++)for(UINTN x=0;x<s->Width;x++)pixel(s,x,y,0xff000000);
+  for(UINTN y=0;y<rows;y++)for(UINTN x=0;x<s->Width;x++)pixel(s,x,y,0xff000000);
   draw_text(s,message,16,4,s->Width>=1600?2:1);
+  if(qr){
+    draw_text(s,"LAST STAGE SNAPSHOT",16,64,1);
+    diag_apply_relocations();
+    diag_prepare_live_frame(s,message);
+    if(!diag_test_qr_status&&diag_test_bitmap){
+      UINTN ox=s->Width-side-16;
+      for(UINTN y=0;y<121;y++)for(UINTN x=0;x<121;x++){
+        EFI_GRAPHICS_OUTPUT_BLT_PIXEL b=diag_test_bitmap[y*121+x];
+        UINT32 color=0xff000000U|((UINT32)b.Red<<16)|((UINT32)b.Green<<8)|b.Blue;
+        for(UINTN yy=0;yy<scale;yy++)for(UINTN xx=0;xx<scale;xx++)pixel(s,ox+x*scale+xx,64+y*scale+yy,color);
+      }
+      draw_text(s,"STAGE QR: READY - ONESEND",16,64+side+4,1);
+    }else draw_text(s,"STAGE QR: ENCODE FAILED",16,64+side+4,1);
+    diag_live_phase=0;
+  }
   __asm__ volatile("dsb sy\nmsr ttbr0_el1,%0\nmsr tcr_el1,%1\nisb\ntlbi vmalle1\ndsb sy\nisb"::"r"(old_ttbr),"r"(old_tcr):"memory");
 }
 #endif
@@ -129,11 +172,13 @@ VOID diag_build_report(TB_REPORT *s){
   append(previous_phase?"REPORTER SECONDARY EXCEPTION\n":
          selftest?"REPORTER SELFTEST (intentional stop)\n":
          (checkpoint||before_vm)?"XNU CHECKPOINT (intentional stop)\n":"XNU EARLY EXCEPTION\n");
-  append("build cc690c9a / reporter 2\n");
+  append("build cc690c9a / reporter 3\n");
   if(checkpoint)append("rebase and C prologue completed; before PE_init_platform\n");
   if(before_vm)append("platform and early C path completed; before arm_vm_init\n");
   if(selftest)append("display/exception/QR selftest only; not kernel boot success\n");
-  if(diag_last_stage){
+  if(last_message[0]){append(last_message);append("\n");}
+  if(diag_live_phase)field("LIVE_PHASE",diag_live_phase);
+  if(diag_last_stage&&!last_message[0]){
     static CONST CHAR8 *stages[]={"PE_init_platform","configure_timer_apple_regs",
       "wfe_timeout_configure","wfe_timeout_init","configure_misc_apple_boot_args",
       "configure_misc_apple_regs","ml_parse_cpu_topology","thread_bootstrap",
@@ -159,7 +204,7 @@ VOID diag_build_report(TB_REPORT *s){
   if(previous_phase){draw_text(s,"SECONDARY REPORT: QR SKIPPED",16,s->Height-48,1);diag_report_phase=99;return;}
   diag_report_phase=2;
   draw_text(s,"QR: PREPARING FRAME",16,s->Height-48,1);
-  make_frame();
+  make_frame(FALSE);
   EFI_GRAPHICS_OUTPUT_BLT_PIXEL *bitmap=NULL;
   diag_report_phase=3;
   draw_text(s,"QR: ENCODING       ",16,s->Height-48,1);
@@ -190,12 +235,15 @@ extern UINT8 diag_rela_end[] __attribute__((visibility("hidden")));
 #ifndef DIAG_LINK_BASE
 #define DIAG_LINK_BASE 0ULL
 #endif
-__attribute__((noreturn)) VOID diag_fault_main(TB_REPORT *s){
+static VOID diag_apply_relocations(VOID){
   UINT64 slide=(UINT64)(UINTN)diag_image_base-DIAG_LINK_BASE;
   for(TB_RELA *r=(TB_RELA*)diag_rela_start;r<(TB_RELA*)diag_rela_end;r++){
     if((UINT32)r->Info!=1027)for(;;)__asm__ volatile("wfe");
     *(UINT64*)(UINTN)(r->Offset+slide)=(UINT64)r->Addend+slide;
   }
+}
+__attribute__((noreturn)) VOID diag_fault_main(TB_REPORT *s){
+  diag_apply_relocations();
   diag_build_report(s);__asm__ volatile("dsb sy");for(;;)__asm__ volatile("wfe");
 }
 #endif

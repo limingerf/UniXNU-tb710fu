@@ -1,5 +1,8 @@
 # 自检二维码对齐修复与实时阶段文字
 
+> 本页是 reporter 2 历史交付。自检现已实机扫码通过；新增正常路径阶段 QR
+> 的交付与边界见 [新版说明](KERNEL_LIVE_QR.md)。
+
 ## 照片确认的缺陷
 
 自检图为 REPORTER SECONDARY EXCEPTION，REPORT_PHASE=2。

@@ -56,7 +56,8 @@ def main():
 
         def hook(machine, pc, length, _):
             if pc == sym.get('diag_live_text'):
-                for n in list(range(8))+[18]:
+                assert machine.reg_read(r.UC_ARM64_REG_SP) == sym['diag_stack_end']
+                for n in list(range(9))+[18]:
                     machine.reg_write(getattr(r,'UC_ARM64_REG_X'+str(n)),0xbad000+n)
                 machine.reg_write(r.UC_ARM64_REG_PC,machine.reg_read(r.UC_ARM64_REG_X30))
                 return
@@ -150,6 +151,7 @@ def main():
         uc.mem_map(saved_sp & ~4095,4096)
         uc.reg_write(r.UC_ARM64_REG_SP, saved_sp)
         stage_address = sym['diag_last_stage']
+        restored_vbar=[]
         def call_hook(machine, pc, length, _):
             if pc == sym.get('diag_live_text'):
                 for n in list(range(8))+[18]:
@@ -159,20 +161,30 @@ def main():
             if pc == callee:
                 stage = struct.unpack('<Q', bytes(machine.mem_read(stage_address, 8)))[0]
                 assert stage == item['before_stage']
-                assert all(machine.reg_read(getattr(r, 'UC_ARM64_REG_X' + str(n))) == 0x12340000 + n for n in range(8))
+                assert all(machine.reg_read(getattr(r, 'UC_ARM64_REG_X' + str(n))) == 0x12340000 + n for n in list(range(9))+[18])
+                if item.get('original_LR_tail_transfer'):
+                    assert machine.reg_read(r.UC_ARM64_REG_X30) == resume
                 machine.reg_write(r.UC_ARM64_REG_X0, 0xfeed1234)
                 machine.reg_write(r.UC_ARM64_REG_X16, 0xbad1)
                 machine.reg_write(r.UC_ARM64_REG_X17, 0xbad2)
                 machine.reg_write(r.UC_ARM64_REG_PC, machine.reg_read(r.UC_ARM64_REG_X30))
             elif pc == resume:
                 machine.emu_stop()
+            else:
+                word = struct.unpack('<I',bytes(machine.mem_read(pc,4)))[0]
+                if word & 0xffffffe0 == 0xd518c000:  # msr vbar_el1, Xt
+                    value = machine.reg_read(getattr(r,'UC_ARM64_REG_X'+str(word&31)))
+                    assert item.get('restore_kernel_VBAR') and value == int(record['kernel_vectors'],16)
+                    restored_vbar.append(value)
+                    machine.reg_write(r.UC_ARM64_REG_PC,pc+4)
         uc.hook_add(UC_HOOK_CODE, call_hook)
         uc.emu_start(sym[item['label']], 0, count=1000)
         assert uc.reg_read(r.UC_ARM64_REG_PC) == resume
         assert uc.reg_read(r.UC_ARM64_REG_X30) == resume
+        assert bool(restored_vbar)==item.get('restore_kernel_VBAR',False)
         assert uc.reg_read(r.UC_ARM64_REG_X0) == 0xfeed1234
         assert uc.reg_read(r.UC_ARM64_REG_SP) == saved_sp
-        assert struct.unpack('<Q', bytes(uc.mem_read(stage_address, 8)))[0] == item['after_stage']
+        assert struct.unpack('<Q', bytes(uc.mem_read(stage_address, 8)))[0] == (item['after_stage'] or item['before_stage'])
         assert all(uc.reg_read(getattr(r, 'UC_ARM64_REG_X' + str(n))) == 0x12340000 + n for n in range(19, 30))
         trace_results.append({'name': item['name'], 'result': 'PASS', 'original_call_executed_in_model': True,
                               'argument_and_result_preserved': True, 'LR_resume_and_stack_preserved': True})

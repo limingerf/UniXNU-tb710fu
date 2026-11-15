@@ -1,9 +1,10 @@
 # Current status · 2026-11-15
 
-> 最新诊断：自检图确认报告器在LMS1信封字段发生未对齐32位写入，
-> ESR=96000061 / ELR=8c8829fc0，已加strict-align并回归旧失败/新成功。
-> 新版还在顶部48行实时显示进入/返回函数名，不再只有青条；原内核停点
-> 仍未定位，实机修复待验。见 [实时报告](docs/KERNEL_LIVE_REPORT.md)。
+> 最新实机反馈（2026-11-16）：reporter 2 自检已显示并成功扫码，严格对齐
+> 修复的报告/OneSend路径得到实机确认。普通启动最后函数名为 arm_vm_init
+> （enter/returned 前缀未提供），无异常报告。新版把阶段 QR 接入正常路径，
+> 细分切换前 10 个 VM 调用，切换时沿原 LR 退出诊断。新版实机待验。
+> 见 [正常路径阶段二维码](docs/KERNEL_LIVE_QR.md)。
 
 这是当前工程的单一状态入口。编译、静态加载检查和实机运行分开记录。
 
@@ -334,3 +335,28 @@ out/kernel-live-report-final/vendor_boot.img（f8688874…）及vbmeta.img（eb1
 
 
 源编译云检查 [run43749763327](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43749763327) success，提交7076a0036a87a633cba367292c3cc31c774287d3。AARCH64对象与主机传输检查通过，独立产物匹配；不是新native/prelink。实机QR和实时文字仍待验。
+
+
+## 自检扫码通过，普通路径增加阶段 QR · 2026-11-16
+
+用户已扫出 reporter 2 自检，ESR=f200b711 / ELR=fffffff00f8280bc。
+因此自检的严格对齐修复和 OneSend 路径已有实机结果。普通启动最后报告
+函数名 arm_vm_init（没有 enter/returned 前缀），没有 QR；此前普通路径
+仅画文字，只有异常才生成 QR，不能把未出 QR 当作编码再次失败。
+
+reporter 3 从进入 arm_vm_init 前开始，正常路径也先生成阶段 QR 再继续；
+在其内部加入 10 个已验证直接调用的检查点，覆盖同一显示区，不累积色条。
+独立 16 KiB 栈、有界堆重置、实际 GOP 范围的临时映射、TTBR0/TCR 恢复。
+外层 arm_vm_init 和最终 set_mmu_ttb_alternate 使用原 LR 尾转移，最终
+切换前恢复原 VBAR；保留原 panic 入口，避免页表切换后依赖附加诊断段。
+到最后切换标记仅代表观察边界，不能认定该调用卡死。
+
+实际 AARCH64 正常路径 QR 无异常运行通过；3200×2000/640×480 两种
+实际绘制像素均被 ZXing 解回精确 752 字节帧。异常路径自然对齐回归、
+24 调用/私有栈/原 LR 与 VBAR 模型、401 字节受限修改、同版生产解析器、
+LZMA/FAT/签名读回通过。未重新 native/prelink，实机正常 QR 和原卡点待验。
+
+交付 out/kernel-live-qr-final/vendor_boot.img（644cfe58…）与匹配
+vbmeta.img（37de2e0f…）；沿用已有仅本地签名授权，其他22描述符/header/
+公钥不变，无设备操作。见 docs/KERNEL_LIVE_QR.md 与构建证据
+kernel-live-qr-build.json。

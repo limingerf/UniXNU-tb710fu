@@ -70,24 +70,36 @@ diag_init_message:
 
 .global diag_live_call
 diag_live_call:
-  stp x0,x1,[sp,#-96]!
+  stp x0,x1,[sp,#-128]!
   stp x2,x3,[sp,#16]
   stp x4,x5,[sp,#32]
   stp x6,x7,[sp,#48]
   stp x18,x30,[sp,#64]
+  stp x19,x20,[sp,#80]
   mrs x9,nzcv
-  str x9,[sp,#80]
+  stp x9,x8,[sp,#96]
+  adrp x9,diag_live_inputs
+  add x9,x9,:lo12:diag_live_inputs
+  stp x0,x1,[x9]
+  add x10,sp,#128
+  str x10,[x9,#16]
+  mov x19,sp
+  adrp x9,diag_stack_end
+  add x9,x9,:lo12:diag_stack_end
+  mov sp,x9
   mov x1,x17
   adrp x0,diag_state
   add x0,x0,:lo12:diag_state
   bl diag_live_text
-  ldr x9,[sp,#80]
+  mov sp,x19
+  ldp x9,x8,[sp,#96]
   msr nzcv,x9
+  ldp x19,x20,[sp,#80]
   ldp x18,x30,[sp,#64]
   ldp x6,x7,[sp,#48]
   ldp x4,x5,[sp,#32]
   ldp x2,x3,[sp,#16]
-  ldp x0,x1,[sp],#96
+  ldp x0,x1,[sp],#128
   ret
 
 diag_exception:

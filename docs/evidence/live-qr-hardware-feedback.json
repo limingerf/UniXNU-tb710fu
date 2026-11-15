@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-16",
+  "source": "user message transcription, no new photo supplied",
+  "tested_pair": {
+    "vendor_boot_sha256": "f8688874dede5c2a74478b457a6d9f8f32ca3118b6fc30b714560964c1301175",
+    "vbmeta_sha256": "eb126c615e094c598b704b75d7c5bb2c7bf1a473e614ff940421401320a574d2",
+    "identity_limit": "Latest delivered pair; flashed bytes not independently read from device"
+  },
+  "selftest": {
+    "result": "user scanned OneSend QR and supplied decoded body",
+    "reporter": 2,
+    "build": "cc690c9a",
+    "esr": "00000000f200b711",
+    "far": "0000000000000000",
+    "elr": "fffffff00f8280bc",
+    "sp": "fffffff00f818000",
+    "lr": "fffffff00c28f844",
+    "spsr": "00000000620003c4",
+    "sctlr": "00000000fc54799d",
+    "x0": "fffffff00f8b8000",
+    "x1": "00000000d5196000",
+    "x8": "00000000000001e0",
+    "x9": "0000000060000000",
+    "fp": "00000000a764b150",
+    "x19": "fffffff00c28f844",
+    "x20": "00000008c88b8000",
+    "interpretation": "Reporter alignment repair and selftest QR/OneSend path hardware-confirmed; not kernel boot acceptance"
+  },
+  "normal_path": {
+    "last_function_reported": "arm_vm_init",
+    "enter_or_return_prefix": "not supplied",
+    "qr": "not displayed",
+    "interpretation": "Existing normal path paints text only and waits for an exception before QR. The last function name alone does not identify a precise fault or prove a synchronous exception."
+  },
+  "device_operations_by_agent": false
+}
