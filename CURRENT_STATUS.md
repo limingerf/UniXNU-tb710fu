@@ -287,3 +287,8 @@ out/kernel-report-final/vendor_boot.img（77af03cd…）及vbmeta.img（8edf1237
 沿用已有仅本地签名授权签出。签名与引用通过，其余22描述符/header/公钥不变。
 指令模型、同版生产解析器、变更范围、LZMA/FAT/签名读回通过；独立ZXing将
 四类fixture二维码解回完整OS帧，CRC正确。实机报告和扫码待验，未操作设备。
+
+独立诊断源云编译 run43744001120 success（源018a7d7a…），产物及源码身份已复核。
+之前43743753427的AARCH64对象编译通过，失败于macOS主机测试的ELF段名；已仅修
+host-test分支并证实freestanding对象逐字节不变，不是XNU编译失败。
+本地签名镜像仍为77af03cd…/8edf1237…，没有新设备操作。

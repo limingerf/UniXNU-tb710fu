@@ -244,5 +244,65 @@
     "conclusion": "failure",
     "actual_failure": "macOS host-test rejects ELF .data.state attribute; AARCH64 object compilation already passed",
     "diagnosed_before_retry": true
-  }
+  },
+  "cloud_source_check": {
+    "run_id": 43744001120,
+    "url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43744001120",
+    "source_commit": "018a7d7a94a94ec53f9b927621e9252c40124f83",
+    "conclusion": "success",
+    "artifact": {
+      "id": 14173262617,
+      "name": "tb710fu-early-report-43744001120",
+      "zip_sha256": "7a9938da2e62b557f3d84fb0031cb452546a89a843291d305b9d8a354fd8515a",
+      "expires_at": "2026-11-18T17:58:15Z"
+    },
+    "cloud_result": {
+      "stage": "source-only-reporter-compiled-and-host-tested",
+      "device_source_commit": "018a7d7a94a94ec53f9b927621e9252c40124f83",
+      "compiler": "Homebrew clang version 23.1.4",
+      "qr_source": {
+        "repository": "microsoft/mu_plus",
+        "commit": "b8d46c71610318e36a661819e1e3c0b8bdda413a",
+        "files": [
+          {
+            "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.inf",
+            "sha256": "79c46eb751f2fd53bd6c8521df99af1f2be0e9590cfc8af665e6f7f0bb151bd4"
+          },
+          {
+            "path": "MsGraphicsPkg/Include/Library/QrEncoderLib.h",
+            "sha256": "96b2e3c1a0b5271e2cf97bc48f33839a9a6b9535d9d37700bce2b4c7d3ee56f5"
+          },
+          {
+            "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c",
+            "sha256": "055d446e6a75f9ea687cf3561ae933d266a6e48acda9c905edf2b62dea1f2d2a"
+          },
+          {
+            "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c",
+            "sha256": "125f1bda27f84d2b4a71a4b86d9364daff47b6aa7b0f2dfdc1bc0a309cc6c15a"
+          },
+          {
+            "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.h",
+            "sha256": "2ad084b975448abaadd3ce4e6037c83201677a447c6a3845346503d7041c6bdf"
+          }
+        ]
+      },
+      "kernel_rebuilt": false,
+      "device_operations": false,
+      "keys_used": false,
+      "hardware_verified": false
+    },
+    "host_transport": {
+      "result": "PASS",
+      "report_bytes": 392,
+      "envelope_bytes": 451,
+      "frame_bytes": 752,
+      "crc32_checks": "frame/envelope/body PASS",
+      "qr_status": 0,
+      "heap_bytes": 139488,
+      "limits": "host C + unchanged QR encoder; not a real CPU fault"
+    },
+    "limits": "AARCH64 reporter/QR source objects and host test only; delivered full fileset locally prepared and signed separately"
+  },
+  "local_reporter_source_commit": "26b38328c206bf8cdbc5fd3f802d3960d87ac083",
+  "current_source_compatibility": "018a7d7a94a94ec53f9b927621e9252c40124f83 emits identical freestanding Report.o; host Mach-O branch only differs"
 }

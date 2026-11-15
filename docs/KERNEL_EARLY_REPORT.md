@@ -90,3 +90,16 @@ panic 入口也仅为报告而替换。主动 BRK 只替换核实过的首个 PE
 异常或主动检查点才会出报告，普通死循环不会自动产生异常。
 独立云工作流 early-report.yml 只编译诊断源和测试传输，不重新native/prelink、
 不使用密钥。机器记录见 [kernel-early-report-build.json](evidence/kernel-early-report-build.json)。
+
+## 云端源编译复验
+
+[run43744001120](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43744001120)
+成功，源提交018a7d7a94a94ec53f9b927621e9252c40124f83，artifact为
+tb710fu-early-report-43744001120。实际AARCH64对象和主机二维码/CRC传输测试通过，
+没有把独立对象编译当成整个XNU的native/prelink构建。
+
+前轮43743753427的AARCH64对象已编译，失败在macOS主机动态库测试不能使用ELF
+段名.data.state。诊断清楚后仅对TB_REPORT_HOST_TEST采用本机默认data段。
+修改前后实际freestanding Report.o逐字节一致，SHA-256为
+9b5a4df34cfa7e6ab6fb6904a69830685dd35cd354d1e23b6641baf2799a18d2，
+因此交付签名镜像未变化。此失败不是XNU编译失败。
