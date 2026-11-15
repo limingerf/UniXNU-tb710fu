@@ -1,0 +1,48 @@
+## @file
+#  Tb710fuSlotSwitch: set the Android A/B active slot from the UEFI menu.
+#
+#  Reads every BlockIo, finds GPT disks, and flips the AB_PARTITION_ATTR_SLOT_ACTIVE
+#  bit (Attributes bit 0) on each A/B partition entry (boot/recovery/vendor_boot/
+#  vbmeta/init_boot/dtbo/uefi...) so the ABL boots the requested slot next.
+#
+#  This doubles as the UFS probe: if UFSDxe has published BlockIo the switch
+#  succeeds and the menu can hand off to Android/TWRP; if not, no GPT is found
+#  and the app reports the failure instead of a black screen.
+#
+#  Copyright (c) 2026, TB710FU port contributors.
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION    = 0x0001001B
+  BASE_NAME      = Tb710fuSlotSwitch
+  FILE_GUID      = A6C8E2D1-9F3B-4E7A-8C5D-1B2A3C4D5E6F
+  MODULE_TYPE    = UEFI_APPLICATION
+  VERSION_STRING = 1.0
+  ENTRY_POINT    = SlotSwitchEntry
+
+[Sources]
+  SlotSwitch.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  DebugLib
+  MemoryAllocationLib
+  PrintLib
+  UefiApplicationEntryPoint
+  UefiBootServicesTableLib
+  UefiLib
+
+[Protocols]
+  gEfiBlockIoProtocolGuid          ## CONSUMES
+  gEfiDiskIoProtocolGuid           ## CONSUMES
+  gEfiLoadedImageProtocolGuid      ## CONSUMES
+
+[Guids]
+  gEfiPartTypeSystemPartGuid
+  gEfiPartTypeUnusedGuid

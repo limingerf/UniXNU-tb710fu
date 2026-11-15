@@ -79,13 +79,64 @@ macOS 27 profile 在设备补丁之前会先应用 **55 个上游 xnu-12377 补�
 - Android 侧 `/sys/fs/pstore/console-ramoops-0` 是否真的出现
 - 内核到底停在哪一步（这正是本次要查的）
 
-## 交付三件套（ramoops 内核版）
+实机首轮结果：pstore 为空，已定位为 `ecc` 不匹配并修复（见下一节）。
+TWRP 读侧能力本身已实测具备。
 
-| 文件 | SHA-256 | 变化 |
+## 首次实机：pstore 为空（已定位为 ecc 不匹配）
+
+刷入带 ramoops 的三件套、跑过 XNU 后进 TWRP，`/sys/fs/pstore/` 却是空的。
+用户指出「换了安卓 GKI 内核、TWRP 复用该内核」是同类原因，实测证实：
+
+**TWRP 内核具备完整读侧能力**（不是驱动缺失）：
+
+| 检查 | 值 |
+| --- | --- |
+| 内核 | `6.1.177-android14-11-g4056c236e4c84-ab10021739-4k` |
+| pstore 挂载 | `pstore on /sys/fs/pstore type pstore (rw)` |
+| 内核配置 | `CONFIG_PSTORE=y` / `CONFIG_PSTORE_RAM=y` / `CONFIG_PSTORE_CONSOLE=y` |
+| 模块 | `/sys/module/ramoops`、`/sys/module/pstore` 均存在 |
+| `/sys/module/pstore/parameters/backend` | `ramoops` |
+| live FDT | `ramoops_region 0xac300000+0x100000`，`console-size=0x40000` |
+| `/proc/iomem` | `ac300000-ac3fffff : reserved` |
+
+**关键差异在 `/sys/module/ramoops/parameters/`**：
+
+| 参数 | GKI 实际值 | 我们 XNU 写入的值 |
 | --- | --- | --- |
-| `out/lzma-keys/tb710fu-boot-uefi-lzma.signed.img` | `6bcc95a31c5bf070fc84958531414689f7809d254879ab041a92fff063f8f2e4` | 未变（FD 仍 `f6c0514e…`） |
-| `out/lzma-keys/vendor_boot.signed.img` | `72d8577c6665784cf3c2959cee9b7d3599c4cf48ec0f94b3428f92f7a935bc1b` | **变了**（新内核 + ramoops args） |
-| `out/lzma-keys/vbmeta.img` | `c210d71134dcd245b11cb7a6c2c69cbb781180c13fbac75f1e1f8e4fedb8742f` | **变了**（vendor_boot hash） |
+| `ecc` | **0** | **16**（`ramoops_ecc=16`） |
+| `mem_address` | `0xAC300000` | console 子区 `0xAC340000` ✅ |
+| `mem_size` | `0x100000` | `0x40000`（单个 console zone）✅ |
+| `record_size` | `0x40000` | — |
+| `console_size` | `0x40000` | `0x40000` ✅ |
+| `pmsg_size` | `0x80000` | — |
+
+FDT 里虽写了 `ecc-size = <0x10>`，但**这个 GKI 内核运行时 `ecc=0`**。
+XNU 按 ecc=16 生成带 Reed-Solomon 校验的 zone，Linux `persistent_ram`
+用 ecc=0 解析 → 头校验失败 → **判定无效并清零**，于是 pstore 空。
+
+地址语义核对无误：Linux 的 console prz 在 `mem_address + record_size`
+即 `0xAC340000`，与 `ramoops=0xac340000` 一致；`ramoops_size=0x40000`
+与 `console_size` 一致。补丁的 `RAMOOPS_SIG = 0x43474244`（"DBGC"）也与
+Linux `PERSISTENT_RAM_SIG` 相同。`ecc=0` 时补丁跳过全部 parity 分支，
+`data_size = size - HDR_BYTES`，布局字节兼容。
+
+### 修复
+
+只改一个启动参数：`ramoops_ecc=16` → **`ramoops_ecc=0`**，与 GKI 一致。
+
+## 交付三件套（ecc=0，当前有效）
+
+> 旧的 `vendor_boot.signed.img` / `vbmeta.img` 因 AVB GUI 占用文件句柄而无法
+> 覆盖，故 ecc=0 版使用新文件名。两者内容不同，刷的时候别混用。
+
+| 文件 | SHA-256 | 说明 |
+| --- | --- | --- |
+| `out/lzma-keys/tb710fu-boot-uefi-lzma.signed.img` | `6bcc95a31c5bf070fc84958531414689f7809d254879ab041a92fff063f8f2e4` | 未变，无需刷（FD `f6c0514e…`） |
+| `out/lzma-keys/vendor_boot-ecc0.signed.img` | `836ca997d766dedfef0531f7283026b443d2227302148fdd107852e25354df15` | **刷这个** |
+| `out/lzma-keys/vbmeta-ecc0.img` | `3992de82a3a03584b0e03c43bd66060ef93684122bb8867c893ed6c45ea85331` | **刷这个** |
+
+vbmeta 的 vendor_boot digest `3cb25dab…` 与重算值一致；
+ecc=0 镜像集 14 项审计全 PASS（含 `ramoops_ecc=0` 参数断言）。
 
 内核产物链：
 
@@ -99,8 +150,8 @@ macOS 27 profile 在设备补丁之前会先应用 **55 个上游 xnu-12377 补�
 **只需刷两个镜像**（boot_b 未变）：
 
 ```
-fastboot flash vendor_boot_b out\lzma-keys\vendor_boot.signed.img
-fastboot flash vbmeta_b      out\lzma-keys\vbmeta.img
+fastboot flash vendor_boot_b out\lzma-keys\vendor_boot-ecc0.signed.img
+fastboot flash vbmeta_b      out\lzma-keys\vbmeta-ecc0.img
 fastboot --set-active=b
 ```
 
