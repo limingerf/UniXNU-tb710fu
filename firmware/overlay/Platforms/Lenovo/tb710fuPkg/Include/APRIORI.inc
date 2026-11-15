@@ -61,14 +61,14 @@ APRIORI DXE {
   # load order: IO accessors, clock services, then the host controller.
   # UFSDxe publishes the UFS BlockIo handles that PartitionDxe and FatDxe
   # above can then bind to when it arrives.
-  INF Binaries/giulia/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
-  INF Binaries/giulia/QcomPkg/Drivers/HWIODxe/HWIODxe.inf
-  INF Binaries/giulia/QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf
-  INF Binaries/giulia/QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf
-  INF Binaries/giulia/QcomPkg/Drivers/NpaDxe/NpaDxe.inf
-  INF Binaries/giulia/QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf
-  INF Binaries/giulia/QcomPkg/Drivers/ClockDxe/ClockDxe.inf
-  INF Binaries/giulia/QcomPkg/Drivers/UFSDxe/UFSDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/HWIODxe/HWIODxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/NpaDxe/NpaDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/ClockDxe/ClockDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/UFSDxe/UFSDxe.inf
 !endif
 
 }

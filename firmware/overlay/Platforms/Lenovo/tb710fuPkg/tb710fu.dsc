@@ -100,12 +100,12 @@
   # binaries under the firmware binary set, not sources, so the board package
   # only declares them for the volume. See Include/DXE.inc for the rationale
   # and the deliberately excluded 2026-11-11 black-screen set.
-  Binaries/giulia/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
-  Binaries/giulia/QcomPkg/Drivers/HWIODxe/HWIODxe.inf
-  Binaries/giulia/QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf
-  Binaries/giulia/QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf
-  Binaries/giulia/QcomPkg/Drivers/NpaDxe/NpaDxe.inf
-  Binaries/giulia/QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf
-  Binaries/giulia/QcomPkg/Drivers/ClockDxe/ClockDxe.inf
-  Binaries/giulia/QcomPkg/Drivers/UFSDxe/UFSDxe.inf
+  Binaries/tb710fu/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
+  Binaries/tb710fu/QcomPkg/Drivers/HWIODxe/HWIODxe.inf
+  Binaries/tb710fu/QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf
+  Binaries/tb710fu/QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf
+  Binaries/tb710fu/QcomPkg/Drivers/NpaDxe/NpaDxe.inf
+  Binaries/tb710fu/QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf
+  Binaries/tb710fu/QcomPkg/Drivers/ClockDxe/ClockDxe.inf
+  Binaries/tb710fu/QcomPkg/Drivers/UFSDxe/UFSDxe.inf
 !endif

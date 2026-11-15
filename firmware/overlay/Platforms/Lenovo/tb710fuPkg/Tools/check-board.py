@@ -94,20 +94,20 @@ def main():
 
     # The source-only baseline must not reference vendor binaries. The one reviewed
     # exception is the opt-in UFS publication chain behind TB710FU_ENABLE_UFS: those
-    # modules are the stock Qualcomm PE32 DXE drivers under Binaries/giulia and are
+    # modules are the stock Qualcomm PE32 DXE drivers under Binaries/tb710fu and are
     # gated so the default build is byte-for-byte the audited source-only volume.
     ufs_enabled = re.search(r'^\s*TB710FU_ENABLE_UFS\s*=\s*1\s*$', dsc, re.M) is not None
     if ufs_enabled:
         # Only these exact modules may appear, and only under the UFS gate.
         allowed_vendor = (
-            'Binaries/giulia/QcomPkg/Drivers/SmemDxe/SmemDxe.inf',
-            'Binaries/giulia/QcomPkg/Drivers/HWIODxe/HWIODxe.inf',
-            'Binaries/giulia/QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf',
-            'Binaries/giulia/QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf',
-            'Binaries/giulia/QcomPkg/Drivers/NpaDxe/NpaDxe.inf',
-            'Binaries/giulia/QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf',
-            'Binaries/giulia/QcomPkg/Drivers/ClockDxe/ClockDxe.inf',
-            'Binaries/giulia/QcomPkg/Drivers/UFSDxe/UFSDxe.inf',
+            'Binaries/tb710fu/QcomPkg/Drivers/SmemDxe/SmemDxe.inf',
+            'Binaries/tb710fu/QcomPkg/Drivers/HWIODxe/HWIODxe.inf',
+            'Binaries/tb710fu/QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf',
+            'Binaries/tb710fu/QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf',
+            'Binaries/tb710fu/QcomPkg/Drivers/NpaDxe/NpaDxe.inf',
+            'Binaries/tb710fu/QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf',
+            'Binaries/tb710fu/QcomPkg/Drivers/ClockDxe/ClockDxe.inf',
+            'Binaries/tb710fu/QcomPkg/Drivers/UFSDxe/UFSDxe.inf',
         )
         for path in allowed_vendor:
             require('INF ' + path in fv, 'UFS chain module missing from DXE/APRIORI: ' + path)

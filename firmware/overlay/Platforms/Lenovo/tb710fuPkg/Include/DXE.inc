@@ -77,12 +77,12 @@
   # Excluded on purpose (2026-11-11 black-screen set):
   #   DALSYSDxe, VcsDxe, GpiDxe, SPIDxe, I2CDxe, SdccDxe, DisplayDxe,
   #   CPRDxe, PIL/PILProxy, Tz, FeatureEnabler, Rsc.
-  INF Binaries/giulia/QcomPkg/Drivers/HWIODxe/HWIODxe.inf
-  INF Binaries/giulia/QcomPkg/Drivers/NpaDxe/NpaDxe.inf
-  INF Binaries/giulia/QcomPkg/Drivers/ClockDxe/ClockDxe.inf
-  INF Binaries/giulia/QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf
-  INF Binaries/giulia/QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf
-  INF Binaries/giulia/QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf
-  INF Binaries/giulia/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
-  INF Binaries/giulia/QcomPkg/Drivers/UFSDxe/UFSDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/HWIODxe/HWIODxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/NpaDxe/NpaDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/ClockDxe/ClockDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
+  INF Binaries/tb710fu/QcomPkg/Drivers/UFSDxe/UFSDxe.inf
 !endif

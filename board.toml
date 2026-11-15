@@ -48,6 +48,10 @@ packages = [
   "{uefi}/Silicon/Qualcomm", "{uefi}/Silicon/Silicium",
   "{uefi}/Silicium-ACPI", "{uefi}/Silicium-ACPI/Platforms/Lenovo",
   "{uefi}/Silicium-ACPI/Silicon/Qualcomm",
+  # Board-named view of the published Qualcomm module set. tools/ci_firmware.py
+  # --ufs creates Binaries/tb710fu from the tracked Binaries/giulia tree before
+  # the build; the default gate never references it.
+  "{uefi}/Binaries/tb710fu",
 ]
 
 [firmware.defines]
