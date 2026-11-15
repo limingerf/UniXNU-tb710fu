@@ -29,10 +29,10 @@ kernel window is allocated with AllocateMaxAddress so its base stays under
  1 file changed
 
 diff --git a/DarwinBootPkg/Driver/DarwinBoot.c b/DarwinBootPkg/Driver/DarwinBoot.c
-index f0f7650..e85ea6b 100644
+index f0f7650..451a920 100644
 --- a/DarwinBootPkg/Driver/DarwinBoot.c
 +++ b/DarwinBootPkg/Driver/DarwinBoot.c
-@@ -55,6 +55,130 @@ typedef struct {
+@@ -55,6 +55,127 @@ typedef struct {
    UINT64  Used;
  } LAYOUT;
  
@@ -43,7 +43,7 @@ index f0f7650..e85ea6b 100644
 +// followed by such a dictionary, so the probe is unambiguous.
 +//
 +// The decoder comes from MdeModulePkg LzmaCustomDecompressLib, linked as a NULL
-+// library by DarwinBoot.inf. Its two entry points are declared here because the
++// library by the board DSC. Its two entry points are declared here because the
 +// library ships no public header: LzmaDecompressLibInternal.h is internal. The
 +// DXE core's EFI_DECOMPRESS_PROTOCOL is NOT LZMA (it uses UefiDecompressLib),
 +// so it must not be used for this.
@@ -98,14 +98,11 @@ index f0f7650..e85ea6b 100644
 +  OUT UINTN  *ImageSize
 +  )
 +{
-+  RETURN_STATUS          RStatus;
-+  EFI_STATUS             Status;
-+  UINT32                 DestinationSize;
-+  UINT32                 ScratchSize;
-+  VOID                   *Scratch;
-+  VOID                   *Destination;
-+  EFI_PHYSICAL_ADDRESS   Address;
-+  UINTN                  Pages;
++  RETURN_STATUS  RStatus;
++  UINT32         DestinationSize;
++  UINT32         ScratchSize;
++  VOID           *Scratch;
++  VOID           *Destination;
 +
 +  *Image     = NULL;
 +  *ImageSize = 0;
@@ -125,22 +122,22 @@ index f0f7650..e85ea6b 100644
 +  }
 +
 +  //
-+  // DarwinBoot maps the kernel window below 4 GiB, so this has to be an
-+  // address-constrained allocation rather than a plain pool allocation.
++  // Pool, not pages: Boot() releases the kernel image with FreePool() right
++  // after it is copied into the window (DarwinBoot.c:1025), and freeing a
++  // page allocation through the pool interface trips DxeCore's ASSERT and
++  // dead-loops the machine. ReadFile() also uses AllocatePool for this image,
++  // so the same allocator keeps the ownership rules consistent.
 +  //
-+  Pages   = EFI_SIZE_TO_PAGES (DestinationSize);
-+  Address = 0xFFFFFFFF;
-+  Status  = gBS->AllocatePages (AllocateMaxAddress, EfiLoaderData, Pages, &Address);
-+  if (EFI_ERROR (Status)) {
++  Destination = AllocatePool (DestinationSize);
++  if (Destination == NULL) {
 +    return EFI_OUT_OF_RESOURCES;
 +  }
 +
-+  Destination = (VOID *)(UINTN)Address;
-+  Scratch     = NULL;
++  Scratch = NULL;
 +  if (ScratchSize != 0) {
 +    Scratch = AllocatePool (ScratchSize);
 +    if (Scratch == NULL) {
-+      gBS->FreePages (Address, Pages);
++      FreePool (Destination);
 +      return EFI_OUT_OF_RESOURCES;
 +    }
 +  }
@@ -150,7 +147,7 @@ index f0f7650..e85ea6b 100644
 +    FreePool (Scratch);
 +  }
 +  if (RETURN_ERROR (RStatus)) {
-+    gBS->FreePages (Address, Pages);
++    FreePool (Destination);
 +    return EFI_COMPROMISED_DATA;
 +  }
 +
@@ -163,7 +160,7 @@ index f0f7650..e85ea6b 100644
  STATIC EFI_HANDLE  mImage;
  UINT64 EFIAPI DarwinCurrentEl (VOID);
  VOID EFIAPI DarwinEnter (UINT64 Args, UINT64 Entry, UINT64 Memory, UINT64 Size, UINT64 VideoBase, UINT64 VideoBytes);
-@@ -824,6 +948,8 @@ Boot (
+@@ -824,6 +945,8 @@ Boot (
    UINTN                           OutsideOffset;
    UINTN                           OutsideCapacity;
    UINTN                           OutsideCount;
@@ -172,7 +169,7 @@ index f0f7650..e85ea6b 100644
    UINT64                          OutsideBytes;
    DARWIN_LOADER_INPUT             Inputs[DARWIN_INPUT_COUNT];
  
-@@ -870,6 +996,29 @@ Boot (
+@@ -870,6 +993,29 @@ Boot (
    if (EFI_ERROR (Status)) { return Status; }
    Status = ReadFile (Root, Request->KernelPath, KERNEL_LIMIT, &Image, &ImageSize);
    if (EFI_ERROR (Status)) { goto Fail; }
