@@ -88,14 +88,15 @@ LZMA 压缩后都是 ~23 MiB。
 `UniXNURamDiskDxe` 展开的做法，见
 `docs/zh/devices/r11-appleipodtouch4.md:450`）。
 
-## 因此复现需要什么
+## 因此复现需要什么（已实现）
 
-1. **LZMA 解压实现**（DXE 侧）。**EDK II 自带且基线已在用**：
-   `MdeModulePkg/Library/LzmaCustomDecompressLib`，在
-   `Silicon/Silicium/SiliciumPkg/SiliciumPkg.dsc.inc:385` 已作为 NULL 库注册。
-   所以解码能力**已经在固件里**，不需要新引入库。
+1. **LZMA 解压实现**（DXE 侧）。**EDK II 自带**：
+   `MdeModulePkg/Library/LzmaCustomDecompressLib`。它是 `LIBRARY_CLASS = NULL`
+   的 NULL 库，必须在组件的 `[LibraryClasses]` 里以
+   `NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf`
+   显式链接（只有 SEC 组件默认链接了它，DarwinBoot 原先没有）。
 
-   可用 API（`LzmaDecompressLibInternal.h`）：
+   可用 API（全局 EFIAPI 函数，库无公开头，需在调用方声明）：
 
    ```c
    RETURN_STATUS EFIAPI LzmaUefiDecompressGetInfo(
@@ -107,12 +108,34 @@ LZMA 压缩后都是 ~23 MiB。
      IN OUT VOID *Destination, IN OUT VOID *Scratch);
    ```
 
-2. **解压时机**：在 `kernel.macho` 被 DarwinBoot 读取**之前**把
-   `kernel-ufs.lzma` 展开到内存。两种可行位置：
-   - UniXNU 菜单项加载前：新增一个"展开到内存卷"的步骤
-   - `UniXNURamDiskDxe` 里：照 r11 的做法，把压缩流展开进内核窗口
-3. **容量核算**：解压产物 137 MiB **不能写回 FAT**（加压缩包 23 MiB 会超），
-   必须**直接解压到 RAM**（r11 正是如此）。
+   关键点：`ScratchSize` 固定为 `SCRATCH_BUFFER_REQUEST_SIZE = 64 KiB`，
+   **与字典大小无关**（不同于先前的担心）。
+
+   **重要更正**：不能用 `EFI_DECOMPRESS_PROTOCOL`。DXE core 安装它时用
+   `UefiDecompressLib`（Tiano/EFI 压缩），**不是 LZMA**。喂 LZMA 流会失败。
+
+2. **解压时机**：在 `kernel.macho` 被 DarwinBoot `ReadFile` 读取之后、
+   `ParseKernel` 之前，用 `IsLzmaKernel()`（探测 0x5D 属性字节）判断，
+   是压缩流就 `LzmaUefiDecompress` 展开到 `AllocateMaxAddress` 的窗口，
+   再走原有 `ParseKernel`。普通 Mach-O 完全不受影响。
+
+3. **容量核算**：解压产物 137 MiB 直接进 RAM，**不写回 FAT**，
+   因此 vendor_boot 里只需 23 MiB 的 `kernel-ufs.lzma`。
+
+### 已落地
+
+`firmware/patches/0002-darwinboot-lzma-kernel.patch`（DarwinBoot.c + DarwinBoot.inf）：
+
+- DarwinBoot.c：extern 声明两个 LZMA 函数；`IsLzmaKernel` / `ExpandLzmaKernel`
+  两个 STATIC helper；在 `ReadFile` 后插入解压分支。
+- DarwinBoot.inf：`NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/...`
+  加入 `[LibraryClasses]`。
+
+`tools/ci_firmware.py --lzma`：`defconfig` 后 `git submodule update --init
+drivers/DarwinBoot`，应用补丁，构建后在 FD 里核对 DarwinBoot 的
+`1b64af87-8415-4b57-9b16-680d70913b9f` GUID 仍在。
+
+`.github/workflows/uefi-lzma.yml` 在 macos-26 runner 上跑该变体。
 
 ## 与 UFS 路线的对比
 

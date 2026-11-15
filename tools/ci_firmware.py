@@ -150,6 +150,14 @@ def main():
         for name in UFS_REQUIRED:
             if not (board_view / name).is_file():
                 raise SystemExit('UFS chain INF missing from the published set: ' + name)
+    else:
+        # board.toml lists {uefi}/Binaries/tb710fu in [firmware.packages], but only
+        # the --ufs build materialises it. EDK2 errors with 'One Path in
+        # PACKAGES_PATH doesn't exist' for a missing directory, so create an empty
+        # one for the non-UFS variants (baseline and --lzma). It contributes no
+        # modules because the gate in tb710fu.dsc is off.
+        board_view = uefi / 'Binaries/tb710fu'
+        board_view.mkdir(parents=True, exist_ok=True)
     command(driver + ['build', 'firmware', '--uefi', str(uefi), '--target', 'DEBUG', '-j', '3'] + common, source, output / 'build-firmware.log')
     fd = uefi / 'Build/tb710fuPkg/DEBUG_CLANGPDB/FV/SILICIUM_UEFI.fd'
     data = fd.read_bytes()
