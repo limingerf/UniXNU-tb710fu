@@ -40,10 +40,11 @@ jobs:
           # /usr/bin/aea and hdiutil ship with macOS. The `ipsw` tool fetches the
           # per-archive key from the URL in the AEA header (ipsw.py:decrypt_aea).
           brew install blacktop/tap/ipsw
-          command -v /usr/bin/aea
-          command -v hdiutil
-          command -v ipsw
-          ipsw --version
+          # Only presence is checked here: `ipsw` has no --version flag, and the
+          # actual `ipsw fw aea --key` call is exercised by the build itself.
+          test -x /usr/bin/aea
+          test -x /usr/bin/hdiutil
+          test -x "$(command -v ipsw)"
       - name: Dry-run the userdata build (IPSW identity, members, capacity)
         env:
           UNIXNU_UNIQUE_CHIP_ID: ${{ inputs.unique_chip_id }}
