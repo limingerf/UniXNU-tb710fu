@@ -1,0 +1,34 @@
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = Tb710fuFastbootPlatformDxe
+  FILE_GUID                      = D7B01C0E-9A71-4F11-8B3E-5C5F6D7E8F90
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = Tb710fuFastbootPlatformEntry
+
+[Sources]
+  Tb710fuFastbootPlatform.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  EmbeddedPkg/EmbeddedPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  DebugLib
+  MemoryAllocationLib
+  PrintLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+  UefiLib
+  UefiRuntimeServicesTableLib
+
+[Protocols]
+  gAndroidFastbootPlatformProtocolGuid            ## PRODUCES
+
+[Guids]
+  gEfiGlobalVariableGuid
+
+[Depex]
+  TRUE
