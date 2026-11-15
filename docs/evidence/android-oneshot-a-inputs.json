@@ -1,0 +1,66 @@
+{
+  "stage": "read-only-current-A-input-inspection",
+  "observed_date": "2026-11-15",
+  "observed_slot": "_a",
+  "observed_mode": "recovery",
+  "running_kernel": "6.1.177-android14-11-g4056c236e4c84-ab10021739-4k",
+  "inputs": {
+    "boot_a": {
+      "magic": "414e44524f494421",
+      "kernel_size": 37474368,
+      "ramdisk_size": 0,
+      "header_version": 4,
+      "bytes": 37482496,
+      "sha256": "d0a551d0b43ae9f309aa2013ce25f32ae8a2e6e22b333abc113d188cb12d3a5c",
+      "read_only": true
+    },
+    "vendor_boot_a": {
+      "magic": "564e4452424f4f54",
+      "header_version": 4,
+      "page_size": 4096,
+      "ramdisk_size": 9121857,
+      "dtb_size": 3243613,
+      "bytes": 12378265,
+      "sha256": "06ff302a5ea90cb69637bf7df82b96e3c26a0d73a687249ffd83807c2c40f415",
+      "read_only": true
+    },
+    "init_boot_a": {
+      "magic": "414e44524f494421",
+      "kernel_size": 0,
+      "ramdisk_size": 2095995,
+      "header_version": 4,
+      "bytes": 2101248,
+      "sha256": "d8517bf0cfa5bcae147af6f96996083fde0aa3b0a5bc1c2bf5870e4ce05c9fb8",
+      "read_only": true
+    },
+    "recovery_a": {
+      "magic": "414e44524f494421",
+      "kernel_size": 0,
+      "ramdisk_size": 83281813,
+      "header_version": 4,
+      "bytes": 83288064,
+      "sha256": "cf0d1414eff1894de4a6ced39c44749c897b0ba3c13f2387be2bbf65d620b223",
+      "read_only": true
+    },
+    "dtbo_a": {
+      "magic": "d7b7ab1e00b11489",
+      "bytes": 11605129,
+      "sha256": "25260f1c393addee4e6a3973756bfaab7ed1e8c5a43b2da339bef04b11b57859",
+      "read_only": true
+    }
+  },
+  "kernel": {
+    "bytes": 37474368,
+    "sha256": "5522885d29a9de0734cac7c5cb8bda6627b0534d42054bf783402771f4956981",
+    "arm64_image_magic": "ARMd",
+    "pe_machine": "0xaa64",
+    "pe_subsystem": 10,
+    "version_string": "Linux version 6.1.177-android14-11-g4056c236e4c84-ab10021739-4k (build-user@build-host) (Android (10087095, +pgo, +bolt, +lto, -mlgo, based on r487747c) clang version 17.0.2 (https://android.googlesource.com/toolchain/llvm-project d9f"
+  },
+  "scope": "Header-declared startup payloads only, not full partition backups or AVB footer verification",
+  "device_mutations": false,
+  "gpt_writes": false,
+  "slot_changes": false,
+  "uefi_chainload_verified": false,
+  "binary_inputs_committed": false
+}

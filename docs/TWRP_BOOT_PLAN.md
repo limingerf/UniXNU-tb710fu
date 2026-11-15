@@ -1,5 +1,12 @@
 # UEFI 启动 TWRP：完整方案与现状 · 2026-11-15
 
+> 后续核对（2026-11-15）：用户确认当前 A 槽可启动 Android/TWRP，已从 TWRP
+> 只读提取当前 A 槽启动输入。`boot_a` 中确有 37,474,368 字节 Linux 内核，
+> 带 AARCH64 EFI stub；下文“缺少 Linux 内核”“必须重新编译”“唯一可行路径”
+> 仅反映旧备份分析，已被当前输入证据取代。见
+> [当前 A 槽输入](evidence/android-oneshot-a-inputs.json) 和
+> [当前实现范围](UEFI_LOG_VIEWER.md)。主线 Linux 也不能直接替代 GKI 运行既有 TWRP 模块。
+
 ## 核心因果（已实机确认）
 
 TWRP 的 recovery 分区**不含内核**（`BOARD_EXCLUDE_KERNEL_FROM_RECOVERY_IMAGE := true`），

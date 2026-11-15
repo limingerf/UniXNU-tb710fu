@@ -56,7 +56,24 @@ Debian GCC 严格 C11 + ASan/UBSan 通过；云 CI 执行同一测试后构建�
 slot suffix、DTB/DTBO、vendor/recovery/init ramdisk；正常重启继续由 B 启动 UEFI。
 `set-active=a` 不是一次性操作，不作为此功能的替代；也不写未经核实的 GPT 位。
 
-当前已构建的 UFS 变体仍缺实机 BlockIo 读取证据；本次未读取当前 A 槽启动镜像，
-因此 EFI stub、压缩格式、ramdisk 组合及 AVB/ABL 交接尚未验证。
+当前已构建的 UFS 变体仍缺实机 BlockIo 读取证据；已从当前 TWRP 只读提取 A 槽 header 声明的启动输入。A 槽内核 37,474,368
+字节，为带 ARM64 Image 头的 AARCH64 EFI 应用（PE machine=0xaa64、subsystem=10），
+不需重新编译 Linux。recovery ramdisk 为独立的 LZ4 legacy 流；DTB/DTBO、
+vendor/init/recovery ramdisk 组合及 AVB/ABL 交接仍未验证。输入哈希见
+[当前 A 槽输入](evidence/android-oneshot-a-inputs.json)。
 不能只把 `boot_a.img` 交给普通 EFI `LoadImage`，也不能只添加菜单便声称可启动。
-本轮不做设备重启、刷写、签名或槽位变更。
+本轮只读取启动输入，不做设备重启、刷写、签名或槽位变更。
+
+## 云构建交付
+
+[run43722058056](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43722058056)
+成功，构建源 `825a8560a237dc2de1426b207a3ed8ca00842338`。
+artifact 为 `tb710fu-uefi-lzma-43722058056`，含 `SILICIUM_UEFI.fd` 和测试/构建报告。
+FD SHA-256：`6a6ff288ddf48d1576cff991fb99b6feb90b4298c442f26eaf3442ee05a60f1e`。
+本地复验两个真实 FV、11 个必需模块和全部 23 个 overlay 哈希通过。
+本地文件保存在 `.local/uefi-log-viewer-43722058056/`。
+
+验收时核对 FD 身份：当前 ecc=0 内核应选 Tools → Last XNU log (ramoops ECC 0)，
+检查页尾 XNU 横幅/停点、翻页和返回。若头无效，记录状态栏原始值；
+不得把一次无效头直接判为 ECC 根因，也不要清零原始区域后再取证。
+当前 FD 需要按现有载体流程打包才可安装，本次没有签名、刷写或重启设备。

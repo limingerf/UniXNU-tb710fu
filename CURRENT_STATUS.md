@@ -159,6 +159,16 @@ GCC/Clang 严格 C11、GCC ASan/UBSan 主机解码测试、40 项内存图和 11
 云构建与实机结果分别记录，不把源代码/主机测试等同于 DDR 保留或屏显成功。
 详见 [UEFI 日志查看器](docs/UEFI_LOG_VIEWER.md)。
 
-本轮未操作设备。USB/ADB/fastbootd 与一次性 A 槽引导尚未实现；UFS 读取和
-当前 A 槽启动镜像格式是后续前置条件。普通 set-active 不满足下次回 UEFI 的要求。
+本轮从已连接的 TWRP 只读核对 A 槽启动输入，未变更设备。A 槽现有 Linux
+内核已带 AARCH64 EFI stub，无需重新编译 Linux；输入哈希见
+`docs/evidence/android-oneshot-a-inputs.json`。USB/ADB/fastbootd 与一次性 A 槽引导
+尚未实现；UFS 读取、DTB 和 ramdisk 组合是后续前置条件。普通 set-active 不满足下次回 UEFI 的要求。
 空 pstore 曾被归因于 ECC 头校验失败；已更正为未证实，ECC=0 时参考实现跳过该校验。
+
+日志查看器云构建 [run43722058056](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43722058056)
+成功，实际构建源 `825a8560a237dc2de1426b207a3ed8ca00842338`；artifact
+`tb710fu-uefi-lzma-43722058056`，FD 3,145,728 字节，SHA-256
+`6a6ff288ddf48d1576cff991fb99b6feb90b4298c442f26eaf3442ee05a60f1e`。
+本地独立复验：两个真实 FV、11 个必需模块 GUID、23 个 overlay 文件哈希全部匹配。
+机器记录：`docs/evidence/uefi-log-viewer-build.json`。本版是保留 LZMA 加载路径的
+可测试 FD，未签名、未刷入；日志查看器实机状态仍未验证。
