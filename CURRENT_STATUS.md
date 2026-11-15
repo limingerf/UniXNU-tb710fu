@@ -1,10 +1,10 @@
 # Current status · 2026-11-15
 
-> 最新实机反馈（2026-11-16）：reporter 2 自检已显示并成功扫码，严格对齐
-> 修复的报告/OneSend路径得到实机确认。普通启动最后函数名为 arm_vm_init
-> （enter/returned 前缀未提供），无异常报告。新版把阶段 QR 接入正常路径，
-> 细分切换前 10 个 VM 调用，切换时沿原 LR 退出诊断。新版实机待验。
-> 见 [正常路径阶段二维码](docs/KERNEL_LIVE_QR.md)。
+> 最新实机反馈（2026-11-16）：普通路径到 vm/set_mmu_ttb_alternate#1，
+> 有静态 QR 但 OneSend 未收件。实际接收源码重放证明单个最终帧可完成，
+> 也确认先扫较早阶段会锁定旧会话。本版只发送最后一份固定报告，500ms
+> 轮播，并新增明确暂停的持续导出菜单；普通启动约8秒后继续。
+> 轮播/收件的新版实机待验，原内核卡点未确认。见 [轮播导出](docs/KERNEL_ANIMATED_QR.md)。
 
 这是当前工程的单一状态入口。编译、静态加载检查和实机运行分开记录。
 
@@ -366,3 +366,28 @@ kernel-live-qr-build.json。
 67893c542757b1b2e40c97c30903b63bb020b013；四份 AARCH64 ELF 对象与
 重复帧主机测试通过。下载 artifact SHA-256 与 GitHub digest 完全一致，
 源码提交/QR固定来源匹配。此检查不是重新 native/prelink 或实机验收。
+
+
+## 实机到 VM 切换边界，固定文件轮播导出 · 2026-11-16
+
+照片及用户补充确认最后阶段 vm/set_mmu_ttb_alternate#1，有静态码但
+OneSend 收件不完成；该阶段是既有观察边界，不能认定真实故障位置。
+固定 receiver 39e95ce5 的 OpticalReceiver 与 decodeTransferFile 对
+旧最终帧独立接收成功；先收到前一阶段时最终会话被忽略。该复现解释设计
+缺陷，尚不能认定它是用户此次相机接收失败的全部原因。
+
+reporter 4 只在最终检查点发送同一报告，序号0/1/2/3的合法K=1帧
+每500ms轮换；普通XNU项16次后继续，新增明确的 Export VM checkpoint
+(animated; intentional pause) 持续轮播。提前缓存位图；编码/等待用
+原页表，绘制短暂映射GOP即恢复；968像素M纠错QR置左侧。报告补充原
+SCTLR/TCR/TTBR0/TTBR1，原始ARG0来自实际调用。没有后台硬件看门狗。
+
+实际AARCH64普通路径16次轮播后返回、显式暂停路径20次仍持续的模型
+通过，实际启动参数解析与映射恢复通过；实际像素被ZXing解回精确OS帧，
+实际接收器从任意变体完成与源文本一致的文件。异常自然对齐、24调用
+模型、403字节受限变更、生产解析器、LZMA/FAT/签名读回通过。
+
+交付 out/kernel-animated-qr-final/vendor_boot.img（28ac87c3…）与
+匹配 vbmeta.img（01982899…），沿用已有仅本地签名授权，其余22描述符/
+header/公钥不变。未做设备操作或重新native/prelink；实机接收和原故障
+待验。机器记录 docs/evidence/kernel-animated-qr-build.json。

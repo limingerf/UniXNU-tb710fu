@@ -1,0 +1,1030 @@
+{
+  "date": "2026-11-16",
+  "stage": "animated stable-file VM diagnostic copy, locally signed; hardware pending",
+  "hardware_feedback": "onesend-receiver-lock-audit.json",
+  "original_kernel": {
+    "sha256": "cc690c9a0bde84c49e9cebccc288f393393d16da56620d580108f0a62692b31c",
+    "native_run": 43709117408,
+    "prelink_run": 43710067378
+  },
+  "build": {
+    "stage": "terminal-early-exception-and-Onesend-diagnostic",
+    "original_sha256": "cc690c9a0bde84c49e9cebccc288f393393d16da56620d580108f0a62692b31c",
+    "kernel_sha256": "f7a425a7ef9c08635618891ba665dba8b93c0712ddfdc79b47cf1bc9f74c6425",
+    "kernel_bytes": 143589376,
+    "lzma_sha256": "ac3c43b7decbe5d34774cbff741e79dc76b497d3a62e9f5bb32998921bf6fde8",
+    "lzma_bytes": 24104319,
+    "segment_va": "0xfffffff00f828000",
+    "segment_fileoff": 142753792,
+    "segment_bytes": 835584,
+    "payload_bytes": 825985,
+    "arm_init_va": "0xfffffff00c28f844",
+    "arm_init_original_instruction": "PACIBSP replayed",
+    "panic_va": "0xfffffff00c2519d4",
+    "panic_original_word": "0xd503237f",
+    "panic_hook_installed": false,
+    "reporter_ends_before_TTBR1_switch": true,
+    "checkpoint_va": "0xfffffff00c2902b4",
+    "checkpoint_original_bl": "0x97e3e47f",
+    "checkpoint_callee": "0xfffffff00bb894b0",
+    "checkpoint_installed": false,
+    "checkpoint": "none on default path",
+    "call_trace": [
+      {
+        "name": "_PE_init_platform",
+        "parent": "_arm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00c28ff68",
+        "callee": "0xfffffff00c1eb5dc",
+        "label": "diag_trace_0",
+        "before_stage": 1,
+        "after_stage": 2,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_configure_timer_apple_regs",
+        "parent": "_arm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00c28ff6c",
+        "callee": "0xfffffff00bb9c234",
+        "label": "diag_trace_1",
+        "before_stage": 3,
+        "after_stage": 4,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_wfe_timeout_configure",
+        "parent": "_arm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00c28ff70",
+        "callee": "0xfffffff00bb9aad4",
+        "label": "diag_trace_2",
+        "before_stage": 5,
+        "after_stage": 6,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_wfe_timeout_init",
+        "parent": "_arm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00c28ff74",
+        "callee": "0xfffffff00bb9a9ec",
+        "label": "diag_trace_3",
+        "before_stage": 7,
+        "after_stage": 8,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_configure_misc_apple_boot_args",
+        "parent": "_arm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00c28ff78",
+        "callee": "0xfffffff00bb9c224",
+        "label": "diag_trace_4",
+        "before_stage": 9,
+        "after_stage": 10,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_configure_misc_apple_regs",
+        "parent": "_arm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00c28ff80",
+        "callee": "0xfffffff00bb9c22c",
+        "label": "diag_trace_5",
+        "before_stage": 11,
+        "after_stage": 12,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_ml_parse_cpu_topology",
+        "parent": "_arm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00c29005c",
+        "callee": "0xfffffff00bb9822c",
+        "label": "diag_trace_6",
+        "before_stage": 13,
+        "after_stage": 14,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_thread_bootstrap",
+        "parent": "_arm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00c2900fc",
+        "callee": "0xfffffff00c261114",
+        "label": "diag_trace_7",
+        "before_stage": 15,
+        "after_stage": 16,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_cpu_bootstrap",
+        "parent": "_arm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00c290118",
+        "callee": "0xfffffff00bb844d4",
+        "label": "diag_trace_8",
+        "before_stage": 17,
+        "after_stage": 18,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_rtclock_early_init",
+        "parent": "_arm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00c29011c",
+        "callee": "0xfffffff00bba06cc",
+        "label": "diag_trace_9",
+        "before_stage": 19,
+        "after_stage": 20,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_kernel_startup_bootstrap",
+        "parent": "_arm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00c29012c",
+        "callee": "0xfffffff00c25eed8",
+        "label": "diag_trace_10",
+        "before_stage": 21,
+        "after_stage": 22,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_cpu_init",
+        "parent": "_arm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00c290134",
+        "callee": "0xfffffff00bb84a40",
+        "label": "diag_trace_11",
+        "before_stage": 23,
+        "after_stage": 24,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_processor_bootstrap",
+        "parent": "_arm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00c290138",
+        "callee": "0xfffffff00b9a9f24",
+        "label": "diag_trace_12",
+        "before_stage": 25,
+        "after_stage": 26,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_arm_vm_init",
+        "parent": "_arm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00c2902b4",
+        "callee": "0xfffffff00bb894b0",
+        "label": "diag_trace_13",
+        "before_stage": 27,
+        "after_stage": null,
+        "original_LR_tail_transfer": true,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_early_random",
+        "parent": "_arm_vm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00bb89598",
+        "callee": "0xfffffff00bb65100",
+        "label": "diag_trace_14",
+        "before_stage": 29,
+        "after_stage": 30,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_SecureDTLookupEntry",
+        "parent": "_arm_vm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00bb89638",
+        "callee": "0xfffffff00c1e88ac",
+        "label": "diag_trace_15",
+        "before_stage": 31,
+        "after_stage": 32,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_SecureDTGetProperty",
+        "parent": "_arm_vm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00bb89658",
+        "callee": "0xfffffff00c1e8c78",
+        "label": "diag_trace_16",
+        "before_stage": 33,
+        "after_stage": 34,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_SecureDTGetProperty",
+        "parent": "_arm_vm_init",
+        "occurrence": 2,
+        "site": "0xfffffff00bb89678",
+        "callee": "0xfffffff00c1e8c78",
+        "label": "diag_trace_17",
+        "before_stage": 35,
+        "after_stage": 36,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_arm_vm_outside_add",
+        "parent": "_arm_vm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00bb896f4",
+        "callee": "0xfffffff00bb8b9d8",
+        "label": "diag_trace_18",
+        "before_stage": 37,
+        "after_stage": 38,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_getsegdatafromheader",
+        "parent": "_arm_vm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00bb89ed8",
+        "callee": "0xfffffff00c0c0b7c",
+        "label": "diag_trace_19",
+        "before_stage": 39,
+        "after_stage": 40,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_vm_set_page_size",
+        "parent": "_arm_vm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00bb8a3bc",
+        "callee": "0xfffffff00badf5cc",
+        "label": "diag_trace_20",
+        "before_stage": 41,
+        "after_stage": 42,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_arm_vm_prot_init",
+        "parent": "_arm_vm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00bb8a49c",
+        "callee": "0xfffffff00bb88c2c",
+        "label": "diag_trace_21",
+        "before_stage": 43,
+        "after_stage": 44,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_qsort",
+        "parent": "_arm_vm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00bb8a640",
+        "callee": "0xfffffff00bf9b214",
+        "label": "diag_trace_22",
+        "before_stage": 45,
+        "after_stage": 46,
+        "original_LR_tail_transfer": false,
+        "restore_kernel_VBAR": false
+      },
+      {
+        "name": "_set_mmu_ttb_alternate",
+        "parent": "_arm_vm_init",
+        "occurrence": 1,
+        "site": "0xfffffff00bb8a690",
+        "callee": "0xfffffff00bb9b1b0",
+        "label": "diag_trace_23",
+        "before_stage": 47,
+        "after_stage": null,
+        "original_LR_tail_transfer": true,
+        "restore_kernel_VBAR": true
+      }
+    ],
+    "symbols": {
+      "diag_slot": "0x10",
+      "diag_original_12": "0xfffffff00b9a9f24",
+      "diag_original_20": "0xfffffff00badf5cc",
+      "diag_original_14": "0xfffffff00bb65100",
+      "diag_original_8": "0xfffffff00bb844d4",
+      "diag_original_11": "0xfffffff00bb84a40",
+      "diag_original_21": "0xfffffff00bb88c2c",
+      "diag_original_13": "0xfffffff00bb894b0",
+      "diag_return_14": "0xfffffff00bb8959c",
+      "diag_return_15": "0xfffffff00bb8963c",
+      "diag_return_16": "0xfffffff00bb8965c",
+      "diag_return_17": "0xfffffff00bb8967c",
+      "diag_return_18": "0xfffffff00bb896f8",
+      "diag_return_19": "0xfffffff00bb89edc",
+      "diag_return_20": "0xfffffff00bb8a3c0",
+      "diag_return_21": "0xfffffff00bb8a4a0",
+      "diag_return_22": "0xfffffff00bb8a644",
+      "diag_return_23": "0xfffffff00bb8a694",
+      "diag_original_18": "0xfffffff00bb8b9d8",
+      "diag_kernel_vectors": "0xfffffff00bb8e000",
+      "diag_original_6": "0xfffffff00bb9822c",
+      "diag_original_3": "0xfffffff00bb9a9ec",
+      "diag_original_2": "0xfffffff00bb9aad4",
+      "diag_original_23": "0xfffffff00bb9b1b0",
+      "diag_original_4": "0xfffffff00bb9c224",
+      "diag_original_5": "0xfffffff00bb9c22c",
+      "diag_original_1": "0xfffffff00bb9c234",
+      "diag_original_9": "0xfffffff00bba06cc",
+      "diag_original_22": "0xfffffff00bf9b214",
+      "diag_original_19": "0xfffffff00c0c0b7c",
+      "diag_original_15": "0xfffffff00c1e88ac",
+      "diag_original_16": "0xfffffff00c1e8c78",
+      "diag_original_17": "0xfffffff00c1e8c78",
+      "diag_original_0": "0xfffffff00c1eb5dc",
+      "diag_original_10": "0xfffffff00c25eed8",
+      "diag_original_7": "0xfffffff00c261114",
+      "diag_return_0": "0xfffffff00c28ff6c",
+      "diag_return_1": "0xfffffff00c28ff70",
+      "diag_return_2": "0xfffffff00c28ff74",
+      "diag_return_3": "0xfffffff00c28ff78",
+      "diag_return_4": "0xfffffff00c28ff7c",
+      "diag_return_5": "0xfffffff00c28ff84",
+      "diag_return_6": "0xfffffff00c290060",
+      "diag_return_7": "0xfffffff00c290100",
+      "diag_return_8": "0xfffffff00c29011c",
+      "diag_return_9": "0xfffffff00c290120",
+      "diag_return_10": "0xfffffff00c290130",
+      "diag_return_11": "0xfffffff00c290138",
+      "diag_return_12": "0xfffffff00c29013c",
+      "diag_return_13": "0xfffffff00c2902b8",
+      "diag_image_base": "0xfffffff00f828000",
+      "diag_init": "0xfffffff00f828000",
+      "diag_arg_scan": "0xfffffff00f82807c",
+      "diag_arg_compare": "0xfffffff00f828094",
+      "diag_arg_next": "0xfffffff00f8280b4",
+      "diag_selftest": "0xfffffff00f8280bc",
+      "diag_resume": "0xfffffff00f8280c0",
+      "diag_selftest_name": "0xfffffff00f8280c8",
+      "diag_init_message": "0xfffffff00f8280dd",
+      "diag_live_call": "0xfffffff00f8280fc",
+      "diag_exception": "0xfffffff00f828178",
+      "diag_panic": "0xfffffff00f828188",
+      "diag_capture": "0xfffffff00f828198",
+      "diag_physical": "0xfffffff00f828288",
+      "diag_vectors": "0xfffffff00f828800",
+      "diag_terminal_vectors": "0xfffffff00f829000",
+      "diag_trace_0": "0xfffffff00f829800",
+      "diag_trace_0_enter_text": "0xfffffff00f829840",
+      "diag_trace_0_return_text": "0xfffffff00f82985c",
+      "diag_trace_1": "0xfffffff00f82987c",
+      "diag_trace_1_enter_text": "0xfffffff00f8298bc",
+      "diag_trace_1_return_text": "0xfffffff00f8298e2",
+      "diag_trace_2": "0xfffffff00f82990c",
+      "diag_trace_2_enter_text": "0xfffffff00f82994c",
+      "diag_trace_2_return_text": "0xfffffff00f82996d",
+      "diag_trace_3": "0xfffffff00f829994",
+      "diag_trace_3_enter_text": "0xfffffff00f8299d4",
+      "diag_trace_3_return_text": "0xfffffff00f8299f0",
+      "diag_trace_4": "0xfffffff00f829a10",
+      "diag_trace_4_enter_text": "0xfffffff00f829a50",
+      "diag_trace_4_return_text": "0xfffffff00f829a7a",
+      "diag_trace_5": "0xfffffff00f829aa8",
+      "diag_trace_5_enter_text": "0xfffffff00f829ae8",
+      "diag_trace_5_return_text": "0xfffffff00f829b0d",
+      "diag_trace_6": "0xfffffff00f829b38",
+      "diag_trace_6_enter_text": "0xfffffff00f829b78",
+      "diag_trace_6_return_text": "0xfffffff00f829b99",
+      "diag_trace_7": "0xfffffff00f829bc0",
+      "diag_trace_7_enter_text": "0xfffffff00f829c00",
+      "diag_trace_7_return_text": "0xfffffff00f829c1c",
+      "diag_trace_8": "0xfffffff00f829c3c",
+      "diag_trace_8_enter_text": "0xfffffff00f829c7c",
+      "diag_trace_8_return_text": "0xfffffff00f829c95",
+      "diag_trace_9": "0xfffffff00f829cb4",
+      "diag_trace_9_enter_text": "0xfffffff00f829cf4",
+      "diag_trace_9_return_text": "0xfffffff00f829d12",
+      "diag_trace_10": "0xfffffff00f829d34",
+      "diag_trace_10_enter_text": "0xfffffff00f829d74",
+      "diag_trace_10_return_text": "0xfffffff00f829d98",
+      "diag_trace_11": "0xfffffff00f829dc0",
+      "diag_trace_11_enter_text": "0xfffffff00f829e00",
+      "diag_trace_11_return_text": "0xfffffff00f829e14",
+      "diag_trace_12": "0xfffffff00f829e2c",
+      "diag_trace_12_enter_text": "0xfffffff00f829e6c",
+      "diag_trace_12_return_text": "0xfffffff00f829e8b",
+      "diag_trace_13": "0xfffffff00f829eb0",
+      "diag_trace_13_enter_text": "0xfffffff00f829ed4",
+      "diag_trace_13_return_text": "0xfffffff00f829eeb",
+      "diag_trace_14": "0xfffffff00f829f08",
+      "diag_trace_14_enter_text": "0xfffffff00f829f48",
+      "diag_trace_14_return_text": "0xfffffff00f829f65",
+      "diag_trace_15": "0xfffffff00f829f88",
+      "diag_trace_15_enter_text": "0xfffffff00f829fc8",
+      "diag_trace_15_return_text": "0xfffffff00f829fec",
+      "diag_trace_16": "0xfffffff00f82a014",
+      "diag_trace_16_enter_text": "0xfffffff00f82a054",
+      "diag_trace_16_return_text": "0xfffffff00f82a078",
+      "diag_trace_17": "0xfffffff00f82a0a0",
+      "diag_trace_17_enter_text": "0xfffffff00f82a0e0",
+      "diag_trace_17_return_text": "0xfffffff00f82a104",
+      "diag_trace_18": "0xfffffff00f82a12c",
+      "diag_trace_18_enter_text": "0xfffffff00f82a16c",
+      "diag_trace_18_return_text": "0xfffffff00f82a18f",
+      "diag_trace_19": "0xfffffff00f82a1b8",
+      "diag_trace_19_enter_text": "0xfffffff00f82a1f8",
+      "diag_trace_19_return_text": "0xfffffff00f82a21d",
+      "diag_trace_20": "0xfffffff00f82a248",
+      "diag_trace_20_enter_text": "0xfffffff00f82a288",
+      "diag_trace_20_return_text": "0xfffffff00f82a2a9",
+      "diag_trace_21": "0xfffffff00f82a2d0",
+      "diag_trace_21_enter_text": "0xfffffff00f82a310",
+      "diag_trace_21_return_text": "0xfffffff00f82a331",
+      "diag_trace_22": "0xfffffff00f82a358",
+      "diag_trace_22_enter_text": "0xfffffff00f82a398",
+      "diag_trace_22_return_text": "0xfffffff00f82a3ae",
+      "diag_trace_23": "0xfffffff00f82a3c8",
+      "diag_trace_23_enter_text": "0xfffffff00f82a3fc",
+      "diag_trace_23_return_text": "0xfffffff00f82a422",
+      "diag_prepare_live_frame": "0xfffffff00f82a55c",
+      "diag_prepare_replay": "0xfffffff00f82a98c",
+      "diag_export_option": "0xfffffff00f82ab08",
+      "diag_live_text": "0xfffffff00f82aba4",
+      "diag_apply_relocations": "0xfffffff00f82b354",
+      "diag_build_report": "0xfffffff00f82b3ac",
+      "diag_fault_main": "0xfffffff00f82b938",
+      "diag_build_report.stages.rel": "0xfffffff00f82d9c0",
+      "diag_rela_start": "0xfffffff00f82f210",
+      "diag_rela_end": "0xfffffff00f82f450",
+      "diag_state": "0xfffffff00f830000",
+      "diag_test_frame": "0xfffffff00f830178",
+      "diag_test_text": "0xfffffff00f830180",
+      "diag_replay_frames": "0xfffffff00f8b1000",
+      "diag_replay_pixels": "0xfffffff00f8b1bc0",
+      "diag_stack": "0xfffffff00f8ed000",
+      "diag_stack_end": "0xfffffff00f8f1000",
+      "diag_live_phase": "0xfffffff00f8f1010",
+      "diag_export_mode": "0xfffffff00f8f1018",
+      "diag_last_stage": "0xfffffff00f8f1020",
+      "diag_test_text_length": "0xfffffff00f8f1028",
+      "diag_test_qr_status": "0xfffffff00f8f1030",
+      "diag_test_bitmap": "0xfffffff00f8f1038",
+      "diag_test_heap_used": "0xfffffff00f8f1040",
+      "diag_replay_ready": "0xfffffff00f8f1048",
+      "diag_replay_draws": "0xfffffff00f8f1050",
+      "diag_report_phase": "0xfffffff00f8f1058",
+      "diag_live_inputs": "0xfffffff00f8f1060",
+      "diag_live_controls": "0xfffffff00f8f1078",
+      "diag_image_end": "0xfffffff00f8f1a81"
+    },
+    "qr_source": {
+      "repository": "microsoft/mu_plus",
+      "commit": "b8d46c71610318e36a661819e1e3c0b8bdda413a",
+      "files": [
+        {
+          "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.inf",
+          "sha256": "79c46eb751f2fd53bd6c8521df99af1f2be0e9590cfc8af665e6f7f0bb151bd4"
+        },
+        {
+          "path": "MsGraphicsPkg/Include/Library/QrEncoderLib.h",
+          "sha256": "96b2e3c1a0b5271e2cf97bc48f33839a9a6b9535d9d37700bce2b4c7d3ee56f5"
+        },
+        {
+          "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c",
+          "sha256": "055d446e6a75f9ea687cf3561ae933d266a6e48acda9c905edf2b62dea1f2d2a"
+        },
+        {
+          "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c",
+          "sha256": "125f1bda27f84d2b4a71a4b86d9364daff47b6aa7b0f2dfdc1bc0a309cc6c15a"
+        },
+        {
+          "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.h",
+          "sha256": "2ad084b975448abaadd3ce4e6037c83201677a447c6a3845346503d7041c6bdf"
+        }
+      ]
+    },
+    "reporter_sources": {
+      "diagnostics/early-report/Compact1.S": "335cee536d50d864f7e59587b4fa87c4061de4bc6cb097cf94229a573b0b3c10",
+      "diagnostics/early-report/Compact2.S": "c424b6ced0563425ae7346f3fad94fe746413b7e55a709115e50d662f10375ce",
+      "diagnostics/early-report/Compact3.S": "1024bbcfdd7ae0c95973d1da4a0ad2f6743de51949a718469e7adaadb7da2867",
+      "diagnostics/early-report/Compat.h": "f6944a9a506f85692679c84a81c91c587c581c17b46e1aa83e0d3e9b21e7f3e1",
+      "diagnostics/early-report/Entry.S": "780e16bf9a465122b90504d4c84b2a18aff7b32889419c5304ea23dca35ebf18",
+      "diagnostics/early-report/Font.h": "e3174a605a6cfb351e5fd613f5c0d29c509a873fc3218b79fc4e7115fe405071",
+      "diagnostics/early-report/Report.c": "f0aef7f5a7c018acae8bf9bcc4a182893667668a3331b5daceca5af08bd445c5",
+      "diagnostics/early-report/Report.h": "5f00fbacbb5e1b2ddeb35f419746b7f7f53f4c9ed718f4934839bf0c03c090c3",
+      "diagnostics/early-report/Test/host_report.py": "20e0576bb467d3b10f44b3a01c18b838a8eb4b52cf5ac3d813f9d3b1968167d1",
+      "diagnostics/early-report/qr-sources.json": "4fdde01133e35e111f191aa6bb44847442ed3212d277a3b28d4bfab085a69dc2",
+      "diagnostics/early-report/receiver-sources.json": "e4d98b21efef130a5aa573a8f60e63b791243ad0b8b6124cee707d83e5e4e3ea"
+    },
+    "user_display_request": "overwriting text and live QR before VM switch; fault replaces screen",
+    "report_is_full_console_log": false,
+    "static_single_OS_frame": true,
+    "strict_alignment": true,
+    "live_stage_text": true,
+    "live_stage_QR": true,
+    "live_QR_first_stage": 47,
+    "VM_boundary_stage": 47,
+    "stable_transfer_at_final_checkpoint_only": true,
+    "normal_QR_replay_seconds": 8,
+    "normal_QR_draws": 16,
+    "QR_cached_variants": 4,
+    "QR_replay_interval_ms": 500,
+    "explicit_export_boot_arg": "tb-report-export=1",
+    "explicit_export_intentionally_pauses_before_VM_switch": true,
+    "kernel_vectors": "0xfffffff00bb8e000",
+    "hardware_verified": false,
+    "functional_fix_claimed": false
+  },
+  "source_tools": {
+    "tools/prepare_early_report.py": "0b0169e45f09a9a0ba74b5dc83aa9dd5b0f1514c1de41dc3e28e6435ff5aa18e",
+    "tools/package_kernel_diagnostic.py": "08c3307a51e19e871eb94ec91e329f4fd541cfbaa31140be42ed8cac38cb8103",
+    "tools/check_live_status.py": "40c5f0ce1c3f6fd6dcae8efe291859010ae5230aef105be2e323e5d25951113f",
+    "tools/check_onesend_receiver.mjs": "c9177f7f86bf0d475c2ef21b81fb0a5ec2a8b007e226c885c025c2fdfa2ddc89",
+    "tools/check_early_report.py": "b238572be37ce50372a0733f916e60f4b330fbb036e84074d4ccd9364f3bd75a",
+    "tools/check_report_runtime.py": "30c16ca8f4087404ace6b38936d8d5891f735e699a06309f7f63cfc429b12287",
+    "tools/ci_early_report.py": "246947652c2bdfe236aeb1c4bdd712ec537166477df1e6fb95bdedd75a358ac8",
+    "tools/sign_kernel_probe_pair.py": "767923fe1dbba8ece91b47b28cf7cc7d7d27d664595ab914988b5000da1ba22b"
+  },
+  "instruction_model": {
+    "result": "PASS",
+    "instruction_model": "Unicorn 2.1.4",
+    "cases": [
+      {
+        "kind": 1,
+        "explicit_selftest_token": false,
+        "exception_sp1": false,
+        "all_31_gprs_captured": true,
+        "original_sp_and_syndrome_captured": true,
+        "physical_alias_and_diagnostic_stack": "PASS",
+        "PIE_runtime_relative_fixups": 24,
+        "physical_terminal_VBAR": true,
+        "does_not_use_original_faulting_stack": true
+      },
+      {
+        "kind": 2,
+        "explicit_selftest_token": false,
+        "exception_sp1": false,
+        "all_31_gprs_captured": true,
+        "original_sp_and_syndrome_captured": true,
+        "physical_alias_and_diagnostic_stack": "PASS",
+        "PIE_runtime_relative_fixups": 24,
+        "physical_terminal_VBAR": true,
+        "does_not_use_original_faulting_stack": true
+      },
+      {
+        "kind": 1,
+        "explicit_selftest_token": true,
+        "exception_sp1": false,
+        "all_31_gprs_captured": true,
+        "original_sp_and_syndrome_captured": true,
+        "physical_alias_and_diagnostic_stack": "PASS",
+        "PIE_runtime_relative_fixups": 24,
+        "physical_terminal_VBAR": true,
+        "does_not_use_original_faulting_stack": true
+      },
+      {
+        "kind": 1,
+        "explicit_selftest_token": false,
+        "exception_sp1": true,
+        "all_31_gprs_captured": true,
+        "original_sp_and_syndrome_captured": true,
+        "physical_alias_and_diagnostic_stack": "PASS",
+        "PIE_runtime_relative_fixups": 24,
+        "physical_terminal_VBAR": true,
+        "does_not_use_original_faulting_stack": true
+      }
+    ],
+    "call_trace_wrappers": [
+      {
+        "name": "_PE_init_platform",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_configure_timer_apple_regs",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_wfe_timeout_configure",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_wfe_timeout_init",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_configure_misc_apple_boot_args",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_configure_misc_apple_regs",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_ml_parse_cpu_topology",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_thread_bootstrap",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_cpu_bootstrap",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_rtclock_early_init",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_kernel_startup_bootstrap",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_cpu_init",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_processor_bootstrap",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_arm_vm_init",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_early_random",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_SecureDTLookupEntry",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_SecureDTGetProperty",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_SecureDTGetProperty",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_arm_vm_outside_add",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_getsegdatafromheader",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_vm_set_page_size",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_arm_vm_prot_init",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_qsort",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_set_mmu_ttb_alternate",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      }
+    ],
+    "limits": "Privileged registers/cache/live text backend modeled and PACIBSP skipped; live renderer separately exercised; real MMU/PAC not validated"
+  },
+  "replay_instruction_checks": [
+    {
+      "result": "PASS",
+      "stage": 47,
+      "paused_export": false,
+      "width": 3200,
+      "rows": 1080,
+      "QR_draws": 16,
+      "counter_waits_with_original_roots": 32,
+      "normal_path_returns": true,
+      "original_TCR_and_TTBR0_restored": true,
+      "all_GOP_mapping_descriptors_checked": true,
+      "framebuffer_writes_bounded": true,
+      "encoding_uses_original_roots": true,
+      "no_QR_for_earlier_stage": false,
+      "limits": "System registers and elapsed counter modeled; real hardware MMU/cache/camera not verified"
+    },
+    {
+      "result": "PASS",
+      "stage": 47,
+      "paused_export": true,
+      "width": 640,
+      "rows": 354,
+      "QR_draws": 20,
+      "counter_waits_with_original_roots": 39,
+      "normal_path_returns": false,
+      "original_TCR_and_TTBR0_restored": true,
+      "all_GOP_mapping_descriptors_checked": true,
+      "framebuffer_writes_bounded": true,
+      "encoding_uses_original_roots": true,
+      "no_QR_for_earlier_stage": false,
+      "limits": "System registers and elapsed counter modeled; real hardware MMU/cache/camera not verified"
+    },
+    {
+      "result": "PASS",
+      "stage": 27,
+      "paused_export": false,
+      "width": 640,
+      "rows": 48,
+      "QR_draws": 0,
+      "counter_waits_with_original_roots": 0,
+      "normal_path_returns": true,
+      "original_TCR_and_TTBR0_restored": true,
+      "all_GOP_mapping_descriptors_checked": true,
+      "framebuffer_writes_bounded": true,
+      "encoding_uses_original_roots": true,
+      "no_QR_for_earlier_stage": true,
+      "limits": "System registers and elapsed counter modeled; real hardware MMU/cache/camera not verified"
+    },
+    {
+      "result": "PASS",
+      "stage": 0,
+      "paused_export": true,
+      "width": 640,
+      "rows": 48,
+      "QR_draws": 0,
+      "counter_waits_with_original_roots": 0,
+      "normal_path_returns": true,
+      "actual_boot_arg_parser_checked": true,
+      "original_TCR_and_TTBR0_restored": true,
+      "all_GOP_mapping_descriptors_checked": true,
+      "framebuffer_writes_bounded": true,
+      "encoding_uses_original_roots": true,
+      "no_QR_for_earlier_stage": true,
+      "limits": "System registers and elapsed counter modeled; real hardware MMU/cache/camera not verified"
+    },
+    {
+      "result": "PASS",
+      "stage": 0,
+      "paused_export": false,
+      "width": 640,
+      "rows": 48,
+      "QR_draws": 0,
+      "counter_waits_with_original_roots": 0,
+      "normal_path_returns": true,
+      "actual_boot_arg_parser_checked": true,
+      "original_TCR_and_TTBR0_restored": true,
+      "all_GOP_mapping_descriptors_checked": true,
+      "framebuffer_writes_bounded": true,
+      "encoding_uses_original_roots": true,
+      "no_QR_for_earlier_stage": true,
+      "limits": "System registers and elapsed counter modeled; real hardware MMU/cache/camera not verified"
+    }
+  ],
+  "guarded_changes": {
+    "result": "PASS",
+    "changed_original_bytes": 403,
+    "guarded_ranges": 33,
+    "panic_entry_unchanged": true,
+    "added_segment_bytes": 835584,
+    "no_original_BL_skipped": true
+  },
+  "terminal_alignment_runtime": {
+    "result": "PASS",
+    "actual_AARCH64_report_and_QrEncodeData_executed": true,
+    "resolution": [
+      3200,
+      2000
+    ],
+    "phase": "QR READY",
+    "text_bytes": 422,
+    "frame_sha256": "2fd12d9adb356f5714c8a551ebcdc4756e7aba3d9829e126898ffcade7f188f1",
+    "heap_bytes": 139488,
+    "natural_alignment_checked": true,
+    "limits": "flat physical memory; real device/MMU/cache behavior not verified"
+  },
+  "host_transport": {
+    "result": "PASS",
+    "report_bytes": 392,
+    "envelope_bytes": 451,
+    "frame_bytes": 752,
+    "crc32_checks": "frame/envelope/body PASS",
+    "qr_status": 0,
+    "heap_bytes": 139488,
+    "limits": "host C + unchanged QR encoder; not a real CPU fault",
+    "repeated_live_snapshot_frames": "PASS: 27/29/47/27; fresh body, bounded arena, CRCs, no invented exception",
+    "four_distinct_QR_variants": "PASS: one unchanged envelope/session, sequence 0/1/2/3, CRCs",
+    "export_mode_scope": "PASS: explicit token only, intentional-pause label"
+  },
+  "actual_onesend_receiver_host_frames": {
+    "result": "PASS",
+    "receiver_source": {
+      "repository": "makerjackie/onesend",
+      "commit": "39e95ce59df2f2dc38d2556dd4239cec6a0ca35f",
+      "files": [
+        {
+          "path": "website/app/web-transfer-protocol.mjs",
+          "sha256": "fd94d7f24ba27892d07c2d18cf67986dd793501d2b6298332cbb21863d7ccae3"
+        }
+      ]
+    },
+    "cases": [
+      {
+        "paused": false,
+        "variants": 4,
+        "any_one_variant_completes": true,
+        "exact_file_bytes": 464,
+        "repeated_frames_deliver_one_file": true
+      },
+      {
+        "paused": true,
+        "variants": 4,
+        "any_one_variant_completes": true,
+        "exact_file_bytes": 475,
+        "repeated_frames_deliver_one_file": true
+      }
+    ],
+    "limits": "Actual receiver/CRC/envelope completion; optical camera acquisition remains a hardware check"
+  },
+  "actual_onesend_receiver_AARCH64_frames": {
+    "result": "PASS",
+    "receiver_source": {
+      "repository": "makerjackie/onesend",
+      "commit": "39e95ce59df2f2dc38d2556dd4239cec6a0ca35f",
+      "files": [
+        {
+          "path": "website/app/web-transfer-protocol.mjs",
+          "sha256": "fd94d7f24ba27892d07c2d18cf67986dd793501d2b6298332cbb21863d7ccae3"
+        }
+      ]
+    },
+    "cases": [
+      {
+        "paused": false,
+        "variants": 4,
+        "any_one_variant_completes": true,
+        "exact_file_bytes": 464,
+        "repeated_frames_deliver_one_file": true
+      },
+      {
+        "paused": true,
+        "variants": 4,
+        "any_one_variant_completes": true,
+        "exact_file_bytes": 475,
+        "repeated_frames_deliver_one_file": true
+      }
+    ],
+    "limits": "Actual receiver/CRC/envelope completion; optical camera acquisition remains a hardware check"
+  },
+  "independent_generated_pixel_decode": {
+    "result": "PASS",
+    "decoder": "ZXing C++ 2.3.0",
+    "cases": [
+      {
+        "mode": 0,
+        "raw_variants_decoded": 4,
+        "actual_painted_screen_decodes_exact_frame_3": true
+      },
+      {
+        "mode": 1,
+        "raw_variants_decoded": 4,
+        "actual_painted_screen_decodes_exact_frame_3": true
+      }
+    ],
+    "limits": "Generated pixels, not a camera photograph"
+  },
+  "production_parser": {
+    "commit": "5243c68ec332a227fe3680cd5da6d5a0e127035c",
+    "result": "PASS actual Mach-O and malformed fixture checks"
+  },
+  "packaging": {
+    "unsigned_bytes": 37859328,
+    "unsigned_sha256": "71a911787be89afb258acd987b03c99c4c70519a62cbe9b1ec2894d174ee7092",
+    "payload_sha256": "31a5b0c2663121f16707e8587c88bba672fe76690137cb19c7a0b08449992ef6",
+    "kernel_sha256": "f7a425a7ef9c08635618891ba665dba8b93c0712ddfdc79b47cf1bc9f74c6425",
+    "kernel_bytes": 143589376,
+    "kernel_file_readback": "PASS",
+    "original_config_and_ADT_hashes": {
+      "unixnu.toml": "a14b5a8fa15e9e8a29e160a2e87d36f72cb31bcb95140072f92359986c13a356",
+      "Payloads/kernel.macho.adt": "4c56fb2a23d9177aa6b5820d3aba46ca66db90f8168bb6520bdd598ba097bc7b"
+    },
+    "output_config_and_ADT_hashes": {
+      "unixnu.toml": "1b6e3c0b469170be063b78a055f628c622c08e7c25df32a9c332f21964789bb1",
+      "Payloads/kernel.macho.adt": "4c56fb2a23d9177aa6b5820d3aba46ca66db90f8168bb6520bdd598ba097bc7b"
+    },
+    "reporter_selftest_appended": true,
+    "reporter_animated_export_appended": true,
+    "original_entries_and_default_preserved": true,
+    "source_vendor_sha256": "836ca997d766dedfef0531f7283026b443d2227302148fdd107852e25354df15",
+    "device_operations": false
+  },
+  "signing": {
+    "stage": "signed-kernel-probe-pair",
+    "vendor_boot_bytes": 100663296,
+    "vendor_boot_sha256": "28ac87c3ce9754950454a2c6d446285448306789d98f8ef2492bfaa2399c37ea",
+    "vbmeta_bytes": 8000,
+    "vbmeta_sha256": "0198289981b0db6440e0c4f3f193724bf43b36a6591c0e40c8d5e202e54489bb",
+    "source_vbmeta_sha256": "3992de82a3a03584b0e03c43bd66060ef93684122bb8867c893ed6c45ea85331",
+    "unsigned_vendor_sha256": "71a911787be89afb258acd987b03c99c4c70519a62cbe9b1ec2894d174ee7092",
+    "signature_checks": "PASS",
+    "unchanged_other_raw_descriptors": 22,
+    "identical_vbmeta_header": true,
+    "descriptor_counts_by_tag": {
+      "0": 13,
+      "1": 4,
+      "2": 3,
+      "4": 3
+    },
+    "public_key_unchanged": true,
+    "signing_payload_readback": "PASS",
+    "device_operations": false,
+    "hardware_verified": false
+  },
+  "local_signing_authorization_reused": true,
+  "device_operations": false,
+  "kernel_native_or_prelink_rebuilt": false,
+  "actual_camera_and_user_receiver_version_verified": false,
+  "original_kernel_hang_fixed": false,
+  "limits": "Normal path replays 16 frames then continues. Explicit tb-report-export=1 intentionally pauses before TTBR1; it is not an observed kernel failure."
+}

@@ -1,0 +1,10 @@
+{
+  "repository": "makerjackie/onesend",
+  "commit": "39e95ce59df2f2dc38d2556dd4239cec6a0ca35f",
+  "files": [
+    {
+      "path": "website/app/web-transfer-protocol.mjs",
+      "sha256": "fd94d7f24ba27892d07c2d18cf67986dd793501d2b6298332cbb21863d7ccae3"
+    }
+  ]
+}

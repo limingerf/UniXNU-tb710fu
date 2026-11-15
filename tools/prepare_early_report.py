@@ -254,7 +254,12 @@ def main():
               'user_display_request': 'overwriting text and live QR before VM switch; fault replaces screen',
               'report_is_full_console_log': False, 'static_single_OS_frame': True,
               'strict_alignment': True, 'live_stage_text': True, 'live_stage_QR': True,
-              'live_QR_first_stage': 27, 'VM_boundary_stage': 47,
+              'live_QR_first_stage': 47, 'VM_boundary_stage': 47,
+              'stable_transfer_at_final_checkpoint_only': True,
+              'normal_QR_replay_seconds': 8, 'normal_QR_draws': 16,
+              'QR_cached_variants': 4, 'QR_replay_interval_ms': 500,
+              'explicit_export_boot_arg': 'tb-report-export=1',
+              'explicit_export_intentionally_pauses_before_VM_switch': True,
               'kernel_vectors': hex(names['_ExceptionVectorsBase']),
               'hardware_verified': False, 'functional_fix_claimed': False}
     (output / 'build-report.json').write_text(json.dumps(record, indent=2) + '\n')

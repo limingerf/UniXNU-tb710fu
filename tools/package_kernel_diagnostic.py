@@ -24,6 +24,7 @@ def main():
     p.add_argument('--source-vendor', type=Path, required=True)
     p.add_argument('--output-dir', type=Path, required=True)
     p.add_argument('--add-reporter-selftest', action='store_true', help='Append explicit report-only test menu; preserve original entries/default')
+    p.add_argument('--add-report-export', action='store_true', help='Append explicit animated VM checkpoint export; intentionally pauses before TTBR1')
     args = p.parse_args()
     original = args.source_vendor.read_bytes()
     if sha(original) != '836ca997d766dedfef0531f7283026b443d2227302148fdd107852e25354df15':
@@ -50,18 +51,26 @@ def main():
         return subprocess.check_output(['mtype', '-i', str(payload), '::/EFI/UniXNU/' + name])
     kept = {name: sha(read(name)) for name in ['unixnu.toml', 'Payloads/kernel.macho.adt']}
     expected = dict(kept)
-    if args.add_reporter_selftest:
+    if args.add_reporter_selftest or args.add_report_export:
         config = read('unixnu.toml').decode('utf-8')
         original_config = tomllib.loads(config)
         matches = [entry for entry in original_config['entry'] if entry.get('id') == 'xnu' and entry.get('type') == 'xnu']
-        if len(matches) != 1 or any(entry.get('id') == 'reporter-selftest' for entry in original_config['entry']):
-            raise SystemExit('Unexpected base menu; refuse to guess a self-test entry')
+        if len(matches) != 1:
+            raise SystemExit('Unexpected base menu; refuse to guess an entry')
         entry = matches[0]
-        config += '\n[[entry]]\nid = "reporter-selftest"\ntitle = "Reporter self-test (intentional stop)"\ntype = "xnu"\n'
-        config += 'path = ' + json.dumps(entry['path']) + '\nargs = ' + json.dumps(entry.get('args', '') + ' tb-report-selftest=1') + '\nenabled = true\n'
+        additions = []
+        if args.add_reporter_selftest:
+            additions.append(('reporter-selftest', 'Reporter self-test (intentional stop)', 'tb-report-selftest=1'))
+        if args.add_report_export:
+            additions.append(('reporter-export', 'Export VM checkpoint (animated; intentional pause)', 'tb-report-export=1'))
+        for identity, title, option in additions:
+            if any(item.get('id') == identity for item in original_config['entry']):
+                raise SystemExit('Duplicate diagnostic menu identity')
+            config += '\n[[entry]]\nid = ' + json.dumps(identity) + '\ntitle = ' + json.dumps(title) + '\ntype = "xnu"\n'
+            config += 'path = ' + json.dumps(entry['path']) + '\nargs = ' + json.dumps(entry.get('args', '') + ' ' + option) + '\nenabled = true\n'
         parsed = tomllib.loads(config)
-        if parsed['boot'] != original_config['boot'] or parsed['entry'][:-1] != original_config['entry']:
-            raise SystemExit('Self-test altered existing menu/default')
+        if parsed['boot'] != original_config['boot'] or parsed['entry'][:len(original_config['entry'])] != original_config['entry']:
+            raise SystemExit('Diagnostic entry altered existing menu/default')
         local = args.output_dir / 'unixnu.toml'
         local.write_text(config, encoding='utf-8')
         subprocess.run(['mcopy', '-o', '-i', str(payload), str(local), '::/EFI/UniXNU/unixnu.toml'], check=True)
@@ -82,6 +91,7 @@ def main():
               'kernel_sha256': sha(plain), 'kernel_bytes': len(plain), 'kernel_file_readback': 'PASS',
               'original_config_and_ADT_hashes': kept, 'output_config_and_ADT_hashes': expected,
               'reporter_selftest_appended': args.add_reporter_selftest,
+              'reporter_animated_export_appended': args.add_report_export,
               'original_entries_and_default_preserved': True,
               'source_vendor_sha256': sha(original), 'device_operations': False}
     (args.output_dir / 'packaging-report.json').write_text(json.dumps(report, indent=2) + '\n')

@@ -1,0 +1,54 @@
+{
+  "date": "2026-11-16",
+  "photo_sha256": "b52738f5b8eb186816a8a2b1f8cb14ba4c6c604f4a339ec38da2f066bd09857c",
+  "last_stage_verbatim": "XNU enter: vm/set_mmu_ttb_alternate#1",
+  "visible_labels": [
+    "LAST STAGE SNAPSHOT",
+    "STAGE QR: READY - ONESEND"
+  ],
+  "user_correction": "QR exists, remains static, OneSend receive did not complete",
+  "limits": "Photo omits full QR; packet/camera result could not be recovered from this crop. Stage is existing pre-TTBR1 observation boundary, not an established fault.",
+  "previous_pair": {
+    "vendor_boot_sha256": "644cfe58d909ac691c3490effefbeb9a46ccaa036016274d84b4b6510eb668c1",
+    "vbmeta_sha256": "37de2e0fa57c3049bebc9d9b817854f009ad443f50d915118448e1758220b745",
+    "limit": "Most recently delivered pair, no device readback"
+  },
+  "receiver_source": {
+    "repository": "makerjackie/onesend",
+    "commit": "39e95ce59df2f2dc38d2556dd4239cec6a0ca35f",
+    "files": [
+      {
+        "path": "website/app/web-transfer-protocol.mjs",
+        "sha256": "fd94d7f24ba27892d07c2d18cf67986dd793501d2b6298332cbb21863d7ccae3"
+      }
+    ]
+  },
+  "existing_frame_replay": {
+    "receiver_commit": "39e95ce59df2f2dc38d2556dd4239cec6a0ca35f",
+    "isolated_last_frame": {
+      "verified": true,
+      "snapshot": {
+        "protocolVersion": 2,
+        "profileId": 0,
+        "mode": "reliable",
+        "sessionId": 3714895118,
+        "blockCount": 1,
+        "totalLength": 424,
+        "framesNew": 1,
+        "framesDuplicate": 0,
+        "framesDiscarded": 0,
+        "solvedBlocks": 1,
+        "progress": 1
+      },
+      "file_name": "TB710FU-live-stage.log",
+      "file_bytes": 366
+    },
+    "earlier_then_last": {
+      "earlier_verified": true,
+      "last_result": null,
+      "last_ignored": true
+    }
+  },
+  "conclusion": "An isolated K=1 final frame completes with the pinned receiver. Scanning earlier independent stage sessions makes that receiver ignore the final session; this does not establish the cause of this device/camera failure.",
+  "device_operations": false
+}

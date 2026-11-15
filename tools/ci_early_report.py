@@ -52,10 +52,23 @@ def main():
                              cwd=ROOT, text=True, capture_output=True, check=True)
     (output / 'host-test.log').write_text(result.stdout)
     shutil.copyfile(work / 'host-check.json', output / 'host-check.json')
+    receiver_manifest = json.loads((src / 'receiver-sources.json').read_text())
+    receiver_record = receiver_manifest['files'][0]
+    receiver_url = ('https://raw.githubusercontent.com/' + receiver_manifest['repository'] + '/' +
+                    receiver_manifest['commit'] + '/' + receiver_record['path'])
+    with urllib.request.urlopen(receiver_url, timeout=45) as response:
+        receiver_data = response.read(1 << 20)
+    if hashlib.sha256(receiver_data).hexdigest() != receiver_record['sha256']:
+        raise SystemExit('Pinned receiver source identity mismatch')
+    receiver_file = work / 'onesend-receiver.mjs'
+    receiver_file.write_bytes(receiver_data)
+    subprocess.run(['node', str(ROOT / 'tools/check_onesend_receiver.mjs'),
+                    '--receiver', str(receiver_file), '--frames', str(work),
+                    '--output', str(output / 'receiver-check.json')], check=True)
     report = {'stage': 'source-only-reporter-compiled-and-host-tested',
               'device_source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
               'compiler': subprocess.check_output(['clang', '--version'], text=True).splitlines()[0],
-              'qr_source': manifest, 'kernel_rebuilt': False, 'device_operations': False,
+              'qr_source': manifest, 'receiver_source': receiver_manifest, 'kernel_rebuilt': False, 'device_operations': False,
               'keys_used': False, 'hardware_verified': False}
     (output / 'cloud-result.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))

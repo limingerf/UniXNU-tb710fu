@@ -51,3 +51,31 @@ result=json.loads((root/'host-check.json').read_text())
 result['repeated_live_snapshot_frames']='PASS: 27/29/47/27; fresh body, bounded arena, CRCs, no invented exception'
 (root/'host-check.json').write_text(json.dumps(result,indent=2)+'\n')
 print(result['repeated_live_snapshot_frames'])
+
+# Animated export keeps one file/session; changing QR sequences do not change data.
+lib.diag_prepare_replay.argtypes=[ctypes.POINTER(State),ctypes.c_char_p]
+lib.diag_export_option.argtypes=[ctypes.c_char_p];lib.diag_export_option.restype=ctypes.c_int
+assert lib.diag_export_option(b'-v tb-report-export=1 serial=3')
+assert not lib.diag_export_option(b'-v not-tb-report-export=1')
+assert not lib.diag_export_option(b'tb-report-export=11')
+assert not lib.diag_export_option(b'x'*1024)
+ctypes.c_uint64.in_dll(lib,'diag_last_stage').value=47
+for paused in (0,1):
+ ctypes.c_uint64.in_dll(lib,'diag_export_mode').value=paused
+ lib.diag_prepare_replay(ctypes.byref(s),b'XNU enter: vm/set_mmu_ttb_alternate#1')
+ assert ctypes.c_uint64.in_dll(lib,'diag_replay_ready').value==4
+ variants=bytes((ctypes.c_uint8*(4*752)).in_dll(lib,'diag_replay_frames'))
+ bodies=[];sessions=[]
+ for i in range(4):
+  frame=variants[i*752:(i+1)*752]
+  assert struct.unpack_from('<I',frame,8)[0]==i
+  assert struct.unpack_from('<I',frame,748)[0]==zlib.crc32(frame[:748])
+  sessions.append(frame[4:8]);bodies.append(frame[12:748])
+  (root/('replay-'+str(paused)+'-frame-'+str(i)+'.bin')).write_bytes(frame)
+ assert len(set(sessions))==1 and len(set(bodies))==1
+ text=ctypes.string_at(ctypes.c_void_p.in_dll(lib,'diag_test_text').value,ctypes.c_size_t.in_dll(lib,'diag_test_text_length').value)
+ assert (b'intentional export pause' in text)==bool(paused)
+ (root/('replay-'+str(paused)+'.log')).write_bytes(text)
+result['four_distinct_QR_variants']='PASS: one unchanged envelope/session, sequence 0/1/2/3, CRCs'
+result['export_mode_scope']='PASS: explicit token only, intentional-pause label'
+(root/'host-check.json').write_text(json.dumps(result,indent=2)+'\n')
