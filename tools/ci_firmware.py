@@ -45,6 +45,8 @@ def main():
     parser.add_argument('mode', choices=['build', 'collect'])
     parser.add_argument('--ufs', action='store_true',
                         help='build with the opt-in UFS publication chain (TB710FU_ENABLE_UFS=1)')
+    parser.add_argument('--lzma', action='store_true',
+                        help='apply the DarwinBoot LZMA kernel patch and build that loader variant')
     args = parser.parse_args()
     source, uefi = ROOT / '.work/UniXNU', ROOT / '.work/uefi-sheng'
     output = ROOT / '.work/firmware-artifacts'
@@ -66,7 +68,23 @@ def main():
     command(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-pedantic', '-fsanitize=address,undefined',
              '-fno-omit-frame-pointer', key_test, '-o', key_binary], ROOT, output / 'input-test-build.log')
     command([key_binary], ROOT, output / 'input-test.log')
+    # Patches are routed by target tree and applied in two phases. The 0001
+    # SimpleFb patch targets the uefi-sheng checkout and can go on immediately.
+    # The 0002 DarwinBoot patch targets UniXNU's drivers/DarwinBoot gitlink, which
+    # only becomes a populated checkout after 'defconfig' runs feeds.fetch. It is
+    # therefore applied in the second phase, after defconfig, and only when the
+    # LZMA kernel variant is requested.
+    simplefb_patches = []
+    darwinboot_patches = []
     for patch in sorted((ROOT / 'firmware/patches').glob('*.patch')):
+        name = patch.name
+        if 'simplefb' in name:
+            simplefb_patches.append(patch)
+        elif 'darwinboot' in name:
+            darwinboot_patches.append(patch)
+        else:
+            raise SystemExit('Unrouted firmware patch (name must contain simplefb or darwinboot): ' + name)
+    for patch in simplefb_patches:
         command(['git', '-C', uefi, 'apply', '--check', patch], ROOT)
         command(['git', '-C', uefi, 'apply', patch], ROOT)
     shutil.copytree(ROOT / 'firmware/overlay', uefi, dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
@@ -84,6 +102,16 @@ def main():
     driver = [sys.executable, str(source / 'unixnu')]
     common = ['-D', str(ROOT), '--os', PROFILE]
     command(driver + ['defconfig', 'tb710fu_macos_defconfig'] + common, source, output / 'defconfig.log')
+    if args.lzma:
+        # drivers/DarwinBoot is a gitlink that defconfig/fetch populates. Apply the
+        # LZMA patch only now, and re-check that the submodule is actually a git
+        # checkout so a future fetch change cannot silently drop the patch.
+        darwinboot = source / 'drivers/DarwinBoot'
+        if not (darwinboot / '.git').exists():
+            raise SystemExit('DarwinBoot submodule was not populated by defconfig; cannot apply the LZMA patch')
+        for patch in darwinboot_patches:
+            command(['git', '-C', str(darwinboot), 'apply', '--check', patch], ROOT)
+            command(['git', '-C', str(darwinboot), 'apply', patch], ROOT)
     status_snapshot(driver, common, source, output / 'status.json')
     if args.ufs:
         # Device-Binaries publishes the SM8650 module set as Binaries/giulia; this
@@ -159,6 +187,18 @@ def main():
                 raise SystemExit('Black-screen vendor module present in the UFS volume: ' + name['inf'])
     overlay = [{'path': str(path.relative_to(ROOT / 'firmware/overlay')), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
                for path in sorted((ROOT / 'firmware/overlay').rglob('*')) if path.is_file() and '__pycache__' not in path.parts]
+    # Also verify the patched DarwinBoot made it into the FD. Its FILE_GUID is
+    # 1B64AF87-8415-4B57-9B16-680D70913B9F; the LZMA variant must show the new
+    # DARWINBOOT strings, which we check against the built module's source.
+    lzma_verified = False
+    if args.lzma:
+        inf = source / 'drivers/DarwinBoot/DarwinBootPkg/Driver/DarwinBoot.inf'
+        db_src = inf.parent / 'DarwinBoot.c'
+        lzma_verified = ('LzmaUefiDecompress' in db_src.read_text()
+                         and 'LzmaCustomDecompressLib' in inf.read_text()
+                         and '1b64af87-8415-4b57-9b16-680d70913b9f' in parsed['file_guids'])
+        if not lzma_verified:
+            raise SystemExit('LZMA DarwinBoot patch did not reach the built firmware volume')
     report = {'stage': 'firmware-built', 'target': 'AARCH64 DEBUG CLANGPDB',
               'device_source_commit': os.environ.get('GITHUB_SHA') or subprocess.check_output(
                   ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
@@ -167,7 +207,8 @@ def main():
               'required_modules': modules, 'volumes': parsed['volumes'], 'overlay': overlay,
               'vendor_binary_inputs': bool(args.ufs), 'uefi_secure_boot': 'development-disabled',
               'abl_changed': False, 'hardware_boot_verified': False,
-              'ufs_chain': {'enabled': bool(args.ufs), 'modules': ufs_modules}}
+              'ufs_chain': {'enabled': bool(args.ufs), 'modules': ufs_modules},
+              'lzma_kernel': {'enabled': bool(args.lzma), 'darwinboot_patched': lzma_verified}}
     report['input'] = {'driver': REQUIRED[-1], 'host_model_test': 'PASS',
                        'physical_keys_verified': False, 'pmic_configuration_writes': False}
     (output / 'firmware-result.json').write_text(json.dumps(report, indent=2) + '\n')

@@ -1,0 +1,214 @@
+Subject: [PATCH] DarwinBoot: expand an LZMA-compressed kernel before parsing
+
+The macOS 27 kernel fileset is 137 MiB and cannot fit the 81 MiB of usable
+vendor_boot ramdisk on this board. LZMA brings it to about 23 MiB. This patch
+makes DarwinBoot recognise that container and expand it into an
+address-constrained window before ParseKernel runs, so everything after the
+load path still sees an ordinary Mach-O.
+
+A plain Mach-O kernel is unaffected: IsLzmaKernel() only matches a file whose
+first byte is the LZMA properties byte 0x5D followed by a plausible dictionary
+size, which no Mach-O header satisfies.
+
+The decoder is MdeModulePkg LzmaCustomDecompressLib, linked as a NULL library.
+Its LzmaUefiDecompressGetInfo/LzmaUefiDecompress entry points are declared in
+the source because the library ships no public header; its scratch request is
+a fixed 64 KiB. EFI_DECOMPRESS_PROTOCOL is deliberately NOT used: the DXE core
+implements it with UefiDecompressLib (Tiano/EFI compression), not LZMA.
+
+Boundaries: host-reviewed source only. No device has booted this path. The
+kernel window is allocated with AllocateMaxAddress so its base stays under
+4 GiB as DarwinBoot's page tables require.
+
+---
+ DarwinBootPkg/Driver/DarwinBoot.c   | ++++
+ DarwinBootPkg/Driver/DarwinBoot.inf | 2 ++
+ 2 files changed
+
+diff --git a/DarwinBootPkg/Driver/DarwinBoot.c b/DarwinBootPkg/Driver/DarwinBoot.c
+index f0f7650..e85ea6b 100644
+--- a/DarwinBootPkg/Driver/DarwinBoot.c
++++ b/DarwinBootPkg/Driver/DarwinBoot.c
+@@ -55,6 +55,130 @@ typedef struct {
+   UINT64  Used;
+ } LAYOUT;
+ 
++//
++// LZMA_ALONE header: one properties byte, a 4-byte dictionary size and an
++// 8-byte uncompressed size, then the raw stream. Only the property byte and a
++// plausible dictionary are checked here; a Mach-O never starts with 0x5D
++// followed by such a dictionary, so the probe is unambiguous.
++//
++// The decoder comes from MdeModulePkg LzmaCustomDecompressLib, linked as a NULL
++// library by DarwinBoot.inf. Its two entry points are declared here because the
++// library ships no public header: LzmaDecompressLibInternal.h is internal. The
++// DXE core's EFI_DECOMPRESS_PROTOCOL is NOT LZMA (it uses UefiDecompressLib),
++// so it must not be used for this.
++//
++RETURN_STATUS EFIAPI LzmaUefiDecompressGetInfo (
++  IN  CONST VOID  *Source,
++  IN  UINT32      SourceSize,
++  OUT UINT32      *DestinationSize,
++  OUT UINT32      *ScratchSize
++  );
++
++RETURN_STATUS EFIAPI LzmaUefiDecompress (
++  IN CONST VOID  *Source,
++  IN UINTN       SourceSize,
++  IN OUT VOID    *Destination,
++  IN OUT VOID    *Scratch
++  );
++
++STATIC
++BOOLEAN
++IsLzmaKernel (
++  IN CONST VOID  *Data,
++  IN UINTN       Size
++  )
++{
++  CONST UINT8  *Bytes;
++  UINT32       Dictionary;
++
++  if ((Data == NULL) || (Size < 21)) {
++    return FALSE;
++  }
++
++  Bytes = (CONST UINT8 *)Data;
++  if (Bytes[0] != 0x5D) {
++    return FALSE;
++  }
++
++  CopyMem (&Dictionary, Bytes + 1, sizeof (Dictionary));
++  if ((Dictionary < 0x8000) || (Dictionary > 0x40000000)) {
++    return FALSE;
++  }
++
++  return TRUE;
++}
++
++STATIC
++EFI_STATUS
++ExpandLzmaKernel (
++  IN  VOID   *Source,
++  IN  UINTN  SourceSize,
++  OUT VOID   **Image,
++  OUT UINTN  *ImageSize
++  )
++{
++  RETURN_STATUS          RStatus;
++  EFI_STATUS             Status;
++  UINT32                 DestinationSize;
++  UINT32                 ScratchSize;
++  VOID                   *Scratch;
++  VOID                   *Destination;
++  EFI_PHYSICAL_ADDRESS   Address;
++  UINTN                  Pages;
++
++  *Image     = NULL;
++  *ImageSize = 0;
++
++  RStatus = LzmaUefiDecompressGetInfo (
++              Source,
++              (UINT32)SourceSize,
++              &DestinationSize,
++              &ScratchSize
++              );
++  if (RETURN_ERROR (RStatus)) {
++    return EFI_COMPROMISED_DATA;
++  }
++
++  if ((DestinationSize == 0) || (DestinationSize > KERNEL_LIMIT)) {
++    return EFI_BAD_BUFFER_SIZE;
++  }
++
++  //
++  // DarwinBoot maps the kernel window below 4 GiB, so this has to be an
++  // address-constrained allocation rather than a plain pool allocation.
++  //
++  Pages   = EFI_SIZE_TO_PAGES (DestinationSize);
++  Address = 0xFFFFFFFF;
++  Status  = gBS->AllocatePages (AllocateMaxAddress, EfiLoaderData, Pages, &Address);
++  if (EFI_ERROR (Status)) {
++    return EFI_OUT_OF_RESOURCES;
++  }
++
++  Destination = (VOID *)(UINTN)Address;
++  Scratch     = NULL;
++  if (ScratchSize != 0) {
++    Scratch = AllocatePool (ScratchSize);
++    if (Scratch == NULL) {
++      gBS->FreePages (Address, Pages);
++      return EFI_OUT_OF_RESOURCES;
++    }
++  }
++
++  RStatus = LzmaUefiDecompress (Source, SourceSize, Destination, Scratch);
++  if (Scratch != NULL) {
++    FreePool (Scratch);
++  }
++  if (RETURN_ERROR (RStatus)) {
++    gBS->FreePages (Address, Pages);
++    return EFI_COMPROMISED_DATA;
++  }
++
++  *Image     = Destination;
++  *ImageSize = DestinationSize;
++  return EFI_SUCCESS;
++}
++
++
+ STATIC EFI_HANDLE  mImage;
+ UINT64 EFIAPI DarwinCurrentEl (VOID);
+ VOID EFIAPI DarwinEnter (UINT64 Args, UINT64 Entry, UINT64 Memory, UINT64 Size, UINT64 VideoBase, UINT64 VideoBytes);
+@@ -824,6 +948,8 @@ Boot (
+   UINTN                           OutsideOffset;
+   UINTN                           OutsideCapacity;
+   UINTN                           OutsideCount;
++  VOID                            *Compressed;
++  UINTN                           CompressedSize;
+   UINT64                          OutsideBytes;
+   DARWIN_LOADER_INPUT             Inputs[DARWIN_INPUT_COUNT];
+ 
+@@ -870,6 +996,29 @@ Boot (
+   if (EFI_ERROR (Status)) { return Status; }
+   Status = ReadFile (Root, Request->KernelPath, KERNEL_LIMIT, &Image, &ImageSize);
+   if (EFI_ERROR (Status)) { goto Fail; }
++  //
++  // A kernel shipped LZMA-compressed keeps the boot image small enough for a
++  // vendor_boot ramdisk: the 137 MiB macOS fileset becomes about 23 MiB. The
++  // compressed form is recognised by its LZMA_ALONE header and expanded here
++  // so ParseKernel and everything after it only ever see a Mach-O. A board
++  // that ships a plain kernel is unaffected: the probe fails and the file is
++  // parsed as before.
++  //
++  if (IsLzmaKernel (Image, ImageSize)) {
++    Compressed     = Image;
++    CompressedSize = ImageSize;
++    Image          = NULL;
++    Status         = ExpandLzmaKernel (Compressed, CompressedSize, &Image, &ImageSize);
++    FreePool (Compressed);
++    Compressed = NULL;
++    if (EFI_ERROR (Status)) {
++      Print (L"DARWINBOOT: LZMA kernel expand failed: %r\n", Status);
++      Image = NULL;
++      goto Fail;
++    }
++    Print (L"DARWINBOOT: LZMA kernel %lu -> %lu bytes\n",
++           (UINT64)CompressedSize, (UINT64)ImageSize);
++  }
+   Status = ParseKernel (Image, ImageSize, &Kernel);
+   if (EFI_ERROR (Status)) { goto Fail; }
+   Length = StrSize (Request->KernelPath);
+diff --git a/DarwinBootPkg/Driver/DarwinBoot.inf b/DarwinBootPkg/Driver/DarwinBoot.inf
+index 3a199d4..1a99916 100644
+--- a/DarwinBootPkg/Driver/DarwinBoot.inf
++++ b/DarwinBootPkg/Driver/DarwinBoot.inf
+@@ -22,6 +22,8 @@
+   UniXNUPkg/UniXNUPkg.dec
+ 
+ [LibraryClasses]
++  ## Links the LZMA decoder used by ExpandLzmaKernel for a compressed kernel.
++  NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf
+   BaseLib
+   BaseMemoryLib
+   DebugLib
