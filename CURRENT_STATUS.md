@@ -1,9 +1,9 @@
 # Current status · 2026-11-15
 
-> 最新实机检查点：用户报告白＋蓝＋紫三条，现已确认 XNU 入口及开启
-> MMU 前的探针执行。尚无开启 MMU 后或 arm_init 的执行证据；也不能仅凭
-> 缺少后续显示就断言 MMU 失败。新增青/黄检查点测试对见
-> [MMU 与 C 入口诊断](docs/KERNEL_MMU_TEST.md)。
+> 最新实机检查点：用户报告白/蓝/紫/青/黄，确认已到 arm_init KVA 入口
+> 探针，但尚未证明原始 PAC/栈序言和 C 初始化完成。已准备核内异常寄存器文字
+> 与静态 OneSend 二维码报告测试对；旧色条清除后仅保留顶部小状态区。
+> 见 [核内报告测试](docs/KERNEL_EARLY_REPORT.md)。
 
 这是当前工程的单一状态入口。编译、静态加载检查和实机运行分开记录。
 
@@ -270,3 +270,20 @@ RSA 签名、内容 hash、FD 读回、原 boot chain 密钥匹配验证通过�
 和匹配 vbmeta.img（30d6b6ad…）。签名与 hash 引用通过，其他 22 项描述符及
 header/公钥不变；未操作设备、未新编 native/prelink。测试说明和边界见
 `docs/KERNEL_MMU_TEST.md`，机器记录 `docs/evidence/kernel-mmu-test-build.json`。
+
+## 核内异常文字与 OneSend · 2026-11-16
+
+用户要求不再堆满色条，并希望屏显日志或OneSend。当前用异常快照捕获
+ESR/FAR/ELR、原SP/LR和所有通用寄存器，显示关键字段及静态LMS1/OS二维码。
+固定微软QrEncodeData原样编译，单帧720字节载荷/752字节帧，三个层级CRC32；
+不是完整连续日志，未实现核内五档按键控制。旧五条清除，只覆盖顶部48像素。
+
+诊断入口保留原PACIBSP，安装EL1向量，在异常或panic时用独立物理栈报告；
+若到平台初始化前则主动BRK b710，明确标注intentional checkpoint。
+追加Reporter self-test菜单，以BRK b711验证报告通道，原默认项/ADT不变。
+报告器不返回内核，不是永久修复，不冒充完整内核验收。
+
+out/kernel-report-final/vendor_boot.img（77af03cd…）及vbmeta.img（8edf1237…）
+沿用已有仅本地签名授权签出。签名与引用通过，其余22描述符/header/公钥不变。
+指令模型、同版生产解析器、变更范围、LZMA/FAT/签名读回通过；独立ZXing将
+四类fixture二维码解回完整OS帧，CRC正确。实机报告和扫码待验，未操作设备。

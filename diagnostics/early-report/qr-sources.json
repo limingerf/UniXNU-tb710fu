@@ -1,0 +1,26 @@
+{
+  "repository": "microsoft/mu_plus",
+  "commit": "b8d46c71610318e36a661819e1e3c0b8bdda413a",
+  "files": [
+    {
+      "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.inf",
+      "sha256": "79c46eb751f2fd53bd6c8521df99af1f2be0e9590cfc8af665e6f7f0bb151bd4"
+    },
+    {
+      "path": "MsGraphicsPkg/Include/Library/QrEncoderLib.h",
+      "sha256": "96b2e3c1a0b5271e2cf97bc48f33839a9a6b9535d9d37700bce2b4c7d3ee56f5"
+    },
+    {
+      "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c",
+      "sha256": "055d446e6a75f9ea687cf3561ae933d266a6e48acda9c905edf2b62dea1f2d2a"
+    },
+    {
+      "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c",
+      "sha256": "125f1bda27f84d2b4a71a4b86d9364daff47b6aa7b0f2dfdc1bc0a309cc6c15a"
+    },
+    {
+      "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.h",
+      "sha256": "2ad084b975448abaadd3ce4e6037c83201677a447c6a3845346503d7041c6bdf"
+    }
+  ]
+}
