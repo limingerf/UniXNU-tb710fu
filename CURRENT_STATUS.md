@@ -220,3 +220,16 @@ GCC/Clang 严格 C11、GCC ASan/UBSan 主机解码测试、40 项内存图和 11
 XNU 入口、紫色标记开启 MMU 前。不新增自动复位。仅 129 字节变化，同版生产
 解析器通过，LZMA 往返和 payload FAT/读回通过。详见 `docs/XNU_ENTRY_PROBE.md`。
 本地 unsigned vendor_boot 已准备；本轮未签名、未刷写，探针未上机。
+
+## 绿条后加载器检查点 · 2026-11-15
+
+针对原有绿条不能区分停点的问题，新增显式 DarwinBoot Entry.S 补丁：
+同一条顶部色带依次绿→橙→黄→青→白，分别覆盖进入交接、数据缓存维护完成、
+指令缓存维护完成、MMU 关闭后、TLB 维护后且即将跳转。保留 x0/x1，
+不改变原缓存/MMU/TLB 操作顺序，未更改内核或根卷。
+
+云 run43729209898 success，构建源 `0ea7095d5d99a8d66b4ff8b77bbdf9268e6cfd52`；
+FD `5722252b40e37d6c94e252c8daeddd9f3499b5483bca44f0cba93c795fb78a71`。
+本地 11 GUID、22 overlay 哈希、Entry.S 哈希和两个真实 FV 复验通过。
+未签名 boot 载体已准备（113e0792…），现有 boot chain 密钥匹配及源载体
+签名/hash 验证通过；尚未签名或刷入。见 `docs/HANDOFF_STAGES.md`。

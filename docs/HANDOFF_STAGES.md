@@ -27,3 +27,28 @@ MMU 关闭、TLB 维护或跳转。本变体把**同一条顶部色带**依次�
 逐段反汇编核对四个标记均在预期操作之后、最终仍为 `br x1`。
 CI 的 LZMA 固件构建应用该补丁并记录部署后的 Entry.S 哈希与阶段表，
 实际 FD/模块及云 run 另行记录。实机行为未验证。
+
+## 构建与安装输入
+
+云 [run43729209898](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43729209898)
+成功，构建源 `0ea7095d5d99a8d66b4ff8b77bbdf9268e6cfd52`。
+FD SHA-256：`5722252b40e37d6c94e252c8daeddd9f3499b5483bca44f0cba93c795fb78a71`。
+本地复验 11 个模块 GUID、22 个 overlay 哈希、两个实际 FV，部署 Entry.S 与
+本地已审查/汇编的源码哈希完全一致。
+
+`tools/repack_handoff_boot.py` 从已知正常的 log-viewer boot 载体复制 BootShim、
+DTB 和 Android v4 header，仅替换 FD 并调整 kernel_size。原有 4096 字节全零
+GKI signature 槽原样保留；非空 GKI 签名会被拒绝，避免保留失效签名。
+相同 FD 输入能逐字节复现原始未签名载体，新 FD 的 gzip/DTB 读回也通过。
+
+已生成 `out/handoff-stages/tb710fu-boot-handoff.unsigned.img`，659456 字节，
+SHA-256 `113e0792a4166969a42e7e62b0ad518b2164ca1f34ba9c9e3e84192a90fa2b51`。
+它尚需 boot AVB 签名。已核对现有载体的 RSA 签名及内容 hash，以及现有
+vbmeta-ecc0 的 boot chain 公钥匹配；沿用该链的公钥和 rollback 参数后只更新 boot_b，
+不需要修改 vendor_boot、根卷或槽位选择。
+
+本轮尚未签名或刷入。安装后仍选原来的 XNU 项，等停屏稳定，记录顶部色带的
+最后颜色；不需要为了取这次结果先长按电源。阶段标记最终为白色时，再用独立
+XNU 蓝/紫入口探针细分内核最初阶段，不能把白色当作内核成功运行。
+
+机器记录：`docs/evidence/uefi-handoff-stages-build.json`。
