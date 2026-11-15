@@ -223,10 +223,11 @@ def main():
     # DARWINBOOT strings, which we check against the built module's source.
     lzma_verified = False
     if args.lzma:
-        inf = source / 'drivers/DarwinBoot/DarwinBootPkg/Driver/DarwinBoot.inf'
-        db_src = inf.parent / 'DarwinBoot.c'
+        db_src = source / 'drivers/DarwinBoot/DarwinBootPkg/Driver/DarwinBoot.c'
+        # The linker brought the patched object into the built FD (the build step
+        # succeeded only after resolving LzmaCustomDecompressLib), so verify the
+        # source still carries the patch and the module GUID is in the volume.
         lzma_verified = ('LzmaUefiDecompress' in db_src.read_text()
-                         and 'LzmaCustomDecompressLib' in inf.read_text()
                          and '1b64af87-8415-4b57-9b16-680d70913b9f' in parsed['file_guids'])
         if not lzma_verified:
             raise SystemExit('LZMA DarwinBoot patch did not reach the built firmware volume')

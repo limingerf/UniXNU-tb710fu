@@ -92,9 +92,15 @@ LZMA 压缩后都是 ~23 MiB。
 
 1. **LZMA 解压实现**（DXE 侧）。**EDK II 自带**：
    `MdeModulePkg/Library/LzmaCustomDecompressLib`。它是 `LIBRARY_CLASS = NULL`
-   的 NULL 库，必须在组件的 `[LibraryClasses]` 里以
-   `NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf`
-   显式链接（只有 SEC 组件默认链接了它，DarwinBoot 原先没有）。
+   的 NULL 库，只能在 **DSC 的组件 override 块**里以 `NULL|...` 链接
+   （`INF [LibraryClasses]` 里的 `NULL|` 不合法，会崩 BaseTools；SEC 组件是
+   正确先例：`SiliciumPkg/Sec/Sec.inf { <LibraryClasses> NULL|... }`）。
+
+   由于该库的 `GuidedSectionExtraction.c` 调用
+   `ExtractGuidedSectionRegisterHandlers`，DXE 驱动还要在同一个 override 里
+   钉住 `ExtractGuidedSectionLib|MdePkg/Library/DxeExtractGuidedSectionLib/...`
+   （默认解析到 `PrePiExtractGuidedSectionLib` 会拉入 HOB API，链接时报
+   `undefined symbol: GetFirstGuidHob/BuildGuidDataHob`）。
 
    可用 API（全局 EFIAPI 函数，库无公开头，需在调用方声明）：
 
@@ -124,16 +130,24 @@ LZMA 压缩后都是 ~23 MiB。
 
 ### 已落地
 
-`firmware/patches/0002-darwinboot-lzma-kernel.patch`（DarwinBoot.c + DarwinBoot.inf）：
+`firmware/patches/0002-darwinboot-lzma-kernel.patch`（只改 DarwinBoot.c）：
 
 - DarwinBoot.c：extern 声明两个 LZMA 函数；`IsLzmaKernel` / `ExpandLzmaKernel`
   两个 STATIC helper；在 `ReadFile` 后插入解压分支。
-- DarwinBoot.inf：`NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/...`
-  加入 `[LibraryClasses]`。
+
+链接关系（`tools/ci_firmware.py --lzma` 在部署后的 tb710fu.dsc 注入）：
+
+```
+DarwinBootPkg/Driver/DarwinBoot.inf {
+  <LibraryClasses>
+    NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf
+    ExtractGuidedSectionLib|MdePkg/Library/DxeExtractGuidedSectionLib/DxeExtractGuidedSectionLib.inf
+}
+```
 
 `tools/ci_firmware.py --lzma`：`defconfig` 后 `git submodule update --init
-drivers/DarwinBoot`，应用补丁，构建后在 FD 里核对 DarwinBoot 的
-`1b64af87-8415-4b57-9b16-680d70913b9f` GUID 仍在。
+drivers/DarwinBoot`，应用补丁，注入 DSC override，构建后在 FD 里核对
+DarwinBoot 的 `1b64af87-8415-4b57-9b16-680d70913b9f` GUID 仍在。
 
 `.github/workflows/uefi-lzma.yml` 在 macos-26 runner 上跑该变体。
 
