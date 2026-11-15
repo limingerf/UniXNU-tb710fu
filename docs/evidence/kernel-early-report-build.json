@@ -79,7 +79,7 @@
     "diagnostics/early-report/Compat.h": "f6944a9a506f85692679c84a81c91c587c581c17b46e1aa83e0d3e9b21e7f3e1",
     "diagnostics/early-report/Entry.S": "fafcd37d785df61c47e64bed1909aef5232385aa1a7647a23d4360a1a626bfd2",
     "diagnostics/early-report/Font.h": "e3174a605a6cfb351e5fd613f5c0d29c509a873fc3218b79fc4e7115fe405071",
-    "diagnostics/early-report/Report.c": "d91968c6849048050400656937b8983d77e02b5084de8f26aa0318964e81171a",
+    "diagnostics/early-report/Report.c": "8623d13da7873aedfcbcbe6337c422f7e77938d714ad613bca60f4cf2594a308",
     "diagnostics/early-report/Report.h": "5f00fbacbb5e1b2ddeb35f419746b7f7f53f4c9ed718f4934839bf0c03c090c3",
     "diagnostics/early-report/Test/host_report.py": "2a1dd57169fd8fec3b9dcee85132d3c51754cf4699b3afbcdbdb31dd596ac04c",
     "diagnostics/early-report/qr-sources.json": "4fdde01133e35e111f191aa6bb44847442ed3212d277a3b28d4bfab085a69dc2"
@@ -229,5 +229,20 @@
     "build_time_bytes_sha256": "1f7c08d236976c8ea556f652c42799ee1e5679f5c60c28148379824a4ef42243",
     "committed_LF_sha256": "4fdde01133e35e111f191aa6bb44847442ed3212d277a3b28d4bfab085a69dc2",
     "reason": "JSON line endings only; manifest values and compiled C/assembly unchanged"
+  },
+  "host_compatibility_fix": {
+    "path": "diagnostics/early-report/Report.c",
+    "build_source_sha256": "d91968c6849048050400656937b8983d77e02b5084de8f26aa0318964e81171a",
+    "updated_source_sha256": "8623d13da7873aedfcbcbe6337c422f7e77938d714ad613bca60f4cf2594a308",
+    "freestanding_object_sha256": "9b5a4df34cfa7e6ab6fb6904a69830685dd35cd354d1e23b6641baf2799a18d2",
+    "freestanding_object_byte_identical": true,
+    "reason": "Use native default data section for TB_REPORT_HOST_TEST; ELF diagnostic branch unchanged"
+  },
+  "cloud_first_run": {
+    "run_id": 43743753427,
+    "url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43743753427",
+    "conclusion": "failure",
+    "actual_failure": "macOS host-test rejects ELF .data.state attribute; AARCH64 object compilation already passed",
+    "diagnosed_before_retry": true
   }
 }

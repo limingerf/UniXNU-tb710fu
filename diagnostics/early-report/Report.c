@@ -6,7 +6,11 @@
 #include <Library/QrEncoderLib.h>
 #include "Font.h"
 
+#ifdef TB_REPORT_HOST_TEST
+TB_REPORT diag_state = {0}; /* Native host format may be Mach-O, not ELF. */
+#else
 TB_REPORT diag_state __attribute__((section(".data.state"))) = {0};
+#endif
 UINT8 diag_stack[16384] __attribute__((aligned(16)));
 static UINT8 arena[524288];
 static UINTN arena_used;
