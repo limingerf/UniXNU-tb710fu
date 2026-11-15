@@ -78,11 +78,16 @@
   # Vendor DXE is absent: do not scan leftover stock XBL HOBs for it.
   gQcomPkgTokenSpaceGuid.PcdBuildXblHobs|FALSE
 
+  # Filename prefix for the OneSend QR log transfer (<model>-<date>-<time>.log).
+  gUniXNUPkgTokenSpaceGuid.PcdUniXNUDeviceModel|"TB710FU"
+
 [LibraryClasses]
   MemoryMapLib|tb710fuPkg/Library/MemoryMapLib/MemoryMapLib.inf
   ConfigurationMapLib|tb710fuPkg/Library/ConfigurationMapLib/ConfigurationMapLib.inf
   UniXNULib|UniXNUPkg/Library/UniXNULib/UniXNULib.inf
   FdtLib|MdePkg/Library/BaseFdtLib/BaseFdtLib.inf
+  # OneSend QR exporter for the ramoops console snapshot (Tb710fuRamoopsDxe).
+  QrEncoderLib|MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.inf
 
 [Components]
   # DiskIoDxe, PartitionDxe, FAT, Unicode collation and SimpleFb are built by

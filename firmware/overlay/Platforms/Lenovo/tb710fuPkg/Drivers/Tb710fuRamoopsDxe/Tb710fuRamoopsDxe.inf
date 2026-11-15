@@ -9,23 +9,29 @@
 [Sources]
   Tb710fuRamoopsDxe.c
   Ramoops.h
-  Font.h
 
 [Packages]
   MdePkg/MdePkg.dec
   UniXNUPkg/UniXNUPkg.dec
+  MsGraphicsPkg/MsGraphicsPkg.dec
 
 [LibraryClasses]
   BaseLib
   BaseMemoryLib
   DebugLib
   MemoryAllocationLib
+  PcdLib
   PrintLib
+  QrEncoderLib
   UefiBootServicesTableLib
   UefiDriverEntryPoint
+  UefiRuntimeServicesTableLib
 
 [Protocols]
   gUniXNUMenuPluginProtocolGuid                  ## PRODUCES
+
+[FixedPcd]
+  gUniXNUPkgTokenSpaceGuid.PcdUniXNUDeviceModel
 
 [Depex]
   TRUE

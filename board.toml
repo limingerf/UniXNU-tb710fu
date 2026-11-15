@@ -48,6 +48,8 @@ packages = [
   "{uefi}", "{uefi}/Platforms/Lenovo", "{tree}/package",
   "{tree}/drivers/DarwinBoot", "{edk2}",
   "{uefi}/Common/Mu", "{uefi}/Common/Mu_OEM_Sample",
+  # QrEncoderLib (OneSend log transfer) lives under Common/Mu/MsGraphicsPkg.
+  "{uefi}/Common/Mu/MsGraphicsPkg",
   "{uefi}/Silicon/Qualcomm", "{uefi}/Silicon/Silicium",
   "{uefi}/Silicium-ACPI", "{uefi}/Silicium-ACPI/Platforms/Lenovo",
   "{uefi}/Silicium-ACPI/Silicon/Qualcomm",
