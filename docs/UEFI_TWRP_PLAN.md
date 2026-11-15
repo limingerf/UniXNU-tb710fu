@@ -7,11 +7,32 @@
 
 ## 关键结论
 
-### 切槽的本质
+### 切槽的本质（2026-11-15 更正：不是 devinfo，是 GPT 分区属性）
 
-`misc.img` 实测：`bootloader_message.command = "bootonce-bootloader"`，
-**没有 `bootloader_control` 结构**（magic `0x42414342` 不存在）。
-槽位状态由 ABL/XBL 管理，存在 `devinfo`（4 KiB）分区里。
+**更正**：早前假设槽位在 `devinfo`（4 KiB）分区里，经查证 AOSP
+`hardware/qcom/bootctrl/boot_control.cpp`（官方高通 bootctrl 源码）后推翻。
+
+真实机制：
+
+```c
+// boot_control.cpp 的 set_active_boot_slot()：
+// 1. 遍历 pt_list 里所有 A/B 分区（boot/system/vendor/vendor_boot/...）
+// 2. 对每个分区读 GPT 项，取 AB_FLAG_OFFSET 处的属性字段
+// 3. 目标槽所有分区项：attributes |= AB_PARTITION_ATTR_SLOT_ACTIVE
+//    另一槽所有分区项：attributes &= ~AB_PARTITION_ATTR_SLOT_ACTIVE
+// 4. gpt_disk_update_crc() + gpt_disk_commit() 写回主 GPT + 备份 GPT
+// 5. UFS 设备额外：gpt_utils_set_xbl_boot_partition(NORMAL_BOOT/BACKUP_BOOT)
+//    即切 UFS 的 boot LUN（0=主 boot LUN，1=备份 boot LUN）
+```
+
+**槽位状态 = GPT 分区表项 Attributes 字段（offset +48，8 字节）里的
+`AB_PARTITION_ATTR_SLOT_ACTIVE` 位（bit 0）**，不是 `devinfo` 分区，也不是
+`misc` 的 bootloader_control。
+
+- `misc.img` 实测：`command = "bootonce-bootloader"`，无 bootloader_control
+  （magic `0x42414342` 不存在）—— 与上述结论一致，misc 只用于 bootonce 命令。
+- 槽位后缀由 ABL 通过 cmdline `androidboot.slot_suffix` 或 DT
+  `/firmware/android/slot_suffix` 传给内核。
 
 官方头文件 `EmbeddedPkg/Include/Protocol/GblEfiBootControl.h` 定义了标准接口
 （`GetSlotCount` / `GetSlotInfo` / `GetCurrentSlot` / **`SetActiveSlot`** /
@@ -19,8 +40,21 @@
 
 ### 前置条件
 
-切槽要写 `devinfo`，写 `devinfo` 要块设备，块设备要 **UFS 驱动**。
-当前 `TB710FU_VENDOR_HW = 0`，UEFI 没有 UFS，看不到任何分区。
+切槽要改 GPT 分区表项（主表 + 备份表），要改 GPT 就要读写块设备，块设备要
+**UFS 驱动**。当前 `TB710FU_VENDOR_HW = 0`，UEFI 没有 UFS，看不到任何分区。
+
+另外 UFS 设备还要切 **boot LUN**（`set_xbl_boot_partition`），这个在 UFS 设备
+上可能才是决定"下次从哪个槽的 xbl/abl/boot 启动"的关键，且必须由 UFS 驱动
+发出对应的 UFS 命令（或写 RPMB/boot LUN 配置）。
+
+**更正后的切槽实现要点**（比"写 devinfo"更精确，也更像标准 UEFI 做法）：
+
+1. UFS BlockIo 可读 → 找到承载 A/B 分区的 GPT 盘（sde，见 device-facts）
+2. 读主 GPT + 备份 GPT，定位每个 A/B 分区的分区项
+3. 改 Attributes 字段的 `AB_PARTITION_ATTR_SLOT_ACTIVE` 位（bit 0）
+4. 重算 GPT 头 CRC + 分区项 CRC，写回主表 + 备份表
+5. UFS 侧切 boot LUN（NORMAL_BOOT ↔ BACKUP_BOOT）
+6. 冷重启，ABL 按新 active slot 加载对应 boot
 
 ## 已交付：UEFI 菜单修复
 
