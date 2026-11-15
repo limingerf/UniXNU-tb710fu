@@ -1,9 +1,9 @@
 # Current status · 2026-11-15
 
-> 最新实机阶段更正（2026-11-15）：用户确认的实际绿条来自 DarwinEnter，
-> 说明 ExitBootServices 已返回，但尚无 XNU 入口执行证据。CurrentEL/CPU ID
-> 和 LockCapsuleInterface 均属加载器/UEFI 输出，不能当作 XNU 输出。
-> 本轮长按电源后 ramoops 头无效，原因未确定。见 [入口探针](docs/XNU_ENTRY_PROBE.md)。
+> 最新实机检查点（2026-11-15）：用户报告分阶段加载器已到白条，说明
+> DarwinEnter 已完成缓存、MMU 关闭和 TLB 维护，走到内核跳转前；
+> 尚不能确认 XNU 入口已执行。本轮交付位于 vendor_boot 中的蓝/紫 XNU
+> 入口探针，见 [内核入口测试](docs/KERNEL_ENTRY_TEST.md)。
 
 这是当前工程的单一状态入口。编译、静态加载检查和实机运行分开记录。
 
@@ -241,3 +241,16 @@ FD `5722252b40e37d6c94e252c8daeddd9f3499b5483bca44f0cba93c795fb78a71`。
 RSA 签名、内容 hash、FD 读回、原 boot chain 密钥匹配验证通过。
 本轮未执行设备命令、刷写或重启，实机结果待用户测试；步骤见
 `docs/HANDOFF_STAGES_FLASH.md`。
+
+## 白条后进入核内诊断 · 2026-11-15
+
+用户实测报告顶部白条，尚无核内标记。本轮沿用已有本地签名授权，将固定官方
+蓝/紫入口探针副本 e2156f42… 装入 vendor_boot，产出已签名测试对：
+`out/kernel-entry-test/vendor_boot.img`（93c81e7d…）及 `vbmeta.img`（58aad870…）。
+保留现有已到白条的 boot_b，不涉及根卷。
+
+签名、vendor_boot hash、匹配 vbmeta 引用均通过；vbmeta header、公钥和其余
+22 个 raw descriptor 及次序逐字节不变。签名后读回内核并解压哈希正确，
+配置/ADT 不变，FAT 几何通过。未新编译 native/prelink，原始内核文件未改，
+未执行设备命令。实机入口停点待本次测试反馈，不能称为已修复内核。
+步骤见 `docs/KERNEL_ENTRY_TEST.md`，机器记录 `docs/evidence/kernel-entry-test-build.json`。

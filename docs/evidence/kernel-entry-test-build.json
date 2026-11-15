@@ -1,0 +1,48 @@
+{
+  "stage": "signed-kernel-entry-diagnostic",
+  "native_input_run": 43709117408,
+  "prelink_input_run": 43710067378,
+  "original_prelink_sha256": "cc690c9a0bde84c49e9cebccc288f393393d16da56620d580108f0a62692b31c",
+  "diagnostic_kernel_sha256": "e2156f42d6d30b9b91d04b8be1d1d86a03d84fdecba560d9587f70b1ce5db524",
+  "diagnostic_kernel_bytes": 142753792,
+  "probe_tool": "scripts/patch-xnu-entry-probe.py",
+  "probe_tool_sha256": "159eb1ea8d6c1da30f26913a281f46e21d940a1ae7886656529907ec3edf96ad",
+  "probe_framework_commit": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+  "changed_bytes": 129,
+  "original_probe_record": "docs/evidence/xnu-entry-probe.json",
+  "signed_images": {
+    "stage": "signed-kernel-probe-pair",
+    "vendor_boot_bytes": 100663296,
+    "vendor_boot_sha256": "93c81e7d85c2dd9a0ca6b168923ff9b67b1458e366c7ba95596e53e94b4a45df",
+    "vbmeta_bytes": 8000,
+    "vbmeta_sha256": "58aad8707106e03399b17a3680ffa896888a5f5cdde158bd85c900f9555d2dfc",
+    "source_vbmeta_sha256": "3992de82a3a03584b0e03c43bd66060ef93684122bb8867c893ed6c45ea85331",
+    "unsigned_vendor_sha256": "cdfcae603df730e5f7b7a7bce51fb7b5c1f5937e21122673973d022bba4491a8",
+    "signature_checks": "PASS",
+    "unchanged_other_raw_descriptors": 22,
+    "identical_vbmeta_header": true,
+    "descriptor_counts_by_tag": {
+      "0": 13,
+      "2": 3,
+      "1": 4,
+      "4": 3
+    },
+    "public_key_unchanged": true,
+    "signing_payload_readback": "PASS",
+    "device_operations": false,
+    "hardware_verified": false
+  },
+  "signed_payload_kernel_readback": "PASS",
+  "ADT_and_config_preserved": "PASS",
+  "production_parser": "same pinned production parser PASS (see original probe record)",
+  "user_report": {
+    "visible_loader_band": "white",
+    "expected_boot_image_sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83",
+    "device_hash_readback": false,
+    "kernel_entry_proven": false
+  },
+  "local_signing_authorization_reused": true,
+  "device_operations": false,
+  "hardware_probe_verified": false,
+  "new_cloud_compile_required": false
+}
