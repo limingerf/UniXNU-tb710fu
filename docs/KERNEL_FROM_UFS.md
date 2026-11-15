@@ -66,3 +66,27 @@ FAT 卷，内核就从那里读。`vendor_boot` 的 payload ramdisk 可以只放
 2. 若能：切 `unixnu` 分区（需 TWRP/recovery 或 adb root），格式化为 FAT，
    放入 `EFI/UniXNU/unixnu.toml` + `Payloads/kernel.macho`。
 3. 若黑屏：按 `docs/UFS_BUILD.md` 的失败模式逐个排查 ClockDxe/RpmhDxe。
+
+## 数据面验证（2026-11-15）
+
+用官方 `package/Scripts/mk-gpt-disk.py` 构造了设备将要得到的形态：
+GPT 里 `misc`（8 MiB）+ `unixnu` 分区，后者头部是 FAT32 卷，含
+`EFI/UniXNU/unixnu.toml` 与 `Payloads/kernel.macho`。
+
+从字节验证（不看工具自报）：
+
+| 项 | 值 |
+| --- | --- |
+| 磁盘 | 268,435,456 B（256 MiB） |
+| `unixnu` 分区 | LBA 18432..524254 |
+| FAT 卷 | FAT32，512 B/扇区，1 扇区/簇，reserved 32，2 份 FAT |
+| 簇数 | **129,022**（EnhancedFatDxe 的 FAT32 下限 65,525） |
+| `EFI/UniXNU/unixnu.toml` | 344 B，短名 `UNIXNU~1TOM` |
+| `Payloads/kernel.macho` | 短名 `KERNEL~1MAC` |
+| 磁盘 SHA-256 | `a8dd709eabaa2d33452601b8ee2e7c3bddffc6979a757df40bd07908e982357d` |
+
+同一形态在设备上的真实镜像为 `out/unixnu-part/unixnu-payload-probe.img`
+（224 MiB，114,233 簇，内核读回 `c601ca5c…`）。
+
+**边界**：这证明分区与卷的字节结构正确、满足固件 FAT 驱动的要求，
+不证明 UniXNU 在硬件上真的解析并启动了它。后者需要 UFS 候选实机可见。
