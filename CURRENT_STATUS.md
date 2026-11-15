@@ -143,6 +143,38 @@ success。预链接 `kernel.macho` 142,753,792 B（SHA-256 `cc690c9a…`），
 
 **未验证**：zone 能否跨复位存活、Android 侧 pstore 是否出现、内核实际停点。
 
+补记：TWRP 实测 `pstore` 已挂载、`CONFIG_PSTORE_RAM/CONSOLE=y`、
+`/sys/module/ramoops` 与 `/sys/module/pstore` 存在、`backend=ramoops`；
+但 `/sys/module/ramoops/parameters/ecc = 0`，而旧 XNU 参数写
+`ramoops_ecc=16`，GKI 按 ecc=0 解析带 RS 校验的 zone 会判无效并清零，
+这就是首轮 pstore 为空的原因。已改 `ramoops_ecc=0` 重建并推送
+（`fa0d3a2`），交付文件 `vendor_boot-ecc0.signed.img`（`836ca997…`）与
+`vbmeta-ecc0.img`（`3992de82…`），14 项审计全 PASS。实机复读仍待验证。
+
+## macOS 27 根卷（userdata）构建 · 2026-11-15
+
+按官方 `unixnu build userdata` 落地根卷镜像，云 run **43724852936 success**。
+
+- `board.toml` 补 `[userdata]` 实测 GPT 几何：`first_lba 5105064`、
+  `last_lba 61390842`、`lba_bytes 4096`（214.71 GiB 容量上限，
+  `sgdisk --print /dev/block/sda` 实测，userdata 为第 14 且最后一个分区）
+- profile 自带 `[userdata] windows`（OS/SystemOS/App）与
+  `[payload.adt] root_match_volume_uuid = 84581E99-…`
+- 远程 IPSW 25.3 GiB，实测支持 HTTP range；只读三个成员约 13 GiB
+  （OS 10.62 GiB AEA、SystemOS 2.31 GiB AEA、App 0.05 GiB）
+- macOS runner 上 `ipsw 3.1.748` + `/usr/bin/aea` + `hdiutil` 完成 AEA 解密
+
+**产出 `userdata-root.img`：17,466,130,432 B（16.27 GiB，远小于 214 GiB
+分区）**，SHA-256 `221d18c76ccd6bcc0ec9141508ef109a254783d029b04e3401993450440ccc7a`，
+三个窗口全在，报告校验通过。artifact `tb710fu-macos-userdata-43724852936`
+（压缩 13.2 GiB，私有保留 3 天），本机未下载。详见
+[根卷构建记录](docs/USERDATA_BUILD.md)。
+
+**未解决**：设备 214.7 GiB userdata 装满 Android data、GPT 无空闲扇区、
+data 多层加密；官方保留数据缩容工具会拒绝。用户表示"清空就行"，但擦除/
+重分区/刷入**尚未执行且不可逆**。Data 卷 seed 是独立输入，未做。
+根卷 UUID 与实际镜像的匹配、根卷挂载、launchd 均未验证。
+
 ## 下一阶段
 
 先补本机DT与最小启动/日志输入，再做UEFI→DarwinBoot→单核EL1/PAC验证。真实UFS、

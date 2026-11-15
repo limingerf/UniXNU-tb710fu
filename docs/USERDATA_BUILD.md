@@ -91,6 +91,39 @@ Total free space is 0 sectors
 `profiles.merge` 验证过 board 几何与 profile windows / root_match_volume_uuid
 能正确共存。
 
+### 云构建结果（已通过）
+
+run **43724852936**（commit `024ac99`），**success**。
+
+两次运行：43724165867 因工具检查里一句多余的 `ipsw --version`（该工具无此
+flag）在 step 5 提前失败，已修正；43724852936 全部 9 步通过。
+
+| 检查 | 结果 |
+| --- | --- |
+| AEA 工具 | `/usr/bin/aea`、`hdiutil`、`ipsw 3.1.748`（brew）全部就位 |
+| dry-run | PASS（IPSW 成员可解析、镜像不超分区容量） |
+| `build userdata` | PASS，三个窗口全部写入 |
+| 产物校验 | `image_sha256` 与实算一致（脚本内断言） |
+| artifact | `tb710fu-macos-userdata-43724852936`，14,135,017,096 B（压缩） |
+
+**产出镜像**（`userdata-root.img`，在 artifact 内）：
+
+| 项 | 值 |
+| --- | --- |
+| `image_bytes` | **17,466,130,432 B = 16.27 GiB** |
+| `image_sha256` | `221d18c76ccd6bcc0ec9141508ef109a254783d029b04e3401993450440ccc7a` |
+| `windows` | `OS`、`SystemOS`、`App`（三个都在） |
+| `userdata_bytes` | 230,546,550,784 B = 214.71 GiB（分区容量上限） |
+| artifact 上传后 digest | `b661a8ddbe4ad0911bbb141baa4b88a40401543bb73328fcd0d18ec02ccd8fb0` |
+
+**镜像只有 16.27 GiB，不是 214 GiB** —— 214 GiB 是分区容量，镜像是
+1 MiB `SHNGROOT` 头 + 三个窗口（各 1 MiB 对齐）的实际内容。压缩后 artifact
+13.2 GiB。
+
+> 本机未下载该 14 GiB artifact：`github_admin.py download` 按 256 KiB 分块
+> 串行拉取，14 GiB 不实用。产物保留在 GitHub 私有 artifact（3 天），刷入时
+> 应直接从 CI 侧取用，无需经本机中转。
+
 ## 尚未解决 / 需要决策
 
 1. **分区写入方式**。`userdata` 现在装满 Android data、GPT 无空闲扇区。
