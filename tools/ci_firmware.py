@@ -126,6 +126,7 @@ def main():
         block = ('  DarwinBootPkg/Driver/DarwinBoot.inf {\n'
                  '    <LibraryClasses>\n'
                  '      NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf\n'
+                 '      ExtractGuidedSectionLib|MdePkg/Library/DxeExtractGuidedSectionLib/DxeExtractGuidedSectionLib.inf\n'
                  '  }\n')
         if block in dtext:
             pass
