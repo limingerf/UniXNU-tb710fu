@@ -59,9 +59,22 @@ gate=0 时 `check-board.py` 会剥掉 `!if $(TB710FU_ENABLE_UFS) == 1` 块再判
 
 ### CI
 
-- `tools/ci_firmware.py --ufs`：部署副本翻转 gate + 在真实嵌套 FFS 里校验 8 个链模块
+- `tools/ci_firmware.py --ufs`：`unixnu fetch` 初始化 `Binaries` submodule →
+  把上游 `Binaries/giulia` 复制成 `Binaries/tb710fu`（板级命名）→ 校验 8 个 INF →
+  部署副本翻转 gate → 在真实嵌套 FFS 里校验 8 个链模块
 - `.github/workflows/uefi-ufs.yml`：独立 workflow，不与基线冲突
 - `scripts/check-tb710fu-firmware.py`：仅当 `UNIXNU_ENABLE_UFS=1` 时放行 dsc 这一处差异
+- `board.toml`：`submodules` 加 `Binaries`；`packages` 加 `{uefi}/Binaries/tb710fu`
+
+### 为什么是"复制成 Binaries/tb710fu"
+
+上游 `Project-Silicium/Device-Binaries@a1501e0c` 里**没有 `tb710fu` 目录**
+（只有 `giulia`、`alioth` 等机型）。本地的 `Binaries/tb710fu` 是手工从 giulia
+复制改名而来的，从未进入任何 git。
+
+直接让 DSC 引用 `Binaries/giulia` 会让"TB710FU 的固件使用 OnePlus Ace 5 的
+目录名"，语义错位。因此 CI 在构建 checkout 内把它复制成板级名字，DSC/FDF 和
+`check-board.py` 全部读 `Binaries/tb710fu`。该副本只存在于构建目录，不提交。
 
 ## 重大限制：驱动来源
 

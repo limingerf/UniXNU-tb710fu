@@ -86,18 +86,32 @@ def main():
     command(driver + ['defconfig', 'tb710fu_macos_defconfig'] + common, source, output / 'defconfig.log')
     status_snapshot(driver, common, source, output / 'status.json')
     if args.ufs:
-        # The Device-Binaries submodule publishes the SM8650 module set as
-        # Binaries/giulia; this board has no upstream tree of its own. Fetch the
-        # modules first, then present the published set under the board's own name
-        # so the deployed DSC/FDF read Binaries/tb710fu, which is what the board
-        # package and check-board.py describe. The copy lives only inside the build
-        # checkout and is never committed.
-        command(driver + ['fetch'] + common, source, output / 'fetch.log')
-        published = uefi / 'Binaries/giulia'
-        board_view = uefi / 'Binaries/tb710fu'
+        # Device-Binaries publishes the SM8650 module set as Binaries/giulia; this
+        # board has no upstream tree of its own. Clone the exact gitlink commit that
+        # the pinned UEFI checkout records, then present it under the board's own
+        # name so the deployed DSC/FDF and check-board.py read Binaries/tb710fu.
+        # Nothing here is committed: the clone and the copy live in the build
+        # checkout only.
+        gitlink = subprocess.check_output(
+            ['git', '-C', str(uefi), 'ls-tree', 'HEAD', 'Binaries'], text=True).split()
+        if len(gitlink) < 3:
+            raise SystemExit('Cannot resolve the Binaries gitlink in the pinned UEFI checkout')
+        pinned = gitlink[2]
+        binaries = uefi / 'Binaries'
+        if binaries.is_dir():
+            shutil.rmtree(binaries)
+        command(['git', 'clone', '--no-checkout',
+                 'https://github.com/Project-Silicium/Device-Binaries.git', str(binaries)],
+                ROOT, output / 'uefi-binaries-clone.log')
+        command(['git', '-C', str(binaries), 'fetch', '--depth', '1', 'origin', pinned],
+                ROOT, output / 'uefi-binaries-clone.log')
+        command(['git', '-C', str(binaries), 'checkout', '--detach', pinned],
+                ROOT, output / 'uefi-binaries-clone.log')
+        published = binaries / 'giulia'
         if not published.is_dir():
-            raise SystemExit('Binaries/giulia missing after submodule init; '
-                             'check board.toml [firmware.submodules]')
+            listing = sorted(p.name for p in binaries.iterdir())
+            raise SystemExit('Binaries/giulia missing at ' + pinned + '; found: ' + repr(listing))
+        board_view = binaries / 'tb710fu'
         if board_view.is_dir():
             shutil.rmtree(board_view)
         shutil.copytree(published, board_view)
