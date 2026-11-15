@@ -331,3 +331,6 @@ FAR=8c88b1eae，32位写入未按4字节对齐。报告器关闭MMU时发生该�
 out/kernel-live-report-final/vendor_boot.img（f8688874…）及vbmeta.img（eb126c61…）
 签名/hash/匹配引用通过，原22描述符/header/公钥不变。未操作设备或根卷，
 未新做native/prelink；内核原始停点及新版实机行为待反馈。
+
+
+源编译云检查 [run43749763327](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43749763327) success，提交7076a0036a87a633cba367292c3cc31c774287d3。AARCH64对象与主机传输检查通过，独立产物匹配；不是新native/prelink。实机QR和实时文字仍待验。

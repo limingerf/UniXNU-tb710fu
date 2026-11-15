@@ -73,3 +73,6 @@ AARCH64报告/微软QrEncodeData并核验所有数据/栈自然对齐，达到QR
 自检故障已由照片和同一指令回归定位；新镜像的实机修复效果、实时阶段文字和
 XNU原始停点仍待反馈。记录见
 [kernel-live-report-build.json](evidence/kernel-live-report-build.json)。
+
+
+源编译云检查 [run43749763327](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43749763327) success，提交7076a0036a87a633cba367292c3cc31c774287d3。AARCH64对象与主机传输检查通过，独立产物匹配；不是新native/prelink。实机QR和实时文字仍待验。

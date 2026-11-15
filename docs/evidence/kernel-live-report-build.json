@@ -520,5 +520,64 @@
   "no_added_default_stop": true,
   "hardware_alignment_fix_verified": false,
   "hardware_live_status_verified": false,
-  "note": "Reporter alignment bug established from photo and instruction; original kernel hang still unlocated"
+  "note": "Reporter alignment bug established from photo and instruction; original kernel hang still unlocated",
+  "source_commit": "7076a0036a87a633cba367292c3cc31c774287d3",
+  "cloud_source_check": {
+    "run_id": 43749763327,
+    "url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43749763327",
+    "source_commit": "7076a0036a87a633cba367292c3cc31c774287d3",
+    "conclusion": "success",
+    "artifact": {
+      "id": 14175891340,
+      "name": "tb710fu-early-report-43749763327",
+      "expires_at": "2026-11-18T18:59:36Z",
+      "zip_sha256": "041eb1774095bffe83ccdbfec95033b6c48cdbe0f2f8aa32c5510ef52df76cb9"
+    },
+    "report": {
+      "stage": "source-only-reporter-compiled-and-host-tested",
+      "device_source_commit": "7076a0036a87a633cba367292c3cc31c774287d3",
+      "compiler": "Homebrew clang version 23.1.4",
+      "qr_source": {
+        "repository": "microsoft/mu_plus",
+        "commit": "b8d46c71610318e36a661819e1e3c0b8bdda413a",
+        "files": [
+          {
+            "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.inf",
+            "sha256": "79c46eb751f2fd53bd6c8521df99af1f2be0e9590cfc8af665e6f7f0bb151bd4"
+          },
+          {
+            "path": "MsGraphicsPkg/Include/Library/QrEncoderLib.h",
+            "sha256": "96b2e3c1a0b5271e2cf97bc48f33839a9a6b9535d9d37700bce2b4c7d3ee56f5"
+          },
+          {
+            "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c",
+            "sha256": "055d446e6a75f9ea687cf3561ae933d266a6e48acda9c905edf2b62dea1f2d2a"
+          },
+          {
+            "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c",
+            "sha256": "125f1bda27f84d2b4a71a4b86d9364daff47b6aa7b0f2dfdc1bc0a309cc6c15a"
+          },
+          {
+            "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.h",
+            "sha256": "2ad084b975448abaadd3ce4e6037c83201677a447c6a3845346503d7041c6bdf"
+          }
+        ]
+      },
+      "kernel_rebuilt": false,
+      "device_operations": false,
+      "keys_used": false,
+      "hardware_verified": false
+    },
+    "host_test": {
+      "result": "PASS",
+      "report_bytes": 392,
+      "envelope_bytes": 451,
+      "frame_bytes": 752,
+      "crc32_checks": "frame/envelope/body PASS",
+      "qr_status": 0,
+      "heap_bytes": 139488,
+      "limits": "host C + unchanged QR encoder; not a real CPU fault"
+    },
+    "limits": "source-only AARCH64 object/host test, not native/prelink"
+  }
 }
