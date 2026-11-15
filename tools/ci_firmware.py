@@ -103,12 +103,16 @@ def main():
     common = ['-D', str(ROOT), '--os', PROFILE]
     command(driver + ['defconfig', 'tb710fu_macos_defconfig'] + common, source, output / 'defconfig.log')
     if args.lzma:
-        # drivers/DarwinBoot is a gitlink that defconfig/fetch populates. Apply the
-        # LZMA patch only now, and re-check that the submodule is actually a git
-        # checkout so a future fetch change cannot silently drop the patch.
+        # defconfig only writes .config; it does not initialize submodules. DarwinBoot
+        # is a gitlink under UniXNU (drivers/DarwinBoot), so initialize exactly that
+        # submodule before applying the LZMA patch. The firmware build step later runs
+        # feeds.update_submodules, which leaves a dirty submodule alone, so the patch
+        # survives into the EDK II compile.
+        command(['git', '-C', str(source), 'submodule', 'update', '--init', '--depth', '1',
+                 '--', 'drivers/DarwinBoot'], ROOT, output / 'darwinboot-submodule.log')
         darwinboot = source / 'drivers/DarwinBoot'
         if not (darwinboot / '.git').exists():
-            raise SystemExit('DarwinBoot submodule was not populated by defconfig; cannot apply the LZMA patch')
+            raise SystemExit('DarwinBoot submodule still not populated after explicit init')
         for patch in darwinboot_patches:
             command(['git', '-C', str(darwinboot), 'apply', '--check', patch], ROOT)
             command(['git', '-C', str(darwinboot), 'apply', patch], ROOT)
