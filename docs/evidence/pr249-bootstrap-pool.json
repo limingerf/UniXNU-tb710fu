@@ -1,0 +1,160 @@
+{
+  "result": "PASS",
+  "source": "UniXNU/UniXNU PR249@9b9db9c9ff13a595492d241366426383c88bf236",
+  "pr_state_at_check": "open/unmerged",
+  "adaptation": "same pool size, selected xnu-12377 path; non-Apple 4K only",
+  "patch_sha256": "9e496bd6ee9aaad341899e202630a8a90c4efe79cc8ea33b5ea2e56598254732",
+  "prepared_pmap_h_sha256": "bf9e28d32b0417f3a9d3cbc89db2379959a3435201610a08358c9c03666f3493",
+  "actual_git_apply": "PASS to pinned pristine pmap.h after all selected patches affecting that file",
+  "page_budget_checks": [
+    {
+      "window_bytes": 2147483648,
+      "maximum_required_pages": 8,
+      "new_pool_pages": 22,
+      "old_pool_pages": 16,
+      "old_pool_covers_worst_case": true
+    },
+    {
+      "window_bytes": 6442450944,
+      "maximum_required_pages": 16,
+      "new_pool_pages": 22,
+      "old_pool_pages": 16,
+      "old_pool_covers_worst_case": true
+    },
+    {
+      "window_bytes": 8321499136,
+      "maximum_required_pages": 20,
+      "new_pool_pages": 22,
+      "old_pool_pages": 16,
+      "old_pool_covers_worst_case": false
+    },
+    {
+      "window_bytes": 9663676416,
+      "maximum_required_pages": 22,
+      "new_pool_pages": 22,
+      "old_pool_pages": 16,
+      "old_pool_covers_worst_case": false
+    }
+  ],
+  "scope": "Capacity repair; not evidence of post-MMU hardware hang fixed",
+  "existing_kernel_review": {
+    "original_sha256": "cc690c9a0bde84c49e9cebccc288f393393d16da56620d580108f0a62692b31c",
+    "mode": "actual AARCH64 arm_vm_init machine code with modeled external helpers/privileged effects",
+    "modeled_bootargs_pa": "0x8c88f4000",
+    "modeled_top_of_kernel_data": "0x8c88f8000",
+    "generated_ttbr1": "0x8c88f9000",
+    "matches_user_report_root": true,
+    "reached": "pmap_bootstrap-reached-after-switch",
+    "mappings": {
+      "set_mmu_ttb_alternate": {
+        "valid": true,
+        "pa": "0x8c4b9b1b0",
+        "EL1_executable": true,
+        "writable": false,
+        "steps": [
+          {
+            "level": 1,
+            "descriptor": "0x20000008c88fa003"
+          },
+          {
+            "level": 2,
+            "descriptor": "0x400008c4a00681"
+          }
+        ]
+      },
+      "return_to_arm_vm": {
+        "valid": true,
+        "pa": "0x8c4b8a694",
+        "EL1_executable": true,
+        "writable": false,
+        "steps": [
+          {
+            "level": 1,
+            "descriptor": "0x20000008c88fa003"
+          },
+          {
+            "level": 2,
+            "descriptor": "0x400008c4a00681"
+          }
+        ]
+      },
+      "stack": {
+        "valid": true,
+        "pa": "0x8c8817db0",
+        "EL1_executable": false,
+        "writable": true,
+        "steps": [
+          {
+            "level": 1,
+            "descriptor": "0x20000008c88fa003"
+          },
+          {
+            "level": 2,
+            "descriptor": "0x8c8906003"
+          },
+          {
+            "level": 3,
+            "descriptor": "0x600008c8817603"
+          }
+        ]
+      },
+      "vectors": {
+        "valid": true,
+        "pa": "0x8c4b8e000",
+        "EL1_executable": true,
+        "writable": false,
+        "steps": [
+          {
+            "level": 1,
+            "descriptor": "0x20000008c88fa003"
+          },
+          {
+            "level": 2,
+            "descriptor": "0x400008c4a00681"
+          }
+        ]
+      },
+      "root_header": {
+        "valid": true,
+        "pa": "0x8c0004000",
+        "EL1_executable": false,
+        "writable": false,
+        "steps": [
+          {
+            "level": 1,
+            "descriptor": "0x20000008c88fa003"
+          },
+          {
+            "level": 2,
+            "descriptor": "0x8c88fd003"
+          },
+          {
+            "level": 3,
+            "descriptor": "0x600008c0004683"
+          }
+        ]
+      },
+      "native_header": {
+        "valid": true,
+        "pa": "0x8c019c000",
+        "EL1_executable": false,
+        "writable": false,
+        "steps": [
+          {
+            "level": 1,
+            "descriptor": "0x20000008c88fa003"
+          },
+          {
+            "level": 2,
+            "descriptor": "0x8c88fd003"
+          },
+          {
+            "level": 3,
+            "descriptor": "0x600008c019c683"
+          }
+        ]
+      }
+    },
+    "limitations": "DT properties and entropy modeled; PAC skipped; T1SZ-aware software page walks emulate mappings, not real MMU/cache behavior. Does not establish actual hardware progress after switch."
+  }
+}

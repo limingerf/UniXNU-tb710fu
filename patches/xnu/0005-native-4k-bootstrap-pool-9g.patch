@@ -1,0 +1,24 @@
+From: UniXNU PR #249 (CrossDarwin), adapted to selected xnu-12377 series
+Subject: Native 4 KiB bootstrap pool for owned windows up to 9 GiB
+
+Source: UniXNU/UniXNU PR #249 @ 9b9db9c9ff13a595492d241366426383c88bf236
+The selected xnu-12377 patch already introduces the guarded 16-page pool.
+Apply the PR's 22-page budget after that official patch, without editing it.
+This changes only the non-Apple 4 KiB branch; it is not a claimed fix for
+an observed post-MMU arm_vm_init stop.
+
+diff --git a/osfmk/arm/pmap/pmap.h b/osfmk/arm/pmap/pmap.h
+--- a/osfmk/arm/pmap/pmap.h
++++ b/osfmk/arm/pmap/pmap.h
+@@ -118,9 +118,9 @@
+ #define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 34)
+ #elif !defined(APPLE_ARM64_ARCH_FAMILY) && !__ARM_16K_PG__
+-/* Native 4 KiB: two roots plus up to seven L2 pages per 6 GiB mapping.
++/* Native 4 KiB: two roots plus up to ten L2 pages per mapping of up to 9 GiB.
+  * The physical and virtual bases may each straddle an extra 1 GiB region.
+  */
+-#define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 16)
++#define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 22)
+ #else /* defined(ARM_LARGE_MEMORY) */
+ #define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 8)
+ #endif /* defined(ARM_LARGE_MEMORY) */

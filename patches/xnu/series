@@ -2,3 +2,4 @@
 0002-tb710fu-gate-optional-exit-trace.patch
 0003-tb710fu-kernel-stack-alignment.patch
 0004-tb710fu-ramoops-console.patch
+0005-native-4k-bootstrap-pool-9g.patch

@@ -65,3 +65,23 @@ The official implementation aligns the whole allocation, including two lower gua
 All fixtures matching the exact macOS kernelcache SHA256 `d1003b5143ffd88439b4d45b6017f587171cfe6855660bed05370a2ea5db9fe9` were inspected: there is one matching fixture, with **one required site, zero reviewed functions and zero reviewed data entries**. That site requires only `_unixnu_kernel_stack_shift`. `llvm-nm --defined-only` confirmed it is absent from the original native artifact SHA256 `4e65a8b08d5d70393b3c0f5d3f78b973bce1d15eb7f4d6f921c320b28124abce` (25,133,408 bytes). No second same-kind required site export is waiting behind it in this pinned fixture. This does not certify the 139 unpaired global name-map targets or the retained closure; later strict emitter checks still need actual reports.
 
 Validation performed: start from pinned pristine XNU `stack.c`, apply every selected official arch/OS patch affecting it, then `git apply --check` and actual apply of this extracted patch. Verify exactly one real export declaration, one actual initialization and the correct allocation-mask formula in the resulting source. The native kernel **must be recompiled** and then strictly prelinked with the new native hash/map. The previous artifact cannot be fixed by prelink-only retry. No compile or device test was performed by this patch audit.
+
+
+## Bootstrap capacity from upstream PR #249
+
+`0005-native-4k-bootstrap-pool-9g.patch` adapts only the pool-size change from
+`UniXNU/UniXNU` PR #249 head `9b9db9c9ff13a595492d241366426383c88bf236`
+(open, not merged when checked on 2026-11-16). The PR edits the older `patches/xnu/`
+recipe. This device selects `patches/xnu-12377/`, so the device patch applies after
+the existing official 16-page declaration and changes that branch to 22 pages.
+The official source/cache and its pinned patch file stay unchanged.
+
+The extra six pages reserve 24 KiB for non-Apple 4 KiB builds. The ARM_LARGE_MEMORY
+34-page branch and fallback 8-page branch are unchanged. The existing genassym
+export, pool allocation, full clearing and exhaustion guard already consume
+BOOTSTRAP_TABLE_SIZE. No independent constant is patched.
+
+Actual patch application to pristine pinned pmap.h plus all selected patches
+affecting it, and page-budget boundary checks through 9 GiB passed. This repairs
+the known larger-window capacity issue; it is not claimed to fix the observed
+post-MMU screen. Evidence: `docs/evidence/pr249-bootstrap-pool.json`.
