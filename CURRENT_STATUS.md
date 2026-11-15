@@ -391,3 +391,9 @@ SCTLR/TCR/TTBR0/TTBR1，原始ARG0来自实际调用。没有后台硬件看门�
 匹配 vbmeta.img（01982899…），沿用已有仅本地签名授权，其余22描述符/
 header/公钥不变。未做设备操作或重新native/prelink；实机接收和原故障
 待验。机器记录 docs/evidence/kernel-animated-qr-build.json。
+
+
+固定报告轮播的独立源码云检查 run43759850376 success，源提交
+b166a08f1718e5698a7524a8e6e5af3bda6f7bda。AARCH64对象、主机轮播帧
+与未修改的固定OneSend实际收件/文件还原通过；下载artifact SHA-256与
+GitHub digest一致，接收源与报告源身份匹配。非native/prelink或实机验收。
