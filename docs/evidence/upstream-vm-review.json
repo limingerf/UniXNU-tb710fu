@@ -1,0 +1,71 @@
+{
+  "date": "2026-11-16",
+  "hardware_feedback": {
+    "source": "user decoded OneSend body",
+    "reporter": 4,
+    "header": "XNU VM CHECKPOINT (intentional export pause)",
+    "stage": "0x2f",
+    "location": "XNU enter: vm/set_mmu_ttb_alternate#1",
+    "arg0": "0x8c88f9000",
+    "arg1": "0xfffffff00f817df0",
+    "kernel_sp": "0xfffffff00f817db0",
+    "bootargs_pa": "0x8c88f4000",
+    "fb_pa": "0xd5100000",
+    "sctlr": "0xfc54799d",
+    "tcr": "0x00080022a51a251a",
+    "old_ttbr0": "0x8c0ddb000",
+    "old_ttbr1": "0x8c0ddc000",
+    "animated_export_and_file_reception": "hardware confirmed by user",
+    "normal_entry": "User also reports same last-stage screen; separate decoded normal-entry body not supplied",
+    "fault_esr_or_fault_pc": "not present in checkpoint report"
+  },
+  "upstream": {
+    "checked_head": "43cf340fe181055029daa2bafcf88723e9e50d83",
+    "pinned_framework": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+    "known_fixes_in_native_input": [
+      {
+        "name": "non-apple-cache-monitor.patch",
+        "sha256": "b0c1dcf6f2763318bb28a5c15bf2bc990bc8aadb6a2a819bdde6bdffec3f55a5",
+        "recorded_in_native_input": true
+      },
+      {
+        "name": "native-4k-bootstrap-capacity.patch",
+        "sha256": "0f6e27ff7ffaa6daed425b6a57e2edce981f27cc5326845ee76b7b402531957b",
+        "recorded_in_native_input": true
+      },
+      {
+        "name": "native-4k-user-abi.patch",
+        "sha256": "878c05a48cf1d1579e87630897fbb74814f9aef1e6974ba16879f171c147ec59",
+        "recorded_in_native_input": true
+      },
+      {
+        "name": "native-4k-block-split.patch",
+        "sha256": "411acef69d746d3bf33e38ad0b835debd2658fa0c0e25dcaa61a718bed7fca06",
+        "recorded_in_native_input": true
+      }
+    ],
+    "pr249": {
+      "state": "open",
+      "scope": "16->22 bootstrap table pages for owned windows up to 9 GiB; failure before MMU enable",
+      "applicability": "Current hardware already executes arm_vm_init with MMU enabled; not evidence of this exhaustion failure"
+    },
+    "later_kernel_changes_in_compare": [
+      "macOS signed/compressed text revalidation; no arm_vm_init or MMU switch changes in compared files"
+    ]
+  },
+  "exact_binary_review": {
+    "kernel_sha256": "cc690c9a0bde84c49e9cebccc288f393393d16da56620d580108f0a62692b31c",
+    "set_ttbr1": "DSB SY; MSR TTBR1_EL1,X0; ISB; RET",
+    "set_ttbr0": "DSB ISH; MSR TTBR0_EL1,X0; ISB; RET",
+    "call_sequence": "arm_vm_init: set_mmu_ttb_alternate -> set_mmu_ttb -> TLBI VMALLE1IS / DSB ISH / ISB",
+    "apple_ml_enable_monitor_call_present": false
+  },
+  "menu_audit": {
+    "normal_args_contain_export_flag": false,
+    "explicit_export_args_contain_export_flag": true,
+    "loader_commandline_cleared_before_copy": true,
+    "bootargs_mixing_bug_confirmed": false
+  },
+  "conclusion": "Official guidance and existing fixes found; no confirmed upstream drop-in fix for current last-stage observation. No new checkpoint code or speculative kernel patch added.",
+  "device_operations": false
+}
