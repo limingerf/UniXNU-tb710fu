@@ -94,15 +94,27 @@ LZMA 压成 23 MiB，仍走 vendor_boot 的 payload ramdisk，由 DarwinBoot 解
   64 KiB）。**不能用 `EFI_DECOMPRESS_PROTOCOL`**——DXE core 用
   UefiDecompressLib（Tiano/EFI 压缩）实现它，不是 LZMA。
 - `firmware/patches/0002-darwinboot-lzma-kernel.patch` 让 DarwinBoot 在
-  `ReadFile` 后探测 0x5D 头，命中则 `LzmaUefiDecompress` 展开到
-  `AllocateMaxAddress` 窗口再 `ParseKernel`；普通 Mach-O 不受影响。
+  `ReadFile` 后探测 0x5D 头，命中则 `LzmaUefiDecompress` 展开后交给
+  `ParseKernel`；普通 Mach-O 不受影响。
 - `tools/ci_firmware.py --lzma` + `.github/workflows/uefi-lzma.yml` 在云端
   构建该变体，并在 FD 里核对 DarwinBoot GUID。
 
-**进行中**：云构建验证补丁能编译。第 5 次 run 证明 DarwinBoot.c 编译通过，
-链接失败（LZMA 库拉入 PrePiExtractGuidedSectionLib 的 HOB 依赖）；已改为
-DSC override 同时钉住 DxeExtractGuidedSectionLib，第 6 次 run FD 成功产出，
-仅验证条件有误；第 7 次 run（43701443770）在跑。尚未实机。
+**实机结果（2026-11-15）**：XNU 已在内核里执行，EL1。屏幕显示绿色交接横带、
+`Current EL EL1`、非零 `TCR_EL1`、`ID_AA64MMFR0/ISAR1/ISAR2` 读取
+（Parange 2、4 KiB granule、PAC 能力位）与 `Darwin Kernel Version 27.3.0`
+横幅。整条链 UEFI → UniXNU → payload → LZMA 解压 → ADT → 窗口 → XNU 全通。
+证据与阶段边界见 [XNU 实机进入内核](docs/KERNEL_BOOT.md)。
+
+到达该阶段前修复了三个只有实机才暴露的问题：
+
+| 症状 | 根因 | 修复 |
+| --- | --- | --- |
+| 菜单无 xnu | 25 MiB payload FAT32 仅 50,380 簇 < 65,525 下限，固件拒挂载 | 33 MiB FAT32（66,512 簇）；新增 `tools/check_payload_fat.py` 双向校验 |
+| 选 xnu 卡死 `ASSERT [DxeCore] Pool.c(750)` | `AllocatePages` 分配、DarwinBoot 用 `FreePool` 释放 | 改用 `AllocatePool` + `FreePool` |
+| 缺 `.adt` 直接失败 | clean board 无 `[payload]` 配置 | 从本机 live FDT 派生 ADT（补单范围 memory/timebase/psci，删 cpu-map） |
+
+**未验证**：平台专家匹配、`/cpus` 与 `/arm-io` 是否被接受、根卷挂载、
+用户态/launchd、显示服务、GPU、真实 UFS。
 
 关键修正记录：DarwinBoot 是 UniXNU 的 gitlink，`defconfig` 不初始化子模块，
 需 `--lzma` 显式 `git submodule update --init drivers/DarwinBoot`；`NULL|`
