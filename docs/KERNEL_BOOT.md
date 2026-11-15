@@ -65,3 +65,47 @@
 本文只声称 **XNU 在 EL1 执行并打印版本横幅**。以下都**没有**证据：
 平台专家匹配成功、`/cpus`/`/arm-io`/`/defaults` 被接受、根卷挂载、
 用户态启动、显示服务、GPU。
+
+## 补充：停屏位置 `LockCapsuleInterface` 的含义
+
+后续一次启动停在屏幕显示 `...LockCapsuleInterface, Outputs: ...`。这个字符串
+**不是内核输出**，来自 UEFI：
+
+- `MdeModulePkg/Universal/CapsuleRuntimeDxe/CapsuleService.c:410`
+  `LockCapsuleInterface()` 是 `ExitBootServices` 事件组的回调；
+- 它调用 `SECURITY_LOCK_REPORT_EVENT("Lock Capsule Interface", SOFTWARE_LOCK)`；
+- DEBUG 构建把该事件画到屏幕。
+
+所以这条输出证明的正是：**固件走到了 ExitBootServices 通知，DarwinBoot 的
+交接已完成、控制权已交给 XNU**。它是正常关机路径的一部分，不是错误。
+
+内核之后没有可读输出，是因为交接后没有 UEFI 显示驱动，内核的 printf
+到不了这块 framebuffer。**绿条之后屏幕无字，对这个配置是预期行为**，
+不能据此判定内核已经挂掉。
+
+### 要看清内核走多远，需要内核侧日志
+
+按信息量排序：
+
+1. **ramoops 控制台**（推荐）。本机 live FDT 声明了
+   `ramoops_region { reg = <0xac300000 0x100000>; console-size = <0x40000>; }`，
+   控制台区在 `0xac340000`。内核把 console 镜像进该区后，重启回 Android
+   可用 `/sys/fs/pstore/console-ramoops-0` 读取完整内核日志。
+   不依赖任何显示驱动，早期 panic 也能留下。
+2. `vc-text=1` 内核参数：让内核文本走面板控制台。只在
+   `PE_init_console` 之后有效。
+3. `panic_screen` / 入口探针：在 framebuffer 上画阶段色条，用二分定位
+   执行停点。
+
+### 当前缺口
+
+参考移植 `bmk-keyeast/UniXNU-tb710fu` 有
+`patches/xnu/tb710fu-ramoops-console.patch`（457 行：新增
+`osfmk/kern/tb710fu_ramoops.{c,h}`，改 `arm_init.c`、`osfmk/conf/files`、
+`serial_console.c`、`kern/debug.c`）。
+
+**该补丁面向 iPadOS 17 的 XNU，无法应用到本工程 macOS 27 的 xnu-12377**
+（`git apply --check` 在 `arm_init.c`、`serial_console.c`、`conf/files`
+三处失败）。要拿到内核日志，需要按 macOS 27 源码重写该补丁。
+
+这是一次独立的内核补丁移植工作，不是改参数能完成的。
