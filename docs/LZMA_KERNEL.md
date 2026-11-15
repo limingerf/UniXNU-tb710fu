@@ -153,21 +153,21 @@ drivers/DarwinBoot`，应用补丁，构建后在 FD 里核对 DarwinBoot 的
 
 1. `kernel-ufs.lzma` 产出并验证（23.0 MiB，往返 SHA-256 一致，
    大小字段已修正为 EDK II 可读的 142,753,792）
-2. 确认 `LzmaCustomDecompressLib` 在 pinned 树可用且**基线已在注册**
+2. 确认 `LzmaCustomDecompressLib` 在 pinned 树可用（NULL 库，scratch 固定 64 KiB）
 3. payload 容量核算（23.0 MiB 内容 / 25 MiB FAT，余量 58 MiB）
+4. 写出 DarwinBoot 补丁（`0002-darwinboot-lzma-kernel.patch`），
+   `--lzma` 构建路径和 `uefi-lzma.yml` 云 workflow
 
-待做（需要写固件代码，属设备私有改动）：
+进行中：
 
-4. 实现"解压到 RAM 再交给 DarwinBoot"。最小可行改动点：
-   - 新增一个 DXE，读 payload FAT 里的 `kernel-ufs.lzma`，
-     用 `LzmaUefiDecompressGetInfo` 取目标大小，`AllocatePages` 一块
-     137 MiB 的 **MaxAddress-constrained** 缓冲，解压进去
-   - 把解压结果以 `LoadFile`/protocol 或直接把路径交给 DarwinBoot
-     （DarwinBoot 现在只接受 FAT 上的 `kernel.macho` 文件路径，
-     所以要给它一个"内存里的镜像"入口）
-5. 明确边界：这不是上游能力。上游 DarwinBoot 只做
-   `ReadFile(Root, Request->KernelPath, KERNEL_LIMIT, ...)` 后按 Mach-O 解析，
-   **没有任何解压代码**。声称复现成功前必须有实机证据。
+5. 云构建验证补丁能编译并进入 FD（`tb710fu-uefi-lzma-*` artifact）
+
+待做：
+
+6. 实机验证：刷入 LZMA 固件 + 25 MiB payload，观察 DarwinBoot 是否打印
+   `DARWINBOOT: LZMA kernel 24xxxxx -> 142753792 bytes` 并进入内核
+7. 明确边界：这不是上游能力，上游 DarwinBoot 无任何解压代码。
+   声称复现成功前必须有实机证据。
 
 ## 关于 XnuLz 的结论
 
