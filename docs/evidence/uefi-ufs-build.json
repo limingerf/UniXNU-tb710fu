@@ -1,0 +1,81 @@
+﻿{
+    "run_id":  43692304879,
+    "run_url":  "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43692304879",
+    "device_revision":  "50ba12c108be1b280ad27fa30dd776f28e7ea062",
+    "uefi_source_commit":  "66421cb7bb5694843aec8de1ca3d1de4c20cca38",
+    "framework_commit":  "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+    "conclusion":  "success",
+    "fd":  {
+               "bytes":  3145728,
+               "sha256":  "dfca596a6a665d523beba0d25c623a6e396b4ccc9bb185b27f096a6adb743a36",
+               "target":  "AARCH64 DEBUG CLANGPDB",
+               "fd_base":  "0xA7100000",
+               "fvmain_ffs_files":  60,
+               "baseline_fvmain_ffs_files":  51
+           },
+    "ufs_chain":  [
+                      {
+                          "file_guid":  "f541d663-4a48-40aa-aabf-ff158ccae34c",
+                          "inf":  "Binaries/tb710fu/QcomPkg/Drivers/SmemDxe/SmemDxe.inf"
+                      },
+                      {
+                          "file_guid":  "af9763a2-033b-4109-8e17-56a98d380c92",
+                          "inf":  "Binaries/tb710fu/QcomPkg/Drivers/HWIODxe/HWIODxe.inf"
+                      },
+                      {
+                          "file_guid":  "aba01ff8-2ccb-4e12-8b2e-cd3f4a742993",
+                          "inf":  "Binaries/tb710fu/QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf"
+                      },
+                      {
+                          "file_guid":  "0401b830-bff9-44a2-a5f6-95734a33c017",
+                          "inf":  "Binaries/tb710fu/QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf"
+                      },
+                      {
+                          "file_guid":  "cb29f4d1-7f37-4692-a416-93e82e219711",
+                          "inf":  "Binaries/tb710fu/QcomPkg/Drivers/NpaDxe/NpaDxe.inf"
+                      },
+                      {
+                          "file_guid":  "cb29f4d1-7f37-4692-a416-93e82e219766",
+                          "inf":  "Binaries/tb710fu/QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf"
+                      },
+                      {
+                          "file_guid":  "4db5dea6-5302-4d1a-8a82-677a683b0d29",
+                          "inf":  "Binaries/tb710fu/QcomPkg/Drivers/ClockDxe/ClockDxe.inf"
+                      },
+                      {
+                          "file_guid":  "0d35cd8e-97ea-4f9a-96af-0f0d89f76567",
+                          "inf":  "Binaries/tb710fu/QcomPkg/Drivers/UFSDxe/UFSDxe.inf"
+                      }
+                  ],
+    "images":  {
+                   "boot_signed":  {
+                                       "bytes":  100663296,
+                                       "sha256":  "61677cb4d2e0c90c1757f97044899e69c882e88a55a3fab661443ea5b4351b6e",
+                                       "original_bytes":  770048,
+                                       "algorithm":  "SHA256_RSA4096",
+                                       "key_sha1":  "2597c218aae470a130f61162feaae70afd97f011",
+                                       "rollback_index":  1736035200
+                                   },
+                   "vbmeta":  {
+                                  "bytes":  8000,
+                                  "sha256":  "99b197c4031ea576f4926952ba200bf41289cba35d4ca30dc21c3252b4c40856",
+                                  "hash_descriptors":  3,
+                                  "hashtree_descriptors":  4,
+                                  "chain_descriptors":  3,
+                                  "prop_descriptors":  13
+                              },
+                   "unixnu_partition_probe":  {
+                                                  "bytes":  234881024,
+                                                  "sha256":  "44db3012c4327f552248a40f2ce9635a550a130cd104c772e2323a55e0c258fe",
+                                                  "kernel_sha256":  "c601ca5ceecfd1536f05634aa71ef700440d167cd2a4dbcd0a06e3a45400e131",
+                                                  "kernel_readback_match":  true,
+                                                  "free_bytes":  91185152
+                                              }
+               },
+    "vendor_binary_inputs":  true,
+    "vendor_binary_source":  "Project-Silicium/Device-Binaries@a1501e0c (giulia set, copied to Binaries/tb710fu at build time)",
+    "board_uefi_volume_extracted":  false,
+    "ufs_device_published":  false,
+    "unixnu_partition_created":  false,
+    "hardware_boot_verified":  false
+}

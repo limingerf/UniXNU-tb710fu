@@ -52,6 +52,34 @@
 新增驱动同时进入DSC/FDF，CI在编译前跑主机模型并核对真实压缩FV中的第10个必需模块。
 本轮未访问设备；源码与主机验证不能证明实际按键恢复。云run43636909923及FD哈希已记录于`docs/evidence/uefi-input-build.json`。
 
+## UFS 启用候选 · 2026-11-15
+
+macOS 27 内核 137 MiB 无法放进 `vendor_boot` 的 81 MiB ramdisk 可用空间，
+且本机 ABL 不支持 `fastboot boot`（实测 `FAILED (remote: 'unknown command')`）。
+因此把内核改放到 `unixnu` 分区，由 UEFI 的 UFS 栈读取。
+
+源码级确认（`Config.c:1547-1563`、`Config.c:1132`）：UniXNU 遍历所有已发布的
+SimpleFileSystem 卷寻找 `unixnu.toml`，菜单项路径绑定配置所在卷，所以内核与
+配置同卷即可。详见 [内核从UFS加载](docs/KERNEL_FROM_UFS.md)。
+
+新增 `TB710FU_ENABLE_UFS`（默认 0）。为 1 时加入 8 个 stock Qualcomm DXE
+（SmemDxe/HWIODxe/CmdDbDxe/PwrUtilsDxe/NpaDxe/RpmhDxe/ClockDxe/UFSDxe），
+明确排除 2026-11-11 黑屏集（DALSYSDxe/VcsDxe/DisplayDxe/GpiDxe/SPIDxe/
+I2CDxe/SdccDxe/PIL/Tz）。`check-board.py` 双向校验白名单与排除集，
+默认构建经 `strip_ufs_gate` 剥离后仍报 PASS（40 区、10 模块、0 vendor 引用）。
+
+云构建 run43692304879 success，FD `dfca596a…`，FVMAIN 由 51 增至 60 个 FFS
+文件，8 个 UFS 模块在真实嵌套 FFS 中逐一核对 GUID。boot.img 与 vbmeta 已用
+testkey 签名，vbmeta 描述符结构（3 hash + 4 hashtree + 3 chain + 13 prop）
+与原厂一致。产物与判据见 [UFS构建记录](docs/UFS_BUILD.md)。
+
+含内核的 `unixnu` 分区 FAT 镜像已预构建：224 MiB，内核读回 SHA-256
+`c601ca5c…` 与输入一致，剩余 91 MiB。
+
+**未验收**：UFS 块设备是否实际发布、`unixnu` 分区切分、内核能否从该卷启动，
+均需实机证据。vendor DXE 来自 OnePlus Ace 5（giulia）替代集，TB710FU 自身
+`uefi_a` 卷未能提取（FV 非可遍历 FFS 布局），板级 PHY/时钟存在风险。
+
 ## 下一阶段
 
 先补本机DT与最小启动/日志输入，再做UEFI→DarwinBoot→单核EL1/PAC验证。真实UFS、
