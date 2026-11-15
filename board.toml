@@ -64,3 +64,18 @@ ENABLE_SECUREBOOT = "0"
 MEMORY_PROTECTION = "TRUE"
 SHIP_MODE = "FALSE"
 BUILDID_STRING = "tb710fu-clean-development"
+
+# [userdata] GPT geometry measured on the device in TWRP (sgdisk --print on
+# /dev/block/sda, 4096-byte logical sectors). userdata is partition 14, the
+# last one; the table has no free sectors. These numbers are the CAPACITY
+# ceiling userdata.build checks, not the size of the produced image.
+#   start 5105064, end 61390842 -> 56285779 sectors * 4096 = 214.71 GiB
+[userdata]
+first_lba = 5105064
+last_lba = 61390842
+lba_bytes = 4096
+
+# The macOS 27 profile already provides [userdata] windows (OS, SystemOS, App)
+# and [payload.adt] root_match_volume_uuid. The platform seed is device-specific
+# and is supplied at build time via --unique-chip-id / UNIXNU_UNIQUE_CHIP_ID,
+# never committed (see AGENTS.md: no credentials or device secrets in git).
