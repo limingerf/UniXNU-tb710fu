@@ -1,0 +1,69 @@
+Subject: [PATCH] DarwinBoot: show four checkpoints after the existing green bar
+
+Source: UniXNU/DarwinBoot@5243c68ec332a227fe3680cd5da6d5a0e127035c, Entry.S.
+A green bar only locates the beginning of DarwinEnter. Repaint that same band
+orange/yellow/cyan/white after successive cache/MMU/TLB steps, preserving x0/x1.
+No disk, persistent RAM, kernel, timer, security-policy or reset changes.
+
+--- a/DarwinBootPkg/Driver/Entry.S
++++ b/DarwinBootPkg/Driver/Entry.S
+@@ -24,15 +24,38 @@
+ 2:
+   ret
+ 
++
++// TB710FU diagnostic-only checkpoints. x12/x13 retain the framebuffer PA/size;
++// only x14-x16 and condition flags are scratch. In particular x0 (boot_args)
++// and x1 (kernel entry) survive every checkpoint. No boot services or stack.
++.macro TB_HANDOFF_COLOR lo, hi
++  cbz x12, 992f
++  lsr x14, x13, #4
++  bic x14, x14, #7
++  cbz x14, 992f
++  mov w15, #\lo
++  movk w15, #\hi, lsl #16
++  mov x16, x12
++991:
++  stp w15, w15, [x16], #8
++  subs x14, x14, #8
++  b.hi 991b
++  dsb sy
++992:
++.endm
++
+ // x0=boot_args PA, x1=entry PA, x2=owned PA, x3=owned size, x4=frame buffer
+ // PA (0 for none), x5=its size in bytes. EL1 only.
+ ASM_FUNC(DarwinEnter)
+   msr daifset, #15
++  mov x12, x4
++  mov x13, x5
+   // Paint the top 1/16 of the framebuffer green (BGRA 0xFF00FF00)
+   // before cache maintenance, MMU shutdown and the branch to the kernel.
+   cbz x4, 2f
+   lsr x9, x5, #4
+   bic x9, x9, #7
++  cbz x9, 2f
+   mov w10, #0xFF00
+   movk w10, #0xFF00, lsl #16
+   mov x11, x4
+@@ -56,16 +79,20 @@
+   cmp x4, x5
+   b.lo 1b
+   dsb sy
++  TB_HANDOFF_COLOR 0x8000, 0xFFFF // Orange: data-cache loop and DSB finished.
+   ic iallu
+   dsb sy
+   isb
++  TB_HANDOFF_COLOR 0xFF00, 0xFFFF // Yellow: instruction-cache invalidation finished.
+   mrs x4, sctlr_el1
+   bic x4, x4, #1
+   bic x4, x4, #4
+   bic x4, x4, #0x1000
+   msr sctlr_el1, x4
+   isb
++  TB_HANDOFF_COLOR 0xFFFF, 0xFF00 // Cyan: SCTLR write and ISB completed (MMU off).
+   tlbi vmalle1
+   dsb sy
+   isb
++  TB_HANDOFF_COLOR 0xFFFF, 0xFFFF // White: TLB maintenance finished; next is kernel branch.
+   br x1

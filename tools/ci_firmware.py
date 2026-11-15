@@ -260,6 +260,20 @@ def main():
                                'ecc_layouts': [0, 16], 'ecc_repair': False,
                                'raw_zone_writes': False, 'hardware_verified': False,
                                'framework_tools_patch': True}
+    handoff = {'enabled': bool(args.lzma), 'hardware_verified': False}
+    if args.lzma:
+        entry_source = source / 'drivers/DarwinBoot/DarwinBootPkg/Driver/Entry.S'
+        entry_text = entry_source.read_text()
+        if entry_text.count('TB_HANDOFF_COLOR') != 5:
+            raise SystemExit('DarwinBoot post-green stage patch missing from built source')
+        handoff.update({'entry_source_sha256': hashlib.sha256(entry_source.read_bytes()).hexdigest(),
+                        'bands': {'green': 'DarwinEnter started',
+                                  'orange': 'data-cache maintenance finished',
+                                  'yellow': 'instruction-cache maintenance finished',
+                                  'cyan': 'MMU disable and ISB completed',
+                                  'white': 'TLB maintenance finished; next instruction branches to kernel'},
+                        'boot_args_and_entry_registers_preserved': True})
+    report['handoff_stages'] = handoff
     (output / 'firmware-result.json').write_text(json.dumps(report, indent=2) + '\n')
     shutil.copy2(fd, output / 'SILICIUM_UEFI.fd')
     command(['git', '-C', str(uefi), 'submodule', 'status', '--recursive'], ROOT, output / 'uefi-submodules.log')
