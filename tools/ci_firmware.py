@@ -26,7 +26,7 @@ REQUIRED = [
 ]
 
 # Opt-in UFS publication chain (board.toml TB710FU_ENABLE_UFS=1). These are the
-# stock Qualcomm prebuilt DXE drivers under Binaries/tb710fu; they are verified in
+# stock Qualcomm prebuilt DXE drivers under Binaries/giulia; they are verified in
 # the real nested FFS volumes exactly like the source-only modules above.
 UFS_REQUIRED = [
     'QcomPkg/Drivers/SmemDxe/SmemDxe.inf',
@@ -111,16 +111,16 @@ def main():
         modules.append({'inf': name, 'file_guid': match.group(1).lower()})
     ufs_modules = []
     if args.ufs:
-        # The vendor set lives under the Binaries/tb710fu package root, which is not
+        # The vendor set lives under the Binaries/giulia package root, which is not
         # in the board's [firmware.packages] list; resolve it against the UEFI checkout.
         for name in UFS_REQUIRED:
-            inf = uefi / 'Binaries/tb710fu' / name
+            inf = uefi / 'Binaries/giulia' / name
             if not inf.is_file():
                 raise SystemExit('UFS chain INF missing from the pinned UEFI checkout: ' + name)
             match = re.search(r'^\s*FILE_GUID\s*=\s*([0-9A-Fa-f-]{36})', inf.read_text(), re.M)
             if not match or match.group(1).lower() not in parsed['file_guids']:
                 raise SystemExit('UFS chain module not found in actual nested FFS volumes: ' + name)
-            ufs_modules.append({'inf': 'Binaries/tb710fu/' + name, 'file_guid': match.group(1).lower()})
+            ufs_modules.append({'inf': 'Binaries/giulia/' + name, 'file_guid': match.group(1).lower()})
         for name in modules:
             if name['inf'].endswith(('DisplayDxe.inf', 'DALSYSDxe.inf', 'VcsDxe.inf')):
                 raise SystemExit('Black-screen vendor module present in the UFS volume: ' + name['inf'])

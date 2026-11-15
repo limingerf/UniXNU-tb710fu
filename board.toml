@@ -36,7 +36,10 @@ config = "tb710fu"
 dsc = "Platforms/Lenovo/tb710fuPkg/tb710fu.dsc"
 fd = "Build/tb710fuPkg/{target}_CLANGPDB/FV/SILICIUM_UEFI.fd"
 preflight = ["scripts/check-tb710fu-firmware.py"]
-submodules = ["Common/Mu", "Common/Mu_OEM_Sample", "Silicium-ACPI", "Silicon/Silicium/OpensslPkg/Library/OpensslLib/openssl"]
+# Binaries is the Project-Silicium/Device-Binaries submodule. Only the opt-in
+# TB710FU_ENABLE_UFS build reads it (Binaries/giulia holds the stock Qualcomm
+# DXE set); the default source-only volume never opens it.
+submodules = ["Binaries", "Common/Mu", "Common/Mu_OEM_Sample", "Silicium-ACPI", "Silicon/Silicium/OpensslPkg/Library/OpensslLib/openssl"]
 patches = ["Resources/MuPatches/Gic-Spurious.patch"]
 packages = [
   "{uefi}", "{uefi}/Platforms/Lenovo", "{tree}/package",
