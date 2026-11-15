@@ -293,3 +293,50 @@ signing, flashing, boot-slot, GPT or filesystem change is included here.
 | `TLMM` | `0xf000000` | `0x1000000` | `AddDev` | `MMAP_IO` | `MmIO` |
 | `SMMU` | `0x15000000` | `0x200000` | `AddDev` | `MMAP_IO` | `MmIO` |
 | `APSS_HM` | `0x17000000` | `0x2000000` | `AddDev` | `MMAP_IO` | `MmIO` |
+
+## Opt-in UFS publication chain (TB710FU_ENABLE_UFS)
+
+Default 0, so the audited source-only volume above is unchanged. When set to 1
+the volume also carries the smallest stock Qualcomm DXE chain that lets the UFS
+host driver publish the UFS block device:
+
+| Module | Role |
+| --- | --- |
+| `SmemDxe` | shared memory, SoC identity for UFS init |
+| `HWIODxe` | HWIO register accessors |
+| `CmdDbDxe` | command DB (RPMh dependency) |
+| `PwrUtilsDxe` | power utilities |
+| `NpaDxe` | NPA clock votes |
+| `RpmhDxe` | RPMh clock/power requests |
+| `ClockDxe` | UFS core and PHY clocks |
+| `UFSDxe` | UFS host controller driver |
+
+Every one of these has `DEPEX TRUE`, so `Include/APRIORI.inc` fixes the order:
+SMEM, HWIO, CmdDb, PwrUtils, NPA, RPMh, Clock, UFS.
+
+Deliberately excluded, and enforced by `Tools/check-board.py` when the gate is
+on: `DALSYSDxe`, `VcsDxe`, `DisplayDxe`, `GpiDxe`, `SPIDxe`, `I2CDxe`,
+`SdccDxe`, `CPRDxe`, the PIL/PILProxy pair, `TzDxe`, `FeatureEnablerDxe` and
+`RscDxe`. The 2026-11-11 all-vendor boot went black while that set loaded, so
+this gate must not grow by copying the old `TB710FU_VENDOR_HW` list.
+
+### Provenance limit
+
+The prebuilt modules come from `Binaries/tb710fu`, whose README states they are
+the published SM8650 OnePlus Ace 5 (giulia) modules from
+Project-Silicium/Device-Binaries, used as a bring-up substitution set, and that
+**this board's own `uefi_a` volume has not been extracted yet**. Modules that
+encode board data (panel configuration, charger/battery tables, touch firmware
+names) are therefore the Ace 5 ones.
+
+The UFS host controller is a shared SM8650 block, so the controller access path
+may work unchanged; the board-specific PHY calibration and clock tree are the
+open risk. Extracting the TB710FU set was attempted and did not succeed: the
+`uefi_a` firmware volume is not a plain FFS layout (the `_FVH` header validates
+at 0x1000 with `FvLength 0x2c3000`, but the FFS area is not walkable and no
+UFSDxe/HWIODxe `FILE_GUID` appears), so a UEFITool-class parser is required
+before this substitution can be replaced.
+
+Nothing in this section is hardware-qualified. A black panel, a hang before the
+menu, or a fallback to fastboot are all open outcomes and each must be recorded
+before any claim is made.

@@ -72,14 +72,15 @@ def main():
     shutil.copytree(ROOT / 'firmware/overlay', uefi, dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     if args.ufs:
         # Flip the reviewed opt-in gate in the deployed copy only. The repository
-        # default stays 0, so the source-only baseline is unchanged and the UFS
-        # variant is identified by this flag in the evidence report.
+        # default stays 0, so the source-only baseline is unchanged. The preflight
+        # accepts exactly this one file difference when UNIXNU_ENABLE_UFS=1.
         dsc = uefi / 'Platforms/Lenovo/tb710fuPkg/tb710fu.dsc'
         text = dsc.read_text(encoding='utf-8')
         replaced, count = re.subn(r'^(\s*TB710FU_ENABLE_UFS\s*=\s*)0(\s*)$', r'\g<1>1\2', text, flags=re.M)
         if count != 1:
             raise SystemExit('Could not enable TB710FU_ENABLE_UFS exactly once in the deployed DSC')
         dsc.write_text(replaced, encoding='utf-8')
+        os.environ['UNIXNU_ENABLE_UFS'] = '1'
     driver = [sys.executable, str(source / 'unixnu')]
     common = ['-D', str(ROOT), '--os', PROFILE]
     command(driver + ['defconfig', 'tb710fu_macos_defconfig'] + common, source, output / 'defconfig.log')
