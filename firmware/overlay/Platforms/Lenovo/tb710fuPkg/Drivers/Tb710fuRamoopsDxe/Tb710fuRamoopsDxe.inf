@@ -1,0 +1,31 @@
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = Tb710fuRamoopsDxe
+  FILE_GUID                      = 69454FAF-8C51-4E01-B354-E3FB21E5C745
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = Tb710fuRamoopsEntry
+
+[Sources]
+  Tb710fuRamoopsDxe.c
+  Ramoops.h
+  Font.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+  UniXNUPkg/UniXNUPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  DebugLib
+  MemoryAllocationLib
+  PrintLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+
+[Protocols]
+  gUniXNUMenuPluginProtocolGuid                  ## PRODUCES
+
+[Depex]
+  TRUE

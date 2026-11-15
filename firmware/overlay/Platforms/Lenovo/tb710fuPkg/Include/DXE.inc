@@ -42,6 +42,7 @@
 
   # Publish the physical-key console before the boot manager connects ConIn.
   INF tb710fuPkg/Drivers/Tb710fuKeyInputDxe/Tb710fuKeyInputDxe.inf
+  INF tb710fuPkg/Drivers/Tb710fuRamoopsDxe/Tb710fuRamoopsDxe.inf
   INF MdeModulePkg/Universal/BdsDxe/BdsDxe.inf
 
 

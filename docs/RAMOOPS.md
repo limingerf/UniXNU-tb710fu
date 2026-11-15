@@ -79,10 +79,10 @@ macOS 27 profile 在设备补丁之前会先应用 **55 个上游 xnu-12377 补�
 - Android 侧 `/sys/fs/pstore/console-ramoops-0` 是否真的出现
 - 内核到底停在哪一步（这正是本次要查的）
 
-实机首轮结果：pstore 为空，已定位为 `ecc` 不匹配并修复（见下一节）。
+实机首轮结果：pstore 为空，发现 ECC 参数不一致并统一；空日志的确切原因仍待原始内存快照验证。
 TWRP 读侧能力本身已实测具备。
 
-## 首次实机：pstore 为空（已定位为 ecc 不匹配）
+## 首次实机：pstore 为空，发现 ECC 参数不一致
 
 刷入带 ramoops 的三件套、跑过 XNU 后进 TWRP，`/sys/fs/pstore/` 却是空的。
 用户指出「换了安卓 GKI 内核、TWRP 复用该内核」是同类原因，实测证实：
@@ -111,8 +111,11 @@ TWRP 读侧能力本身已实测具备。
 | `pmsg_size` | `0x80000` | — |
 
 FDT 里虽写了 `ecc-size = <0x10>`，但**这个 GKI 内核运行时 `ecc=0`**。
-XNU 按 ecc=16 生成带 Reed-Solomon 校验的 zone，Linux `persistent_ram`
-用 ecc=0 解析 → 头校验失败 → **判定无效并清零**，于是 pstore 空。
+XNU 按 ecc=16 生成带 Reed-Solomon 校验的 zone，读取方 ecc=0 会采用不同
+容量和环绕布局，所以应统一参数。但参考 Linux `persistent_ram` 在 ecc=0 时
+会跳过 ECC 初始化及头纠错，不能据此断定“头校验失败清零”就是空 pstore 的根因。
+是否已写入、是否被复位/ABL/后续内核覆盖，仍需原始区域头和正文证据；参考
+mainline 源码也不能替代实际 GKI 6.1.177 对应源码。
 
 地址语义核对无误：Linux 的 console prz 在 `mem_address + record_size`
 即 `0xAC340000`，与 `ramoops=0xac340000` 一致；`ramoops_size=0x40000`

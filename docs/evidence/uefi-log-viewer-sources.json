@@ -1,0 +1,39 @@
+{
+  "stage": "host-tested-source",
+  "sources": [
+    {
+      "repository": "UniXNU/UniXNU",
+      "commit": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+      "path": "package/UniXNUPkg/Include/Protocol/UniXNUMenuPlugin.h",
+      "sha256": "eb897e32cb4c260818dd89603176f8ff3879bff209dfd1b24fc49e003436d534"
+    },
+    {
+      "repository": "UniXNU/UniXNU",
+      "commit": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+      "path": "package/UniXNUPkg/Library/UniXNULib/Font.c",
+      "sha256": "391c7dbc8c6eb3cd07230e3dd8d38e4ba8a5a9b603bcaecb4d8e62a4603d2ac6"
+    },
+    {
+      "repository": "UniXNU/UniXNU",
+      "commit": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+      "path": "package/UniXNUPkg/Library/UniXNULib/Config.c",
+      "sha256": "c070b2eb1c4922df345a2f830c5f2c420bafd11dde759fee2d2ce4f3be3923c5"
+    },
+    {
+      "repository": "limingerf/UniXNU-tb710fu",
+      "commit": "fa0d3a249d0b5d721539adbbd5f539728859a942",
+      "path": "patches/xnu/0004-tb710fu-ramoops-console.patch",
+      "sha256": "63a2e0e2086605a8a909fca75150f3eddf789f0cd1042d659d752e22d0a45ea8",
+      "role": "existing XNU writer format"
+    }
+  ],
+  "framework_patch": "firmware/patches/0003-unixnu-menu-tools.patch",
+  "tests": [
+    "Debian GCC strict C11 + ASan/UBSan PASS",
+    "Debian Clang strict C11 PASS",
+    "board preflight PASS: 40 memory regions, 11 required modules",
+    "git apply --check against pinned framework PASS"
+  ],
+  "device_operations": false,
+  "hardware_verified": false
+}

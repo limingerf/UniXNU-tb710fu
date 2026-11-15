@@ -23,6 +23,7 @@ REQUIRED = [
     'MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf',
     'SiliciumPkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf',
     'tb710fuPkg/Drivers/Tb710fuKeyInputDxe/Tb710fuKeyInputDxe.inf',
+    'tb710fuPkg/Drivers/Tb710fuRamoopsDxe/Tb710fuRamoopsDxe.inf',
 ]
 
 # Opt-in UFS publication chain (board.toml TB710FU_ENABLE_UFS=1). These are the
@@ -68,6 +69,11 @@ def main():
     command(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-pedantic', '-fsanitize=address,undefined',
              '-fno-omit-frame-pointer', key_test, '-o', key_binary], ROOT, output / 'input-test-build.log')
     command([key_binary], ROOT, output / 'input-test.log')
+    log_test = ROOT / 'firmware/overlay/Platforms/Lenovo/tb710fuPkg/Drivers/Tb710fuRamoopsDxe/Test/ramoops_host.c'
+    log_binary = output / 'ramoops-host'
+    command(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-pedantic', '-fsanitize=address,undefined',
+             '-fno-omit-frame-pointer', log_test, '-o', log_binary], ROOT, output / 'ramoops-test-build.log')
+    command([log_binary], ROOT, output / 'ramoops-test.log')
     # Patches are routed by target tree and applied in two phases. The 0001
     # SimpleFb patch targets the uefi-sheng checkout and can go on immediately.
     # The 0002 DarwinBoot patch targets UniXNU's drivers/DarwinBoot gitlink, which
@@ -76,14 +82,20 @@ def main():
     # LZMA kernel variant is requested.
     simplefb_patches = []
     darwinboot_patches = []
+    framework_patches = []
     for patch in sorted((ROOT / 'firmware/patches').glob('*.patch')):
         name = patch.name
         if 'simplefb' in name:
             simplefb_patches.append(patch)
+        elif 'unixnu-menu-tools' in name:
+            framework_patches.append(patch)
         elif 'darwinboot' in name:
             darwinboot_patches.append(patch)
         else:
-            raise SystemExit('Unrouted firmware patch (name must contain simplefb or darwinboot): ' + name)
+            raise SystemExit('Unrouted firmware patch: ' + name)
+    for patch in framework_patches:
+        command(['git', '-C', source, 'apply', '--check', patch], ROOT)
+        command(['git', '-C', source, 'apply', patch], ROOT)
     for patch in simplefb_patches:
         command(['git', '-C', uefi, 'apply', '--check', patch], ROOT)
         command(['git', '-C', uefi, 'apply', patch], ROOT)
@@ -241,8 +253,13 @@ def main():
               'abl_changed': False, 'hardware_boot_verified': False,
               'ufs_chain': {'enabled': bool(args.ufs), 'modules': ufs_modules},
               'lzma_kernel': {'enabled': bool(args.lzma), 'darwinboot_patched': lzma_verified}}
-    report['input'] = {'driver': REQUIRED[-1], 'host_model_test': 'PASS',
+    report['input'] = {'driver': REQUIRED[9], 'host_model_test': 'PASS',
                        'physical_keys_verified': False, 'pmic_configuration_writes': False}
+    report['ramoops_viewer'] = {'driver': REQUIRED[10], 'host_decoder_test': 'PASS',
+                               'physical_base': '0xac340000', 'bytes': 0x40000,
+                               'ecc_layouts': [0, 16], 'ecc_repair': False,
+                               'raw_zone_writes': False, 'hardware_verified': False,
+                               'framework_tools_patch': True}
     (output / 'firmware-result.json').write_text(json.dumps(report, indent=2) + '\n')
     shutil.copy2(fd, output / 'SILICIUM_UEFI.fd')
     command(['git', '-C', str(uefi), 'submodule', 'status', '--recursive'], ROOT, output / 'uefi-submodules.log')

@@ -148,3 +148,17 @@ success。预链接 `kernel.macho` 142,753,792 B（SHA-256 `cc690c9a…`），
 先补本机DT与最小启动/日志输入，再做UEFI→DarwinBoot→单核EL1/PAC验证。真实UFS、
 独立UnixNU存储、根策略、Data/cryptex与launchd随后接入；GPU和桌面后置。当前产物是
 通过云构建与静态加载器检查的候选，并非已验收的双系统安装包。
+
+## UEFI 只读日志查看器 · 2026-11-15
+
+用户确认当前 A 槽能进 Android 和 TWRP；此前备份不是当前 A 槽状态。
+新增 `Tb710fuRamoopsDxe`，在 BDS 前复制 `0xAC340000+0x40000`，
+通过官方 Tools 协议提供 ECC 0/16 布局的只读日志翻页。显式框架补丁会在
+旧 payload 配置缺少 Tools 时追加入口，保持默认项不变。
+GCC/Clang 严格 C11、GCC ASan/UBSan 主机解码测试、40 项内存图和 11 模块预检通过；
+云构建与实机结果分别记录，不把源代码/主机测试等同于 DDR 保留或屏显成功。
+详见 [UEFI 日志查看器](docs/UEFI_LOG_VIEWER.md)。
+
+本轮未操作设备。USB/ADB/fastbootd 与一次性 A 槽引导尚未实现；UFS 读取和
+当前 A 槽启动镜像格式是后续前置条件。普通 set-active 不满足下次回 UEFI 的要求。
+空 pstore 曾被归因于 ECC 头校验失败；已更正为未证实，ECC=0 时参考实现跳过该校验。

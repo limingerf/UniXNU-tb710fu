@@ -1,0 +1,47 @@
+--- a/package/UniXNUPkg/Library/UniXNULib/Config.c
++++ b/package/UniXNUPkg/Library/UniXNULib/Config.c
+@@ -1614,6 +1614,44 @@
+     }
+   }
+ 
++  // A platform's installed diagnostics must remain reachable even when an
++  // older payload config omits Tools. Append only; preserve default/countdown.
++  {
++    UNIXNU_MENU_PLUGIN_PROTOCOL  *Plugin;
++    BOOLEAN                     HasTools;
++    UNIXNU_ENTRY                *Entry;
++    CHAR8                       *Id;
++    CHAR16                      *Title;
++
++    HasTools = FALSE;
++    for (Index = 0; Index < Config->EntryCount; Index++) {
++      if ((Config->Entries[Index].Type == UniXNUEntryAction) &&
++          (Config->Entries[Index].Action == UniXNUActionTools)) {
++        HasTools = TRUE;
++        break;
++      }
++    }
++    if (!HasTools &&
++        !EFI_ERROR (gBS->LocateProtocol (&gUniXNUMenuPluginProtocolGuid, NULL, (VOID **)&Plugin)) &&
++        (Plugin != NULL) && (Plugin->Signature == UNIXNU_MENU_PLUGIN_PROTOCOL_SIGNATURE) &&
++        (Plugin->Version == UNIXNU_MENU_PLUGIN_PROTOCOL_VERSION) && (Plugin->Run != NULL)) {
++      Id = AsciiDup ("firmware-tools");
++      Title = AllocateCopyPool (sizeof (L"Tools"), L"Tools");
++      Entry = ((Id != NULL) && (Title != NULL)) ?
++              GrowArray ((VOID **)&Config->Entries, &Config->EntryCount, sizeof (UNIXNU_ENTRY)) : NULL;
++      if (Entry != NULL) {
++        Entry->Id = Id;
++        Entry->Title = Title;
++        Entry->Type = UniXNUEntryAction;
++        Entry->Action = UniXNUActionTools;
++      } else {
++        if (Id != NULL) { FreePool (Id); }
++        if (Title != NULL) { FreePool (Title); }
++        UniXNULog ("config: cannot append firmware Tools");
++      }
++    }
++  }
++
+   if (Config->DefaultIndex >= Config->EntryCount) {
+     Config->DefaultIndex = 0;
+   }

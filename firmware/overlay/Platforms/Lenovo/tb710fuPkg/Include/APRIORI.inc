@@ -40,6 +40,7 @@ APRIORI DXE {
   INF MdeModulePkg/Universal/HiiDatabaseDxe/HiiDatabaseDxe.inf
   # Timer and variable services are ready; register the physical-key ConIn first.
   INF tb710fuPkg/Drivers/Tb710fuKeyInputDxe/Tb710fuKeyInputDxe.inf
+  INF tb710fuPkg/Drivers/Tb710fuRamoopsDxe/Tb710fuRamoopsDxe.inf
   INF MdeModulePkg/Universal/BdsDxe/BdsDxe.inf
 
 

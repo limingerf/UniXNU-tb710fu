@@ -94,6 +94,7 @@
   DarwinBootPkg/Driver/DarwinBoot.inf
   # Source-only PMIC status reads; no vendor initialization dependency chain.
   tb710fuPkg/Drivers/Tb710fuKeyInputDxe/Tb710fuKeyInputDxe.inf
+  tb710fuPkg/Drivers/Tb710fuRamoopsDxe/Tb710fuRamoopsDxe.inf
 
 !if $(TB710FU_ENABLE_UFS) == 1
   # Stock Qualcomm prebuilt DXE modules that publish UFS. These are PE32

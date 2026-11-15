@@ -1,4 +1,4 @@
-name: TB710FU LZMA-kernel DarwinBoot (experimental)
+name: TB710FU LZMA-kernel and log viewer
 
 # Builds a firmware whose DarwinBoot can expand an LZMA-compressed 137 MiB
 # kernel from a 23 MiB payload in vendor_boot. This is the capacity fix that
@@ -8,7 +8,7 @@ name: TB710FU LZMA-kernel DarwinBoot (experimental)
 # UniXNU drivers/DarwinBoot gitlink after defconfig/fetch has populated it.
 # The decoder is the pinned tree's MdeModulePkg LzmaCustomDecompressLib.
 #
-# Host-reviewed source only: no device has booted this path.
+# The LZMA path reached XNU on hardware; the new read-only log viewer is unverified.
 on:
   workflow_dispatch:
 permissions:

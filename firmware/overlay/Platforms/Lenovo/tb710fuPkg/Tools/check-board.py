@@ -84,13 +84,17 @@ def main():
         'MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf',
         'SiliciumPkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf',
         'tb710fuPkg/Drivers/Tb710fuKeyInputDxe/Tb710fuKeyInputDxe.inf',
+        'tb710fuPkg/Drivers/Tb710fuRamoopsDxe/Tb710fuRamoopsDxe.inf',
     ]
     for path in required:
         require('INF ' + path in fv, 'Required module missing from FDF: ' + path)
-    key_inf = required[-1]
+    key_inf = required[9]
     require(key_inf in dsc, 'Board DSC does not compile the physical-key input')
+    require(required[10] in dsc, 'Board DSC does not compile the ramoops viewer')
     apriori = (board / 'Include/APRIORI.inc').read_text(encoding='utf-8')
     require(apriori.index(key_inf) < apriori.index('MdeModulePkg/Universal/BdsDxe/BdsDxe.inf'), 'Input must dispatch before BDS')
+
+    require(apriori.index(required[10]) < apriori.index('MdeModulePkg/Universal/BdsDxe/BdsDxe.inf'), 'Snapshot must dispatch before BDS')
 
     # The source-only baseline must not reference vendor binaries. The one reviewed
     # exception is the opt-in UFS publication chain behind TB710FU_ENABLE_UFS: those
