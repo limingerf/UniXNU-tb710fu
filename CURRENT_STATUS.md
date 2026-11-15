@@ -99,9 +99,14 @@ LZMA 压成 23 MiB，仍走 vendor_boot 的 payload ramdisk，由 DarwinBoot 解
 - `tools/ci_firmware.py --lzma` + `.github/workflows/uefi-lzma.yml` 在云端
   构建该变体，并在 FD 里核对 DarwinBoot GUID。
 
-**进行中**：云构建验证补丁能编译（run43700228887 起）。尚未实机。
+**进行中**：云构建验证补丁能编译。第 5 次 run 证明 DarwinBoot.c 编译通过，
+链接失败（LZMA 库拉入 PrePiExtractGuidedSectionLib 的 HOB 依赖）；已改为
+DSC override 同时钉住 DxeExtractGuidedSectionLib，第 6 次 run FD 成功产出，
+仅验证条件有误；第 7 次 run（43701443770）在跑。尚未实机。
+
 关键修正记录：DarwinBoot 是 UniXNU 的 gitlink，`defconfig` 不初始化子模块，
-需 `--lzma` 显式 `git submodule update --init drivers/DarwinBoot`；且
+需 `--lzma` 显式 `git submodule update --init drivers/DarwinBoot`；`NULL|`
+库链接只能写在 DSC 组件 override 块，写进 INF 会崩 BaseTools；且
 `Binaries` 不能进 `[firmware.submodules]`，否则 build firmware 重复 init 与
 materialised 目录冲突。
 
