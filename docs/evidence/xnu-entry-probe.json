@@ -1,0 +1,77 @@
+{
+  "stage": "unsigned-entry-bar-probe",
+  "framework_commit": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+  "official_tool": "scripts/patch-xnu-entry-probe.py",
+  "official_tool_sha256": "159eb1ea8d6c1da30f26913a281f46e21d940a1ae7886656529907ec3edf96ad",
+  "input_sha256": "cc690c9a0bde84c49e9cebccc288f393393d16da56620d580108f0a62692b31c",
+  "output_sha256": "e2156f42d6d30b9b91d04b8be1d1d86a03d84fdecba560d9587f70b1ce5db524",
+  "bytes": 142753792,
+  "changed_bytes": 129,
+  "kernel_entry_va": "0xfffffff00bb93488",
+  "start_first_cpu_va": "0xfffffff00bb9505c",
+  "before_mmu_enable_va": "0xfffffff00bb95418",
+  "markers": {
+    "blue": "XNU entry executed",
+    "magenta": "reached instruction before MMU enable"
+  },
+  "automatic_reset_added": false,
+  "hardware_verified": false,
+  "device_operations": false,
+  "signed": false,
+  "lzma": {
+    "bytes": 24065076,
+    "sha256": "1c3da033d3e35f8feef240d13e21ca1302ed60fe2c50ff3e9f6e045125e9a2c4",
+    "declared_bytes": 142753792,
+    "raw_roundtrip_verified": true
+  },
+  "unsigned_vendor_boot": {
+    "bytes": 37859328,
+    "sha256": "cdfcae603df730e5f7b7a7bce51fb7b5c1f5937e21122673973d022bba4491a8",
+    "source_sha256": "836ca997d766dedfef0531f7283026b443d2227302148fdd107852e25354df15",
+    "outer_avb_removed": true,
+    "requires_signing": true,
+    "requires_matching_vbmeta_vendor_boot_hash": true
+  },
+  "payload": {
+    "bytes": 34603008,
+    "sha256": "91852a368f6ac901a1edb645b3a5fba196642d87fb84b1f6c4864b7db919fc6d",
+    "kernel_readback_matches": true,
+    "preserved_file_hashes": {
+      "unixnu.toml": "a14b5a8fa15e9e8a29e160a2e87d36f72cb31bcb95140072f92359986c13a356",
+      "Payloads/kernel.macho.adt": "4c56fb2a23d9177aa6b5820d3aba46ca66db90f8168bb6520bdd598ba097bc7b"
+    }
+  },
+  "production_parser": {
+    "commit": "5243c68ec332a227fe3680cd5da6d5a0e127035c",
+    "result": "PASS",
+    "sources": {
+      "commit": "5243c68ec332a227fe3680cd5da6d5a0e127035c",
+      "sources": [
+        {
+          "path": "DarwinBootPkg/Driver/DarwinBoot.c",
+          "sha256": "1d19ca1091962bd48b4154e3aae3d0ad80699f6c892a5a407dd3de0d62907fd9"
+        },
+        {
+          "path": "Test/test-kernel-parser.py",
+          "sha256": "92be15ff6060ee1cd98e7feb8a021f1ebed477189375140dfc3ac8371f9b48d7"
+        }
+      ]
+    }
+  },
+  "permitted_changes_verified": "129 bytes restricted to two guarded branch instructions and two previously-empty caves",
+  "observed_display": {
+    "actual_green_bar": true,
+    "text_origin": "DarwinBoot/UEFI, not XNU",
+    "proves": "ExitBootServices returned; DarwinEnter started",
+    "kernel_entry_verified": false
+  },
+  "reported_ramoops_header": {
+    "sig_as_reported": "4107024",
+    "start": 1072,
+    "size": 6808,
+    "expected_sig_hex": "43474244",
+    "reset_method": "long-press forced restart",
+    "intervening_android_or_twrp": false,
+    "cause_confirmed": false
+  }
+}

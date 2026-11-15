@@ -22,6 +22,7 @@
 #include <Library/PrintLib.h>
 #include <Library/QrEncoderLib.h>
 #include <Library/UefiBootServicesTableLib.h>
+#include <Library/UefiLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
 #include <Protocol/SimpleTextIn.h>
 #include <Protocol/UniXNUMenuPlugin.h>

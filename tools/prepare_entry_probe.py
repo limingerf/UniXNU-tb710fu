@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import lzma
 from pathlib import Path
 import re
 import shutil
@@ -26,6 +27,7 @@ def main():
     parser.add_argument('--kernel', type=Path, required=True)
     parser.add_argument('--sha256', required=True, help='Required original kernel identity')
     parser.add_argument('--output', type=Path, required=True, help='New Mach-O copy; never overwritten')
+    parser.add_argument('--lzma', action='store_true', help='Also prepare the existing LZMA-loader container')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     lock = json.loads((root / 'upstream.lock.json').read_text(encoding='utf-8'))
@@ -42,12 +44,16 @@ def main():
         raise SystemExit('Refuse to modify the original kernel')
     if args.output.exists():
         raise SystemExit('Output exists; choose a new path to preserve earlier evidence')
+    compressed_path = args.output.with_suffix('.lzma')
+    if args.lzma and compressed_path.exists():
+        raise SystemExit('Compressed output exists; choose a new path')
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open('xb') as stream:
         stream.write(original)
 
     spec = importlib.util.spec_from_file_location('pinned_entry_probe', tool)
     probe = importlib.util.module_from_spec(spec)
+    sys.dont_write_bytecode = True
     spec.loader.exec_module(probe)
 
     def fileset_symbols(kernel):
@@ -88,6 +94,24 @@ def main():
         'automatic_reset_added': False, 'hardware_verified': False,
         'device_operations': False, 'signed': False,
     }
+    if args.lzma:
+        print('Compressing diagnostic copy for the existing LZMA loader', flush=True)
+        options = {'id': lzma.FILTER_LZMA1, 'dict_size': 8 << 20,
+                   'lc': 3, 'lp': 0, 'pb': 2, 'preset': 6}
+        encoded = lzma.compress(changed, format=lzma.FORMAT_ALONE, filters=[options])
+        if lzma.decompress(encoded, format=lzma.FORMAT_ALONE) != changed:
+            raise SystemExit('LZMA round-trip failed')
+        # EDK II needs a concrete decoded length; its SDK consumes the raw
+        # stream with that length. Verify the raw stream separately: liblzma's
+        # ALONE reader can reject known-size + end-marker combinations.
+        encoded = encoded[:5] + len(changed).to_bytes(8, 'little') + encoded[13:]
+        decoder = lzma.LZMADecompressor(format=lzma.FORMAT_RAW, filters=[options])
+        if decoder.decompress(encoded[13:]) != changed or not decoder.eof:
+            raise SystemExit('Raw stream verification failed')
+        with compressed_path.open('xb') as stream:
+            stream.write(encoded)
+        report['lzma'] = {'bytes': len(encoded), 'sha256': sha(encoded),
+                          'declared_bytes': len(changed), 'raw_roundtrip_verified': True}
     args.output.with_suffix('.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report, indent=2))
 
