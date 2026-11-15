@@ -97,10 +97,14 @@ def main():
         trace_source += ('.global ' + label + '\n.hidden ' + symbol + '\n.hidden ' + resume + '\n' +
                          label + ':\n  adrp x16,diag_last_stage\n  add x16,x16,:lo12:diag_last_stage\n' +
                          '  mov x17,#' + str(index * 2 + 1) + '\n  str x17,[x16]\n' +
+                         '  adr x17,' + label + '_enter_text\n  bl diag_live_call\n' +
                          '  bl ' + symbol + '\n' +
                          '  adrp x16,diag_last_stage\n  add x16,x16,:lo12:diag_last_stage\n' +
                          '  mov x17,#' + str(index * 2 + 2) + '\n  str x17,[x16]\n' +
-                         '  adrp x30,' + resume + '\n  add x30,x30,:lo12:' + resume + '\n  b ' + resume + '\n')
+                         '  adr x17,' + label + '_return_text\n  bl diag_live_call\n' +
+                         '  adrp x30,' + resume + '\n  add x30,x30,:lo12:' + resume + '\n  b ' + resume + '\n' +
+                         label + '_enter_text:\n  .asciz "XNU enter: ' + name[1:] + '"\n' +
+                         label + '_return_text:\n  .asciz "XNU returned: ' + name[1:] + '"\n.balign 4\n')
         definitions += ['--defsym=' + symbol + '=' + hex(target), '--defsym=' + resume + '=' + hex(site + 4)]
         traced.append({'name': name, 'site': hex(site), 'callee': hex(target), 'label': label,
                        'before_stage': index * 2 + 1, 'after_stage': index * 2 + 2})
@@ -118,7 +122,7 @@ def main():
         path.write_text('#include "Compat.h"\n')
     shutil.copyfile(qr / 'MsGraphicsPkg/Include/Library/QrEncoderLib.h', compat / 'Library/QrEncoderLib.h')
     flags = ['--target=aarch64-none-elf', '-std=c11', '-Oz', '-fpie', '-fvisibility=hidden',
-             '-fno-stack-protector', '-fno-builtin', '-ffreestanding', '-mgeneral-regs-only',
+             '-fno-stack-protector', '-fno-builtin', '-ffreestanding', '-mgeneral-regs-only', '-mstrict-align',
              '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-I' + str(src), '-I' + str(compat)]
     sources = [src / 'Report.c', qr / 'MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c',
                qr / 'MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c']
@@ -223,6 +227,7 @@ def main():
               'reporter_sources': {str(p.relative_to(root)): sha(p.read_bytes()) for p in sorted(src.rglob('*')) if p.is_file() and '__pycache__' not in p.parts},
               'user_display_request': 'one compact strip; fault replaces screen with report',
               'report_is_full_console_log': False, 'static_single_OS_frame': True,
+              'strict_alignment': True, 'live_stage_text': True,
               'hardware_verified': False, 'functional_fix_claimed': False}
     (output / 'build-report.json').write_text(json.dumps(record, indent=2) + '\n')
     print(json.dumps({k: record[k] for k in ['kernel_sha256', 'kernel_bytes', 'segment_bytes', 'checkpoint_va']}, indent=2))

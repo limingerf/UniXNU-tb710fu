@@ -1,5 +1,8 @@
 # 继续原内核，只在异常时报告
 
+> 用户自检随后确认报告器自身的未对齐写入，已修正；最新镜像和实时函数名
+> 显示见 [KERNEL_LIVE_REPORT.md](KERNEL_LIVE_REPORT.md)。本文保留旧产物记录。
+
 用户照片中的 ESR=f200b710、ELR=fffffff00c28ff68 对应旧版人为设置的 BRK，
 说明 C 序言与重定位已完成；它不是原始故障。按用户要求，本版删除默认路径的
 主动检查点，继续执行 PE_init_platform 和 arm_vm_init，不再用人为停点冒充卡死。

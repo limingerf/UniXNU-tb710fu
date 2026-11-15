@@ -15,9 +15,11 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--build', type=Path, required=True)
     p.add_argument('--dependency-dir', type=Path, required=True)
+    p.add_argument('--check-alignment', action='store_true', help='Model natural alignment for reporter data/stack accesses with MMU off')
+    p.add_argument('--expect-alignment-fault', action='store_true', help='Regression: old reporter must fail this check')
     args = p.parse_args()
     sys.path.insert(0, str(args.dependency_dir))
-    from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM
+    from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
     from unicorn import arm64_const as r
     build = json.loads((args.build / 'build-report.json').read_text())
     sym = {k: int(v, 16) for k, v in build['symbols'].items()}
@@ -46,7 +48,26 @@ def main():
     uc.reg_write(r.UC_ARM64_REG_SP, physical + sym['diag_stack_end'] - base)
     uc.reg_write(r.UC_ARM64_REG_X0, state)
     uc.reg_write(r.UC_ARM64_REG_X30, stop)
+    faults = []
+    if args.check_alignment:
+        def access(machine, kind, address, length, value, _):
+            if address % min(length, 8):
+                faults.append({'pc': hex(machine.reg_read(r.UC_ARM64_REG_PC)),
+                               'address': hex(address), 'access_bytes': length})
+                machine.emu_stop()
+        uc.hook_add(UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE, access,
+                    begin=physical, end=physical + build['segment_bytes'] - 1)
     uc.emu_start(physical + sym['diag_build_report'] - base, stop, timeout=45000000, count=180000000)
+    if faults:
+        if not args.expect_alignment_fault:
+            raise SystemExit('Unaligned reporter access: ' + json.dumps(faults))
+        result = {'result': 'EXPECTED-FAIL', 'alignment_fault': faults[0],
+                  'limits': 'Natural-alignment hook models MMU-off Device access; not a full hardware model'}
+        (args.build / 'alignment-regression.json').write_text(json.dumps(result, indent=2) + '\n')
+        print(json.dumps(result, indent=2))
+        return
+    if args.expect_alignment_fault:
+        raise SystemExit('Expected old-reporter alignment failure did not occur')
     if uc.reg_read(r.UC_ARM64_REG_PC) != stop:
         raise SystemExit('Actual AARCH64 report did not return within bounded instruction/time budget')
     def value(name):
@@ -65,6 +86,7 @@ def main():
               'resolution': [width, height], 'phase': 'QR READY', 'text_bytes': len(text),
               'frame_sha256': hashlib.sha256(frame).hexdigest(),
               'heap_bytes': value('diag_test_heap_used'),
+              'natural_alignment_checked': args.check_alignment,
               'limits': 'flat physical memory; real device/MMU/cache behavior not verified'}
     (args.build / 'runtime-check.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))

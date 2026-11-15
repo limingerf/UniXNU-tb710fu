@@ -31,6 +31,10 @@ diag_init:
   add x9, x9, :lo12:diag_vectors
   msr vbar_el1, x9
   isb
+  stp x17,x30,[sp,#-16]!
+  adr x17,diag_init_message
+  bl diag_live_call
+  ldp x17,x30,[sp],#16
   // Optional explicit menu self-test, bounded by the boot_args command line.
   add x11, x0, #0x6c
   add x12, x11, #1024
@@ -60,7 +64,31 @@ diag_resume:
   b arm_next
 diag_selftest_name:
   .asciz "tb-report-selftest=1"
+diag_init_message:
+  .asciz "XNU: arm_init entry (running)"
 .balign 4
+
+.global diag_live_call
+diag_live_call:
+  stp x0,x1,[sp,#-96]!
+  stp x2,x3,[sp,#16]
+  stp x4,x5,[sp,#32]
+  stp x6,x7,[sp,#48]
+  stp x18,x30,[sp,#64]
+  mrs x9,nzcv
+  str x9,[sp,#80]
+  mov x1,x17
+  adrp x0,diag_state
+  add x0,x0,:lo12:diag_state
+  bl diag_live_text
+  ldr x9,[sp,#80]
+  msr nzcv,x9
+  ldp x18,x30,[sp,#64]
+  ldp x6,x7,[sp,#48]
+  ldp x4,x5,[sp,#32]
+  ldp x2,x3,[sp,#16]
+  ldp x0,x1,[sp],#96
+  ret
 
 diag_exception:
   msr tpidr_el1, x18

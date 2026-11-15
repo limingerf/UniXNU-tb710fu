@@ -1,0 +1,41 @@
+{
+  "kind": "user-reporter-selftest-photo",
+  "image_sha256": "833f52a6ee850ae1bf75ef9b360e65c4f807de4bb34f1cbec54364e2baed3406",
+  "observed_date": "2026-11-16",
+  "transcription": {
+    "title": "REPORTER SECONDARY EXCEPTION",
+    "phase": "2",
+    "first_esr": "00000000f200b711",
+    "first_elr": "fffffff00f8280ac",
+    "esr": "0000000096000061",
+    "far": "00000008c88b1eae",
+    "elr": "00000008c8829fc0",
+    "sp": "00000008c88b1e90",
+    "lr": "00000008c8829fa8"
+  },
+  "decoded_esr": {
+    "EC": "0x25: data abort in current EL",
+    "DFSC": "0x21: alignment fault"
+  },
+  "matched_instruction": {
+    "old_ELF_va": "fffffff00f829fc0",
+    "instruction": "stur w8, [sp, #0x1e]",
+    "address_calculation": "0x8c88b1e90 + 0x1e = 0x8c88b1eae",
+    "misalignment": "4-byte store at address mod 4 = 2",
+    "source": "compiler merged two 16-bit LMS1 header fields"
+  },
+  "old_binary_alignment_model": {
+    "result": "EXPECTED-FAIL",
+    "alignment_fault": {
+      "pc": "0x8c8829fc0",
+      "address": "0x8c88b1ebe",
+      "access_bytes": 4
+    },
+    "limits": "Natural-alignment hook models MMU-off Device access; not a full hardware model"
+  },
+  "old_model_stack_fixture_difference": "model SP differs by 16 bytes; same PC and unaligned SP+0x1e instruction",
+  "fix": "Compile all freestanding reporter/QR C with -mstrict-align",
+  "not_XNU_original_fault": true,
+  "image_uploaded_to_repository": false,
+  "independent_new_QR_decode": "exact runtime frame and CRC PASS"
+}

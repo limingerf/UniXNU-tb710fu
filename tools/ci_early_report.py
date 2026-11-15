@@ -38,7 +38,7 @@ def main():
     qr = upstream / 'MsGraphicsPkg/Library/QrEncoderLib'
     sources = [src / 'Report.c', qr / 'QrEncoderLib.c', qr / 'QrEncoderTables.c']
     flags = ['-std=c11', '-Oz', '-fpie', '-fvisibility=hidden', '-fno-stack-protector',
-             '-fno-builtin', '-ffreestanding', '-mgeneral-regs-only',
+             '-fno-builtin', '-ffreestanding', '-mgeneral-regs-only', '-mstrict-align',
              '-I' + str(src), '-I' + str(compat)]
     for i, source in enumerate(sources):
         subprocess.run(['clang', '--target=aarch64-none-elf'] + flags +

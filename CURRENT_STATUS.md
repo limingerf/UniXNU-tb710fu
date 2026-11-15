@@ -1,9 +1,9 @@
 # Current status · 2026-11-15
 
-> 最新实机检查点：用户照片显示主动BRK b710（ESR=f200b710、
-> ELR=fffffff00c28ff68），确认原C序言和fileset重定位完成，尚未执行首个
-> PE_init_platform。按用户要求，最新镜像撤掉默认主动停点，只在早期异常/panic
-> 时报告；没有死循环看门狗。见 [被动异常报告](docs/KERNEL_PASSIVE_REPORT.md)。
+> 最新诊断：自检图确认报告器在LMS1信封字段发生未对齐32位写入，
+> ESR=96000061 / ELR=8c8829fc0，已加strict-align并回归旧失败/新成功。
+> 新版还在顶部48行实时显示进入/返回函数名，不再只有青条；原内核停点
+> 仍未定位，实机修复待验。见 [实时报告](docs/KERNEL_LIVE_REPORT.md)。
 
 这是当前工程的单一状态入口。编译、静态加载检查和实机运行分开记录。
 
@@ -314,3 +314,20 @@ vbmeta.img（c75712b8…），沿用仅本地签名授权，未操作设备/根�
 
 
 独立诊断源云验证 [run43747184259](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43747184259) success，源提交2fd02c6d7f7b5760a40c8397a4625cfa2e984b9c。实际AARCH64对象和主机传输检查通过，未重新编译整个XNU；签名测试对保持9e8920b0…/c75712b8…，实机结果待验。
+
+## 自检确认未对齐写入，修正并增加实时文字 · 2026-11-16
+
+自检图REPORT_PHASE=2，FIRST_ESR=f200b711，第二次ESR=96000061；
+ELR=8c8829fc0对应stur w8,[sp,#0x1e]，SP=8c88b1e90，加偏移正好
+FAR=8c88b1eae，32位写入未按4字节对齐。报告器关闭MMU时发生该异常。
+确认是报告器自身问题，不是原XNU故障。旧模型未检查此条件。
+
+全部freestanding C增加-mstrict-align；旧机器码对齐回归在相同PC失败，
+新机器码在自然对齐检查下完成报告与QR READY，独立解码正确。
+14调用包装新增实时文字，只覆盖顶部48行：临时独立TTBR0设备映射写GOP，
+代码/栈走TTBR1，保持MMU/缓存开启，恢复旧TTBR0/TCR，不改原页表。
+指令模型验证描述符、参数/结果/X18和栈保留、只写顶部、原控制恢复。
+
+out/kernel-live-report-final/vendor_boot.img（f8688874…）及vbmeta.img（eb126c61…）
+签名/hash/匹配引用通过，原22描述符/header/公钥不变。未操作设备或根卷，
+未新做native/prelink；内核原始停点及新版实机行为待反馈。

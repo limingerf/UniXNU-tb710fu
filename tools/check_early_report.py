@@ -55,6 +55,11 @@ def main():
         stopping = {'pc': init_stop}
 
         def hook(machine, pc, length, _):
+            if pc == sym.get('diag_live_text'):
+                for n in list(range(8))+[18]:
+                    machine.reg_write(getattr(r,'UC_ARM64_REG_X'+str(n)),0xbad000+n)
+                machine.reg_write(r.UC_ARM64_REG_PC,machine.reg_read(r.UC_ARM64_REG_X30))
+                return
             if pc == stopping['pc']:
                 machine.emu_stop()
                 return
@@ -81,6 +86,7 @@ def main():
         if selftest:
             uc.mem_write(bootva + 0x6c, b'-v tb-report-selftest=1 ' + bytes(8))
         original_sp = vbase + 0x8813f30
+        uc.mem_map(original_sp & ~4095, 4096)
         uc.reg_write(r.UC_ARM64_REG_SP, original_sp)
         uc.emu_start(sym['diag_init'], 0, count=5000)
         assert uc.reg_read(r.UC_ARM64_REG_PC) == init_stop
@@ -141,9 +147,15 @@ def main():
         for number in range(31):
             uc.reg_write(getattr(r, 'UC_ARM64_REG_X' + str(number)), 0x12340000 + number)
         saved_sp = 0xfffffff00f817f30
+        uc.mem_map(saved_sp & ~4095,4096)
         uc.reg_write(r.UC_ARM64_REG_SP, saved_sp)
         stage_address = sym['diag_last_stage']
         def call_hook(machine, pc, length, _):
+            if pc == sym.get('diag_live_text'):
+                for n in list(range(8))+[18]:
+                    machine.reg_write(getattr(r,'UC_ARM64_REG_X'+str(n)),0xbad000+n)
+                machine.reg_write(r.UC_ARM64_REG_PC,machine.reg_read(r.UC_ARM64_REG_X30))
+                return
             if pc == callee:
                 stage = struct.unpack('<Q', bytes(machine.mem_read(stage_address, 8)))[0]
                 assert stage == item['before_stage']
@@ -166,7 +178,7 @@ def main():
                               'argument_and_result_preserved': True, 'LR_resume_and_stack_preserved': True})
     report = {'result': 'PASS', 'instruction_model': 'Unicorn 2.1.4', 'cases': results,
               'call_trace_wrappers': trace_results,
-              'limits': 'Privileged registers/cache effects modeled and PACIBSP skipped; real exception routing/MMU/PAC not validated'}
+              'limits': 'Privileged registers/cache/live text backend modeled and PACIBSP skipped; live renderer separately exercised; real MMU/PAC not validated'}
     (args.build / 'instruction-check.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))
 

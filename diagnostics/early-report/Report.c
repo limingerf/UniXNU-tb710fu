@@ -87,6 +87,37 @@ static VOID draw_text(TB_REPORT *s,CONST CHAR8 *t,UINTN x,UINTN y,UINTN scale){
   }
 }
 
+#ifndef TB_REPORT_HOST_TEST
+extern UINT8 diag_image_base[] __attribute__((visibility("hidden")));
+static UINT64 live_tables[1024] __attribute__((aligned(4096)));
+/* A short-lived TTBR0 mapping for GOP only. Kernel code/stack stay on TTBR1;
+ * MMU and caches stay enabled, and original roots/control are restored.
+ * No writes to original kernel page tables or hardware configuration.
+ */
+VOID diag_live_text(TB_REPORT *s, CONST CHAR8 *message){
+  UINT64 old_tcr,old_ttbr,table_pa;
+  UINT64 fb=s->Framebuffer,bytes=s->RowBytes*48;
+  if(!fb||s->Width<320||s->Width>8192||s->RowBytes<s->Width*4||s->RowBytes>65536||
+     ((fb>>30)!=((fb+bytes-1)>>30)))return;
+  table_pa=s->PayloadPa+(UINT64)(UINTN)live_tables-(UINT64)(UINTN)diag_image_base;
+  memset(live_tables,0,sizeof(live_tables));
+  live_tables[(fb>>30)&511]=(table_pa+4096)|3;
+  for(UINT64 pa=fb&~0x1fffffULL;pa<fb+bytes;pa+=0x200000)
+    live_tables[512+((pa>>21)&511)]=pa|0x6000000000070dULL; /* AF, SH, Attr3 Device, PXN/UXN */
+  UINT64 line;
+  __asm__ volatile("mrs %0,ctr_el0":"=r"(line));
+  line=4ULL<<((line>>16)&15);
+  for(UINT64 at=(UINT64)(UINTN)live_tables;at<(UINT64)(UINTN)live_tables+sizeof(live_tables);at+=line)
+    __asm__ volatile("dc cvac,%0"::"r"(at):"memory");
+  __asm__ volatile("mrs %0,tcr_el1\nmrs %1,ttbr0_el1":"=r"(old_tcr),"=r"(old_ttbr));
+  UINT64 temporary=(old_tcr&~0xffffULL)|0x3519;
+  __asm__ volatile("dsb sy\nmsr ttbr0_el1,%0\nmsr tcr_el1,%1\nisb\ntlbi vmalle1\ndsb sy\nisb"::"r"(table_pa),"r"(temporary):"memory");
+  for(UINTN y=0;y<48;y++)for(UINTN x=0;x<s->Width;x++)pixel(s,x,y,0xff000000);
+  draw_text(s,message,16,4,s->Width>=1600?2:1);
+  __asm__ volatile("dsb sy\nmsr ttbr0_el1,%0\nmsr tcr_el1,%1\nisb\ntlbi vmalle1\ndsb sy\nisb"::"r"(old_ttbr),"r"(old_tcr):"memory");
+}
+#endif
+
 VOID diag_build_report(TB_REPORT *s){
   UINT64 previous_phase=diag_report_phase;
   if(!previous_phase)memcpy(&first_state,s,sizeof(*s));
