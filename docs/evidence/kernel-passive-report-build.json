@@ -1,0 +1,475 @@
+{
+  "stage": "terminal-early-exception-and-Onesend-diagnostic",
+  "original_sha256": "cc690c9a0bde84c49e9cebccc288f393393d16da56620d580108f0a62692b31c",
+  "kernel_sha256": "e5465b66ea057a49ae41296c88deee402a09cf1ddd648f5c615b1a88ec1ae16e",
+  "kernel_bytes": 143327232,
+  "lzma_sha256": "b55565a3ad59536261b54e0582a9e15d8d76ca7f9ecea48fc3f72cf46e81b0ad",
+  "lzma_bytes": 24066574,
+  "segment_va": "0xfffffff00f828000",
+  "segment_fileoff": 142753792,
+  "segment_bytes": 573440,
+  "payload_bytes": 568233,
+  "arm_init_va": "0xfffffff00c28f844",
+  "arm_init_original_instruction": "PACIBSP replayed",
+  "panic_va": "0xfffffff00c2519d4",
+  "panic_original_word": "0xd503237f",
+  "checkpoint_va": "0xfffffff00c2902b4",
+  "checkpoint_original_bl": "0x97e3e47f",
+  "checkpoint_callee": "0xfffffff00bb894b0",
+  "checkpoint_installed": false,
+  "checkpoint": "none on default path",
+  "call_trace": [
+    {
+      "name": "_PE_init_platform",
+      "site": "0xfffffff00c28ff68",
+      "callee": "0xfffffff00c1eb5dc",
+      "label": "diag_trace_0",
+      "before_stage": 1,
+      "after_stage": 2
+    },
+    {
+      "name": "_configure_timer_apple_regs",
+      "site": "0xfffffff00c28ff6c",
+      "callee": "0xfffffff00bb9c234",
+      "label": "diag_trace_1",
+      "before_stage": 3,
+      "after_stage": 4
+    },
+    {
+      "name": "_wfe_timeout_configure",
+      "site": "0xfffffff00c28ff70",
+      "callee": "0xfffffff00bb9aad4",
+      "label": "diag_trace_2",
+      "before_stage": 5,
+      "after_stage": 6
+    },
+    {
+      "name": "_wfe_timeout_init",
+      "site": "0xfffffff00c28ff74",
+      "callee": "0xfffffff00bb9a9ec",
+      "label": "diag_trace_3",
+      "before_stage": 7,
+      "after_stage": 8
+    },
+    {
+      "name": "_configure_misc_apple_boot_args",
+      "site": "0xfffffff00c28ff78",
+      "callee": "0xfffffff00bb9c224",
+      "label": "diag_trace_4",
+      "before_stage": 9,
+      "after_stage": 10
+    },
+    {
+      "name": "_configure_misc_apple_regs",
+      "site": "0xfffffff00c28ff80",
+      "callee": "0xfffffff00bb9c22c",
+      "label": "diag_trace_5",
+      "before_stage": 11,
+      "after_stage": 12
+    },
+    {
+      "name": "_ml_parse_cpu_topology",
+      "site": "0xfffffff00c29005c",
+      "callee": "0xfffffff00bb9822c",
+      "label": "diag_trace_6",
+      "before_stage": 13,
+      "after_stage": 14
+    },
+    {
+      "name": "_thread_bootstrap",
+      "site": "0xfffffff00c2900fc",
+      "callee": "0xfffffff00c261114",
+      "label": "diag_trace_7",
+      "before_stage": 15,
+      "after_stage": 16
+    },
+    {
+      "name": "_cpu_bootstrap",
+      "site": "0xfffffff00c290118",
+      "callee": "0xfffffff00bb844d4",
+      "label": "diag_trace_8",
+      "before_stage": 17,
+      "after_stage": 18
+    },
+    {
+      "name": "_rtclock_early_init",
+      "site": "0xfffffff00c29011c",
+      "callee": "0xfffffff00bba06cc",
+      "label": "diag_trace_9",
+      "before_stage": 19,
+      "after_stage": 20
+    },
+    {
+      "name": "_kernel_startup_bootstrap",
+      "site": "0xfffffff00c29012c",
+      "callee": "0xfffffff00c25eed8",
+      "label": "diag_trace_10",
+      "before_stage": 21,
+      "after_stage": 22
+    },
+    {
+      "name": "_cpu_init",
+      "site": "0xfffffff00c290134",
+      "callee": "0xfffffff00bb84a40",
+      "label": "diag_trace_11",
+      "before_stage": 23,
+      "after_stage": 24
+    },
+    {
+      "name": "_processor_bootstrap",
+      "site": "0xfffffff00c290138",
+      "callee": "0xfffffff00b9a9f24",
+      "label": "diag_trace_12",
+      "before_stage": 25,
+      "after_stage": 26
+    },
+    {
+      "name": "_arm_vm_init",
+      "site": "0xfffffff00c2902b4",
+      "callee": "0xfffffff00bb894b0",
+      "label": "diag_trace_13",
+      "before_stage": 27,
+      "after_stage": 28
+    }
+  ],
+  "symbols": {
+    "diag_slot": "0x10",
+    "diag_original_12": "0xfffffff00b9a9f24",
+    "diag_original_8": "0xfffffff00bb844d4",
+    "diag_original_11": "0xfffffff00bb84a40",
+    "diag_original_13": "0xfffffff00bb894b0",
+    "diag_kernel_vectors": "0xfffffff00bb8e000",
+    "diag_original_6": "0xfffffff00bb9822c",
+    "diag_original_3": "0xfffffff00bb9a9ec",
+    "diag_original_2": "0xfffffff00bb9aad4",
+    "diag_original_4": "0xfffffff00bb9c224",
+    "diag_original_5": "0xfffffff00bb9c22c",
+    "diag_original_1": "0xfffffff00bb9c234",
+    "diag_original_9": "0xfffffff00bba06cc",
+    "diag_original_0": "0xfffffff00c1eb5dc",
+    "diag_original_10": "0xfffffff00c25eed8",
+    "diag_original_7": "0xfffffff00c261114",
+    "diag_return_0": "0xfffffff00c28ff6c",
+    "diag_return_1": "0xfffffff00c28ff70",
+    "diag_return_2": "0xfffffff00c28ff74",
+    "diag_return_3": "0xfffffff00c28ff78",
+    "diag_return_4": "0xfffffff00c28ff7c",
+    "diag_return_5": "0xfffffff00c28ff84",
+    "diag_return_6": "0xfffffff00c290060",
+    "diag_return_7": "0xfffffff00c290100",
+    "diag_return_8": "0xfffffff00c29011c",
+    "diag_return_9": "0xfffffff00c290120",
+    "diag_return_10": "0xfffffff00c290130",
+    "diag_return_11": "0xfffffff00c290138",
+    "diag_return_12": "0xfffffff00c29013c",
+    "diag_return_13": "0xfffffff00c2902b8",
+    "diag_image_base": "0xfffffff00f828000",
+    "diag_init": "0xfffffff00f828000",
+    "diag_arg_scan": "0xfffffff00f82806c",
+    "diag_arg_compare": "0xfffffff00f828084",
+    "diag_arg_next": "0xfffffff00f8280a4",
+    "diag_selftest": "0xfffffff00f8280ac",
+    "diag_resume": "0xfffffff00f8280b0",
+    "diag_selftest_name": "0xfffffff00f8280b8",
+    "diag_exception": "0xfffffff00f8280d0",
+    "diag_panic": "0xfffffff00f8280e0",
+    "diag_capture": "0xfffffff00f8280f0",
+    "diag_physical": "0xfffffff00f8281e0",
+    "diag_vectors": "0xfffffff00f828800",
+    "diag_terminal_vectors": "0xfffffff00f829000",
+    "diag_trace_0": "0xfffffff00f829800",
+    "diag_trace_1": "0xfffffff00f829830",
+    "diag_trace_2": "0xfffffff00f829860",
+    "diag_trace_3": "0xfffffff00f829890",
+    "diag_trace_4": "0xfffffff00f8298c0",
+    "diag_trace_5": "0xfffffff00f8298f0",
+    "diag_trace_6": "0xfffffff00f829920",
+    "diag_trace_7": "0xfffffff00f829950",
+    "diag_trace_8": "0xfffffff00f829980",
+    "diag_trace_9": "0xfffffff00f8299b0",
+    "diag_trace_10": "0xfffffff00f8299e0",
+    "diag_trace_11": "0xfffffff00f829a10",
+    "diag_trace_12": "0xfffffff00f829a40",
+    "diag_trace_13": "0xfffffff00f829a70",
+    "diag_build_report": "0xfffffff00f829bb0",
+    "diag_fault_main": "0xfffffff00f82a538",
+    "diag_build_report.stages.rel": "0xfffffff00f82c35c",
+    "diag_rela_start": "0xfffffff00f82dbb0",
+    "diag_rela_end": "0xfffffff00f82ddf0",
+    "diag_state": "0xfffffff00f82ddf0",
+    "diag_test_frame": "0xfffffff00f82df68",
+    "diag_test_text": "0xfffffff00f82df70",
+    "diag_stack": "0xfffffff00f8ae1f0",
+    "diag_stack_end": "0xfffffff00f8b21f0",
+    "diag_report_phase": "0xfffffff00f8b21f8",
+    "diag_last_stage": "0xfffffff00f8b2208",
+    "diag_test_text_length": "0xfffffff00f8b2210",
+    "diag_test_qr_status": "0xfffffff00f8b2218",
+    "diag_test_bitmap": "0xfffffff00f8b2220",
+    "diag_test_heap_used": "0xfffffff00f8b2228",
+    "diag_image_end": "0xfffffff00f8b2ba9"
+  },
+  "qr_source": {
+    "repository": "microsoft/mu_plus",
+    "commit": "b8d46c71610318e36a661819e1e3c0b8bdda413a",
+    "files": [
+      {
+        "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.inf",
+        "sha256": "79c46eb751f2fd53bd6c8521df99af1f2be0e9590cfc8af665e6f7f0bb151bd4"
+      },
+      {
+        "path": "MsGraphicsPkg/Include/Library/QrEncoderLib.h",
+        "sha256": "96b2e3c1a0b5271e2cf97bc48f33839a9a6b9535d9d37700bce2b4c7d3ee56f5"
+      },
+      {
+        "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c",
+        "sha256": "055d446e6a75f9ea687cf3561ae933d266a6e48acda9c905edf2b62dea1f2d2a"
+      },
+      {
+        "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c",
+        "sha256": "125f1bda27f84d2b4a71a4b86d9364daff47b6aa7b0f2dfdc1bc0a309cc6c15a"
+      },
+      {
+        "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.h",
+        "sha256": "2ad084b975448abaadd3ce4e6037c83201677a447c6a3845346503d7041c6bdf"
+      }
+    ]
+  },
+  "reporter_sources": {
+    "diagnostics/early-report/Compact1.S": "335cee536d50d864f7e59587b4fa87c4061de4bc6cb097cf94229a573b0b3c10",
+    "diagnostics/early-report/Compact2.S": "c424b6ced0563425ae7346f3fad94fe746413b7e55a709115e50d662f10375ce",
+    "diagnostics/early-report/Compact3.S": "1024bbcfdd7ae0c95973d1da4a0ad2f6743de51949a718469e7adaadb7da2867",
+    "diagnostics/early-report/Compat.h": "f6944a9a506f85692679c84a81c91c587c581c17b46e1aa83e0d3e9b21e7f3e1",
+    "diagnostics/early-report/Entry.S": "bce4f8d9b28710adb3d3864c2d31d03b0bc827a43ae24e76dd702a2251bd3d8f",
+    "diagnostics/early-report/Font.h": "e3174a605a6cfb351e5fd613f5c0d29c509a873fc3218b79fc4e7115fe405071",
+    "diagnostics/early-report/Report.c": "ca87cf176574b98faf97181a07d800a47d801c67b7ee317e411d985e82bd9e47",
+    "diagnostics/early-report/Report.h": "5f00fbacbb5e1b2ddeb35f419746b7f7f53f4c9ed718f4934839bf0c03c090c3",
+    "diagnostics/early-report/Test/host_report.py": "3e1091f56f38a11a7fe132116a64e39e8471b1377131209d4c7b8a8bc3955e66",
+    "diagnostics/early-report/qr-sources.json": "4fdde01133e35e111f191aa6bb44847442ed3212d277a3b28d4bfab085a69dc2"
+  },
+  "user_display_request": "one compact strip; fault replaces screen with report",
+  "report_is_full_console_log": false,
+  "static_single_OS_frame": true,
+  "hardware_verified": false,
+  "functional_fix_claimed": false,
+  "independent_prefix_changes": {
+    "changed_bytes": 368,
+    "allowed_ranges_only": true
+  },
+  "vector_routes_verified": "sync slots report, other slots forward to original vector offsets; terminal VBAR separate",
+  "default_path_no_added_BRK": true,
+  "instruction_model": {
+    "result": "PASS",
+    "instruction_model": "Unicorn 2.1.4",
+    "cases": [
+      {
+        "kind": 1,
+        "explicit_selftest_token": false,
+        "exception_sp1": false,
+        "all_31_gprs_captured": true,
+        "original_sp_and_syndrome_captured": true,
+        "physical_alias_and_diagnostic_stack": "PASS",
+        "PIE_runtime_relative_fixups": 24,
+        "physical_terminal_VBAR": true,
+        "does_not_use_original_faulting_stack": true
+      },
+      {
+        "kind": 2,
+        "explicit_selftest_token": false,
+        "exception_sp1": false,
+        "all_31_gprs_captured": true,
+        "original_sp_and_syndrome_captured": true,
+        "physical_alias_and_diagnostic_stack": "PASS",
+        "PIE_runtime_relative_fixups": 24,
+        "physical_terminal_VBAR": true,
+        "does_not_use_original_faulting_stack": true
+      },
+      {
+        "kind": 1,
+        "explicit_selftest_token": true,
+        "exception_sp1": false,
+        "all_31_gprs_captured": true,
+        "original_sp_and_syndrome_captured": true,
+        "physical_alias_and_diagnostic_stack": "PASS",
+        "PIE_runtime_relative_fixups": 24,
+        "physical_terminal_VBAR": true,
+        "does_not_use_original_faulting_stack": true
+      },
+      {
+        "kind": 1,
+        "explicit_selftest_token": false,
+        "exception_sp1": true,
+        "all_31_gprs_captured": true,
+        "original_sp_and_syndrome_captured": true,
+        "physical_alias_and_diagnostic_stack": "PASS",
+        "PIE_runtime_relative_fixups": 24,
+        "physical_terminal_VBAR": true,
+        "does_not_use_original_faulting_stack": true
+      }
+    ],
+    "call_trace_wrappers": [
+      {
+        "name": "_PE_init_platform",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_configure_timer_apple_regs",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_wfe_timeout_configure",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_wfe_timeout_init",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_configure_misc_apple_boot_args",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_configure_misc_apple_regs",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_ml_parse_cpu_topology",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_thread_bootstrap",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_cpu_bootstrap",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_rtclock_early_init",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_kernel_startup_bootstrap",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_cpu_init",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_processor_bootstrap",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      },
+      {
+        "name": "_arm_vm_init",
+        "result": "PASS",
+        "original_call_executed_in_model": true,
+        "argument_and_result_preserved": true,
+        "LR_resume_and_stack_preserved": true
+      }
+    ],
+    "limits": "Privileged registers/cache effects modeled and PACIBSP skipped; real exception routing/MMU/PAC not validated"
+  },
+  "actual_AARCH64_report_runtime": {
+    "result": "PASS",
+    "actual_AARCH64_report_and_QrEncodeData_executed": true,
+    "resolution": [
+      3200,
+      2000
+    ],
+    "phase": "QR READY",
+    "text_bytes": 422,
+    "frame_sha256": "565caa739762adb62fc6561bc0e32863a0cfe6cea120431bc3b431f2f1ba1ded",
+    "heap_bytes": 139488,
+    "limits": "flat physical memory; real device/MMU/cache behavior not verified"
+  },
+  "independent_runtime_QR_decode": "ZXing exact OS frame and CRC PASS",
+  "packaging": {
+    "unsigned_bytes": 37859328,
+    "unsigned_sha256": "b2a1ad5e6ea49493e0ab4ccd735739b24719c55b66f242f1ea65fd649fb2dbce",
+    "payload_sha256": "09d6fc91f25ff8c833f127b705e0b2e0a9a8a452f0341794c4667318a7fd0f91",
+    "kernel_sha256": "e5465b66ea057a49ae41296c88deee402a09cf1ddd648f5c615b1a88ec1ae16e",
+    "kernel_bytes": 143327232,
+    "kernel_file_readback": "PASS",
+    "original_config_and_ADT_hashes": {
+      "unixnu.toml": "a14b5a8fa15e9e8a29e160a2e87d36f72cb31bcb95140072f92359986c13a356",
+      "Payloads/kernel.macho.adt": "4c56fb2a23d9177aa6b5820d3aba46ca66db90f8168bb6520bdd598ba097bc7b"
+    },
+    "output_config_and_ADT_hashes": {
+      "unixnu.toml": "06c18e82d6041bb786453f08a24d2058c68b88dbf2ff44500634d0123b4c1650",
+      "Payloads/kernel.macho.adt": "4c56fb2a23d9177aa6b5820d3aba46ca66db90f8168bb6520bdd598ba097bc7b"
+    },
+    "reporter_selftest_appended": true,
+    "original_entries_and_default_preserved": true,
+    "source_vendor_sha256": "836ca997d766dedfef0531f7283026b443d2227302148fdd107852e25354df15",
+    "device_operations": false
+  },
+  "signed_pair": {
+    "stage": "signed-kernel-probe-pair",
+    "vendor_boot_bytes": 100663296,
+    "vendor_boot_sha256": "9e8920b0947c7f3dd585de5bc13d3a11d9d280ab959ed5be032dbf1ce4e3516e",
+    "vbmeta_bytes": 8000,
+    "vbmeta_sha256": "c75712b85ff4194d2f0ca8f0c19bb76be10a620ec48706497a90c0da7ff36f0d",
+    "source_vbmeta_sha256": "3992de82a3a03584b0e03c43bd66060ef93684122bb8867c893ed6c45ea85331",
+    "unsigned_vendor_sha256": "b2a1ad5e6ea49493e0ab4ccd735739b24719c55b66f242f1ea65fd649fb2dbce",
+    "signature_checks": "PASS",
+    "unchanged_other_raw_descriptors": 22,
+    "identical_vbmeta_header": true,
+    "descriptor_counts_by_tag": {
+      "0": 13,
+      "2": 3,
+      "1": 4,
+      "4": 3
+    },
+    "public_key_unchanged": true,
+    "signing_payload_readback": "PASS",
+    "device_operations": false,
+    "hardware_verified": false
+  },
+  "previous_photo_evidence": "docs/evidence/first-arm-init-report-photo.json",
+  "QR_missing_in_first_photo_cause": "unconfirmed; fixed terminal physical VBAR and added phase/secondary-exception diagnostics",
+  "host_variants": "before-vm fixture, selftest, panic CRC/QR PASS; secondary QR exception skips recursion",
+  "hang_watchdog_implemented": false,
+  "coverage_limit": "early XNU before page-table replacement validated by instruction model only; real later-MMU reporting unverified",
+  "device_operations": false,
+  "local_signing_authorization_reused": true
+}

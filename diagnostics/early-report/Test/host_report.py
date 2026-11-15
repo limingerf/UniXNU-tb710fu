@@ -10,6 +10,7 @@ fb=(ctypes.c_uint32*(3200*2000))()
 s=State();s.Framebuffer=ctypes.addressof(fb);s.RowBytes=12800;s.Width=3200;s.Height=2000
 s.Sp=0xfffffff00f817f30;s.Esr=0x96000004;s.Far=0xdead0000;s.Elr=0xfffffff00c28f874;s.Sctlr=0x30d0183d;s.Regs[30]=0xfffffff00bb95468;s.Kind=1
 lib.diag_build_report.argtypes=[ctypes.POINTER(State)]
+ctypes.c_uint64.in_dll(lib,'diag_report_phase').value=0
 lib.diag_build_report(ctypes.byref(s))
 textptr=ctypes.c_void_p.in_dll(lib,'diag_test_text').value;n=ctypes.c_size_t.in_dll(lib,'diag_test_text_length').value
 text=ctypes.string_at(textptr,n);assert b'XNU EARLY EXCEPTION' in text and b'ESR=0000000096000004' in text

@@ -1,9 +1,9 @@
 # Current status · 2026-11-15
 
-> 最新实机检查点：用户报告白/蓝/紫/青/黄，确认已到 arm_init KVA 入口
-> 探针，但尚未证明原始 PAC/栈序言和 C 初始化完成。已准备核内异常寄存器文字
-> 与静态 OneSend 二维码报告测试对；旧色条清除后仅保留顶部小状态区。
-> 见 [核内报告测试](docs/KERNEL_EARLY_REPORT.md)。
+> 最新实机检查点：用户照片显示主动BRK b710（ESR=f200b710、
+> ELR=fffffff00c28ff68），确认原C序言和fileset重定位完成，尚未执行首个
+> PE_init_platform。按用户要求，最新镜像撤掉默认主动停点，只在早期异常/panic
+> 时报告；没有死循环看门狗。见 [被动异常报告](docs/KERNEL_PASSIVE_REPORT.md)。
 
 这是当前工程的单一状态入口。编译、静态加载检查和实机运行分开记录。
 
@@ -292,3 +292,22 @@ out/kernel-report-final/vendor_boot.img（77af03cd…）及vbmeta.img（8edf1237
 之前43743753427的AARCH64对象编译通过，失败于macOS主机测试的ELF段名；已仅修
 host-test分支并证实freestanding对象逐字节不变，不是XNU编译失败。
 本地签名镜像仍为77af03cd…/8edf1237…，没有新设备操作。
+
+## 实机文字报告已出现，撤掉默认主动停点 · 2026-11-16
+
+用户照片中的reporter1显示 XNU CHECKPOINT (intentional stop)，关键字段为
+ESR=f200b710 / FAR=0 / ELR=fffffff00c28ff68。确认C序言与重定位路径走过，
+不是原始故障。图片未见QR，原因未定；仅记录图片哈希和可信转录，未上传图片。
+
+用户要求在实际卡住处报告。本版默认不注入主动BRK，原PE_init_platform及
+arm_vm_init调用继续；14个直接调用包装只记进入/返回。早期同步异常/panic
+才触发终止式报告，正常其他向量转发原处理器。自检是独立菜单，不作默认。
+
+修正报告器关闭MMU后仍使用KVA向量的源码问题，增设物理终止向量、QR进度行和
+二次异常报告，避免编码再异常时静默。此修正尚不等于已确认旧图缺QR原因。
+实际AARCH64报告/QR机器码模型运行到READY、独立ZXing解码、捕获/包装/向量模型、
+生产解析器和payload/签名校验通过；实机后续页表阶段和纯死循环抓取未验证。
+
+交付 out/kernel-passive-report-final/vendor_boot.img（9e8920b0…）及匹配
+vbmeta.img（c75712b8…），沿用仅本地签名授权，未操作设备/根卷。
+详见 docs/KERNEL_PASSIVE_REPORT.md 和机器记录 kernel-passive-report-build.json。

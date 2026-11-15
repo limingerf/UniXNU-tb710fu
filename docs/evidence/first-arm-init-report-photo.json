@@ -1,0 +1,21 @@
+{
+  "kind": "user-supplied-photo",
+  "observed_date": "2026-11-16",
+  "image_sha256": "eacfab74c3b32e8af942ccdd6d33c61c63f609983561a75eb339e9c0a0fb24ac",
+  "image_filename": "codex-clipboard-700c75a4-c8fe-42a2-96dd-2511b92c076d.png",
+  "title": "XNU CHECKPOINT (intentional stop)",
+  "build_banner": "build cc690c9a / reporter 1",
+  "transcription": {
+    "ESR": "00000000f200b710",
+    "FAR": "0000000000000000",
+    "ELR": "fffffff00c28ff68",
+    "SP": "fffffff00f817f30",
+    "LR": "fffffff00c28ff5c"
+  },
+  "proven_stage": "original C prologue and fileset rebase path completed; first PE_init_platform has not run",
+  "not_a_real_fault": true,
+  "qr_visible_in_photo": false,
+  "image_uploaded_to_repository": false,
+  "expected_diagnostic_kernel_sha256": "8484e71dee835497c700e05b37afdaae56b47ced30433a20e111ad45a0fcaa5c",
+  "device_image_hash_readback": false
+}

@@ -23,6 +23,9 @@ UINTN diag_test_text_length;
 UINTN diag_test_heap_used;
 EFI_GRAPHICS_OUTPUT_BLT_PIXEL *diag_test_bitmap;
 EFI_STATUS diag_test_qr_status;
+UINT64 diag_report_phase;
+UINT64 diag_last_stage;
+static TB_REPORT first_state;
 
 VOID *memcpy(VOID *o, CONST VOID *v, UINTN n) {
   UINT8 *a=o; CONST UINT8 *b=v;
@@ -85,14 +88,32 @@ static VOID draw_text(TB_REPORT *s,CONST CHAR8 *t,UINTN x,UINTN y,UINTN scale){
 }
 
 VOID diag_build_report(TB_REPORT *s){
+  UINT64 previous_phase=diag_report_phase;
+  if(!previous_phase)memcpy(&first_state,s,sizeof(*s));
+  diag_report_phase=1;
   text_used=0;arena_used=0;
   BOOLEAN checkpoint=((s->Esr>>26)==0x3c)&&((s->Esr&0xffff)==0xb710);
+  BOOLEAN before_vm=((s->Esr>>26)==0x3c)&&((s->Esr&0xffff)==0xb713);
   BOOLEAN selftest=((s->Esr>>26)==0x3c)&&((s->Esr&0xffff)==0xb711);
-  append(selftest?"REPORTER SELFTEST (intentional stop)\n":
-         checkpoint?"XNU CHECKPOINT (intentional stop)\n":"XNU EARLY EXCEPTION\n");
-  append("build cc690c9a / reporter 1\n");
+  append(previous_phase?"REPORTER SECONDARY EXCEPTION\n":
+         selftest?"REPORTER SELFTEST (intentional stop)\n":
+         (checkpoint||before_vm)?"XNU CHECKPOINT (intentional stop)\n":"XNU EARLY EXCEPTION\n");
+  append("build cc690c9a / reporter 2\n");
   if(checkpoint)append("rebase and C prologue completed; before PE_init_platform\n");
+  if(before_vm)append("platform and early C path completed; before arm_vm_init\n");
   if(selftest)append("display/exception/QR selftest only; not kernel boot success\n");
+  if(diag_last_stage){
+    static CONST CHAR8 *stages[]={"PE_init_platform","configure_timer_apple_regs",
+      "wfe_timeout_configure","wfe_timeout_init","configure_misc_apple_boot_args",
+      "configure_misc_apple_regs","ml_parse_cpu_topology","thread_bootstrap",
+      "cpu_bootstrap","rtclock_early_init","kernel_startup_bootstrap","cpu_init","processor_bootstrap",
+      "arm_vm_init"};
+    UINTN i=(diag_last_stage-1)/2;
+    if(i<sizeof(stages)/sizeof(stages[0])){
+      append((diag_last_stage&1)?"enter: ":"returned: ");append(stages[i]);append("\n");
+    }
+  }
+  if(previous_phase){field("REPORT_PHASE",previous_phase);field("FIRST_ESR",first_state.Esr);field("FIRST_ELR",first_state.Elr);}
   field("ESR",s->Esr);field("FAR",s->Far);field("ELR",s->Elr);
   field("SP",s->Sp);field("LR",s->Regs[30]);field("SPSR",s->Spsr);
   field("SCTLR",s->Sctlr);field("X0",s->Regs[0]);field("X1",s->Regs[1]);
@@ -104,18 +125,29 @@ VOID diag_build_report(TB_REPORT *s){
   if(s->Framebuffer==0||s->Width<320||s->Width>8192||s->Height<320||s->Height>8192||s->RowBytes<s->Width*4||s->RowBytes>65536)return;
   for(UINTN y=0;y<s->Height;y++)for(UINTN x=0;x<s->Width;x++)pixel(s,x,y,0xff000000);
   draw_text(s,text,16,16,s->Width>=1600?2:1);
+  if(previous_phase){draw_text(s,"SECONDARY REPORT: QR SKIPPED",16,s->Height-48,1);diag_report_phase=99;return;}
+  diag_report_phase=2;
+  draw_text(s,"QR: PREPARING FRAME",16,s->Height-48,1);
   make_frame();
   EFI_GRAPHICS_OUTPUT_BLT_PIXEL *bitmap=NULL;
+  diag_report_phase=3;
+  draw_text(s,"QR: ENCODING       ",16,s->Height-48,1);
   diag_test_qr_status=QrEncodeData(QrAutoVersion,QrECLevel_L,QrByteMode,0,frame,sizeof(frame),121,&bitmap);
+  diag_report_phase=4;
   diag_test_bitmap=bitmap;diag_test_heap_used=arena_used;
   if(diag_test_qr_status||!bitmap){draw_text(s,"QR ENCODE FAILED; COPY REGISTERS ABOVE",16,s->Height-48,1);return;}
   UINTN scale=s->Height/2/121;if(scale>8)scale=8;
   if(scale==0)scale=1;
-  UINTN side=121*scale,ox=s->Width>side?(s->Width-side)/2:0,oy=s->Height>side+32?s->Height-side-32:0;
+  UINTN side=121*scale;
+  UINTN ox=s->Width>side*2+32?s->Width-side-32:(s->Width>side?(s->Width-side)/2:0);
+  UINTN oy=s->Width>side*2+32?64:(s->Height>side+64?s->Height-side-64:0);
+  diag_report_phase=5;
   for(UINTN y=0;y<121;y++)for(UINTN x=0;x<121;x++){
     UINT32 c=0xff000000U|((UINT32)bitmap[y*121+x].Red<<16)|((UINT32)bitmap[y*121+x].Green<<8)|bitmap[y*121+x].Blue;
     for(UINTN yy=0;yy<scale;yy++)for(UINTN xx=0;xx<scale;xx++)pixel(s,ox+x*scale+xx,oy+y*scale+yy,c);
   }
+  draw_text(s,"QR: READY - SCAN WITH ONESEND",16,s->Height-48,1);
+  diag_report_phase=6;
 }
 
 #ifndef TB_REPORT_HOST_TEST

@@ -143,6 +143,11 @@ diag_physical:
   bic x10,x10,#0x1000
   msr sctlr_el1,x10
   isb
+  // Faults in the physical terminal reporter must not target the old KVA VBAR.
+  adrp x1,diag_terminal_vectors
+  add x1,x1,:lo12:diag_terminal_vectors
+  msr vbar_el1,x1
+  isb
   msr spsel,#1
   adrp x1,diag_stack_end
   add x1,x1,:lo12:diag_stack_end
@@ -152,8 +157,21 @@ diag_physical:
   b diag_fault_main
 
 .balign 2048
-.global diag_vectors
+.global diag_vectors,diag_terminal_vectors
+.hidden diag_kernel_vectors
 diag_vectors:
+.set diag_slot,0
+.rept 16
+.if (diag_slot % 4) == 0
+  b diag_exception
+.else
+  b diag_kernel_vectors + (diag_slot * 128)
+.endif
+  .balign 128
+.set diag_slot,diag_slot+1
+.endr
+.balign 2048
+diag_terminal_vectors:
 .rept 16
   b diag_exception
   .balign 128

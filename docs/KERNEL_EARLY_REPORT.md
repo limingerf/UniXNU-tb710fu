@@ -1,5 +1,8 @@
 # 核内早期异常报告与 OneSend
 
+> 后续版本已撤销默认主动检查点，继续执行原内核。本文保留旧版77af03cd产物
+> 与主动BRK的历史记录；最新测试步骤见 [KERNEL_PASSIVE_REPORT.md](KERNEL_PASSIVE_REPORT.md)。
+
 用户已报告白/蓝/紫/青/黄，证明 XNU 入口、开启 MMU 后和 arm_init KVA 入口探针
 执行。黄色在原始 PACIBSP/栈序言之前，不能据此确认 C 初始化或重定位完成。
 此版本用异常信息取代继续堆色条。

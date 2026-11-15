@@ -111,6 +111,8 @@ def main():
         assert struct.unpack_from('<3Q', snapshot, 0x100) == (syndrome, 0xdead0000, elr)
         assert struct.unpack_from('<Q', snapshot, 0x128)[0] == kind
         assert registers[(3, 0, 1, 0, 0)] == (0x30d0183d & ~(1 | 4 | 0x1000))
+        terminal = sym.get('diag_terminal_vectors', sym['diag_vectors'])
+        assert registers[(3, 0, 12, 0, 0)] == physical + terminal - base
         assert clean and all(base <= x < base + size for x in clean)
         start, end = sym['diag_rela_start'] - base, sym['diag_rela_end'] - base
         slide = (physical - base) & ((1 << 64) - 1)
@@ -123,8 +125,47 @@ def main():
             reloc_count += 1
         results.append({'kind': kind, 'explicit_selftest_token': selftest, 'exception_sp1': sp1, 'all_31_gprs_captured': True, 'original_sp_and_syndrome_captured': True,
                         'physical_alias_and_diagnostic_stack': 'PASS', 'PIE_runtime_relative_fixups': reloc_count,
+                        'physical_terminal_VBAR': True,
                         'does_not_use_original_faulting_stack': True})
+    trace_results = []
+    for item in record.get('call_trace', []):
+        uc = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
+        memory = ctypes.create_string_buffer(size)
+        ctypes.memmove(ctypes.addressof(memory), blob, len(blob))
+        uc.mem_map_ptr(base, size, 7, ctypes.addressof(memory))
+        callee, resume = int(item['callee'], 16), int(item['site'], 16) + 4
+        for page in {callee & ~4095, resume & ~4095}:
+            uc.mem_map(page, 4096)
+        uc.mem_write(callee, b'\x1f\x20\x03\xd5')
+        uc.mem_write(resume, b'\x1f\x20\x03\xd5')
+        for number in range(31):
+            uc.reg_write(getattr(r, 'UC_ARM64_REG_X' + str(number)), 0x12340000 + number)
+        saved_sp = 0xfffffff00f817f30
+        uc.reg_write(r.UC_ARM64_REG_SP, saved_sp)
+        stage_address = sym['diag_last_stage']
+        def call_hook(machine, pc, length, _):
+            if pc == callee:
+                stage = struct.unpack('<Q', bytes(machine.mem_read(stage_address, 8)))[0]
+                assert stage == item['before_stage']
+                assert all(machine.reg_read(getattr(r, 'UC_ARM64_REG_X' + str(n))) == 0x12340000 + n for n in range(8))
+                machine.reg_write(r.UC_ARM64_REG_X0, 0xfeed1234)
+                machine.reg_write(r.UC_ARM64_REG_X16, 0xbad1)
+                machine.reg_write(r.UC_ARM64_REG_X17, 0xbad2)
+                machine.reg_write(r.UC_ARM64_REG_PC, machine.reg_read(r.UC_ARM64_REG_X30))
+            elif pc == resume:
+                machine.emu_stop()
+        uc.hook_add(UC_HOOK_CODE, call_hook)
+        uc.emu_start(sym[item['label']], 0, count=1000)
+        assert uc.reg_read(r.UC_ARM64_REG_PC) == resume
+        assert uc.reg_read(r.UC_ARM64_REG_X30) == resume
+        assert uc.reg_read(r.UC_ARM64_REG_X0) == 0xfeed1234
+        assert uc.reg_read(r.UC_ARM64_REG_SP) == saved_sp
+        assert struct.unpack('<Q', bytes(uc.mem_read(stage_address, 8)))[0] == item['after_stage']
+        assert all(uc.reg_read(getattr(r, 'UC_ARM64_REG_X' + str(n))) == 0x12340000 + n for n in range(19, 30))
+        trace_results.append({'name': item['name'], 'result': 'PASS', 'original_call_executed_in_model': True,
+                              'argument_and_result_preserved': True, 'LR_resume_and_stack_preserved': True})
     report = {'result': 'PASS', 'instruction_model': 'Unicorn 2.1.4', 'cases': results,
+              'call_trace_wrappers': trace_results,
               'limits': 'Privileged registers/cache effects modeled and PACIBSP skipped; real exception routing/MMU/PAC not validated'}
     (args.build / 'instruction-check.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))
