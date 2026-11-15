@@ -61,3 +61,6 @@ relative重定位模型、同版DarwinBoot生产解析器均通过。额外执�
 报告器源单独云编译检查，不冒充整个内核重建。当前仍待用户实机反馈。
 记录见 [kernel-passive-report-build.json](evidence/kernel-passive-report-build.json)，
 旧图记录见 [first-arm-init-report-photo.json](evidence/first-arm-init-report-photo.json)。
+
+
+独立诊断源云验证 [run43747184259](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43747184259) success，源提交2fd02c6d7f7b5760a40c8397a4625cfa2e984b9c。实际AARCH64对象和主机传输检查通过，未重新编译整个XNU；签名测试对保持9e8920b0…/c75712b8…，实机结果待验。

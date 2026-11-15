@@ -311,3 +311,6 @@ arm_vm_init调用继续；14个直接调用包装只记进入/返回。早期同
 交付 out/kernel-passive-report-final/vendor_boot.img（9e8920b0…）及匹配
 vbmeta.img（c75712b8…），沿用仅本地签名授权，未操作设备/根卷。
 详见 docs/KERNEL_PASSIVE_REPORT.md 和机器记录 kernel-passive-report-build.json。
+
+
+独立诊断源云验证 [run43747184259](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43747184259) success，源提交2fd02c6d7f7b5760a40c8397a4625cfa2e984b9c。实际AARCH64对象和主机传输检查通过，未重新编译整个XNU；签名测试对保持9e8920b0…/c75712b8…，实机结果待验。
