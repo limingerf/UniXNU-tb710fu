@@ -65,3 +65,7 @@ $fb = 'C:\Program Files (x86)\platform-tools\fastboot.exe'
 镜像哈希与验证记录见 [构建证据](evidence/kernel-live-qr-build.json)。
 自检已在上一版实机通过；本版正常路径阶段 QR、VM 边界和原始卡点仍待
 实机确认。未执行设备刷写、重启、切槽或更改设备文件系统。
+
+云端独立源码检查 run43755493448 success，源提交
+67893c542757b1b2e40c97c30903b63bb020b013。AARCH64 对象、主机重复
+阶段帧测试及下载产物 digest 核对通过；云端无密钥，未重新 native/prelink。

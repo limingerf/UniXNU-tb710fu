@@ -909,5 +909,88 @@
   "kernel_native_or_prelink_rebuilt": false,
   "normal_live_QR_hardware_verified": false,
   "original_kernel_hang_fixed": false,
-  "observation_limit": "Before set_mmu_ttb_alternate. No appended-segment return or VBAR required after switch; original panic entry preserved."
+  "observation_limit": "Before set_mmu_ttb_alternate. No appended-segment return or VBAR required after switch; original panic entry preserved.",
+  "source_commit": "67893c542757b1b2e40c97c30903b63bb020b013",
+  "cloud_source_check": {
+    "run_id": 43755493448,
+    "url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43755493448",
+    "source_commit": "67893c542757b1b2e40c97c30903b63bb020b013",
+    "conclusion": "success",
+    "artifact": {
+      "id": 14178300751,
+      "name": "tb710fu-early-report-43755493448",
+      "expires_at": "2026-11-18T20:00:25Z",
+      "zip_sha256": "eb6414e7f13b4cc4c7631be6b59ef6dc54ad68f20ae844b4b100148552cbb58a",
+      "github_digest": "sha256:eb6414e7f13b4cc4c7631be6b59ef6dc54ad68f20ae844b4b100148552cbb58a"
+    },
+    "report": {
+      "stage": "source-only-reporter-compiled-and-host-tested",
+      "device_source_commit": "67893c542757b1b2e40c97c30903b63bb020b013",
+      "compiler": "Homebrew clang version 23.1.4",
+      "qr_source": {
+        "repository": "microsoft/mu_plus",
+        "commit": "b8d46c71610318e36a661819e1e3c0b8bdda413a",
+        "files": [
+          {
+            "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.inf",
+            "sha256": "79c46eb751f2fd53bd6c8521df99af1f2be0e9590cfc8af665e6f7f0bb151bd4"
+          },
+          {
+            "path": "MsGraphicsPkg/Include/Library/QrEncoderLib.h",
+            "sha256": "96b2e3c1a0b5271e2cf97bc48f33839a9a6b9535d9d37700bce2b4c7d3ee56f5"
+          },
+          {
+            "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c",
+            "sha256": "055d446e6a75f9ea687cf3561ae933d266a6e48acda9c905edf2b62dea1f2d2a"
+          },
+          {
+            "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c",
+            "sha256": "125f1bda27f84d2b4a71a4b86d9364daff47b6aa7b0f2dfdc1bc0a309cc6c15a"
+          },
+          {
+            "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.h",
+            "sha256": "2ad084b975448abaadd3ce4e6037c83201677a447c6a3845346503d7041c6bdf"
+          }
+        ]
+      },
+      "kernel_rebuilt": false,
+      "device_operations": false,
+      "keys_used": false,
+      "hardware_verified": false
+    },
+    "host_test": {
+      "result": "PASS",
+      "report_bytes": 392,
+      "envelope_bytes": 451,
+      "frame_bytes": 752,
+      "crc32_checks": "frame/envelope/body PASS",
+      "qr_status": 0,
+      "heap_bytes": 139488,
+      "limits": "host C + unchanged QR encoder; not a real CPU fault",
+      "repeated_live_snapshot_frames": "PASS: 27/29/47/27; fresh body, bounded arena, CRCs, no invented exception"
+    },
+    "objects": {
+      "entry.o": {
+        "sha256": "39b119fa38b56ee08fc318c67f3c0907724e5722f862f170e6273308da3867fd",
+        "bytes": 11176,
+        "architecture": "AARCH64 ELF64 little endian"
+      },
+      "source-0.o": {
+        "sha256": "9437bb42cfc7c7d79d8f68ba58c7baf065cae282eba1a906bb56cdf2d05a7d33",
+        "bytes": 19320,
+        "architecture": "AARCH64 ELF64 little endian"
+      },
+      "source-1.o": {
+        "sha256": "78cb1f4c84a03fca698f3dc04ded08eb684a390b6688fd5d25b1b654df9529b2",
+        "bytes": 13520,
+        "architecture": "AARCH64 ELF64 little endian"
+      },
+      "source-2.o": {
+        "sha256": "e6c61bdcc4f709745dbdca6acd4f7d417cff25d9d014012b081936bcdbde04d4",
+        "bytes": 7360,
+        "architecture": "AARCH64 ELF64 little endian"
+      }
+    },
+    "limits": "Source-only AARCH64 compilation/host transport check; not a full native/prelink or hardware run"
+  }
 }

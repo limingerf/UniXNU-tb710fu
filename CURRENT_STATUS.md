@@ -360,3 +360,9 @@ LZMA/FAT/签名读回通过。未重新 native/prelink，实机正常 QR 和原�
 vbmeta.img（37de2e0f…）；沿用已有仅本地签名授权，其他22描述符/header/
 公钥不变，无设备操作。见 docs/KERNEL_LIVE_QR.md 与构建证据
 kernel-live-qr-build.json。
+
+
+正常阶段 QR 的独立源码云检查 run43755493448 success，源提交
+67893c542757b1b2e40c97c30903b63bb020b013；四份 AARCH64 ELF 对象与
+重复帧主机测试通过。下载 artifact SHA-256 与 GitHub digest 完全一致，
+源码提交/QR固定来源匹配。此检查不是重新 native/prelink 或实机验收。
