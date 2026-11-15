@@ -80,6 +80,31 @@ testkey 签名，vbmeta 描述符结构（3 hash + 4 hashtree + 3 chain + 13 pro
 均需实机证据。vendor DXE 来自 OnePlus Ace 5（giulia）替代集，TB710FU 自身
 `uefi_a` 卷未能提取（FV 非可遍历 FFS 布局），板级 PHY/时钟存在风险。
 
+## LZMA 压缩内核候选 · 2026-11-15
+
+UFS 分区路线需要先切分区、再验 UFS 驱动。另一条更直接的路：把 137 MiB 内核
+LZMA 压成 23 MiB，仍走 vendor_boot 的 payload ramdisk，由 DarwinBoot 解压后
+交给 XNU。这是那台已上板 macOS 27 设备用的办法（用户提供线索）。
+
+- 实测：`kernel-ufs.lzma` 24,073,889 B（8 MiB 字典），往返 SHA-256 与
+  `c601ca5c…` 一致；大小字段已回填（`xz --format=lzma` 会写 0xFFFFFFFF，
+  EDK II 需要真实值）。payload 25 MiB，余量 58 MiB。见
+  [LZMA 内核](docs/LZMA_KERNEL.md)。
+- 解码器：`MdeModulePkg LzmaCustomDecompressLib`（NULL 库，scratch 固定
+  64 KiB）。**不能用 `EFI_DECOMPRESS_PROTOCOL`**——DXE core 用
+  UefiDecompressLib（Tiano/EFI 压缩）实现它，不是 LZMA。
+- `firmware/patches/0002-darwinboot-lzma-kernel.patch` 让 DarwinBoot 在
+  `ReadFile` 后探测 0x5D 头，命中则 `LzmaUefiDecompress` 展开到
+  `AllocateMaxAddress` 窗口再 `ParseKernel`；普通 Mach-O 不受影响。
+- `tools/ci_firmware.py --lzma` + `.github/workflows/uefi-lzma.yml` 在云端
+  构建该变体，并在 FD 里核对 DarwinBoot GUID。
+
+**进行中**：云构建验证补丁能编译（run43700228887 起）。尚未实机。
+关键修正记录：DarwinBoot 是 UniXNU 的 gitlink，`defconfig` 不初始化子模块，
+需 `--lzma` 显式 `git submodule update --init drivers/DarwinBoot`；且
+`Binaries` 不能进 `[firmware.submodules]`，否则 build firmware 重复 init 与
+materialised 目录冲突。
+
 ## 下一阶段
 
 先补本机DT与最小启动/日志输入，再做UEFI→DarwinBoot→单核EL1/PAC验证。真实UFS、

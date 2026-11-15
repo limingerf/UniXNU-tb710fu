@@ -10,20 +10,23 @@ A plain Mach-O kernel is unaffected: IsLzmaKernel() only matches a file whose
 first byte is the LZMA properties byte 0x5D followed by a plausible dictionary
 size, which no Mach-O header satisfies.
 
-The decoder is MdeModulePkg LzmaCustomDecompressLib, linked as a NULL library.
-Its LzmaUefiDecompressGetInfo/LzmaUefiDecompress entry points are declared in
-the source because the library ships no public header; its scratch request is
-a fixed 64 KiB. EFI_DECOMPRESS_PROTOCOL is deliberately NOT used: the DXE core
-implements it with UefiDecompressLib (Tiano/EFI compression), not LZMA.
+The decoder is MdeModulePkg LzmaCustomDecompressLib. Its two entry points
+(LzmaUefiDecompressGetInfo / LzmaUefiDecompress) are global EFIAPI functions
+declared here because the library ships no public header; its scratch request
+is a fixed 64 KiB. The library is linked as a NULL library via a DSC component
+override (tools/ci_firmware.py --lzma adds it to tb710fu.dsc), NOT via the INF:
+a NULL| path in an INF [LibraryClasses] section is invalid and crashes BaseTools.
+
+EFI_DECOMPRESS_PROTOCOL is deliberately NOT used: the DXE core implements it
+with UefiDecompressLib (Tiano/EFI compression), not LZMA.
 
 Boundaries: host-reviewed source only. No device has booted this path. The
 kernel window is allocated with AllocateMaxAddress so its base stays under
 4 GiB as DarwinBoot's page tables require.
 
 ---
- DarwinBootPkg/Driver/DarwinBoot.c   | ++++
- DarwinBootPkg/Driver/DarwinBoot.inf | 2 ++
- 2 files changed
+ DarwinBootPkg/Driver/DarwinBoot.c | ++++
+ 1 file changed
 
 diff --git a/DarwinBootPkg/Driver/DarwinBoot.c b/DarwinBootPkg/Driver/DarwinBoot.c
 index f0f7650..e85ea6b 100644
@@ -199,16 +202,3 @@ index f0f7650..e85ea6b 100644
    Status = ParseKernel (Image, ImageSize, &Kernel);
    if (EFI_ERROR (Status)) { goto Fail; }
    Length = StrSize (Request->KernelPath);
-diff --git a/DarwinBootPkg/Driver/DarwinBoot.inf b/DarwinBootPkg/Driver/DarwinBoot.inf
-index 3a199d4..1a99916 100644
---- a/DarwinBootPkg/Driver/DarwinBoot.inf
-+++ b/DarwinBootPkg/Driver/DarwinBoot.inf
-@@ -22,6 +22,8 @@
-   UniXNUPkg/UniXNUPkg.dec
- 
- [LibraryClasses]
-+  ## Links the LZMA decoder used by ExpandLzmaKernel for a compressed kernel.
-+  NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf
-   BaseLib
-   BaseMemoryLib
-   DebugLib

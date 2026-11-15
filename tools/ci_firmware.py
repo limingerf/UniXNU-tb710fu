@@ -116,6 +116,24 @@ def main():
         for patch in darwinboot_patches:
             command(['git', '-C', str(darwinboot), 'apply', '--check', patch], ROOT)
             command(['git', '-C', str(darwinboot), 'apply', patch], ROOT)
+        os.environ['UNIXNU_ENABLE_LZMA'] = '1'
+        # The LZMA decoder is a NULL library; NULL| paths are only valid in a DSC
+        # component override block, not in an INF [LibraryClasses] section. Add the
+        # override to the deployed board DSC so DarwinBoot links it.
+        dsc = uefi / 'Platforms/Lenovo/tb710fuPkg/tb710fu.dsc'
+        dtext = dsc.read_text(encoding='utf-8')
+        flat = '  DarwinBootPkg/Driver/DarwinBoot.inf\n'
+        block = ('  DarwinBootPkg/Driver/DarwinBoot.inf {\n'
+                 '    <LibraryClasses>\n'
+                 '      NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf\n'
+                 '  }\n')
+        if block in dtext:
+            pass
+        elif flat in dtext:
+            dtext = dtext.replace(flat, block, 1)
+            dsc.write_text(dtext, encoding='utf-8')
+        else:
+            raise SystemExit('DarwinBoot DSC component not found in a form the LZMA override can replace')
     status_snapshot(driver, common, source, output / 'status.json')
     if args.ufs:
         # Device-Binaries publishes the SM8650 module set as Binaries/giulia; this
