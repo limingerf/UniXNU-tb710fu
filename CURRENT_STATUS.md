@@ -1,9 +1,9 @@
 # Current status · 2026-11-15
 
-> 最新实机检查点（2026-11-15）：用户报告分阶段加载器已到白条，说明
-> DarwinEnter 已完成缓存、MMU 关闭和 TLB 维护，走到内核跳转前；
-> 尚不能确认 XNU 入口已执行。本轮交付位于 vendor_boot 中的蓝/紫 XNU
-> 入口探针，见 [内核入口测试](docs/KERNEL_ENTRY_TEST.md)。
+> 最新实机检查点：用户报告白＋蓝＋紫三条，现已确认 XNU 入口及开启
+> MMU 前的探针执行。尚无开启 MMU 后或 arm_init 的执行证据；也不能仅凭
+> 缺少后续显示就断言 MMU 失败。新增青/黄检查点测试对见
+> [MMU 与 C 入口诊断](docs/KERNEL_MMU_TEST.md)。
 
 这是当前工程的单一状态入口。编译、静态加载检查和实机运行分开记录。
 
@@ -254,3 +254,19 @@ RSA 签名、内容 hash、FD 读回、原 boot chain 密钥匹配验证通过�
 配置/ADT 不变，FAT 几何通过。未新编译 native/prelink，原始内核文件未改，
 未执行设备命令。实机入口停点待本次测试反馈，不能称为已修复内核。
 步骤见 `docs/KERNEL_ENTRY_TEST.md`，机器记录 `docs/evidence/kernel-entry-test-build.json`。
+
+## 核内蓝/紫已确认，继续 MMU / C 入口诊断
+
+用户报告 out/kernel-entry-test 测试出现白＋蓝＋紫条。核内入口执行与
+到达开启 MMU 前检查点已经获得用户实机反馈；设备镜像哈希未读回。
+目前仍不能证明 MMU 开启失败或已进入 C 初始化，根卷未成为该停点的已证实原因。
+
+新增青色（SCTLR/ISB 后）、黄色（arm_init KVA 入口）诊断，使用守卫的物理/KVA
+代码别名及临时 SCTLR 切换写屏，恢复后继续，未修改页表。357 个变更字节限于
+四处跳转和四段空填充区；生产解析器、LZMA、FAT、指令模型检查通过。
+指令模型不模拟实际 MMU/缓存/PAC，探针不是永久修复。
+
+已沿用仅本地签名授权签出 out/kernel-mmu-test/vendor_boot.img（1704e2c4…）
+和匹配 vbmeta.img（30d6b6ad…）。签名与 hash 引用通过，其他 22 项描述符及
+header/公钥不变；未操作设备、未新编 native/prelink。测试说明和边界见
+`docs/KERNEL_MMU_TEST.md`，机器记录 `docs/evidence/kernel-mmu-test-build.json`。

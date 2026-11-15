@@ -1,0 +1,129 @@
+{
+  "stage": "signed-mmu-and-c-entry-diagnostic",
+  "user_previous_result": [
+    "white",
+    "blue",
+    "magenta"
+  ],
+  "expected_previous_vendor_boot_sha256": "93c81e7d85c2dd9a0ca6b168923ff9b67b1458e366c7ba95596e53e94b4a45df",
+  "device_hash_readback": false,
+  "previous_result_proves": [
+    "XNU entry probe executed",
+    "startup reached immediately before SCTLR_EL1 MMU-enable write"
+  ],
+  "previous_result_does_not_prove": [
+    "MMU enable failed",
+    "C initialization was reached",
+    "root volume was accessed"
+  ],
+  "probe": {
+    "stage": "guarded-mmu-c-entry-diagnostic",
+    "framework_commit": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+    "official_probe_sha256": "159eb1ea8d6c1da30f26913a281f46e21d940a1ae7886656529907ec3edf96ad",
+    "input_sha256": "cc690c9a0bde84c49e9cebccc288f393393d16da56620d580108f0a62692b31c",
+    "kernel_sha256": "a9229eb7d6c30eb98bbb73ca193c902d17067c812d363b369e40cf94bd3b000b",
+    "bytes": 142753792,
+    "lzma_sha256": "6800ef31780f2225e1093b238a9f1782f8148661efafa5de7e6033f407932028",
+    "lzma_bytes": 24087243,
+    "changed_bytes": 357,
+    "changed_ranges_verified": true,
+    "instruction_guards": {
+      "0xfffffff00bb93488": "0x140006f5",
+      "0xfffffff00bb95418": "0xd5181000",
+      "0xfffffff00bb9541c": "0xd5033fdf",
+      "0xfffffff00bb95438": "0xd2a00600",
+      "0xfffffff00bb9543c": "0xd5181040",
+      "0xfffffff00c28f844": "0xd503237f"
+    },
+    "sites": {
+      "1": "0xfffffff00bb93488",
+      "2": "0xfffffff00bb95418",
+      "3": "0xfffffff00bb95438",
+      "4": "0xfffffff00c28f844"
+    },
+    "caves": {
+      "1": "0xfffffff00bb93508",
+      "2": "0xfffffff00bb93688",
+      "3": "0xfffffff00bb93808",
+      "4": "0xfffffff00bb93988"
+    },
+    "code_bytes": {
+      "1": 64,
+      "2": 68,
+      "3": 100,
+      "4": 132
+    },
+    "markers": {
+      "blue": "XNU entry",
+      "magenta": "before MMU enable",
+      "cyan": "after MMU enable and startup compare",
+      "yellow": "arm_init entry reached"
+    },
+    "temporary_sctlr_roundtrips": true,
+    "page_tables_modified": false,
+    "automatic_reset_added": false,
+    "hardware_verified": false,
+    "functional_fix_claimed": false
+  },
+  "instruction_model": {
+    "instruction_model": "Unicorn 2.1.4",
+    "result": "PASS",
+    "probes": [
+      {
+        "stage": 3,
+        "registers_and_stack_preserved": true,
+        "sctlr_restored_in_model": true,
+        "only_expected_framebuffer_band_written": true,
+        "physical_virtual_alias_path": "PASS",
+        "instructions": 47
+      },
+      {
+        "stage": 4,
+        "registers_and_stack_preserved": true,
+        "sctlr_restored_in_model": true,
+        "only_expected_framebuffer_band_written": true,
+        "physical_virtual_alias_path": "PASS",
+        "instructions": 55
+      }
+    ],
+    "limits": "SCTLR transitions modeled; real page tables, caches and PAC not validated"
+  },
+  "packaging": {
+    "unsigned_bytes": 37859328,
+    "unsigned_sha256": "2b045007432aed8228063096e52d06cd86645becfcb58e0be92aeb22570b96f9",
+    "payload_sha256": "c6b0552c92641e26f75c27f550945b9cb31559f20293cf86ad4831318db8287e",
+    "kernel_file_readback": "PASS",
+    "preserved_file_hashes": {
+      "unixnu.toml": "a14b5a8fa15e9e8a29e160a2e87d36f72cb31bcb95140072f92359986c13a356",
+      "Payloads/kernel.macho.adt": "4c56fb2a23d9177aa6b5820d3aba46ca66db90f8168bb6520bdd598ba097bc7b"
+    }
+  },
+  "signing": {
+    "stage": "signed-kernel-probe-pair",
+    "vendor_boot_bytes": 100663296,
+    "vendor_boot_sha256": "1704e2c42fad3ebbb0e18c9f0148b5aa3dc54c1bdfa2e09ca43973f3c177a156",
+    "vbmeta_bytes": 8000,
+    "vbmeta_sha256": "30d6b6ad662604dd3ec9425ed81d1df2abaa7c1eac51d4d29fc952031933f677",
+    "source_vbmeta_sha256": "3992de82a3a03584b0e03c43bd66060ef93684122bb8867c893ed6c45ea85331",
+    "unsigned_vendor_sha256": "2b045007432aed8228063096e52d06cd86645becfcb58e0be92aeb22570b96f9",
+    "signature_checks": "PASS",
+    "unchanged_other_raw_descriptors": 22,
+    "identical_vbmeta_header": true,
+    "descriptor_counts_by_tag": {
+      "0": 13,
+      "2": 3,
+      "1": 4,
+      "4": 3
+    },
+    "public_key_unchanged": true,
+    "signing_payload_readback": "PASS",
+    "device_operations": false,
+    "hardware_verified": false
+  },
+  "production_parser": "pinned DarwinBoot 5243c68ec332a227fe3680cd5da6d5a0e127035c PASS on actual diagnostic Mach-O",
+  "fat_check": "PASS: FAT32, 66512 clusters",
+  "local_signing_authorization_reused": true,
+  "device_operations": false,
+  "hardware_verified": false,
+  "functional_fix_claimed": false
+}
