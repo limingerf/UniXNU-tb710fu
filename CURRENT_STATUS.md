@@ -233,3 +233,11 @@ FD `5722252b40e37d6c94e252c8daeddd9f3499b5483bca44f0cba93c795fb78a71`。
 本地 11 GUID、22 overlay 哈希、Entry.S 哈希和两个真实 FV 复验通过。
 未签名 boot 载体已准备（113e0792…），现有 boot chain 密钥匹配及源载体
 签名/hash 验证通过；尚未签名或刷入。见 `docs/HANDOFF_STAGES.md`。
+
+
+用户已明确授权仅本地签名。检查点 boot 镜像已签出：
+`out/handoff-stages/boot.img`，100,663,296 字节，SHA-256
+`a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`。
+RSA 签名、内容 hash、FD 读回、原 boot chain 密钥匹配验证通过。
+本轮未执行设备命令、刷写或重启，实机结果待用户测试；步骤见
+`docs/HANDOFF_STAGES_FLASH.md`。

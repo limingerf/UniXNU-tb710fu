@@ -52,3 +52,8 @@ vbmeta-ecc0 的 boot chain 公钥匹配；沿用该链的公钥和 rollback 参�
 XNU 蓝/紫入口探针细分内核最初阶段，不能把白色当作内核成功运行。
 
 机器记录：`docs/evidence/uefi-handoff-stages-build.json`。
+
+用户随后明确授权仅本地签名，已生成 `out/handoff-stages/boot.img`，
+SHA-256 `a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`。
+签名与内容 hash、FD 读回和 boot chain 密钥匹配验证通过；仍未操作设备。
+一次测试步骤见 [HANDOFF_STAGES_FLASH.md](HANDOFF_STAGES_FLASH.md)。

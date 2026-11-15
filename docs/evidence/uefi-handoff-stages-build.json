@@ -261,5 +261,22 @@
     "existing_vbmeta_boot_chain_key_matches": true,
     "signed": false,
     "flash_performed": false
+  },
+  "signed_boot": {
+    "local_path": "out/handoff-stages/boot.img",
+    "bytes": 100663296,
+    "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83",
+    "fd_sha256": "5722252b40e37d6c94e252c8daeddd9f3499b5483bca44f0cba93c795fb78a71",
+    "algorithm": "SHA256_RSA4096",
+    "rollback_index": 1736035200,
+    "public_key_sha1": "2597c218aae470a130f61162feaae70afd97f011",
+    "signature_and_image_hash_verification": "PASS",
+    "embedded_fd_readback": "PASS",
+    "matches_existing_boot_chain_key": true,
+    "explicit_user_authorization": "local signing only",
+    "flash_performed": false,
+    "device_reboot_performed": false,
+    "hardware_verified": false,
+    "avbtool_sha256": "f647dc4efc190f192d1522ca06d058de6a99ed3b44f95c8cb385f20dfb8a7da7"
   }
 }
