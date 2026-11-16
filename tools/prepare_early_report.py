@@ -62,6 +62,8 @@ def main():
         '9daf5064924a2a085b1e8ee4e0871df5b9fc86dac516c8d7de9a85484f2ca8ee',
         # PR249 + 0006 diagnostic-segment mapping (run 43806716346)
         '6adc7e159137d073bfeebcc1d3385bd78d08e312544949b03287ec9129231a32',
+        # PR249 + 0006 keyed on the segment name, no boot argument (run 43813385537)
+        '6c71e39ca6c58a48a614c1ca4927a723d7b782d8fde516215c18ee7a49aae96e',
     }
     digest = sha(original)
     if digest not in allowed:

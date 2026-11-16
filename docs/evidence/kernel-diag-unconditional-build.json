@@ -1,0 +1,107 @@
+{
+  "date": "2026-11-16",
+  "stage": "signed-diagnostic-pair-unconditional-segment-mapping",
+  "purpose": "Remove the boot-argument dependency from patch 0006, because the argument never reached the kernel and the mapping silently never ran",
+  "what_changed_and_why": {
+    "symptom": "The device printed vm/set_mmu_ttb_alternate#1 and never vm/set_mmu_ttb#1.",
+    "previous_gate": "0006 mapped the segment only when PE_parse_boot_argn(\"tb-diag-segment\") succeeded.",
+    "gate_was_correctly_compiled": {
+      "call_site": "0xfffffff00bb89298 bl PE_parse_boot_argn",
+      "branch": "0xfffffff00bb8929c = 0x34000200 => cbz w0, +0x40 (skips the block on failure)",
+      "conclusion": "the compiler emitted the intended guard, so the failure was the argument not arriving"
+    },
+    "fix": "Look the segment up by name unconditionally. getsegdatafromheader returns NULL with size 0 for an absent name and the block requires both non-zero, so a kernel without the segment maps nothing.",
+    "new_patch_sha256": "46745d07dff3cf7e4d8cdb8669e0c5ce435b91cfb74303bb4ca3d58a2a5db697"
+  },
+  "behaviour_matrix": {
+    "tool": ".work/audit/compile_check_v3.py",
+    "cases": {
+      "stock kernel, no __KDIAG": "rox=0 lookups=1",
+      "kernel with __KDIAG": "rox=1 lookups=1, maps 0xfffffff00f828000 + 0xcc000",
+      "__KDIAG but null vmaddr": "rox=0 lookups=1",
+      "__KDIAG but zero size": "rox=0 lookups=1",
+      "other segment present only": "rox=0 lookups=1"
+    },
+    "result": "5/5 PASS; a kernel without the segment performs one failed lookup and maps nothing"
+  },
+  "cloud_build": {
+    "run_id": 43813385537,
+    "conclusion": "success",
+    "head_sha": "fbe75be88f387baf7f0f931f1392dc7fb29e8dfc",
+    "workflow": ".github/workflows/macos-kernel.yml",
+    "artifact": "tb710fu-prelink-43813385537",
+    "artifact_bytes": 37731428,
+    "artifact_sha256": "555e20552c7b3bd05c4834cd2eb925cc0ec5f3801542f3295e77c3025c86add6",
+    "github_digest_matches": true,
+    "dispatch_note": "the first dispatch attempt hit RemoteDisconnected; the state was checked before retrying and a run had in fact been queued, so no duplicate run was created"
+  },
+  "kernel": {
+    "bytes": 142753792,
+    "sha256": "6c71e39ca6c58a48a614c1ca4927a723d7b782d8fde516215c18ee7a49aae96e",
+    "tb_diag_segment_literal": 0,
+    "kdiag_literal": 1,
+    "arm_vm_prot_init_calls": {
+      "PE_parse_boot_argn": 3,
+      "getsegdatafromheader": 25
+    },
+    "unconditional_form_present": true
+  },
+  "probe": {
+    "kernel_sha256": "adf688f5950052c0d25a4bd07d75db75aca4773c6df09fa0e149a10ffdd45aaa",
+    "kernel_bytes": 143589376,
+    "segment_bytes": 835584,
+    "trace_past_switch": true,
+    "trace_points": 25,
+    "last_point": "vm/set_mmu_ttb#1",
+    "previous_last_point": "vm/set_mmu_ttb_alternate#1"
+  },
+  "payload": {
+    "sha256": "ce4ff0a4fc87261ced8a349c45ce19bc07b6af22d760a14c1b628fc798fc03d4",
+    "bytes": 34603008,
+    "fat_clusters": 66512,
+    "kernel_lzma_sha256": "5453bce55e0f17d1857276765b24db87c3f1a8607c43d697a077cb0259b2af3d",
+    "adt_sha256": "f4161ff940b78e777ca2a6f4cb02191ff00f5046cc4dc3302d8fc4ce00f9c1a0",
+    "adt_identity_verified": {
+      "model": "Mac17,11",
+      "compatible": "K114cAP",
+      "product_props": 35,
+      "osenvironment": true,
+      "boot_uuid": true,
+      "root_matching": true
+    },
+    "toml_sha256": "a14b5a8fa15e9e8a29e160a2e87d36f72cb31bcb95140072f92359986c13a356",
+    "boot_args": "-v serial=3 ramoops=0xac340000 ramoops_size=0x40000 ramoops_ecc=0 ramoops_panic_delay=15 ramoops_reset_after=120",
+    "dead_arg_removed": true,
+    "readback_ok": true
+  },
+  "delivery": {
+    "vendor_boot_sha256": "67b19c55f27f785232910ba533637805ef878b799bfee861c96b2a12e3b1f1d6",
+    "vendor_boot_bytes": 100663296,
+    "vbmeta_sha256": "759bd40defd7c932a59e989789a1763f7efb5cc3e7428fb6ff3ccea689a7006d",
+    "vbmeta_bytes": 8000,
+    "files": [
+      "out/kernel-diag-unconditional/vendor_boot.img",
+      "out/kernel-diag-unconditional/vbmeta.img"
+    ]
+  },
+  "verification": {
+    "signer_self_report": "PASS, 22 other descriptors and public key unchanged",
+    "independent_rsa": "PASS on vbmeta.img and the vendor_boot footer",
+    "independent_payload": "PASS: kernel adf688f5, ADT f4161ff9, toml a14b5a8f",
+    "production_darwinboot_parser": "PASS",
+    "adt_identity_read_from_output_payload": "Mac17,11 / K114cAP / 35 product props",
+    "boot_args_cleared_of_dead_gate": true
+  },
+  "how_to_read_the_next_report": {
+    "if_vm_set_mmu_ttb_appears": "the TTBR1 switch succeeded and execution continued past it - the first time this can be observed",
+    "if_it_still_ends_at_set_mmu_ttb_alternate": "the mapping ran but did not make the segment executable, which points at arm_vm_page_granular_ROX over the unmapped gap rather than at the argument",
+    "note": "the boot argument no longer matters; nothing in this image depends on it"
+  },
+  "boundary": [
+    "Diagnostic image, not a functional fix and not hardware acceptance.",
+    "The reporter appends 835,584 B and rewrites 25 call sites.",
+    "No device flash, reboot or partition operation was performed by the agent."
+  ],
+  "device_operations": false,
+  "hardware_verified": false
+}

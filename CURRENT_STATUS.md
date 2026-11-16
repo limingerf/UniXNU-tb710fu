@@ -1,6 +1,18 @@
 # Current status · 2026-11-15
 
-> 待验交付（2026-11-16）：**第一份内核自带 0006 的可刷镜像**已签出，
+> 待验交付（2026-11-16）：**段映射改为不依赖引导参数**。
+> 上一版把映射挂在 `tb-diag-segment=` 上，反汇编证实编译器生成的守卫是对的
+> （`cbz w0` 跳过整块），所以失败原因是**参数从未到达内核**，映射静默未执行——
+> 与设备始终只见 `set_mmu_ttb_alternate#1` 完全吻合。
+> 本版改为按段名无条件查找：不存在的段返回 NULL 且 size=0，代码要求两者非零，
+> 因此**普通内核零映射**（5 情形矩阵全 PASS）。
+> 云 run 43813385537 success（head `fbe75be`），内核 `6c71e39c` 中
+> `tb-diag-segment` 字面量已为 **0**、`__KDIAG` 为 1。
+> 交付 `out/kernel-diag-unconditional`（`67b19c55…` / `759bd40d…`），
+> 引导参数已清理，ADT 身份从成品 payload 直接读出确认为 `Mac17,11`。
+> 见 [无参数段映射交付](docs/KERNEL_DIAG_UNCONDITIONAL.md)。
+
+> 上一交付（2026-11-16）：第一份内核自带 0006 的可刷镜像
 > `out/kernel-diag-past-switch`（`2c35ccc4…` / `dc03f3b3…`）。云 run 43806716346
 > success，内核 `6adc7e15…`，0006 在 `xnu-inputs.json` 第 132/132 项且哈希一致。
 > 补丁**确已编入机器码**（`tb-diag-segment` 字符串与 `_arm_vm_prot_init` 对它的
