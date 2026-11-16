@@ -79,8 +79,9 @@ memory map **重算覆写**整张表。也就是说，在「device patch + board
 ## 边界（必须说清）
 
 `tb710fu_ramoops_init()` 由 0004 挂在 `arm_init` 里 **`arm_vm_init()` 返回之后**。
-当前设备停在 `arm_vm_init` 内部 stage 47 的 `set_mmu_ttb_alternate`，所以该函数
-**根本不会执行**，`early[]` 也不会 flush。**本次故障启动里日志区仍是空的。**
+较早的 guard9/QR8 启动停在 `arm_vm_init` 内部 stage 47，因此当时该函数
+不会执行。guard11 后来的 stage56 报告显示调用已返回，但还没有读取日志区
+头部来确认初始化及数据写入成功。
 
 捕获该停点靠的是 **0007 的恒等映射标记**（`0x93ffff000` 两个字节）。
 0008 解决的是「地址根本不可达」这个独立问题，为**越过切换之后的启动**以及后续
@@ -104,6 +105,9 @@ memory map **重算覆写**整张表。也就是说，在「device patch + board
 # 256 KiB 日志区首部（Linux persistent_ram 头 {sig,start,size}）
 dd if=/dev/mem bs=4096 skip=$((0x93ff00000/4096)) count=64 2>/dev/null | od -An -tx1 -N48
 ```
+
+当前 UEFI QR 查看器仍读取旧的 `0xac340000` 地址，不能用它验证 guard11 的
+`0x93ff00000` 区域；见 [UEFI 查看器地址说明](UEFI_LOG_VIEWER.md)。
 
 不再是 pstore 节点，而是直接读物理内存；区首 12 字节是 Linux 兼容的
 `{sig=0x43474244, start, size}` 头。

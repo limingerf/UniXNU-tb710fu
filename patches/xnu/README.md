@@ -93,5 +93,8 @@ post-MMU screen. Evidence: `docs/evidence/pr249-bootstrap-pool.json`.
 used by the diagnostic Mach-O. It maps code RX and mutable state/stack RW-NX;
 incomplete or malformed pairs remain unmapped. `0009-tb710fu-switch-helper-noinline.patch`
 keeps the 0007 marked switch helper as a distinct call target for the stage QR
-reporter. Together these patches enable diagnostics across TTBR1; they do not
-change the page-table algorithm or claim a functional fix.
+reporter. For fileset kernels, the segment lookup uses the primary kernel
+collection header because post-link tooling appends these load commands to the
+outer MH_FILESET header; non-fileset kernels use `_mh_execute_header`. Together
+these patches enable diagnostics across TTBR1; they do not change the page-table
+algorithm or claim a functional fix.

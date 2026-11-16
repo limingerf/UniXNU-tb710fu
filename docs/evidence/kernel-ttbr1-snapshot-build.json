@@ -1,0 +1,189 @@
+{
+  "date": "2026-11-16",
+  "stage": "post-link-live-TTBR1-snapshot-and-low-address-exception-guard",
+  "purpose": "Replace the stage-47-only observation with a live candidate-root walk and a self-tested low-address exception path around the TTBR1 switch",
+  "input": {
+    "native_prelink_run": 43844823907,
+    "source_commit": "e83bd00d94fc947ecdefd3fafdd471711561dff3",
+    "prelinked_kernel_sha256": "045bfc7cfad9ed2539a586043dd43211263099734f4978abd8092c213b7d7d95",
+    "input_sha256_reverified": true,
+    "native_xnu_rebuilt": false
+  },
+  "post_link_generator": {
+    "path": "tools/prepare_early_report.py",
+    "sha256": "cdd9d044c3d4bb18cc42e662a75810be0b802b7d8430841aa96b084d814d3f4e",
+    "trace_past_switch": true,
+    "trace_switch_probe": true,
+    "expect_input_sha256": "045bfc7cfad9ed2539a586043dd43211263099734f4978abd8092c213b7d7d95"
+  },
+  "candidate": {
+    "directory": ".work/ttbr1-guard9-build",
+    "kernel_file": "kernel-early-report.macho",
+    "kernel_bytes": 143622144,
+    "kernel_sha256": "274917979bb503a18ce24e87ecaf8f5f186583ffb3bbf08cea1e0676f5863a6e",
+    "lzma_file": "kernel-early-report.lzma",
+    "lzma_bytes": 24076690,
+    "lzma_sha256": "cb19df3c4945d0bb92fd21c1d47567a16732162963b07401332f2cd98fca27d6",
+    "diagnostic_segment_bytes": 868352,
+    "payload_bytes": 862929,
+    "code_segment": {
+      "name": "__KDIAG",
+      "bytes": 49152,
+      "protection": "RX"
+    },
+    "state_segment": {
+      "name": "__KDATRW",
+      "bytes": 819200,
+      "protection": "RW-NX"
+    },
+    "signed": false,
+    "hardware_verified": false
+  },
+  "packaged_signed_pair": {
+    "directory": "out/kernel-ttbr1-guard9",
+    "source_vendor_boot": {
+      "path": "out/kernel-log-region/vendor_boot.img",
+      "sha256": "15846226236b56bd3abb104ae57f45e23307f3ea52321fd03ed153fd2e4e0718"
+    },
+    "source_vbmeta": {
+      "path": "out/kernel-log-region/vbmeta.img",
+      "sha256": "e4cffaf3414a2c22d6c129ed62ac382424f67da8a0dd62aa9ae0ccb73fec63de"
+    },
+    "unsigned_vendor_boot_sha256": "9e1fa28567fd59605bd317331dfb29f7afac9f3f0220af9aff2011a6e33070b1",
+    "vendor_boot": {
+      "bytes": 100663296,
+      "sha256": "f9f185bec93bcb4e01f9da2fe5d489324c98a64a62a6d01cfd06b00e7f0a14f8"
+    },
+    "vbmeta": {
+      "bytes": 8000,
+      "sha256": "a0daf10e828b690bc0aa7162d4c007080113ab30715c81df3adc566f3d8657e3"
+    },
+    "signing": "SHA256_RSA4096 using the existing local test key; key material remains outside the repository",
+    "checks": {
+      "avbtool_verify_image": "PASS",
+      "independent_rsa4096_signature": "PASS for vbmeta and vendor_boot footer",
+      "vbmeta_header_identical": true,
+      "public_key_unchanged": true,
+      "other_raw_descriptors_unchanged": 22,
+      "payload_kernel_adt_toml_readback": "PASS",
+      "fat32_cluster_count": 66512
+    },
+    "device_operations": false,
+    "hardware_verified": false
+  },
+  "superseded_signed_pair": {
+    "directory": "out/kernel-ttbr1-guard7",
+    "reason": "Superseded after the supplied stage-47 report showed G=3; guard7 sourced its low identity map from the candidate root under test.",
+    "vendor_boot_sha256": "7811e769c4ec96c3b59411148b887046f267f054121876309dddf11ac4a343fc",
+    "vbmeta_sha256": "32529450ca1fb14ac19f05b0cd71db00f54489234334187afe6707d229d2795c",
+    "flashed": false
+  },
+  "earlier_qr8_device_readback": {
+    "stage": 47,
+    "candidate_root_pa": "0x8c88fd000",
+    "captured_tcr": "0x00080022a51a251a",
+    "t1sz": 26,
+    "tg1": 2,
+    "walk": "L1 to L2 to L3, with L1/L2 blocks supported; page-table descriptor reads use an AT S1E1R-checked old-TTBR1 alias",
+    "walk_changes_candidate_root": false
+  },
+  "latest_user_supplied_device_readback": {
+    "display_build_label": "src-045bfc7c-qr8",
+    "stage": 47,
+    "candidate_root_pa": "0x8c8905000",
+    "captured_tcr": "0x00080022a51a251a",
+    "old_ttbr0": "0x8c0ddb000",
+    "old_ttbr1": "0x8c0ddc000",
+    "guard_status": 3,
+    "targets_H_R_S_V_N": "all expected mapping and permissions; status +",
+    "reporter_continuation_C": "invalid L3 descriptor; status N",
+    "reporter_RX_X": "0/12 pages mapped; first page has invalid descriptor",
+    "reporter_RW_NX_D": "0/200 pages mapped",
+    "interpretation": "Candidate root lacks both appended diagnostic segments, while the observed XNU switch targets are mapped. The report was captured before BL to the helper and is not a switch fault PC.",
+    "guard3_cause_in_then-tested_implementation": "Guard incorrectly sourced identity descriptors from the candidate root under test instead of O1 old TTBR1. guard9 switches the source to O1 and tightens the identity PTE permissions.",
+    "device_image_hash_readback": false
+  },
+  "report_fields": {
+    "target_rows": {
+      "H": "set_mmu_ttb_alternate_probed helper",
+      "R": "arm_vm_init return PC",
+      "S": "kernel stack pointer",
+      "V": "original kernel exception vectors",
+      "C": "reporter continuation after the helper",
+      "N": "first post-switch _set_mmu_ttb entry"
+    },
+    "range_rows": {
+      "X": "all __KDIAG RX pages",
+      "D": "all __KDATRW RW-NX pages"
+    },
+    "status_characters": {
+      "+": "expected physical mapping, access flag and permissions",
+      "P": "translated physical address differs",
+      "M": "access flag or effective permission mismatch",
+      "N": "invalid L1/L2/L3 descriptor",
+      "R": "descriptor page not readable through the checked old-root alias",
+      "U": "unsupported TCR or address geometry",
+      "O": "target outside the managed linear window"
+    },
+    "guard_status": {
+      "0": "not prepared",
+      "1": "identity tables prepared",
+      "2": "low-address BRK self-test returned; guard active through the helper",
+      "3": "guard setup failed; original TTBR0/VBAR path retained"
+    },
+    "text_bytes": {
+      "normal_stage_47": 591,
+      "export_pause_stage_47": 606,
+      "buffer_capacity": 620
+    }
+  },
+  "guard": {
+    "source_of_leaf_attributes": "checked old active TTBR1 leaf or block attributes, converted to 4 KiB identity pages independently of the candidate root",
+    "low_mapping": "identity-mapped __KDIAG RX and __KDATRW RW-NX pages",
+    "pre_switch_checks": [
+      "TTBR0 T0SZ=26 and TG0=4 KiB",
+      "reporter pages remain inside one L1/L2 region",
+      "effective PXNTable/APTable permissions and leaf permissions",
+      "AT S1E1R/S1E1W low-address translation checks for vector, state and stack",
+      "BRK #0xb712 enters the low vector and returns with ERET",
+      "TPIDR_EL1 and TPIDRRO_EL0 restored after self-test"
+    ],
+    "GOP_temporary_root_carries_guard_mapping": true,
+    "restore_order_after_helper": "restore high XNU VBAR, then original TTBR0/TCR",
+    "fallback": "restore original roots and use the original vector path if setup, translation or self-test fails"
+  },
+  "verification": {
+    "clang_aarch64_report_and_entry_compile": "PASS",
+    "host_page_walk_model": "PASS for L1/L2 blocks, L1-L2-L3 pages, APTable/PXNTable, invalid descriptors and unsupported geometry",
+    "unicorn_exception_model": "PASS for four capture cases and low-alias BRK/ERET self-test",
+    "unicorn_call_trace_wrappers": 28,
+    "guard_return_cleanup": "PASS: after stage 48 the real wrapper restores XNU VBAR before diag_guard_deactivate restores original TTBR0/TCR; active guard clears",
+    "live_render_checkpoints": [47, 48, 49, 50, 51, 52, 54, 55, 56],
+    "temporary_GOP_guard_merge": "PASS with synthetic TTBR0 descriptors at stage 48",
+    "stage_48_cleanup_order": "PASS: high XNU VBAR restored before old TTBR0/TCR; active guard cleared",
+    "onesend_receiver": {
+      "repository": "makerjackie/onesend",
+      "commit": "39e95ce59df2f2dc38d2556dd4239cec6a0ca35f",
+      "all_stage_reports_single_frame_complete": true,
+      "report_bytes_by_stage": {
+      "47": 591,
+        "48": 463,
+        "49": 442,
+        "50": 386,
+        "51": 386,
+        "52": 389,
+        "54": 440,
+        "55": 439,
+      "56": 422,
+      "47_export_pause": 606
+      }
+    }
+  },
+  "device_operations": false,
+  "limits": [
+    "Signing produced local images only; no flash, reboot, partition or filesystem operation was performed.",
+    "The actual device descriptor contents have not yet been captured by this candidate.",
+    "The guard9 O1-root path and live camera scan remain hardware-unverified.",
+    "This is a diagnostic candidate, not a functional XNU page-table fix."
+  ]
+}

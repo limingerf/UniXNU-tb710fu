@@ -1,23 +1,186 @@
 # Current status · 2026-11-15
 
+## Guard11 stage56 hardware checkpoint · 2026-11-17
+
+The user supplied `XNU returned: tb710fu_ramoops_init` with
+`build src-eff36305-guard11`, `STAGE=0x38` (56), and `ARG1=0x93ff00000`.
+This confirms execution returned from the ramoops initialization call after
+`arm_vm_init`; it is far beyond the early XNU entry/MMU markers. It does not
+yet prove that the persistent zone header and console bytes were written, and
+the device partition hash was not read back, so exact image attribution is not
+confirmed.
+
+There is still no live USB COM/XNU console. `serial=3` cannot create a missing
+UART, and EUD/CDC enumeration plus an XNU driver remain unverified. The current
+UEFI QR viewer reads the old `0xac340000` zone; guard11 writes to
+`0x93ff00000`, so that viewer cannot yet export guard11's zone. A TWRP raw
+memory read of `0x93ff00000..0x93ff40000` is the immediate post-reboot capture
+path, subject to `/dev/mem` access and DDR retention. Do not treat stage56 as
+proof that this read will contain a valid console until the zone header is
+checked.
+
+## Guard11 rebuilt and signed · 2026-11-17
+
+The fileset-header correction is now in the signed diagnostic candidate. XNU
+native arm64e build, macOS 27 prelink, and the production DarwinBoot fileset
+parser passed in run [43917723572](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43917723572).
+The exact 0006 patch SHA-256 is
+`7be986c3744b7d9c9ca77f0d6b09e8e20b9ba74e587e527ac26281f9717a1a6c`.
+Prelinked kernel SHA-256 is
+`eff36305a28a6bf89c453734a07a9fe0e878e9041773864aeb205fc88483c3e3`; the
+strict mapping report has `mapping_complete=true`, `missing={}`, and
+`stubbed={}`.
+
+The post-link reporter label is `src-eff36305-guard11`, with kernel SHA-256
+`5d860a638dde58911cc35d66181f049689535f416c329bcbc27d93987ca8e09c`.
+The signed pair is in `out/kernel-ttbr1-guard11/`: `vendor_boot.img` SHA-256
+`10c3affb7b051b0b3f2ea1406c7246ee62bf257d128e8afc5db6a36dde63533d` and
+`vbmeta.img` SHA-256
+`d2f87a085be2319e3382d80678b6e3cccd8318a7b70eee6ea96fc449a406e4d2`.
+Independent RSA verification and decoded kernel/ADT/TOML readback passed; the
+vbmeta header, key and 22 unrelated descriptors are unchanged.
+
+The exception/wrapper model, stage 47/48 3200x1080 rendering, marker-root
+model, OneSend single-frame receive and rendered stage-47 QR decode passed.
+This does not yet prove the live TTBR1 root maps the reporter on the device:
+the candidate has not been booted and no device partition hash has been read
+back. No device operation was performed. Full provenance is in
+[guard11 evidence](docs/evidence/kernel-ttbr1-guard11-build.json).
+
+## Guard10 follow-up: switch returned; reporter mapping is missing · 2026-11-17
+
+The `src-045bfc7c-guard10` screen shows `XNU returned:
+vm/set_mmu_ttb_alternate_probed#1`, then `ESR=0x86000007` at
+`ELR=FAR=0xfffffff00f82ba10`. This is a current-EL instruction abort with an
+L3 translation fault. That PC is `diag_live_text+0x284`, inside `__KDIAG`; the
+expected instruction is `CMP X22, X27`. Therefore the marked TTBR1 helper
+returned. The following reporter instruction was not mapped by the active
+TTBR1 root, so this report does not show a failure in the kernel's switch
+helper.
+
+The root cause is in diagnostic patch 0006: `getsegdatafromheader()` searched
+`_mh_execute_header`, the embedded `com.apple.kernel` MH_EXECUTE. The post-link
+reporter appends `__KDIAG` and `__KDATRW` load commands to the outer MH_FILESET
+header, so those lookups returned no segments and silently skipped mapping.
+The locally verified input and guard10 candidate both have this nested layout.
+Patch 0006 now selects `PE_get_kc_header(KCKindPrimary)` for fileset kernels
+and retains `_mh_execute_header` for standalone kernels. It was subsequently
+built and signed as guard11; see the next status entry and
+[guard11 evidence](docs/evidence/kernel-ttbr1-guard11-build.json).
+
+CDP is not an available plug-and-play kernel log channel established by this
+project. The live tree has a Qualcomm EUD node and the firmware contains EUD
+serial code, but USB enumeration and an XNU EUD/CDC driver are unverified.
+UniXNU's documented USB terminal is the giulia-specific protocol; changing USB
+IDs does not add that protocol. See [log channel audit](docs/LOG_CHANNEL.md)
+and [official debugging guide](https://unixnu.com/zh/guide/debugging).
+
+The signed guard10 image remains at `out/kernel-ttbr1-guard10/` as the
+superseded candidate. Guard11 contains the fileset-header correction. Device
+partition hash readback is absent, so exact flashed-image attribution remains
+unverified. No device action was performed by this task.
+
+## Marker fault localized; guard10 signed · 2026-11-17
+
+The new device report (`src-045bfc7c-qr8`) captured a real exception inside
+`_set_mmu_ttb_alternate_probed`: `ESR=0x96000045` is a same-EL write data abort
+with a level-1 translation fault, `FAR=0x93ffff000`, and `ELR=0xfffffff00bb8b374`.
+The helper starts at `0xfffffff00bb8b360`; offset `0x14` is its first marker
+`STRB`. `SWITCH_GUARD=2` only proved that the reporter/vector BRK self-test
+worked. The then-tested guard9 map did not include the marker page, so this was
+a diagnostic guard fault before the TTBR1 write, not evidence of an XNU
+TTBR1-table failure. The report is consistent with guard9, but the device
+partition hash was not read back, so exact flashed-image attribution remains
+unverified.
+
+guard10 adds and checks a writable, non-executable TTBR0 identity mapping for
+`0x93ffff000`, and carries it through the temporary GOP root. The T1 walker also
+now uses APTable bit 61 for EL1 write denial; bit 62 only restricts EL0. The
+source is the same verified prelink from run [43844823907](https://github.com/limingerf/UniXNU/actions/runs/43844823907),
+SHA-256 `045bfc7cfad9ed2539a586043dd43211263099734f4978abd8092c213b7d7d95`;
+XNU was not rebuilt.
+
+The signed pair is in `out/kernel-ttbr1-guard10/`: `vendor_boot.img`
+SHA-256 `5e6f8b70369066b1b99ee5b4b69c2616449efc45df6394aaaf6be10365ac7b06`,
+`vbmeta.img` SHA-256 `72e4807ec637f94d66195e0321f4e0c76dfb0960ed85fe11fd8f4099910da6df`.
+Independent RSA and payload readback checks pass; the original ADT/TOML,
+vbmeta header/public key and 22 unrelated descriptors are preserved. The
+report label is `src-045bfc7c-guard10`.
+
+The guard10 reporter build, exception/wrapper model, APTable host tests, stage
+47/48 3200x1080 render model, marker stores under guard/GOP/restored roots,
+OneSend stage-47/48 transfer, and stage-47 rendered QR decode pass. This remains
+a diagnostic image: no flash or reboot was performed. The later stage-48
+screen confirms the helper returned, but the reporter then faulted because its
+segment was absent from the new TTBR1 root; later kernel progress remains
+untested. Full machine record:
+[guard10 evidence](docs/evidence/kernel-ttbr1-guard10-build.json).
+
 ## 内核停点再审计与二维码诊断修正 · 2026-11-16
 
-用户报告最新构建仍未进入内核，设备没有可用端口。审计确认仓库记录的
-`XNU returned: vm/qsort#1` 来自切换标记版：它说明 `_qsort` 已返回到追踪器，
-不说明 qsort 崩溃。0007 的 `TB710FU_SWITCH_MARKS=1` 改走内联标记 helper，
-绕过报告器替换的 stock `set_mmu_ttb_alternate` 调用，所以原 stage 47 QR
-没有生成；现有画面不是 TTBR1 故障定位证据。A 版有屏幕反馈，但没有物理
-标记读回；较新的 B 版没有可核对的设备刷入哈希。当前真实停点仍未确诊。
+用户此前看到 `XNU returned: vm/qsort#1`，它只说明 `_qsort` 已返回，不表示 qsort 崩溃。
+用户随后提供 QR5 和 QR8 两份阶段 47 OneSend 报告。QR8 标签 `src-045bfc7c-qr8`
+与最新版报告器一致；`ARG0=0x8c88fd000` 是新 TTBR1 根表参数，位于 2 GiB 管理窗口内。
+报告明确在标记 helper 的 `BL` 前绘制，helper 尚未运行；旧 QR5 的
+`marker helper entry` 文字已改为准确的 `before marker helper call`。
+两份报告都不是故障 PC，不能证明 TTBR1 已写入或二维码之后内核停止。
+用户尚未提供设备分区镜像哈希读回，因此不能确认具体签名包，底层停点仍未确诊。
+源码审计确认标记 helper 保留了 XNU 原有 `DSB; MSR TTBR1_EL1; ISB; RET` 顺序；
+目前没有可由 QR8 证明的 XNU 功能缺陷，也没有据此修改 TTBR1 切换代码。
+此前 `0x8c88f9000` 的软件 walk 是模型根表，不是当前设备 `0x8c88fd000` 的映射读回。
 
-已准备诊断修正：0006 成对映射连续对齐的 RX `__KDIAG` 与 RW-NX `__KDATRW`；
-0009 保留标记 helper 为 noinline 符号；报告器拆段后切换后的代码、状态和私有栈
-都有正确权限；
-阶段 47/48/49 分别报告进入真实标记 helper、helper 返回、切换后首个调用。
-本地 AArch64/主机报告器测试、三阶段 Unicorn 模型、固定 OneSend receiver、
-分段几何/重定位检查及固定 DarwinBoot 生产解析器均通过。用已有 0008 内核
-生成的分段探针仅验证布局，尚未重编包含 0009 的 XNU；含 0009 的官方
-native + strict prelink 云构建待执行，设备尚未操作。详细记录见
-[TTBR1停点诊断修正](docs/KERNEL_SWITCH_QR_FIX.md)。
+## 单次页表快照与低地址异常捕获候选 · 2026-11-16
+
+用户提供的 TCR `0x00080022a51a251a` 解析为 `T1SZ=26`、`TG1=2`，候选 TTBR1 根从 L1 开始，
+使用 4 KiB 页。新 post-link 候选在阶段 47 读取本次 `ARG0` 根，逐级输出 L1/L2/L3 原始描述符，
+检查 helper、返回 PC、内核栈、向量、报告器续点、`_set_mmu_ttb` 入口，并扫描全部 reporter RX 与 RW-NX 页。
+读取前用 `AT S1E1R` 核对旧 TTBR1 下的物理别名，候选根本身只读。
+
+同一候选为 `__KDIAG`/`__KDATRW` 建立独立的低地址 TTBR0 身份映射，描述符属性来自正在运行的旧 TTBR1 映射，
+不依赖待测候选根；检查代码、状态区、栈和向量翻译，并在切换前执行可返回的 `BRK #0xb712` 自检。
+阶段 47/48 的 GOP 临时表保留这份低地址映射；
+helper 返回后先恢复 XNU VBAR，再恢复原 TTBR0/TCR。任何准备、翻译或自检失败都会恢复旧根并沿原向量路径继续。
+
+输入仍是 run [43844823907](https://github.com/limingerf/UniXNU/actions/runs/43844823907) 的预链接内核，
+SHA-256 `045bfc7cfad9ed2539a586043dd43211263099734f4978abd8092c213b7d7d95`；没有重编译 XNU。
+guard9 post-link kernel SHA-256 `274917979bb503a18ce24e87ecaf8f5f186583ffb3bbf08cea1e0676f5863a6e`，
+LZMA SHA-256 `cb19df3c4945d0bb92fd21c1d47567a16732162963b07401332f2cd98fca27d6`。
+阶段 47 报告 591 字节，export-pause 报告 606 字节；阶段 47–56 的 OneSend 单帧接收和重复帧去重均通过。
+AArch64 页表模型、4 种异常现场、低地址 BRK/ERET 与 TPIDR 恢复自检、28 个调用包装器、47–56 渲染模型均通过。
+
+**边界：** 这是诊断版内核，不是 XNU 功能修复；设备实际页表结果、实机异常捕获和摄像头扫码仍未验收。
+用户随后提供一份阶段 47 页表报告（`ROOT=0x8c8905000`）：helper、XNU 返回点、栈、向量和下一条 `_set_mmu_ttb` 均为 `+`；候选根缺 `__KDIAG` 12 页及 `__KDATRW` 200 页，报告续点 `C` 为无效 L3，分别显示 `X=0/12`、`D=0/200`。这发生在 helper 调用前，不证明 helper 已运行或 XNU 切换失败。
+该报告中的 `G=3` 是当时 guard 错误地从待测候选根取 reporter 页造成的，不是硬件根因。guard9 改为从 `O1` 旧 TTBR1 读取 reporter 物理页，再建独立 TTBR0 映射；还把旧映射权限收紧到 RX/RW-NX。guard9 已在 `out/kernel-ttbr1-guard9` 生成并签名，独立 RSA、AVB 和 payload 读回检查通过。
+`vendor_boot.img` SHA-256 `f9f185bec93bcb4e01f9da2fe5d489324c98a64a62a6d01cfd06b00e7f0a14f8`；
+`vbmeta.img` SHA-256 `a0daf10e828b690bc0aa7162d4c007080113ab30715c81df3adc566f3d8657e3`。
+本轮未刷写、重启或改分区。机器记录见
+[TTBR1 快照与 guard 证据](docs/evidence/kernel-ttbr1-snapshot-build.json)，设计和字段说明见
+[TTBR1 快照文档](docs/KERNEL_TTBR1_SNAPSHOT.md)。
+
+已修正诊断路径：0006 成对映射连续对齐的 RX `__KDIAG` 与 RW-NX `__KDATRW`；
+0009 保留标记 helper 为 noinline 符号。run [43844823907](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43844823907)
+在提交 `e83bd00d94fc947ecdefd3fafdd471711561dff3` 上完成 native arm64e、严格 prelink
+和固定 DarwinBoot 生产解析器。native 输入 SHA `670f2576…`，prelinked kernel
+SHA `045bfc7c…`，86 个组件闭包，`mapping_complete=true`、`missing={}`、
+`stubbed={}`、`allow_missing=false`。artifact SHA-256
+`8063bc02fc5d405cbb7e20524a21e05a844c8937495b69b77e8dedc3597a33cd`。
+
+最终报告器标签为 `src-045bfc7c-qr8`，可见阶段为 47/48、49/50、51/52、54、55/56。
+分别覆盖 TTBR1 helper 调用前/返回后、切换后首个调用、`pmap_bootstrap`、
+抢占重新开启后的映射完成点，以及 `arm_vm_init` 返回后的 ramoops 入口/返回。
+抢占关闭期间不绘制 QR；普通检查点四帧轮播约 2 秒后继续。
+九阶段 AArch64 模型、九张画面 ZXing 解码、固定 OneSend 接收器单帧文件还原均通过。
+
+最终候选 `out/kernel-switch-qr8-label-signed/vendor_boot.img` SHA-256
+`b5274a747ac23d31f9bb9648738076fe78d12f333ffc9852d9927592562f5280`，匹配
+`vbmeta.img` SHA-256 `88dd4989330fad6bc9f0e6edeca38ee9996081bc2691c842ea2412e9c4af991b`。
+独立 RSA 复算、payload/ADT/TOML 读回、vbmeta header/公钥和另外 22 个描述符检查通过。
+用户已提供 QR8 阶段 47 报告文本（SHA-256 `b141c41e…`），但没有设备镜像哈希读回，
+也没有阶段 48 及后续报告；不能确认刷入的 vendor_boot/vbmeta 是否为下方签名候选。
+底层故障仍未确诊。
+机器证据见 `docs/evidence/kernel-switch-qr-build.json`。
+ARM64e per-core PAC 仍待硬件验证。详见
+[TTBR1停点修正](docs/KERNEL_SWITCH_QR_FIX.md)和[官方流程对照](docs/UNIXNU_OFFICIAL_AUDIT.md)。
 
 参考项目 `bmk-keyeast/UniXNU-tb710fu` HEAD `23235249d71604f8a6f743680ef8fd1003fe7189`
 使用 iPadOS 17.7.11 / XNU 10063.141.1；没有当前 XNU 12377 的 TTBR1 路径。
@@ -67,12 +230,12 @@ native + strict prelink 云构建待执行，设备尚未操作。详细记录�
 > 并行线 (b) 已证**不可行**：ADT 窗口任何调整都无法让 ramoops 地址可达
 > （在 span 下方 32.3 GiB）。见 [切换后探针交付](docs/KERNEL_DIAG_PAST_SWITCH.md)。
 
-> 背景（2026-11-16）：**绿条的"最后一行"被证实是观测边界，不是故障点。**
-> 两条独立证据：① 用 T1SZ 软件遍历 `0x8c88f9000` 新根表，切换函数、返回点
-> `arm_vm_init+0x11e4`、`_ExceptionVectorsBase` 全部映射且 EL1 可执行
-> ——"切换后返回地址不可执行"被否定。② 探针段 `__KDIAG` 落在 `__BOOTDATA`
-> 与 `dynamic_memory_begin` 之间 212 页**无映射空隙**，逐段核对为
-> `overlapping: NONE`，而报告器按设计切换后不返回附加段。
+> 历史分析更正：T1SZ 软件遍历使用模型根表 `0x8c88f9000`，输入包括推定的
+> `topOfKernelData=0x8c88f8000`；它不是设备表项读回，也不是后来 QR8 的
+> `ARG0=0x8c88fd000`。该结果只说明模型路径，不否定当前实际根表可能缺少返回点映射。
+> 参数门控版 0006 的 212 页空隙是旧 reporter 布局问题，后续已由无参数版修正。
+> QR8 的阶段 47 在 helper 调用前，当前仍无阶段 48 或设备物理标记值；不能把旧模型
+> “返回地址可执行”当成硬件切换已通过的证据。
 > `patches/xnu/0006`：切换**前**把 `tb-diag-segment=` 指定的段映射为 RX。
 > 默认启动零映射（行为矩阵 4/4 PASS，连段查找都不做），不需要改官方构建脚本
 > （曾误改 `build-xnu-4k-baseline.sh`，已回退并验证与 HEAD 逐字节一致）。

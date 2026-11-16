@@ -1,5 +1,5 @@
 /** Verify generated C frames with an unchanged, hash-pinned OneSend receiver. */
-import { readFile, writeFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -7,18 +7,32 @@ import { parseArgs } from 'node:util';
 import assert from 'node:assert/strict';
 const { values } = parseArgs({ options: {
   receiver: { type: 'string' }, frames: { type: 'string' }, output: { type: 'string' },
+  stage: { type: 'string' }, paused: { type: 'boolean' },
 } });
 if (!values.receiver || !values.frames || !values.output) throw Error('Require --receiver, --frames, --output');
+const stage = values.stage === undefined ? null : Number(values.stage);
+if (stage !== null && ![47, 48, 49, 50, 51, 52, 54, 55, 56].includes(stage)) {
+  throw Error('Switch QR stage must be one of 47-52 or 54-56');
+}
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(await readFile(resolve(root, 'diagnostics/early-report/receiver-sources.json'), 'utf8'));
 const source = await readFile(values.receiver);
 assert.equal(createHash('sha256').update(source).digest('hex'), manifest.files[0].sha256);
 const protocol = await import(pathToFileURL(resolve(values.receiver)).href);
 const cases = [];
-for (const paused of [0, 1]) {
-  const expected = await readFile(resolve(values.frames, 'replay-' + paused + '.log'));
+for (const paused of stage === null ? [0, 1] : [Number(Boolean(values.paused))]) {
+  let prefix = 'replay-' + paused;
+  if (stage !== null) {
+    prefix = 'switch-' + stage + '-' + paused;
+    const runtimePrefix = 'replay-' + paused + '-stage-' + stage;
+    try {
+      await access(resolve(values.frames, runtimePrefix + '.log'));
+      prefix = runtimePrefix;
+    } catch {}
+  }
+  const expected = await readFile(resolve(values.frames, prefix + '.log'));
   const frames = [];
-  for (let i = 0; i < 4; i++) frames.push(await readFile(resolve(values.frames, 'replay-' + paused + '-frame-' + i + '.bin')));
+  for (let i = 0; i < 4; i++) frames.push(await readFile(resolve(values.frames, prefix + '-frame-' + i + '.bin')));
   const headers = frames.map(bytes => protocol.parseFrame(bytes));
   assert.ok(headers.every(Boolean));
   assert.equal(new Set(headers.map(item => item.header.sessionId)).size, 1);
@@ -36,7 +50,7 @@ for (const paused of [0, 1]) {
   let deliveries = 0;
   for (let pass = 0; pass < 4; pass++) for (const frame of frames) if (receiver.consume(frame)?.verified) deliveries++;
   assert.equal(deliveries, 1, 'Repeats complete exactly one stable file transfer');
-  cases.push({ paused: Boolean(paused), variants: 4, any_one_variant_completes: true,
+  cases.push({ stage, paused: Boolean(paused), variants: 4, any_one_variant_completes: true,
     exact_file_bytes: expected.length, repeated_frames_deliver_one_file: true });
 }
 const report = { result: 'PASS', receiver_source: manifest, cases,

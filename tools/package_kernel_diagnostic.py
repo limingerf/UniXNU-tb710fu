@@ -18,6 +18,12 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
+SOURCE_VENDOR_SHA256S = {
+    '836ca997d766dedfef0531f7283026b443d2227302148fdd107852e25354df15',
+    '15846226236b56bd3abb104ae57f45e23307f3ea52321fd03ed153fd2e4e0718',
+}
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--lzma', type=Path, required=True)
@@ -28,8 +34,8 @@ def main():
     p.add_argument('--add-report-export', action='store_true', help='Append explicit animated VM checkpoint export; intentionally pauses before TTBR1')
     args = p.parse_args()
     original = args.source_vendor.read_bytes()
-    if sha(original) != '836ca997d766dedfef0531f7283026b443d2227302148fdd107852e25354df15':
-        raise SystemExit('Require recorded ecc0 vendor_boot baseline')
+    if sha(original) not in SOURCE_VENDOR_SHA256S:
+        raise SystemExit('Require a recorded signed vendor_boot baseline')
     encoded = args.lzma.read_bytes()
     prop = encoded[0]
     lc, prop = prop % 9, prop // 9

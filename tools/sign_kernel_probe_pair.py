@@ -19,6 +19,14 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+SOURCE_IMAGE_BASELINES = {
+    '836ca997d766dedfef0531f7283026b443d2227302148fdd107852e25354df15':
+        '3992de82a3a03584b0e03c43bd66060ef93684122bb8867c893ed6c45ea85331',
+    '15846226236b56bd3abb104ae57f45e23307f3ea52321fd03ed153fd2e4e0718':
+        'e4cffaf3414a2c22d6c129ed62ac382424f67da8a0dd62aa9ae0ccb73fec63de',
+}
+
+
 def descriptors(blob, header):
     aux = 256 + header.authentication_data_block_size
     begin = aux + header.descriptors_offset
@@ -57,10 +65,11 @@ def main():
     source_vendor = args.source_vendor.read_bytes()
     original = args.source_vbmeta.read_bytes()
     unsigned = args.unsigned_vendor.read_bytes()
-    if digest(source_vendor) != '836ca997d766dedfef0531f7283026b443d2227302148fdd107852e25354df15':
-        raise SystemExit('Source vendor_boot differs from the recorded ecc0 baseline')
-    if digest(original) != '3992de82a3a03584b0e03c43bd66060ef93684122bb8867c893ed6c45ea85331':
-        raise SystemExit('Source vbmeta differs from the recorded ecc0 baseline')
+    expected_vbmeta = SOURCE_IMAGE_BASELINES.get(digest(source_vendor))
+    if expected_vbmeta is None:
+        raise SystemExit('Source vendor_boot differs from every recorded signed baseline')
+    if digest(original) != expected_vbmeta:
+        raise SystemExit('Source vbmeta does not match its recorded vendor_boot baseline')
     if digest(unsigned) != args.unsigned_sha256:
         raise SystemExit('Unsigned diagnostic image identity mismatch')
     if shutil.which('openssl') != '/usr/bin/openssl':

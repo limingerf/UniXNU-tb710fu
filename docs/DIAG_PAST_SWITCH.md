@@ -1,14 +1,20 @@
 # 切换后探针 · (a3) 交付 · 2026-11-16
 
+> **历史模型记录，不是 QR8 设备映射验收。** 下方软件页表遍历使用模型生成的根表
+> `0x8c88f9000` 和先前的 `arm_vm_init` 输入；它没有读取设备 RAM 中的页表。
+> 用户后来提供的 QR8 是 `ARG0=0x8c88fd000`，并且阶段 47 在 helper 的 `BL` 前，
+> 不能用本页旧根表结果推断 QR8 的 TTBR1 返回地址、向量或栈是否实际映射。
+
 目标：让二维码探针在 `set_mmu_ttb_alternate` **之后**仍能出图，从而把停点从
 "最后一行是观测边界"推进到"真的停在哪条指令"。
 
-## 结论先行：之前那条最后一行不是故障点
+## 历史模型结果（不代表硬件切换成功）
 
 两件事都在本轮用真实数值证实：
 
-1. **新页表下切换路径完全可执行。** 用 T1SZ 软件遍历 `0x8c88f9000` 这张根表
-   （该地址由模型精确复现了你设备报的 `ARG0`）：
+1. 以模型根表 `0x8c88f9000` 做 T1SZ 软件遍历时，该模型中的切换地址、返回地址和
+   vectors 都可执行。该根地址由旧的 bootargs / `topOfKernelData` 假设计算，不是设备
+   读取的描述符，也不是本次 QR8 报告的根表 `0x8c88fd000`：
 
    | 地址 | 映射 | EL1 可执行 |
    | --- | --- | --- |
@@ -16,16 +22,15 @@
    | 返回点 `arm_vm_init+0x11e4` | ✅ | ✅ |
    | `_ExceptionVectorsBase` | ✅ | ✅ |
 
-   **"切换后返回地址不可执行"这条假设被否定。**
+   这只否定该模型里“返回地址不可执行”，不能否定 QR8 实际页表存在同类缺页。
 
-2. **探针段根本没有映射。** `__KDIAG` 紧贴 `__BOOTDATA` 尾部，落在
-   `__BOOTDATA` 与 `dynamic_memory_begin` 之间的 **212 页空隙**里，逐段核对
-   结果是 `named segments overlapping __KDIAG: NONE`。
+2. 当时采用的参数门控版 0006 没有把附加 reporter 段映射到
+   `__BOOTDATA` 与 `dynamic_memory_begin` 之间的 **212 页空隙**。
+   后续已由无参数的 0006 修正；这是旧 reporter 的布局问题，不是 QR8 的 TTBR1 功能修复。
 
-所以 `XNU enter: vm/set_mmu_ttb_alternate#1` 之所以是最后一行，是因为
-**报告器按设计不再返回自己的段**（`prepare_early_report.py` 原文：
-"No return into the appended segment after arm_vm_init changes TTBR1"），
-而不是内核停在那里。**那是观测边界，不是故障 PC。**
+旧 reporter 的尾转移设计会让它在 TTBR1 切换后不返回附加段，因此旧屏幕行可能是
+其观测边界。此结论仅针对那版 reporter。QR8 阶段 47 明确在 helper 调用前，
+而当前是否越过 helper 仍需阶段 48 或更晚的同一启动证据；本页不能回答。
 
 ## 补丁
 

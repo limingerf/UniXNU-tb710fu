@@ -20,7 +20,7 @@
 | `Current EL EL1` | 内核在 EL1 执行，UEFI 的 EL2 已成功降级 |
 | `TCR_EL1 0x80000003510` | 内核自己配置了 MMU 翻译控制 |
 | `ID_AA64MMFR0_EL1 0x1100000000111121` | 读 CPU ID；`Parange 2`（44-bit PA）、`4 KiB granule supported` |
-| `ID_AA64ISAR1_EL1` / `ID_AA64ISAR2_EL1` | PAC 能力查询，即 EL1/PAC 验证点 |
+| `ID_AA64ISAR1_EL1` / `ID_AA64ISAR2_EL1` | 只读到 PAC 能力位；不证明 EL1 密钥寄存器可写、PAC 指令不陷入或逐核 PAC 已验证 |
 | `Darwin Kernel Version 27.3.0` | XNU 内核版本横幅 |
 
 ## 达成的阶段（按工程约定逐项）

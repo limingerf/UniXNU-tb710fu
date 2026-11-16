@@ -1,0 +1,73 @@
+{
+  "date": "2026-11-17",
+  "stage": "fileset-aware-diagnostic-segment-mapping",
+  "decision": "Fix the diagnostic segment lookup in XNU, then build; the OneSend QR encoder was unchanged.",
+  "cause": {
+    "outer_header": "The post-linker appends __KDIAG and __KDATRW LC_SEGMENT_64 commands to the outer MH_FILESET header.",
+    "inner_header": "_mh_execute_header refers to the embedded com.apple.kernel MH_EXECUTE and has neither appended segment.",
+    "guard10_report": "Stage 48 displayed the marker helper return; ESR 0x86000007 at 0xfffffff00f82ba10 is an instruction translation fault inside diag_live_text after the helper returned.",
+    "fix": "For fileset kernels patch 0006 selects PE_get_kc_header(KCKindPrimary); standalone kernels retain _mh_execute_header; unavailable optional headers skip mapping."
+  },
+  "patch": {
+    "path": "patches/xnu/0006-tb710fu-diag-segment-rx.patch",
+    "sha256": "7be986c3744b7d9c9ca77f0d6b09e8e20b9ba74e587e527ac26281f9717a1a6c",
+    "branch": "codex/diag-fileset-header-fix",
+    "commit": "c87876e96c69a616bc6be54175d70c0290f2fc2c"
+  },
+  "native_prelink": {
+    "workflow_run": 43917723572,
+    "artifact_name": "tb710fu-prelink-43917723572",
+    "artifact_bytes": 37731690,
+    "artifact_sha256": "ae72d4f2a93cccb3a20e3a15fade59b05ab6beb6e087ff201b7a715501277033",
+    "official_unixnu_revision": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+    "xnu_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+    "native_sha256": "4378a26846cc44d6149eda4355deece023e8f1adbcb73c804609eb23defec82c",
+    "prelinked_kernel_sha256": "eff36305a28a6bf89c453734a07a9fe0e878e9041773864aeb205fc88483c3e3",
+    "patch_0006_sha256_in_build_manifest": "7be986c3744b7d9c9ca77f0d6b09e8e20b9ba74e587e527ac26281f9717a1a6c",
+    "strict_mapping": "PASS: mapping_complete=true, missing={}, stubbed={}",
+    "production_darwinboot_parser": "PASS",
+    "hardware_boot_verified": false
+  },
+  "guard11_candidate": {
+    "label": "src-eff36305-guard11",
+    "postlink_kernel_sha256": "5d860a638dde58911cc35d66181f049689535f416c329bcbc27d93987ca8e09c",
+    "lzma_sha256": "177c1087e6bcd209a7f2ca807fb2ae5f53d6129304b049b33963a8217826e110",
+    "signed_directory": "out/kernel-ttbr1-guard11",
+    "vendor_boot_sha256": "10c3affb7b051b0b3f2ea1406c7246ee62bf257d128e8afc5db6a36dde63533d",
+    "vbmeta_sha256": "d2f87a085be2319e3382d80678b6e3cccd8318a7b70eee6ea96fc449a406e4d2",
+    "adt_sha256": "f4161ff940b78e777ca2a6f4cb02191ff00f5046cc4dc3302d8fc4ce00f9c1a0",
+    "toml_sha256": "d19c15575ca2da5a388211715d401903220cda5b5722625c07295dc91b2d24fe",
+    "other_vbmeta_descriptors_unchanged": 22,
+    "vbmeta_header_and_public_key_unchanged": true,
+    "independent_rsa": "PASS",
+    "payload_readback": "PASS"
+  },
+  "user_supplied_hardware_checkpoint": {
+    "build_label": "src-eff36305-guard11",
+    "event": "XNU returned: tb710fu_ramoops_init",
+    "stage": 56,
+    "ramoops_base_pa": "0x93ff00000",
+    "interpretation": "arm_vm_init and the ramoops initialization call returned; valid zone contents and cross-reset retention are not established",
+    "device_partition_hash_readback": false,
+    "source": "User-supplied live checkpoint text; exact signed-image attribution is unverified"
+  },
+  "validation": {
+    "xnu_patch_syntax": "PASS: git apply --stat",
+    "exception_and_wrapper_model": "PASS: four exception cases, BRK/ERET and 28 wrappers",
+    "stage_47_render": "PASS: 3200x1080, four frames, normal return",
+    "stage_48_render": "PASS: 3200x1080, guard mapping retained in GOP root, normal return",
+    "marker_store_model": "PASS: both marker STRBs under guard, GOP and restored guard roots",
+    "onesend_stage_47": "PASS: 595-byte report restored from any one frame",
+    "onesend_stage_48": "PASS: 467-byte report restored from any one frame",
+    "rendered_stage_47_qr": "PASS: decodes to a 752-byte OS frame"
+  },
+  "device_partition_hash_readback": false,
+  "device_operations": false,
+  "hardware_verified": false,
+  "limitations": [
+    "A user-supplied stage-56 checkpoint is labelled src-eff36305-guard11, but no device partition hash binds it to the signed pair. The device's final TTBR1 page-table contents are not yet read back.",
+    "The stage-56 report does not prove that the ramoops zone header or console bytes are valid or survive reset.",
+    "Stage 47/48 local renderer models do not establish that the active device root maps every reporter page.",
+    "No flash, reboot, partition or device filesystem operation was performed."
+  ]
+}

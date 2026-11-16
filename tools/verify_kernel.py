@@ -94,7 +94,10 @@ def main():
         xnu = json.loads(bundle.read('xnu-inputs.json'))
         require(source['source_commit'] == LOCK['unixnu']['commit'] and source['profile'] == LOCK['os_profile'], 'Native source/profile identity mismatch')
         require(xnu['commit'] == LOCK['xnu_commit'], 'Unexpected XNU source input')
-        require(official['inputs']['native_sha256'] == source['sha256'], 'Prelink consumed a different native kernel')
+        require(source.get('stage') == 'prelinked' and
+                source.get('sha256') == official.get('candidate_sha256') and
+                source.get('bytes') == official.get('candidate_bytes'),
+                'Build result and official prelinked candidate metadata differ')
         require(status['board']['board']['os_profile'] == LOCK['os_profile'] and status['board']['os']['arch'] == 'arm64e', 'Source status is not the pinned macOS arm64e profile')
         data = bundle.read('kernel/kernel.macho')
         verified = verify_image(data, 'prelinked', official)
@@ -115,6 +118,8 @@ def main():
             (output / 'unixnu.lock').write_bytes(bundle.read('unixnu.lock'))
     verified.update({'source_run_id': args.run_id, 'source_run_revision': run['head_sha'],
                      'source_artifact_id': artifact['id'], 'retained_kexts': len(official['closure']),
+                     'native_input_sha256': official['inputs']['native_sha256'],
+                     'candidate_sha256': official['candidate_sha256'],
                      'missing': {}, 'stubbed': {}, 'allow_missing': False,
                      'native_recompiled': False})
     (output / 'verification.json').write_text(json.dumps(verified, indent=2) + '\n')

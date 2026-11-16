@@ -33,6 +33,8 @@ def main():
     p.add_argument('--output-dir', type=Path, required=True)
     p.add_argument('--checkpoint-before-vm', action='store_true',
                    help='Explicit diagnostic stop; default continues the original arm_vm_init call')
+    p.add_argument('--build-suffix', default='qr8',
+                   help='Short display suffix that distinguishes post-link diagnostic candidates')
     p.add_argument('--expect-kernel-sha256',
                    help='Require this exact input digest (refuses a different accepted fileset)')
     p.add_argument('--trace-past-switch', action='store_true',
@@ -72,12 +74,19 @@ def main():
         '860834c55878c484be9c444588ae9c70e9bc01f40f89750e055fe4d361211bb7',
         # PR249 + 0006 + 0007 + 0008 in-window log region (run 43827454902)
         '4ad08f1b166ca16e340bdfd9325d6e2ce1a76045036251ae95f2d4c47a23db00',
+        # Paired RX/RW-NX diagnostic mappings + noinline switch helper (run 43844823907)
+        '045bfc7cfad9ed2539a586043dd43211263099734f4978abd8092c213b7d7d95',
+        # Fileset-aware diagnostic-segment lookup (run 43917723572)
+        'eff36305a28a6bf89c453734a07a9fe0e878e9041773864aeb205fc88483c3e3',
     }
     digest = sha(original)
     if digest not in allowed:
         raise SystemExit(f'Require a recorded fileset, got {digest}')
     if args.expect_kernel_sha256 and digest != args.expect_kernel_sha256:
         raise SystemExit(f'Kernel is {digest}, not the requested {args.expect_kernel_sha256}')
+    if not re.fullmatch(r'[a-z0-9-]{1,16}', args.build_suffix):
+        raise SystemExit('Build suffix must contain 1-16 lowercase letters, digits, or hyphens')
+    build_label = 'src-' + digest[:8] + '-' + args.build_suffix
     manifest = json.loads((src / 'qr-sources.json').read_text())
     qr = args.qr_source.resolve()
     for record in manifest['files']:
@@ -126,19 +135,39 @@ def main():
     switch_target = '_set_mmu_ttb_alternate_probed' if args.trace_switch_probe else '_set_mmu_ttb_alternate'
     if args.trace_switch_probe and switch_target not in kernel_symbols.values():
         raise SystemExit('Kernel lacks the noinline 0009 marker helper; rebuild with patches/xnu/0009')
+    if args.trace_switch_probe:
+        switch_va = next(address for address, name in kernel_symbols.items() if name == switch_target)
+        switch_fileoff = tool.file_offset(switch_va)
+        switch_words = struct.unpack_from('<12I', data, switch_fileoff)
+        expected_switch_words = (
+            0xd503245f, 0xd29e0008, 0xf2a7ffe8, 0xf2c00128,
+            0x52800029, 0x39000109, 0xd5033f9f, 0xd5182020,
+            0xd5033fdf, 0x52800049, 0x39000509, 0xd65f03c0,
+        )
+        if switch_words != expected_switch_words:
+            raise SystemExit('Built marker helper does not bracket TTBR1 MSR/ISB with the expected stores')
     specs += [('_arm_vm_init', name, occurrence) for name, occurrence in [
         ('_early_random', 1), ('_SecureDTLookupEntry', 1), ('_SecureDTGetProperty', 1),
         ('_SecureDTGetProperty', 2), ('_arm_vm_outside_add', 1),
         ('_getsegdatafromheader', 1), ('_vm_set_page_size', 1),
         ('_arm_vm_prot_init', 1), ('_qsort', 1), (switch_target, 1)]]
     switch_site, _ = tool.find_call(data, kernel_symbols, '_arm_vm_init', '_set_mmu_ttb_alternate', 1)
+    _, next_vm_target = tool.find_call(data, kernel_symbols, '_arm_vm_init', '_set_mmu_ttb', 1)
     if args.trace_past_switch:
         # Patches 0006/0009 map diagnostic code RX and mutable state/stack RW-NX
         # during arm_vm_prot_init, before the switch.
         # _set_mmu_ttb is the first call arm_vm_init makes after the TTBR1
         # switch; reaching its entry proves execution survived the switch.
         # _flush_mmu_tlb is a macro here, so it is not a call site.
-        specs += [('_arm_vm_init', '_set_mmu_ttb', 1)]
+        specs += [
+            ('_arm_vm_init', '_set_mmu_ttb', 1),
+            ('_arm_vm_init', '_pmap_bootstrap', 1),
+            ('_arm_vm_init', '__enable_preemption', 1),
+        ]
+        if args.trace_switch_probe:
+            # This call is immediately after arm_vm_init returns, so its entry
+            # checkpoint proves the entire function returned to its caller.
+            specs += [('_arm_init', '_tb710fu_ramoops_init', 1)]
     traced = []
     trace_source = '.section .text.calltrace,"ax"\n'
     definitions = []
@@ -161,22 +190,35 @@ def main():
         handoff_after = name == '_set_mmu_ttb_alternate_probed'
         label, symbol, resume = 'diag_trace_' + str(index), 'diag_original_' + str(index), 'diag_return_' + str(index)
         description = name[1:] if parent == '_arm_init' else 'vm/' + name[1:] + '#' + str(occurrence)
+        report_entry = name != '__enable_preemption'
         trace_source += ('.global ' + label + '\n.hidden ' + symbol + '\n.hidden ' + resume + '\n' +
                          label + ':\n  adrp x16,diag_last_stage\n  add x16,x16,:lo12:diag_last_stage\n' +
                          '  mov x17,#' + str(index * 2 + 1) + '\n  str x17,[x16]\n' +
-                         '  adr x17,' + label + '_enter_text\n  bl diag_live_call\n')
+                         (('  adr x17,' + label + '_enter_text\n  bl diag_live_call\n')
+                          if report_entry else ''))
         if handoff_before:
             trace_source += ('  adrp x16,diag_kernel_vectors\n  add x16,x16,:lo12:diag_kernel_vectors\n' +
                              '  msr vbar_el1,x16\n  isb\n')
+        elif args.trace_switch_probe and name == switch_target:
+            trace_source += (
+                '  adrp x16,diag_guard_status\n  add x16,x16,:lo12:diag_guard_status\n' +
+                '  ldr x16,[x16]\n  cmp x16,#2\n  b.eq 1f\n' +
+                '  adrp x16,diag_kernel_vectors\n  add x16,x16,:lo12:diag_kernel_vectors\n' +
+                '  msr vbar_el1,x16\n  isb\n1:\n')
         if tail:
             trace_source += ('  adrp x30,' + resume + '\n  add x30,x30,:lo12:' + resume + '\n  b ' + symbol + '\n')
         else:
-            trace_source += ('  bl ' + symbol + '\n' +
+            trace_source += ('  bl ' + symbol + '\n')
+            if handoff_after:
+                trace_source += '.global diag_target_report_resume\ndiag_target_report_resume:\n'
+            trace_source += (
                              '  adrp x16,diag_last_stage\n  add x16,x16,:lo12:diag_last_stage\n' +
                              '  mov x17,#' + str(index * 2 + 2) + '\n  str x17,[x16]\n' +
                              '  adr x17,' + label + '_return_text\n  bl diag_live_call\n' +
                              (('  adrp x16,diag_kernel_vectors\n  add x16,x16,:lo12:diag_kernel_vectors\n' +
-                               '  msr vbar_el1,x16\n  isb\n') if handoff_after else '') +
+                               '  msr vbar_el1,x16\n  isb\n' +
+                               '  stp x0,x1,[sp,#-16]!\n  bl diag_guard_deactivate\n' +
+                               '  ldp x0,x1,[sp],#16\n') if handoff_after else '') +
                              '  adrp x30,' + resume + '\n  add x30,x30,:lo12:' + resume + '\n  b ' + resume + '\n')
         trace_source += (label + '_enter_text:\n  .asciz "XNU enter: ' + description + '"\n' +
                          label + '_return_text:\n  .asciz "XNU returned: ' + description + '"\n.balign 4\n')
@@ -184,10 +226,21 @@ def main():
         traced.append({'name': name, 'parent': parent, 'occurrence': occurrence,
                        'site': hex(site), 'callee': hex(target), 'label': label,
                        'before_stage': index * 2 + 1, 'after_stage': None if tail else index * 2 + 2,
+                       'entry_checkpoint_reported': report_entry,
                        'original_LR_tail_transfer': tail,
                        'restore_kernel_VBAR': handoff_before or handoff_after,
                        'kernel_VBAR_handoff': ('before-call' if handoff_before else
                                                'after-return-report' if handoff_after else None)})
+    switch_helper_target = next(address for address, name in kernel_symbols.items()
+                                if name == switch_target)
+    definitions += [
+        '--defsym=diag_target_switch=' + hex(switch_helper_target),
+        '--defsym=diag_target_kernel_resume=' + hex(switch_site + 4),
+        '--defsym=diag_target_kernel_vectors=' + hex(names['_ExceptionVectorsBase']),
+        '--defsym=diag_target_set_mmu_ttb=' + hex(next_vm_target),
+    ]
+    if not args.trace_switch_probe:
+        definitions.append('--defsym=diag_target_report_resume=' + hex(switch_site + 4))
     ncmds, sizeofcmds = struct.unpack_from('<II', data, 16)
     command_at = 32 + sizeofcmds
     if any(data[command_at:command_at + 144]):
@@ -203,7 +256,8 @@ def main():
     shutil.copyfile(qr / 'MsGraphicsPkg/Include/Library/QrEncoderLib.h', compat / 'Library/QrEncoderLib.h')
     flags = ['--target=aarch64-none-elf', '-std=c11', '-Oz', '-fpie', '-fvisibility=hidden',
              '-fno-stack-protector', '-fno-builtin', '-ffreestanding', '-mgeneral-regs-only', '-mstrict-align',
-             '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-I' + str(src), '-I' + str(compat)]
+             '-fno-unwind-tables', '-fno-asynchronous-unwind-tables',
+             '-DDIAG_BUILD_LABEL="' + build_label + '"', '-I' + str(src), '-I' + str(compat)]
     sources = [src / 'Report.c', qr / 'MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c',
                qr / 'MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c']
     objects = []
@@ -335,13 +389,28 @@ def main():
               'symbols': {k: hex(v) for k, v in table.items() if k.startswith('diag_')},
               'qr_source': manifest,
               'reporter_sources': source_snapshot,
-              'user_display_request': 'live QR at marker-helper entry, return, and first post-switch call',
+              'user_display_request': 'live QR at TTBR1 switch, post-switch VM milestones, and arm_vm_init return',
+              'display_build_label': build_label,
               'report_is_full_console_log': False, 'static_single_OS_frame': True,
               'strict_alignment': True, 'live_stage_text': True, 'live_stage_QR': True,
               'live_QR_first_stage': 47, 'live_QR_return_stage': 48,
               'live_QR_first_post_switch_stage': 49, 'VM_boundary_stage': 47,
-              'stable_transfer_at_final_checkpoint_only': True,
-              'normal_QR_replay_seconds': 8, 'normal_QR_draws': 16,
+              'stable_transfer_at_final_checkpoint_only': False,
+              'live_checkpoint_stages': [47, 48, 49, 50, 51, 52, 54, 55, 56],
+              'stage_47_page_table_snapshot': {
+                  'root_argument': 'ARG0 before set_mmu_ttb_alternate',
+                  'walk': 'TTBR1 4 KiB, T1SZ=26/TG1=2 only; reads L1/L2/L3 descriptors through the old TTBR1 linear alias after AT S1E1R confirms the physical page',
+                  'targets': ['switch helper', 'arm_vm_init return PC', 'kernel SP',
+                              'kernel exception vectors', 'reporter post-helper continuation',
+                              'first post-switch _set_mmu_ttb'],
+                  'segments': 'every __KDIAG RX and __KDATRW RW-NX page, including expected physical address and access permissions',
+                  'candidate_root_is_read_only': True,
+                  'guard': 'Builds a low identity TTBR0 map from the currently active old-TTBR1 mappings, independently of the candidate root, checks read/write translations and walked execute permissions, then takes and returns from BRK #0xb712 before the TTBR1 helper. On success, a fault in the helper uses the physical alias vector/state/stack; TTBR0 and VBAR are restored after helper return. Mapping or self-test failure restores the old roots and falls back to the original vector path.',
+                  'guard_changes_ttbr0_temporarily': True,
+                  'guard_changes_tcr': False,
+                  'hardware_verified': False,
+              },
+              'normal_QR_replay_seconds': 2, 'normal_QR_draws': 4,
               'QR_cached_variants': 4, 'QR_replay_interval_ms': 500,
               'explicit_export_boot_arg': 'tb-report-export=1',
               'explicit_export_intentionally_pauses_before_VM_switch': True,

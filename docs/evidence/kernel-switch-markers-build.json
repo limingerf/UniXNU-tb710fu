@@ -114,6 +114,13 @@
     "both_zero": "the marked stub was never entered (the boot argument did not take effect)",
     "note": "Read from Android/TWRP after the frozen boot. This is a physical memory read, not a kernel log."
   },
+  "hardware_readback_correction": {
+    "physical_marker_readback_recorded": false,
+    "stage_47_QR_is_not_mark0": true,
+    "QR8_stage_47_position": "wrapper before BL to set_mmu_ttb_alternate_probed",
+    "QR8_ARG0": "0x8c88fd000",
+    "conclusion": "The machine-code sequence is verified, but the device did not supply marker bytes. No MSR/ISB completion or later failure location is established by this artifact."
+  },
   "boundary": [
     "Diagnostic image, not a functional fix and not hardware acceptance.",
     "The reporter appends 835,584 B and rewrites 25 call sites.",

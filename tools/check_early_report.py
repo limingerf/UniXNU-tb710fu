@@ -134,6 +134,71 @@ def main():
                         'physical_alias_and_diagnostic_stack': 'PASS', 'PIE_runtime_relative_fixups': reloc_count,
                         'physical_terminal_VBAR': True,
                         'does_not_use_original_faulting_stack': True})
+    guard_uc = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
+    guard_memory = ctypes.create_string_buffer(size)
+    ctypes.memmove(ctypes.addressof(guard_memory), blob, len(blob))
+    guard_uc.mem_map_ptr(base, size, 7, ctypes.addressof(guard_memory))
+    guard_uc.mem_map_ptr(physical, size, 7, ctypes.addressof(guard_memory))
+    guard_active = physical + sym['diag_guard_test_active'] - base
+    guard_seen = physical + sym['diag_guard_test_seen'] - base
+    guard_uc.mem_write(guard_active, struct.pack('<Q', 1))
+    guard_uc.mem_write(guard_seen, bytes(8))
+    guard_brk_word=0xd4200000|(0xb712<<5)
+    guard_brk_va=None
+    for offset in range(sym['diag_guard_activate']-base,
+                        sym['diag_guard_deactivate']-base-3,4):
+        if struct.unpack_from('<I',blob,offset)[0]==guard_brk_word:
+            guard_brk_va=base+offset;break
+    assert guard_brk_va is not None
+    guard_after_brk=guard_brk_va+4
+    saved_tpidr_va=sym['diag_guard_saved_tpidr_el1']
+    guard_uc.mem_write(saved_tpidr_va,struct.pack('<2Q',0xfeed1010,0xfeed2020))
+    guard_uc.mem_write(sym['diag_guard_test_seen'],struct.pack('<Q',0))
+    guard_regs = {(3, 0, 1, 0, 0): 0x30d0183d,
+                  (3, 0, 5, 2, 0): 0xf200b712,
+                  (3, 0, 4, 0, 1): guard_brk_va,
+                  (3, 0, 4, 0, 0): 5,
+                  (3,0,13,0,4):0xfeed1010,
+                  (3,3,13,0,3):0xfeed2020}
+    guard_stop = physical + size + 0x1000
+    guard_uc.mem_map(guard_stop & ~4095,4096)
+    guard_vectors = physical + sym['diag_vectors'] - base + 512
+    guard_uc.reg_write(r.UC_ARM64_REG_X18, 0xfeed0018)
+    guard_uc.reg_write(r.UC_ARM64_REG_X17, 0xfeed0017)
+    guard_uc.reg_write(r.UC_ARM64_REG_X0,1)
+    guard_uc.reg_write(r.UC_ARM64_REG_X10,saved_tpidr_va)
+    guard_uc.reg_write(r.UC_ARM64_REG_X30,guard_stop)
+    guard_original_tpidr=(guard_regs[(3,0,13,0,4)],guard_regs[(3,3,13,0,3)])
+    guard_stop_state = {'pc': guard_stop}
+    def guard_hook(machine, pc, length, _):
+        if pc == guard_stop_state['pc']:
+            machine.emu_stop();return
+        word = struct.unpack('<I', bytes(machine.mem_read(pc, 4)))[0]
+        field = ((word>>19)&3,(word>>16)&7,(word>>12)&15,(word>>8)&15,(word>>5)&7)
+        number = word&31
+        reg = getattr(r,'UC_ARM64_REG_X'+str(number)) if number<31 else None
+        if word&0xfff00000==0xd5300000:
+            machine.reg_write(reg,guard_regs.get(field,0));machine.reg_write(r.UC_ARM64_REG_PC,pc+4)
+        elif word&0xfff00000==0xd5100000:
+            guard_regs[field]=machine.reg_read(reg) if reg else 0
+            machine.reg_write(r.UC_ARM64_REG_PC,pc+4)
+        elif word==0xd69f03e0:
+            machine.reg_write(r.UC_ARM64_REG_PC,guard_regs[(3,0,4,0,1)]+4)
+        elif word in (0xd5034fdf,0xd503237f):
+            machine.reg_write(r.UC_ARM64_REG_PC,pc+4)
+    guard_uc.hook_add(UC_HOOK_CODE,guard_hook)
+    try:
+        guard_uc.emu_start(guard_vectors,0,count=20000)
+    except Exception as error:
+        raise RuntimeError(f'Low-alias handler model failed at PC={guard_uc.reg_read(r.UC_ARM64_REG_PC):#x}') from error
+    assert guard_uc.reg_read(r.UC_ARM64_REG_PC)==guard_stop
+    assert struct.unpack('<Q',bytes(guard_uc.mem_read(guard_seen,8)))[0]==1
+    assert guard_uc.reg_read(r.UC_ARM64_REG_X18)==0xfeed0018
+    assert (guard_regs[(3,0,13,0,4)],guard_regs[(3,3,13,0,3)])==guard_original_tpidr, (
+        guard_original_tpidr,guard_regs[(3,0,13,0,4)],guard_regs[(3,3,13,0,3)])
+    assert struct.unpack('<Q',bytes(guard_uc.mem_read(sym['diag_guard_status'],8)))[0]==2
+    results.append({'kind':'TTBR0 physical-alias BRK self-test','result':'PASS',
+                    'low_alias_vector_and_state':'PASS','handler_returns_via_ERET':True})
     trace_results = []
     for item in record.get('call_trace', []):
         uc = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
@@ -152,10 +217,27 @@ def main():
         uc.reg_write(r.UC_ARM64_REG_SP, saved_sp)
         stage_address = sym['diag_last_stage']
         restored_vbar=[]
+        original_ttbr0=0x8c9000000
+        guard_ttbr0=0x8c8800000
+        original_tcr=0x2b0003519
+        system_registers={(3,0,2,0,0):guard_ttbr0,
+                          (3,0,2,0,2):original_tcr,
+                          (3,0,12,0,0):int(record['kernel_vectors'],16)}
+        uc.mem_write(sym['diag_guard_active'],struct.pack('<Q',1))
+        uc.mem_write(sym['diag_guard_old_ttbr0'],struct.pack('<Q',original_ttbr0))
+        uc.mem_write(sym['diag_guard_old_tcr'],struct.pack('<Q',original_tcr))
+        uc.mem_write(sym['diag_guard_test_seen'],struct.pack('<Q',1))
         def call_hook(machine, pc, length, _):
             if pc == sym.get('diag_live_text'):
+                stage = struct.unpack('<Q', bytes(machine.mem_read(stage_address, 8)))[0]
+                if item['name']=='_set_mmu_ttb_alternate_probed' and stage==47:
+                    machine.mem_write(sym['diag_guard_status'],struct.pack('<Q',2))
                 for n in list(range(8))+[18]:
                     machine.reg_write(getattr(r,'UC_ARM64_REG_X'+str(n)),0xbad000+n)
+                machine.reg_write(r.UC_ARM64_REG_PC,machine.reg_read(r.UC_ARM64_REG_X30))
+                return
+            if pc == sym.get('diag_guard_activate'):
+                machine.reg_write(r.UC_ARM64_REG_X0,1)
                 machine.reg_write(r.UC_ARM64_REG_PC,machine.reg_read(r.UC_ARM64_REG_X30))
                 return
             if pc == callee:
@@ -176,12 +258,33 @@ def main():
                     value = machine.reg_read(getattr(r,'UC_ARM64_REG_X'+str(word&31)))
                     assert item.get('restore_kernel_VBAR') and value == int(record['kernel_vectors'],16)
                     restored_vbar.append(value)
+                    system_registers[(3,0,12,0,0)]=value
+                    machine.reg_write(r.UC_ARM64_REG_PC,pc+4)
+                elif word&0xfff00000==0xd5300000:
+                    field=((word>>19)&3,(word>>16)&7,(word>>12)&15,(word>>8)&15,(word>>5)&7)
+                    number=word&31
+                    machine.reg_write(getattr(r,'UC_ARM64_REG_X'+str(number)),system_registers.get(field,0))
+                    machine.reg_write(r.UC_ARM64_REG_PC,pc+4)
+                elif word&0xfff00000==0xd5100000:
+                    field=((word>>19)&3,(word>>16)&7,(word>>12)&15,(word>>8)&15,(word>>5)&7)
+                    number=word&31
+                    value=machine.reg_read(getattr(r,'UC_ARM64_REG_X'+str(number)))
+                    if field==(3,0,2,0,0):
+                        assert restored_vbar, 'Restore XNU VBAR before leaving the low-address TTBR0 mapping'
+                    system_registers[field]=value
+                    machine.reg_write(r.UC_ARM64_REG_PC,pc+4)
+                elif word in (0xd5033f9f,0xd5033fdf,0xd508871f):
                     machine.reg_write(r.UC_ARM64_REG_PC,pc+4)
         uc.hook_add(UC_HOOK_CODE, call_hook)
         uc.emu_start(sym[item['label']], 0, count=1000)
         assert uc.reg_read(r.UC_ARM64_REG_PC) == resume
         assert uc.reg_read(r.UC_ARM64_REG_X30) == resume
         assert bool(restored_vbar)==item.get('restore_kernel_VBAR',False)
+        if item['name']=='_set_mmu_ttb_alternate_probed':
+            assert len(restored_vbar)==1, 'A passing guard leaves its low VBAR active until the helper returns'
+            assert system_registers[(3,0,2,0,0)]==original_ttbr0, hex(system_registers[(3,0,2,0,0)])
+            assert system_registers[(3,0,2,0,2)]==original_tcr, hex(system_registers[(3,0,2,0,2)])
+            assert struct.unpack('<B',bytes(uc.mem_read(sym['diag_guard_active'],1)))[0]==0
         assert uc.reg_read(r.UC_ARM64_REG_X0) == 0xfeed1234
         assert uc.reg_read(r.UC_ARM64_REG_SP) == saved_sp
         assert struct.unpack('<Q', bytes(uc.mem_read(stage_address, 8)))[0] == (item['after_stage'] or item['before_stage'])

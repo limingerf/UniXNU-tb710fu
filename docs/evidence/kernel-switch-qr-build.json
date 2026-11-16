@@ -1,0 +1,154 @@
+{
+  "date": "2026-11-16",
+  "stage": "signed-post-link-TTBR1-and-arm-vm-init-diagnostic-candidate",
+  "purpose": "Use a single candidate to distinguish the TTBR1 helper boundary, post-switch VM bootstrap, arm_vm_init return, and ramoops initialization without a serial port",
+  "user_supplied_device_readback": {
+    "display_build_label": "src-045bfc7c-qr5",
+    "stage": 47,
+    "message": "XNU enter: vm/set_mmu_ttb_alternate_probed#1",
+    "interpretation": "The wrapper reached the BL call site before invoking the marked helper. It is not a fault PC and does not prove the helper or TTBR1 write ran.",
+    "ARG0_ttbr1_root_pa": "0x8c88fd000",
+    "ARG0_within_managed_window": true,
+    "ARG1_raw": "0xfffffff00f817d48",
+    "KERNEL_SP": "0xfffffff00f817db0",
+    "BOOTARGS_PA": "0x8c88f4000",
+    "FB_PA": "0xd5100000",
+    "SCTLR": "0xfc54799d",
+    "TCR": "0x80022a51a251a",
+    "OLD_TTBR0": "0x8c0ddb000",
+    "OLD_TTBR1": "0x8c0ddc000",
+    "device_image_hash_readback": false,
+    "physical_marker_readback": false
+  },
+  "latest_user_supplied_qr8_readback": {
+    "file_name": "TB710FU-live-stage (16).log",
+    "file_sha256": "b141c41ed4898a1b286d993599d1f55aa49800ce4b1f146e2738b4e4de85be92",
+    "display_build_label": "src-045bfc7c-qr8",
+    "stage": 47,
+    "message": "XNU enter: vm/set_mmu_ttb_alternate_probed#1",
+    "ARG0_ttbr1_root_pa": "0x8c88fd000",
+    "matches_candidate_reporter_label": true,
+    "proves_wrapper_reached_before_helper_BL": true,
+    "proves_helper_ran_or_TTBR1_changed": false,
+    "device_partition_hash_readback": false
+  },
+  "provenance": {
+    "native_prelink_run": {
+      "id": 43844823907,
+      "conclusion": "success",
+      "workflow": ".github/workflows/macos-kernel.yml",
+      "head_sha": "e83bd00d94fc947ecdefd3fafdd471711561dff3",
+      "native_sha256": "670f2576332d20e8f9615f2f9d84a08a2313fc68d995e8d38af6ffeeb970236a",
+      "prelinked_kernel_sha256": "045bfc7cfad9ed2539a586043dd43211263099734f4978abd8092c213b7d7d95",
+      "artifact_sha256": "8063bc02fc5d405cbb7e20524a21e05a844c8937495b69b77e8dedc3597a33cd",
+      "strict_prelink": {
+        "retained_components": 86,
+        "mapping_complete": true,
+        "missing": {},
+        "stubbed": {},
+        "allow_missing": false,
+        "production_darwinboot_parser": "PASS"
+      }
+    },
+    "post_link_reporter": {
+      "input_kernel_sha256": "045bfc7cfad9ed2539a586043dd43211263099734f4978abd8092c213b7d7d95",
+      "kernel_sha256": "e2f4afb554a5bf1f90fd1f0ce8a347deb0928310b124f2f7056fd31b944ca617",
+      "lzma_sha256": "f78f2975ba492c1b91f8f4c10969963d6737ad52e41063308edefe8197c0162b",
+      "display_build_label": "src-045bfc7c-qr8",
+      "helper_va": "0xfffffff00bb8b360",
+      "call_site_va": "0xfffffff00bb8a7b4",
+      "helper_instruction_order": [
+        "BTI",
+        "mark0",
+        "DSB",
+        "MSR TTBR1_EL1",
+        "ISB",
+        "mark1",
+        "RET"
+      ],
+      "stages": {
+        "47": "wrapper checkpoint before BL to the marked helper; helper has not run",
+        "48": "marked helper returned after TTBR1 write and ISB",
+        "49": "first post-switch _set_mmu_ttb entry",
+        "50": "_set_mmu_ttb returned",
+        "51": "pmap_bootstrap entry",
+        "52": "pmap_bootstrap returned, immediately before preemption is disabled",
+        "54": "__enable_preemption returned after dynamic page-table setup",
+        "55": "arm_vm_init returned; tb710fu_ramoops_init entry",
+        "56": "tb710fu_ramoops_init returned"
+      },
+      "preemption_disabled_region": "No QR is drawn while preemption is disabled. Stage 53 is internal bookkeeping only; stage 54 is displayed after __enable_preemption returns.",
+      "normal_replay": {
+        "frames": 4,
+        "interval_ms": 500,
+        "duration_seconds": 2,
+        "continues_after_replay": true
+      },
+      "segments": {
+        "__KDIAG": {
+          "bytes": 32768,
+          "protection": "RX"
+        },
+        "__KDATRW": {
+          "bytes": 802816,
+          "protection": "RW-NX"
+        },
+        "runtime_relocations_to_RW_segment": 24
+      },
+      "verification": {
+        "aarch64_render_model": "PASS for stages 47/48/49/50/51/52/54/55/56; normal path returned after four frames; original TTBR0/TCR restored; framebuffer writes bounded",
+        "zxing_model_screenshots": "PASS for all nine stages; each decoded to the exact fourth displayed frame and valid CRC",
+        "fixed_onesend_receiver_commit": "39e95ce59df2f2dc38d2556dd4239cec6a0ca35f",
+        "onesend_frame_reconstruction": "PASS for all nine stages and four sequence variants; any one frame reconstructed the exact report file",
+        "production_darwinboot_parser": "PASS on the final injected Mach-O",
+        "production_darwinboot_parser_commit": "5243c68ec332a227fe3680cd5da6d5a0e127035c"
+      }
+    }
+  },
+  "packaging": {
+    "source_vendor_boot_sha256": "15846226236b56bd3abb104ae57f45e23307f3ea52321fd03ed153fd2e4e0718",
+    "source_vbmeta_sha256": "e4cffaf3414a2c22d6c129ed62ac382424f67da8a0dd62aa9ae0ccb73fec63de",
+    "unsigned_vendor_boot_sha256": "9eb43c69d7ef2e7bfa4737a980aa3ccadceadcaa676548355d3a70d5b33bf3f4",
+    "payload_sha256": "d9e0b05b8d789667b40378aee03c049f07363d55ce8a4128ad09b789f6ff3f62",
+    "injected_kernel_sha256": "e2f4afb554a5bf1f90fd1f0ce8a347deb0928310b124f2f7056fd31b944ca617",
+    "kernel_bytes": 143589376,
+    "adt_sha256": "f4161ff940b78e777ca2a6f4cb02191ff00f5046cc4dc3302d8fc4ce00f9c1a0",
+    "unixnu_toml_sha256": "d19c15575ca2da5a388211715d401903220cda5b5722625c07295dc91b2d24fe",
+    "original_config_and_adt_preserved": true,
+    "default_entry_preserved": true
+  },
+  "signed_candidate": {
+    "directory": "out/kernel-switch-qr8-label-signed",
+    "vendor_boot": {
+      "bytes": 100663296,
+      "sha256": "b5274a747ac23d31f9bb9648738076fe78d12f333ffc9852d9927592562f5280"
+    },
+    "vbmeta": {
+      "bytes": 8000,
+      "sha256": "88dd4989330fad6bc9f0e6edeca38ee9996081bc2691c842ea2412e9c4af991b"
+    },
+    "signature_verification": "PASS",
+    "independent_rsa_4096_verification": "PASS via .work/audit/verify_rsa.py on vbmeta and vendor_boot footer",
+    "independent_payload_verification": "PASS via .work/audit/verify_signed_pair.py",
+    "signing_payload_readback": "PASS",
+    "identical_vbmeta_header": true,
+    "public_key_unchanged": true,
+    "unchanged_other_raw_descriptors": 22
+  },
+  "official_process_audit": {
+    "pinned_unixnu_commit": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+    "debugging_guide": "https://unixnu.com/zh/guide/debugging",
+    "arm64e_guide": "https://unixnu.com/zh/porting/arm64e",
+    "device_catalog": "https://unixnu.com/zh/devices/",
+    "porting_record_check": "PASS: 14 structured areas checked",
+    "arm64e_device_support_status": "TB710FU is not listed; per-core PAC remains unverified"
+  },
+  "device_operations": false,
+  "hardware_verified": false,
+  "limits": [
+    "No device flash, reboot, partition, or filesystem operation was performed.",
+    "The user supplied a QR8 stage-47 text readback, but no device partition hash or stage-48/later report binds it to the signed candidate.",
+    "Stages 47-56 are diagnostic boundaries, not proof of the underlying hardware fault or a permanent repair.",
+    "The official arm64e hardware requirements remain unqualified on this device."
+  ]
+}

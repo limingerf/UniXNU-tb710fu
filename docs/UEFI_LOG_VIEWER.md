@@ -4,6 +4,11 @@
 fastbootd 或一次性 Android 引导器。用户确认当前 A 槽能启动 Android 和 TWRP；
 旧备份中两个 boot 均为 UEFI 的记录不能代表当前 A 槽。
 
+**地址注意：** 此版查看器读取旧地址 `0xAC340000`。XNU patch 0008 的 guard11
+内核默认写入窗口内地址 `0x93FF00000`；因此本 FD 不能导出 guard11 的日志区，
+需要更新查看器地址并重建固件。guard11 stage56 只证明初始化函数返回，尚未证明
+该区头部和日志内容有效。
+
 ## 使用与边界
 
 固件启动时，`Tb710fuRamoopsDxe` 在 BDS 之前复制 `0xAC340000+0x40000`

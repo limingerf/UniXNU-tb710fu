@@ -1,0 +1,111 @@
+{
+  "date": "2026-11-17",
+  "stage": "guard10-marker-identity-map-fix",
+  "diagnosis": {
+    "report_label": "src-045bfc7c-qr8",
+    "esr": "0x96000045",
+    "exception_class": "same-EL data abort",
+    "write_not_read": true,
+    "fault_status": "translation fault, level 1",
+    "far": "0x93ffff000",
+    "elr": "0xfffffff00bb8b374",
+    "switch_guard": 2,
+    "helper_va": "0xfffffff00bb8b360",
+    "helper_offset": "0x14",
+    "faulting_instruction": "first STRB to the marker",
+    "candidate_attribution": "consistent with guard9 source; exact flashed image is unconfirmed",
+    "device_image_hash_readback": false,
+    "root_cause": "guard9's low TTBR0 reporter map omitted the marker page; G=2 only validated the reporter/vector BRK self-test, so the abort occurred before the TTBR1 write"
+  },
+  "later_user_report": {
+    "label": "src-045bfc7c-guard10",
+    "checkpoint": "XNU returned: vm/set_mmu_ttb_alternate_probed#1",
+    "esr": "0x86000007",
+    "exception": "same-EL instruction abort, L3 translation fault",
+    "far_elr": "0xfffffff00f82ba10",
+    "symbol_offset": "diag_live_text+0x284",
+    "expected_instruction": "CMP X22, X27 (0xeb1b02df); instruction fetch faulted before execution",
+    "interpretation": "the marked TTBR1 helper returned; reporter continuation then faulted because __KDIAG is absent from the active TTBR1 root",
+    "flashed_image_hash_readback": false
+  },
+  "fileset_lookup_cause": {
+    "post_link_segments": "__KDIAG and __KDATRW LC_SEGMENT_64 commands are appended to the outer MH_FILESET header",
+    "incorrect_lookup": "0006 searched _mh_execute_header, the embedded com.apple.kernel MH_EXECUTE, which has neither diagnostic segment",
+    "fix_in_source": "0006 selects PE_get_kc_header(KCKindPrimary) when kernel_mach_header_is_in_fileset() is true; standalone MH_EXECUTE uses _mh_execute_header; a missing collection header skips the optional mapping",
+    "fixed_patch_sha256": "7be986c3744b7d9c9ca77f0d6b09e8e20b9ba74e587e527ac26281f9717a1a6c"
+  },
+  "input": {
+    "native_prelink_run": 43844823907,
+    "source_commit": "e83bd00d94fc947ecdefd3fafdd471711561dff3",
+    "prelinked_kernel_sha256": "045bfc7cfad9ed2539a586043dd43211263099734f4978abd8092c213b7d7d95",
+    "input_reverified": true,
+    "native_xnu_rebuilt": false
+  },
+  "sources": {
+    "post_link_generator": "tools/prepare_early_report.py",
+    "post_link_generator_sha256": "95496e92a3fc37a48142b21ddcfa5f1010c43b8604cd60110b39fd44f55adc9f",
+    "report_c_sha256": "644a3a925a2c686dc2116ed600def368c8aacfca680b38b31a444fd69ba05fad",
+    "host_report_test_sha256": "2518a7a8664358b9a1ce1c8698f6987b319ef0c5de5fb5eee68fa61f047d6f2b",
+    "qr_source": "microsoft/mu_plus@b8d46c71610318e36a661819e1e3c0b8bdda413a",
+    "onesend_receiver": "makerjackie/onesend@39e95ce59df2f2dc38d2556dd4239cec6a0ca35f"
+  },
+  "fix": {
+    "marker_pa": "0x93ffff000",
+    "identity_map": "RW-NX L1/L2/L3 mapping, indices 0x24/0x1ff/0x1ff for T0SZ=26",
+    "preflight": "AT S1E1W verifies the marker translation before helper entry",
+    "gop_root": "marker path is copied to the temporary GOP TTBR0 root (T0SZ=25)",
+    "page_table_permissions": "APTable bit 61 restricts EL1 writes; bit 62 restricts EL0"
+  },
+  "candidate": {
+    "display_label": "src-045bfc7c-guard10",
+    "build_directory": ".work/ttbr1-guard10-final-build",
+    "kernel_bytes": 143638528,
+    "kernel_sha256": "ce57656c06feefff086aca6474e0779313813380b4ff2cc24353e2a7550ff1c0",
+    "lzma_bytes": 24101666,
+    "lzma_sha256": "b117d7f454cd6b55e1c083a913f23a2c787752234265d9fb5712aa1cca09a2b0",
+    "diagnostic_segment": {
+      "rx_name": "__KDIAG",
+      "rx_bytes": 49152,
+      "rw_nx_name": "__KDATRW",
+      "rw_nx_bytes": 835584
+    }
+  },
+  "package": {
+    "directory": "out/kernel-ttbr1-guard10",
+    "source_vendor_boot_sha256": "15846226236b56bd3abb104ae57f45e23307f3ea52321fd03ed153fd2e4e0718",
+    "source_vbmeta_sha256": "e4cffaf3414a2c22d6c129ed62ac382424f67da8a0dd62aa9ae0ccb73fec63de",
+    "unsigned_vendor_boot_sha256": "83b1744f4f0b060cb5ccfb7896db926ad81af35f02b343c2a54a335ce9d3f0e0",
+    "vendor_boot_bytes": 100663296,
+    "vendor_boot_sha256": "5e6f8b70369066b1b99ee5b4b69c2616449efc45df6394aaaf6be10365ac7b06",
+    "vbmeta_bytes": 8000,
+    "vbmeta_sha256": "72e4807ec637f94d66195e0321f4e0c76dfb0960ed85fe11fd8f4099910da6df",
+    "decoded_kernel_sha256": "ce57656c06feefff086aca6474e0779313813380b4ff2cc24353e2a7550ff1c0",
+    "adt_sha256": "f4161ff940b78e777ca2a6f4cb02191ff00f5046cc4dc3302d8fc4ce00f9c1a0",
+    "toml_sha256": "d19c15575ca2da5a388211715d401903220cda5b5722625c07295dc91b2d24fe",
+    "adt_toml_menu_preserved": true,
+    "unchanged_other_vbmeta_descriptors": 22,
+    "vbmeta_header_and_public_key_unchanged": true,
+    "signature_verification": "PASS: avbtool and independent RSA-4096 checks",
+    "payload_readback": "PASS"
+  },
+  "verification": {
+    "actual_injected_exception_and_wrapper_model": "PASS: four exception cases, low-alias BRK/ERET, 28 call wrappers",
+    "ttbr1_page_walk_model": "PASS: L1/L2/L3, blocks, APTable/PXNTable, invalid paths",
+    "host_page_walk_test": "PASS: L1/L2 bit 61 denies EL1 writes; bit 62 does not",
+    "live_stage_47_render": "PASS: 3200x1080, four frames, normal return",
+    "live_stage_48_render": "PASS: 3200x1080, guard preserved in GOP root, normal return",
+    "marker_store_model": "PASS: both STRB stores under guard root, GOP root, and restored guard root",
+    "onesend_stage_47": "PASS: any single frame restores 595-byte report",
+    "onesend_stage_48": "PASS: any single frame restores 467-byte report",
+    "rendered_qr_decode": "PASS: stage-47 framebuffer decodes to a 752-byte OS frame"
+  },
+  "device_operations": false,
+  "hardware_verified": false,
+  "functional_xnu_fix_claimed": false,
+  "limits": [
+    "The supplied exception proves the diagnostic guard's marker mapping was missing; it does not establish the underlying TTBR1 table as the cause.",
+    "A later user screenshot shows stage 48 and the reporter instruction fault, but the flashed partition hash was not read back; full kernel progress remains unverified.",
+    "The fileset-header patch is source-only and has not passed the supported macOS native/prelink build or a new post-link mapping check.",
+    "No flash, reboot, partition or device filesystem operation was performed."
+  ]
+}

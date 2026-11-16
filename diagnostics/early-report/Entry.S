@@ -104,9 +104,36 @@ diag_live_call:
 
 diag_exception:
   msr tpidr_el1, x18
+  adrp x18,diag_guard_test_active
+  add x18,x18,:lo12:diag_guard_test_active
+  ldr x18,[x18]
+  cbz x18,diag_exception_capture
+  mrs x18,esr_el1
+  ubfx x18,x18,#26,#6
+  cmp x18,#0x3c
+  b.ne diag_exception_capture
+  mrs x18,esr_el1
+  ubfx x18,x18,#0,#12
+  cmp x18,#0x712
+  b.ne diag_exception_capture
+  mrs x18,esr_el1
+  ubfx x18,x18,#12,#4
+  cmp x18,#0xb
+  b.eq diag_guard_test_return
+diag_exception_capture:
   msr tpidrro_el0, x17
   mov x17, #1
   b diag_capture
+diag_guard_test_return:
+  adrp x18,diag_guard_test_seen
+  add x18,x18,:lo12:diag_guard_test_seen
+  mov x17,#1
+  str x17,[x18]
+  mrs x16,elr_el1
+  add x16,x16,#4
+  msr elr_el1,x16
+  mrs x18,tpidr_el1
+  eret
 diag_panic:
   msr daifset, #15
   msr tpidr_el1, x18
