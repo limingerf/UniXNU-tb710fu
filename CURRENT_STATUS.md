@@ -2,12 +2,11 @@
 
 ## Mainline integration and Meizu21 audit · 2026-11-17
 
-The local `main` branch now points to `7e78c2f`, fast-forwarded from the
-diagnostic work after recording the current guard11/stage56 evidence and
-including the fileset-header fix. The worktree is on `main`; it is five commits
-ahead of `origin/main` and has not been pushed. These commits advance the
-diagnostic bring-up path; they are not a claim that the root volume or macOS
-userspace boots.
+The local `main` branch includes the diagnostic bring-up path, the Ace 5 audit,
+and the CDC protocol/log-ring host slice from
+`1c6217ba46033419fd35f576f47b67ddc7ed9b98`. After this status/provenance
+update, it is eight commits ahead of `origin/main` and has not been pushed.
+These commits do not claim that the root volume or macOS userspace boots.
 
 The user-supplied [Meizu21 repository](https://github.com/XiaoChen8371/unixnu-meizu21)
 targets SM8650 but is a Darwin 22 transition: `board.toml` selects only
@@ -38,6 +37,24 @@ separate comparison with TB710FU/XNU 12377. The Ace 5 `board.toml` and
 was validated; the later run-bound read and root-mount records establish the
 narrower tested behavior and should be cited with their image/kernel hashes.
 
+## CDC protocol and log-ring host slice · 2026-11-17
+
+Commit `1c6217ba46033419fd35f576f47b67ddc7ed9b98` adds the local device kit,
+USB 2 CDC-ACM descriptor/request validation and a nonblocking bounded log ring.
+The implementation is independent of the Vermeer source; test-only VID/PID
+values are not device identifiers. The WSL host test
+`CC=cc python scripts/check_usb_cdc_protocol.py` passed with warnings-as-errors
+and AddressSanitizer/UndefinedBehaviorSanitizer. It covers descriptor layout,
+malformed requests, ring wrap, full-buffer behavior and writer-lock contention.
+
+The pinned UniXNU resolver also configured the `tb710fu_macos_defconfig` and
+resolved the device-local package kit. This was a configuration check only;
+there has been no new XNU native build for this portable source slice because
+it is not yet linked into the kernel. No DWC3 register access, XNU log hook,
+USB enumeration or UFS probe is implemented. TWRP FDT resource and hash facts,
+and the separate missing UFS sample/CRC requirement, are in
+[`USB_CDC_PORT.md`](docs/USB_CDC_PORT.md).
+
 ## Guard11 stage56 hardware checkpoint · 2026-11-17
 
 The user supplied `XNU returned: tb710fu_ramoops_init` with
@@ -50,7 +67,8 @@ confirmed.
 
 There is still no live USB COM/XNU console for TB710FU. `serial=3` cannot create
 a missing UART, and TB710FU EUD/CDC enumeration plus its XNU output driver
-remain unverified. The current
+remain unverified. The portable CDC protocol layer has no controller or log
+hook yet. The current
 UEFI QR viewer reads the old `0xac340000` zone; guard11 writes to
 `0x93ff00000`, so that viewer cannot yet export guard11's zone. A TWRP raw
 memory read of `0x93ff00000..0x93ff40000` is the immediate post-reboot capture
