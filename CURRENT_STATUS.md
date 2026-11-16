@@ -1,5 +1,25 @@
 # Current status · 2026-11-15
 
+> 并行交付完成（2026-11-16）：两份可刷镜像均已签出并独立验签，均未上机验收。
+>
+> **(A) 切换内标记** `out/kernel-switch-markers`（`fafb1f96…`/`b64e33bc…`）。
+> 云 run 43819437775，内核 `860834c5…`。0007 在 `set_mmu_ttb_alternate`
+> 的 MSR 前后各写一个恒等映射字节（`0x93ffff000` / `+1`），走 TTBR0 V=P，
+> 不依赖新页表；机器码逐条核对夹住 MSR。实机屏幕停在
+> `XNU returned: vm/qsort#1`、无 QR，正是标记版预期（说明
+> `TB710FU_SWITCH_MARKS=1` 生效、探针的 stage 47 那条 BL 未走）。
+> 读标记需进 TWRP（Android `CONFIG_STRICT_DEVMEM` 拦 `/dev/mem`），
+> `devmem 0x93ffff000 8`：01 00=MSR/ISB 没完成，01 02=切换完成。
+> 见 [切换内标记](docs/KERNEL_SWITCH_MARKERS.md)。
+>
+> **(B) 窗口内日志区** `out/kernel-log-region`（`15846226…`/`e4cffaf3…`）。
+> 云 run 43827454902，内核 `4ad08f1b…`。0008 把 ramoops 默认 PA 从不可达的
+> `0xac340000`（比 physBase 低 32.3 GiB）改到 span 内 `0x93FF00000`+256KiB，
+> 拒绝 span 外 override；机器码确认常量、区域几何 7/7 PASS。镜像同时含 0007。
+> 注意 ramoops_init 在 arm_vm_init 返回之后，本次 stage 47 停点仍靠 0007 标记，
+> 0008 只为越过切换后的启动提供持久日志。见 [日志区交付](docs/KERNEL_LOG_REGION.md)。
+> 未刷写、未重启、未改分区。
+
 > 待验交付（2026-11-16）：**段映射改为不依赖引导参数**。
 > 上一版把映射挂在 `tb-diag-segment=` 上，反汇编证实编译器生成的守卫是对的
 > （`cbz w0` 跳过整块），所以失败原因是**参数从未到达内核**，映射静默未执行——

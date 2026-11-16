@@ -1,0 +1,114 @@
+{
+  "date": "2026-11-16",
+  "stage": "signed-image-with-in-window-ramoops-log-region",
+  "purpose": "Establish a durable console log region inside the 2 GiB managed span, replacing the unreachable Android ramoops PA 0xac340000",
+  "provenance": {
+    "cloud_run": {
+      "id": 43827454902,
+      "conclusion": "success",
+      "head_sha": "ea2747d695097ab9eafccc64812937c7c7fe7949",
+      "workflow": ".github/workflows/macos-kernel.yml"
+    },
+    "artifact": {
+      "name": "tb710fu-prelink-43827454902",
+      "bytes": 37732202,
+      "sha256": "891adf7742770cfe2f5ebc62a276026ed465404f7e09db446d9a0faeb2f13e8a",
+      "github_digest_matches": true
+    },
+    "kernel": {
+      "bytes": 142753792,
+      "sha256": "4ad08f1b166ca16e340bdfd9325d6e2ce1a76045036251ae95f2d4c47a23db00"
+    },
+    "patch_0008": {
+      "recorded_in_xnu_inputs": "533ff244b8dae7884874050e77e14eebe3bfd301e11541224f5ce3fd69c9c905",
+      "local_sha256": "533ff244b8dae7884874050e77e14eebe3bfd301e11541224f5ce3fd69c9c905",
+      "identical": true,
+      "series_position": 134,
+      "series_total": 134
+    }
+  },
+  "problem": {
+    "old_default_pa": "0xac340000",
+    "phys_base": "0x8c0000000",
+    "managed_span": "0x8c0000000 .. 0x940000000 (2 GiB)",
+    "old_pa_relative_to_span": "32.3 GiB BELOW physBase, outside the span; ml_io_map cannot describe it, so no byte was ever written and every pstore read was empty",
+    "second_cause": "tb710fu_ramoops_init() is called after arm_vm_init() returns; the current stop is inside arm_vm_init (stage 47), so init never ran in that boot either"
+  },
+  "region": {
+    "physical_base": "0x93ff00000",
+    "size_bytes": 262144,
+    "range": "0x93ff00000 .. 0x93ff40000",
+    "alignment": "16 KiB (also 2 MiB-aligned at the macro level; geometry check confirms 16 KiB)",
+    "distance_below_span_top": "0xc0000 (768 KiB)",
+    "avoids": "window top page 0x93ffff000 reserved by 0007 for identity-mapped switch markers",
+    "device_iomem": "8c0000000-9fdccefff : System RAM (user-supplied /proc/iomem), so the address is real DRAM"
+  },
+  "design_decisions": {
+    "chosen": "change the default PA in osfmk/kern/tb710fu_ramoops.c (patch 0008)",
+    "rejected": "new ADT property read via SecureDTLookupEntry/GetProperty - more invasive, would need generator changes and conflict with the no-official-script-edits rule",
+    "override_rule": "ramoops=<PA> is honoured only when the value is inside the span with room for the zone; the live 0xac340000 argument is therefore rejected and the in-window default used",
+    "zone_default": "now enabled by default (previously disabled unless ramoops= was supplied)",
+    "excluded_table": "NOT introduced. devicetree.py emits an all-zero table that DarwinBoot overwrites from the UEFI memory map, so a preset (base,size) cannot survive without a firmware-side reservation. Correctness instead rests on the region being far above topOfKernelData + 32 MiB head reserve, plus ml_io_map -> io_map -> pmap_map being an independent device mapping that does not need the physical aperture or the free list.",
+    "file_scope": "0008 only touches ramoops.c; 0005/0006/0007 touch arm_vm_init.c, so the sets are disjoint"
+  },
+  "verification": {
+    "patch_chain": "0005->0006->0007->0008 applies in order on the tree carrying 0001-0004: PASS (verify_0008_chain.py)",
+    "region_geometry": "7/7 PASS (verify_0008_region.py): in span, 16 KiB aligned, above kernel image, above head reserve, avoids 0007 marker, clamp accepts, no reserve panic",
+    "built_kernel_constants": {
+      "tool": "decode_0008_consts.py / check_0008_size.py",
+      "log_region_pa": "x8 = 0x93ff00000 reconstructed from d2a7fe08 (movz #0x3ff0,lsl16) + f2c00128 (movk #0x9,lsl32): PASS",
+      "span_end": "x11 = 0x940000001 (SPAN_END folded into the comparison): PASS",
+      "log_region_size": "0x40000 materialised as 52a00089 (movz w9,#0x4,lsl16): PASS"
+    },
+    "production_darwinboot_parser": "PASS on the probe kernel"
+  },
+  "probe": {
+    "kernel_sha256": "95ebd798d9eb9753d61671359f869ec447e8ee7f93f0015c2669dac4914871dc",
+    "kernel_bytes": 143589376,
+    "segment_bytes": 835584,
+    "trace_past_switch": true,
+    "trace_points": 25
+  },
+  "payload": {
+    "sha256": "422f2f3f1981ade66371be2fdbc272d43d14ba9255a0da6aff52b386749e109f",
+    "bytes": 34603008,
+    "fat_clusters": 66512,
+    "kernel_lzma_sha256": "c9891b9f79d0bfea3189c5bd435a4fd0a108266363851ba8269a7320ba078e86",
+    "adt_sha256": "f4161ff940b78e777ca2a6f4cb02191ff00f5046cc4dc3302d8fc4ce00f9c1a0",
+    "toml_sha256": "d19c15575ca2da5a388211715d401903220cda5b5722625c07295dc91b2d24fe",
+    "boot_args": "-v serial=3 ramoops_size=0x40000 ramoops_ecc=0 ramoops_panic_delay=15 ramoops_reset_after=120 TB710FU_SWITCH_MARKS=1",
+    "old_ramoops_arg_removed": true,
+    "switch_marker_arg_kept": true,
+    "readback_ok": true
+  },
+  "delivery": {
+    "vendor_boot_sha256": "15846226236b56bd3abb104ae57f45e23307f3ea52321fd03ed153fd2e4e0718",
+    "vendor_boot_bytes": 100663296,
+    "vbmeta_sha256": "e4cffaf3414a2c22d6c129ed62ac382424f67da8a0dd62aa9ae0ccb73fec63de",
+    "vbmeta_bytes": 8000,
+    "files": [
+      "out/kernel-log-region/vendor_boot.img",
+      "out/kernel-log-region/vbmeta.img"
+    ]
+  },
+  "signature_verification": {
+    "signer_self_report": "PASS, 22 other descriptors and public key unchanged",
+    "independent_rsa": "PASS on vbmeta.img and vendor_boot footer",
+    "independent_payload": "PASS: kernel 95ebd798, ADT f4161ff9, toml d19c1557",
+    "production_darwinboot_parser": "PASS"
+  },
+  "how_to_use": {
+    "flash": "out/kernel-log-region/vendor_boot.img + vbmeta.img to vendor_boot_b / vbmeta_b",
+    "read_log": "from Android/TWRP: dd if=/dev/mem bs=4096 skip=$((0x93ff00000/4096)) count=64 | od -An -tx1 -N48",
+    "note": "the head is the Linux-compatible persistent_ram header {sig=0x43474244, start, size}; if CONFIG_STRICT_DEVMEM blocks /dev/mem, read it in TWRP",
+    "switch_markers": "the same image still carries 0007's identity-mapped markers at 0x93ffff000, so it can also localise the TTBR1 stop"
+  },
+  "boundary": [
+    "Diagnostic/support image, not a functional fix and not hardware acceptance.",
+    "ramoops_init runs after arm_vm_init returns, so this region stays empty in the current stage-47 stop; 0007's identity-mapped markers cover that stage.",
+    "The region is not protected by an ADT excluded entry (DarwinBoot would overwrite it); a firmware-side reservation would be needed for a hard guarantee.",
+    "No device flash, reboot or partition operation was performed by the agent."
+  ],
+  "device_operations": false,
+  "hardware_verified": false
+}

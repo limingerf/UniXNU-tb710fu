@@ -66,6 +66,8 @@ def main():
         '6c71e39ca6c58a48a614c1ca4927a723d7b782d8fde516215c18ee7a49aae96e',
         # PR249 + 0006 + 0007 identity-mapped switch markers (run 43819437775)
         '860834c55878c484be9c444588ae9c70e9bc01f40f89750e055fe4d361211bb7',
+        # PR249 + 0006 + 0007 + 0008 in-window log region (run 43827454902)
+        '4ad08f1b166ca16e340bdfd9325d6e2ce1a76045036251ae95f2d4c47a23db00',
     }
     digest = sha(original)
     if digest not in allowed:
