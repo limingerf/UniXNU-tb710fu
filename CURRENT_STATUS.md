@@ -5,7 +5,7 @@
 The local `main` branch includes the diagnostic bring-up path, the Ace 5 audit,
 and the CDC protocol/log-ring host slice from
 `1c6217ba46033419fd35f576f47b67ddc7ed9b98`. After this status/provenance
-update, it is nine commits ahead of `origin/main` and has not been pushed.
+update, it is eleven commits ahead of `origin/main` and has not been pushed.
 These commits do not claim that the root volume or macOS userspace boots.
 
 The user-supplied [Meizu21 repository](https://github.com/XiaoChen8371/unixnu-meizu21)
@@ -51,8 +51,9 @@ The pinned UniXNU resolver also configured the `tb710fu_macos_defconfig` and
 resolved the device-local package kit. This was a configuration check only;
 there has been no new XNU native build for this portable source slice because
 it is not yet linked into the kernel. No DWC3 register access, XNU log hook,
-USB enumeration or UFS probe is implemented. TWRP FDT resource and hash facts,
-and the later read-only UFS GPT sample, are in
+USB enumeration or UFSHCI/SMMU callback is implemented. TWRP FDT resource and
+hash facts, the read-only UFS GPT sample and the host-only guard/state-machine
+slices are in
 [`USB_CDC_PORT.md`](docs/USB_CDC_PORT.md).
 
 ## Read-only UFS GPT sample · 2026-11-17
@@ -68,6 +69,25 @@ The raw block and device serial were not retained. This is a Linux/TWRP storage
 baseline for a future read-only XNU probe, not evidence that XNU can access UFS;
 queue ownership, SMMU and DMA remain untested. Full capture metadata is in
 [`ufs-gpt-lba1-twrp.json`](docs/evidence/ufs-gpt-lba1-twrp.json).
+
+## Host-only USB/UFS probe contracts · 2026-11-17
+
+Commit `919b4bd` adds a CDC transport preflight guard and a one-block UFS
+READ(10)/GPT sample state machine. Both are device-owned C slices; no
+unlicensed Vermeer implementation was copied. WSL host tests passed with
+AddressSanitizer/UndefinedBehaviorSanitizer:
+
+- `CC=cc python scripts/check_usb_cdc_protocol.py` covers USB descriptors,
+  setup requests, the nonblocking log ring and the fail-closed DWC3 guard.
+- `CC=cc python package/Tb710fuUfsProbe/Test/run_host_tests.py` covers the
+  READ(10) command, GPT/CRC logic, default-off behavior, SID/DMA refusal,
+  queue restore and timeout quarantine.
+
+These are preflight/transport-independent contracts only. No XNU 12377
+hardware reader, DMA allocator, UFSHCI queue/SMMU adapter, DWC3 endpoint engine,
+XNU log hook or startup personality is connected. No full XNU build or hardware
+read/enumeration was performed. The current branch therefore does not yet
+provide a USB port or an XNU UFS driver.
 
 ## Guard11 stage56 hardware checkpoint · 2026-11-17
 

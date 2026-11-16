@@ -8,12 +8,15 @@ validates the standard and CDC class setup requests used by enumeration, and
 provides a bounded log ring. A producer never waits for the ring lock: if a
 writer finds the ring busy or full, its bytes are counted as dropped. The
 single consumer copies pending bytes and only consumes them after a successful
-transport write.
+transport write. `CdcTransportGuard` separately rejects transport startup
+unless a caller supplies a verified device role, clocks/PHY, unique identity
+SMMU route, and a contiguous, aligned DMA range.
 
 Run `python scripts/check_usb_cdc_protocol.py` to compile the host fixture with
 warnings-as-errors and AddressSanitizer/UndefinedBehaviorSanitizer, then run the
-descriptor, malformed-request, wraparound and back-pressure checks. These tests
-cover protocol/ring logic only; they do not emulate a DWC3 controller.
+descriptor, malformed-request, wraparound, back-pressure and fail-closed guard
+checks. These tests cover protocol/ring/decision logic only; they do not read
+TB710FU hardware state or emulate a DWC3 controller.
 
 The code is a fresh implementation of the USB CDC-ACM contract. It does not
 copy the Vermeer source. The host test's `0x1209:0x710f` values are fixtures,
@@ -66,13 +69,12 @@ queue handoff, SMMU mapping or DMA. GPT changes will change this sample.
 
 ## Next integration gates
 
-The protocol layer is not yet linked into XNU. The next code layer must use the
-XNU 12377 compile records and connect a boot-argument-gated DWC3 device transport
-to the log ring. Before it changes controller state, it must read and validate
-device role, required clock/power state, SID `0x40` routing and a bounded DMA
-range; unknown state must refuse takeover and let normal boot continue. The
-same driver must define the XNU `serial_console`/`kprintf` hooks and keep the
-producer path nonblocking.
+The protocol and preflight guard are not yet linked into XNU. There is no
+hardware snapshot reader, DWC3 endpoint/controller transport, or XNU
+`serial_console`/`kprintf` hook. The XNU 12377 implementation must provide those
+from target compile records, populate the guard only from bounded read-only
+register checks, and keep the producer path nonblocking. Unknown state must
+refuse takeover and let normal boot continue.
 
 UFS remains a separate track. The TWRP GPT-header block is now an expected-byte
 baseline for a future read-only XNU probe. Do not reuse Ace 5's CRC, partition
