@@ -1,0 +1,6 @@
+schema = 1
+
+[kit]
+name = "tb710fu"
+version = "0.1.0"
+description = "TB710FU device sources and CDC protocol bring-up"

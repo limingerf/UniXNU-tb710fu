@@ -5,6 +5,7 @@ name = "tb710fu"
 soc = "SM8650Q-AB"
 soc_source = "sm8650"
 os_profile = "macos-27.3-26C5035r"
+kit = "tb710fu"
 description = "Lenovo TB710FU: minimal macOS 27 kernel bring-up, storage and hardware boot unqualified"
 example = false
 

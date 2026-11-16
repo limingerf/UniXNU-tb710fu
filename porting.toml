@@ -14,7 +14,7 @@ paths = ["board.toml", "feeds.toml", "configs/**", "soc/**", "upstream.lock.json
 inputs = ["Pinned official UniXNU and XNU revisions in upstream.lock.json; the macos-27.3-26C5035r profile; the repository-local soc feed."]
 configuration = ["board.toml selects ArmDTPlatform, ArmCpu and XnuPrelink. Its explicit archive and patch arrays replace inherited arrays; preserve the recorded order.", "The patch order is arch, device pre-OS, OS, then device XNU. The kernel configuration includes arch common and OS macOS fragments."]
 procedure = ["1. Resolve the pinned official checkout and profile without editing fetched source caches.", "2. Generate the selected defconfig and inspect the resolved status and component dependencies.", "3. Run the bounded native-only macOS CI build and retain the source revisions, invocation and first actual failure or kernel artifact."]
-findings = ["The clean board identity matches this record. Only three canonical components are selected; no board peripheral driver is included.", "The previous workspace mixes initial skeletons and later experiments. It is evidence only and is not a feed for this clean build."]
+findings = ["The clean board identity matches this record. No USB or UFS controller component is selected; the local kit source currently holds a hardware-independent CDC protocol/log-ring slice.", "The previous workspace mixes initial skeletons and later experiments. It is evidence only and is not a feed for this clean build."]
 completion = ["Official record validation and resolved status pass with the intended identity, component closure, OS profile, archives and patch order."]
 limits = ["Run 43844823907 passed native and strict prelink; no device boot or runtime qualification is claimed by this record."]
 next_action = ["Capture a device checkpoint against the exact signed image hash; retain the native/PAC and hardware gates as separate work."]
@@ -63,18 +63,32 @@ next_action = ["Generate a range comparison from local stock DTB/DTBO and UEFI i
 evidence = [{ kind = "source", reference = "docs/HARDWARE.md", result = "Separates stock inputs, mainline reference data and rejected previous DTS content." }]
 
 [[area]]
+id = "usb"
+status = "host-verified"
+components = []
+paths = ["package/Kit.toml", "package/Tb710fuUsbCdc/**", "scripts/check_usb_cdc_protocol.py", "tests/usb_cdc_protocol_test.c", "docs/USB_CDC_PORT.md"]
+inputs = ["DWC3 device-role state, eUSB2 PHY state, clocks/power ownership, SID 0x40 SMMU route, XNU 12377 log hooks and host-side CDC enumeration."]
+configuration = ["The device kit currently contains only hardware-independent CDC-ACM descriptors/request validation and the bounded log-ring implementation. No controller code or kernel startup hook is selected."]
+procedure = ["1. Run the host protocol and ring-buffer tests.", "2. Port the DWC3 device transport against XNU 12377 compile records, with boot-argument gating and read-only role/clock/SMMU guards.", "3. Connect the validated transport to early XNU log output and verify enumeration plus byte capture on TB710FU."]
+findings = ["The TWRP DT declares DWC3 at 0x00a600000, nested stream ID 0x40, dr_mode=otg and atomic DMA. It also describes the eUSB2 PHY and clocks; these are Linux/TWRP inputs, not proof of XNU handoff state.", "Ace 5 reports a real XNU CDC ACM log channel, but its kernel is XNU 8796; this implementation is a fresh portable protocol layer, not copied controller code."]
+completion = ["XNU reports through a host-enumerated CDC ACM port, the host captures the expected bytes without drops, and an intentional stop/panic path is separately verified."]
+limits = ["No TB710FU CDC enumeration, XNU log hook, DWC3 ownership, clock/power readback or SMMU takeover has been verified."]
+next_action = ["Implement the separately guarded DWC3 transport only after XNU 12377 API and live controller-state checks are available."]
+evidence = [{ kind = "host", reference = "package/Tb710fuUsbCdc and tests/usb_cdc_protocol_test.c", command = "CC=cc python scripts/check_usb_cdc_protocol.py", result = "Host C tests passed with warnings-as-errors, AddressSanitizer and UndefinedBehaviorSanitizer; controller enumeration is not covered." }, { kind = "source", reference = "docs/USB_CDC_PORT.md", result = "Records the hardware-independent implementation, source provenance and outstanding device gates." }, { kind = "source", reference = "https://github.com/tycykp/UniXNU-OnePlus-Ace5/blob/main/hardware/ios16-bringup-verified.json", result = "Ace 5 reports CDC COM21 with 8,802 status bytes and no drops on Darwin 22; this is reference-device evidence." }, { kind = "source", reference = "https://github.com/SpendyYT/tb710fu-linux/blob/4d04410798b538fbe4b50664e3a66d9500a2ed31/arch/arm64/boot/dts/qcom/sm8650.dtsi", result = "Pinned SoC source declares UFS host resources and SID 0x60; TWRP FDT details are summarized with hashes in docs/USB_CDC_PORT.md." }]
+
+[[area]]
 id = "storage"
 status = "planned"
 components = []
 paths = ["package/*Ufs*", "scripts/*ufs*", "scripts/*storage*", "scripts/*userdata*", "scripts/*root*"]
-inputs = ["UFS controller and PHY resources, clocks, resets, supplies, SMMU stream, DMA path, actual LUN/block geometry and an approved root-volume layout."]
+inputs = ["UFS controller and PHY resources, clocks, resets, supplies, SMMU stream, live DMA/queue ownership, actual LUN/block geometry and an approved root-volume layout."]
 configuration = ["No UFS component, root partition, persistent Data region or storage write path is selected for the native-only build."]
 procedure = ["1. Reconcile the same-device UFS source with prior local stock inventory.", "2. Qualify controller and read-only known-block access in a separately authorized hardware phase.", "3. Review root and persistent Data layout independently before any storage write work."]
-findings = ["The reference uses SM8650 UFS host at 0x01d84000 and PHY at 0x01d80000. Previous Android inventory reports 4096-byte logical and physical blocks.", "The previous Android userdata uses F2FS with file and metadata encryption; filesystem free space does not establish free GPT space or a safe shrink path."]
+findings = ["The TWRP FDT and pinned Linux DTS declare SM8650 UFS host 0x01d84000, PHY 0x01d80000 and stream ID 0x60; the FDT also declares ICE/MCQ resources and fastmap DMA. These do not prove XNU queue ownership, live SMMU mappings or DMA coherence.", "Previous Android inventory reports 4096-byte logical and physical blocks. The previous Android userdata uses F2FS with file and metadata encryption; filesystem free space does not establish free GPT space or a safe shrink path."]
 completion = ["Controller, link and DMA qualify; known blocks and capacity match the device; the selected root mounts and launchd starts; persistence is tested separately if implemented."]
 limits = ["No native UFS driver or root mount is verified. This task does not authorize signing, partitioning, formatting or device writes."]
-next_action = ["Prepare a source-level UFS resource and interface comparison after the native kernel build is resolved."]
-evidence = [{ kind = "source", reference = "https://github.com/SpendyYT/tb710fu-linux/blob/4d04410798b538fbe4b50664e3a66d9500a2ed31/arch/arm64/boot/dts/qcom/sm8650-lenovo-tb710fu.dts", result = "Declares board UFS supplies and reset GPIO; this is not proof of a macOS storage driver." }]
+next_action = ["Establish a TB710FU safe sample LBA and expected CRC from read-only Android/TWRP evidence, then audit the Ace 5 command/DMA sequence against XNU 12377 before writing a probe."]
+evidence = [{ kind = "source", reference = "https://github.com/SpendyYT/tb710fu-linux/blob/4d04410798b538fbe4b50664e3a66d9500a2ed31/arch/arm64/boot/dts/qcom/sm8650.dtsi", result = "Pinned SoC DTS provides the UFS host/PHY/SID baseline; the TWRP FDT and its hashes are recorded in docs/USB_CDC_PORT.md." }, { kind = "source", reference = "https://github.com/tycykp/UniXNU-OnePlus-Ace5/blob/main/hardware/ios16-bringup-verified.json", result = "Ace 5 has a run-bound 8 KiB UFS read and matching device CRC; its value is not a TB710FU block baseline." }]
 
 [[area]]
 id = "display"

@@ -27,7 +27,7 @@ UART.
 | --- | --- | --- |
 | External UART | No exposed connector or verified board UART | No |
 | Qualcomm EUD COM over USB | Device-tree and old firmware clues exist; no EUD device is currently enumerated on the host, and the current firmware excludes the device-mode stack | Potentially, after enabling the channel and connecting XNU output; host access uses an EUD client, not necessarily `COMx` |
-| DWC3 CDC-ACM | No TB710FU implementation yet; Ace 5 / SM8650 reports a hardware-tested Windows `COM21` XNU console | Yes, after adapting and validating the controller, PHY, clocks, SMMU and XNU interfaces |
+| DWC3 CDC-ACM | TB710FU has host-tested descriptor/request and log-ring code, but no XNU controller or log hook; Ace 5 / SM8650 reports a Windows `COM21` XNU log mirror | Yes, after adapting and validating the controller, PHY, clocks, SMMU and XNU interfaces |
 | `serial=3` | Boot argument only | Only if a real UART is configured and reachable |
 | USB CDC / CDP | No TB710FU XNU driver or validated device protocol | No; giulia's protocol is board-specific |
 | Screen QR checkpoints | Used for selected diagnostic reports | Checkpoint fields only, not a continuous console |
@@ -64,6 +64,13 @@ same DWC3 base (`0xa600000`) and UFS host base (`0x1d84000`); that makes Ace 5 a
 strong hardware comparison, but does not establish matching USB role setup,
 clocks, PHY state, UFS stream ID, or SMMU context.
 
+The first TB710FU code slice is in `package/Tb710fuUsbCdc/`: it builds CDC-ACM
+descriptors, rejects malformed setup requests and provides a bounded,
+nonblocking log ring. `python scripts/check_usb_cdc_protocol.py` runs its
+host-side sanitizer tests. It does not access DWC3 registers, enumerate on the
+device, hook XNU logging or create a COM port. Full resource hashes and the
+separate UFS evidence gates are in [USB CDC port record](USB_CDC_PORT.md).
+
 [Lux12138/nabu-usb-cdc](https://github.com/Lux12138/nabu-usb-cdc) remains a
 useful earlier CDC design/capture reference from SM8150/XNU 17.7.11. TB710FU is
 SM8650 with XNU 12377, so controller power, clocks, PHY, SMMU stream and XNU
@@ -82,10 +89,9 @@ XNU-side sender remain unverified here.
 
 ## Work required for a real port
 
-1. Audit Ace 5's CDC implementation and build path first, then compare its
-   SM8650 DWC3/PHY/SMMU and USB-role assumptions against TB710FU. Use
-   `nabu-usb-cdc` for earlier CDC mechanics and `QcomDwc3` for Apple USB-stack
-   integration points.
+1. Compare the read-only DWC3/PHY/SMMU state reached by XNU against TB710FU's
+   TWRP/Linux resource declarations. Keep the custom CDC path separate from
+   Apple's host/device USB stack and EUD candidate.
 2. Build a minimal USB 2 CDC-ACM path with a test string and verify that the
    Windows host enumerates a COM port and captures bytes. Do this before
    enabling USB3, host mode, UCSI or other unrelated functions.

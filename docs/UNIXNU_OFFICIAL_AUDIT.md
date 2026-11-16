@@ -32,7 +32,7 @@ run `43844823907` 已用更新后的 0006/0009 在 macOS 26 runner 完成 arm64e
 
 这些项目没有提供当前 XNU 12377 `set_mmu_ttb_alternate` 的直接修复。Ace 5 的 USB CDC 与 UFS/SMMU 实机路径可作为后续移植参考，但其 XNU 8796 接口和板级资源不能直接代替本机验证。
 
-TB710FU 与 Ace 5 的现有硬件清单都记录 DWC3 基址 `0xa600000`、UFS host 基址 `0x1d84000`，因此 Ace 5 的控制器探针与启动证据可以逐项对照本机。Ace 记录中的 UFS SID `0x60`、GCC 时钟偏移和 GDSC 是 PKG110 运行 DT 的值；TB710FU 当前记录没有这些值，不能因基址相同就复制。
+TB710FU 与 Ace 5 的清单都记录 DWC3 `0xa600000`、UFS host `0x1d84000`。本地 TWRP FDT 进一步给出 USB SID `0x40`、UFS SID `0x60`、USB `dr_mode="otg"` 和 Linux DMA 类型；TWRP FDT/DTS 文件哈希及局限记录在 [CDC 移植记录](USB_CDC_PORT.md)。Ace 的 GCC/GDSC 与 XNU 启动时控制器、PHY、时钟及 SMMU 实际状态仍须分别验证，不能仅凭地址或 DT 直接接管。
 
 ## 验证与边界
 

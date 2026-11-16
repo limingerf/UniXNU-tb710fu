@@ -3,6 +3,11 @@ name = "sm8650"
 kind = "soc"
 local = "soc"
 
+[[source]]
+name = "tb710fu"
+kind = "package"
+local = "package"
+
 # The framework's actual gitlink includes macOS fileset symbol-name matching.
 # Its component catalog still names an older revision; do not fall back to it.
 [[source]]
