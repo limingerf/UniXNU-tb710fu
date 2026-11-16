@@ -81,3 +81,19 @@ lba_bytes = 4096
 # and [payload.adt] root_match_volume_uuid. The platform seed is device-specific
 # and is supplied at build time via --unique-chip-id / UNIXNU_UNIQUE_CHIP_ID,
 # never committed (see AGENTS.md: no credentials or device secrets in git).
+
+# Identity the ADT sidecar must carry. scripts/unixnu/devicetree.py emits
+# adt.root/chosen/product from the merged board config, and only emits
+# unique-chip-id + chip-id when payload.adt.chip_id is set -- a bare
+# --unique-chip-id raises KeyError('chip_id'). Without these two keys the
+# shipped kernel.macho.adt kept the hardware DTS root identity
+# (model='Qualcomm Technologies, Inc. Pineapple MTP'), had an empty /arm-io and
+# no /product, so the kernel matched no macOS platform expert. Regenerating the
+# same inputs with them yields model='Mac17,11', /product with 35 properties and
+# /chosen osenvironment + boot-uuid + root-matching.
+#   chip_id          -- Mac17,11 / T6050 identity, confirmed by the user
+#   owned_memory_size -- the DarwinBoot window this board asks for (2 GiB)
+# Evidence: docs/evidence/greenbar-audit.json, docs/GREENBAR_AUDIT.md
+[payload.adt]
+chip_id = "0x6050"
+owned_memory_size = "0x80000000"

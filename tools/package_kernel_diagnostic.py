@@ -10,6 +10,7 @@ import lzma
 from pathlib import Path
 import struct
 import subprocess
+import sys
 import tomllib
 
 
@@ -51,6 +52,19 @@ def main():
         return subprocess.check_output(['mtype', '-i', str(payload), '::/EFI/UniXNU/' + name])
     kept = {name: sha(read(name)) for name in ['unixnu.toml', 'Payloads/kernel.macho.adt']}
     expected = dict(kept)
+    # Packaging copies the ADT forward verbatim, so a sidecar that identifies as
+    # the hardware DTS rather than as a Mac would be carried into every later
+    # delivery unnoticed. The earlier gates compared the ADT against its own
+    # previous hash, which cannot detect that. Refuse here instead.
+    adt_local = args.output_dir / 'kernel.macho.adt'
+    adt_local.write_bytes(read('Payloads/kernel.macho.adt'))
+    identity = subprocess.run(
+        [sys.executable, Path(__file__).with_name('check_adt_identity.py').as_posix(),
+         '--adt', adt_local.as_posix()])
+    if identity.returncode != 0:
+        raise SystemExit(
+            'ADT identity check failed: the sidecar is not a macOS device tree '
+            '(see board.toml [payload.adt]). Refusing to package it into a boot image.')
     if args.add_reporter_selftest or args.add_report_export:
         config = read('unixnu.toml').decode('utf-8')
         original_config = tomllib.loads(config)

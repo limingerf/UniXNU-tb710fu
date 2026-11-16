@@ -1,6 +1,35 @@
 # Current status · 2026-11-15
 
-> 最新交付（2026-11-16）：PR249 的16→22页容量修复已适配到本机
+> 最新（2026-11-16）：**绿条的"最后一行"被证实是观测边界，不是故障点。**
+> 两条独立证据：① 用 T1SZ 软件遍历 `0x8c88f9000` 新根表，切换函数、返回点
+> `arm_vm_init+0x11e4`、`_ExceptionVectorsBase` 全部映射且 EL1 可执行
+> ——"切换后返回地址不可执行"被否定。② 探针段 `__KDIAG` 落在 `__BOOTDATA`
+> 与 `dynamic_memory_begin` 之间 212 页**无映射空隙**，逐段核对为
+> `overlapping: NONE`，而报告器按设计切换后不返回附加段。
+> 已交付 `patches/xnu/0006`：切换**前**把 `tb-diag-segment=` 指定的段映射为
+> RX。默认启动零映射（行为矩阵 4/4 PASS，连段查找都不做），不需要改官方
+> 构建脚本（曾误改 `build-xnu-4k-baseline.sh`，已回退并验证与 HEAD 逐字节一致）。
+> 下一步需重新 native+prelink。见 [切换后探针](docs/DIAG_PAST_SWITCH.md)。
+
+> 修复件（2026-11-16）：已用修补后的 `board.toml` 重新生成带 macOS 身份的 ADT
+> （`Mac17,11` / `K114cAP` / `/product` 35 项 / `/chosen` osenvironment+
+> boot-uuid+root-matching），只替换 payload 里的 `.adt`，内核 `9daf5064…` 与
+> `unixnu.toml` 逐字节未变；签出 `out/kernel-adt-fix`（`eb09e141…`/`a7472fe5…`）。
+> 签名经**独立 RSA 复算**（不调 avbtool）+ 4 例反篡改对照通过。
+> **边界**：ADT 在 `arm_init:380` 即被读取，而停点在 `arm_vm_init:586`，
+> 所以这是客观缺陷但**未证明是绿条成因**。见 [ADT修复交付](docs/KERNEL_ADT_FIX.md)。
+
+> 上一审计（2026-11-16）：对 out/kernel-pr249-final 逐字节复核，交付本身自洽
+> （vendor_boot `92232f89…`、内核 `9daf5064…`、PR249 的 22 页确在机器码中）。
+> 但两点由此定量排除/确认：① PR249 与本机绿条卡点无关——2 GiB 窗口只需 8 页，
+> 旧 16 页池已够，且实机已越过该检查到 set_mmu_ttb_alternate。② **真正的缺陷是
+> 交付的 kernel.macho.adt 不是 macOS 设备树**：根 model 仍是
+> `Qualcomm … Pineapple MTP`、`/product` 为空、`/chosen` 缺 osenvironment/
+> boot-uuid/root-matching，内核匹配不到任何平台专家。已补 board.toml
+> `[payload.adt]` 并新增身份门禁，重新生成 9 项全 PASS；未重编译/未刷机。
+> 见 [绿条审计](docs/GREENBAR_AUDIT.md)。
+
+> 上一交付（2026-11-16）：PR249 的16→22页容量修复已适配到本机
 > xnu-12377补丁序列。完整native/严格prelink云run43763928457成功，
 > 独立核对机器码22页、依赖闭包、生产解析器与artifact哈希通过。
 > 原生启动候选已本地签名，out/kernel-pr249-final；无附加诊断段和
@@ -17,6 +46,9 @@
 | UEFI输入修复云编译 | 通过 | [run43636909923](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43636909923)：AARCH64 DEBUG CLANGPDB，主机测试及10个必需模块通过 |
 | FD本地独立复验 | 通过 | 3,145,728字节、两个真实FV、10个必需模块GUID及14个overlay文件哈希全部匹配 |
 | UEFI实体按键修复候选 | 云编译及主机测试通过，实机待验 | Tb710fuKeyInputDxe：SPMI v7状态读取→ConIn；GCC/Clang和ASan/UBSan通过，实机未验 |
+| 绿条交付逐字节复核 | 通过 | `92232f89…`/`9daf5064…`/22页机器码；见 [绿条审计](docs/GREENBAR_AUDIT.md) |
+| ADT是否为macOS设备树 | **失败（已定根因并修复输入）** | 交付ADT根model仍为Qualcomm MTP、`/product`空、`/chosen`缺macOS键；补`[payload.adt]`后重新生成9项全PASS |
+| PR249对绿条卡点的相关性 | 已排除 | 2 GiB窗口仅需8页，旧16页池已够；实机已越过该检查到set_mmu_ttb_alternate |
 | 实机启动/PAC/GOP/UFS/用户态 | 未验收 | 当前任务未运行设备命令、刷写或更改分区 |
 
 ## 产物

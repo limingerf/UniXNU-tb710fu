@@ -1,0 +1,135 @@
+{
+  "vendor_boot_identity": {
+    "result": "PASS",
+    "bytes": 100663296,
+    "sha256": "92232f89a2bba35b015f104800e35698c6e1c5ea35ef2c5311c62f9cc62f7a14",
+    "summary": "100,663,296 B  92232f89a2bba35b015f104800e35698c6e1c5ea35ef2c5311c62f9cc62f7a14"
+  },
+  "payload_fat32_mountable": {
+    "result": "PASS",
+    "clusters": 66512,
+    "floor": 65525,
+    "summary": "66512 clusters (floor 65525)"
+  },
+  "kernel_reproduces_recorded_hash": {
+    "result": "PASS",
+    "bytes": 142753792,
+    "sha256": "9daf5064924a2a085b1e8ee4e0871df5b9fc86dac516c8d7de9a85484f2ca8ee",
+    "recorded": "9daf5064924a2a085b1e8ee4e0871df5b9fc86dac516c8d7de9a85484f2ca8ee",
+    "summary": "142,753,792 B  9daf5064924a2a085b1e8ee4e0871df5b9fc86dac516c8d7de9a85484f2ca8ee"
+  },
+  "prelinked_fileset": {
+    "result": "PASS",
+    "filetype": 12,
+    "fileset_entries": 79,
+    "segments": [
+      "__TEXT",
+      "__PRELINK_TEXT",
+      "__DATA_CONST",
+      "__DATA_SPTM",
+      "__TEXT_EXEC",
+      "__PRELINK_INFO",
+      "__DATA",
+      "__LINKEDIT",
+      "__KLDDATA",
+      "__BOOTDATA"
+    ],
+    "summary": "MH_FILESET, 79 entries, 10 segments"
+  },
+  "no_diagnostic_segment": {
+    "result": "PASS",
+    "summary": "__KDIAG absent"
+  },
+  "pr249_pool_in_machine_code": {
+    "result": "PASS",
+    "pages": 22,
+    "movz_hits": 1,
+    "lsl_hits": 3,
+    "adjacent_pair": true,
+    "entries_cleared": 11264,
+    "summary": "movz x2,#22 + lsl x2,x2,#9 adjacent=True"
+  },
+  "pr249_relevance": {
+    "result": "NOT-THE-FIX",
+    "owned_window_bytes": 2147483648,
+    "l1_entries": 3,
+    "pages_used": 8,
+    "pool_before_pr249": 16,
+    "pool_after_pr249": 22,
+    "old_pool_sufficient": true,
+    "summary": "2.00 GiB window needs 8 bootstrap pages; the old 16-page pool already covered it, so PR249 adds 24 KiB this board cannot use"
+  },
+  "device_registers": {
+    "snapshot": {
+      "TCR_EL1": 2251948612527386,
+      "SCTLR_EL1": 4233394589,
+      "source": "reporter-4 checkpoint the user supplied for kernel cc690c9a"
+    },
+    "tcr": {
+      "raw": 2251948612527386,
+      "T0SZ": 26,
+      "TG0": 0,
+      "T1SZ": 26,
+      "TG1": 2,
+      "SH0": 2,
+      "SH1": 2,
+      "IRGN0": 1,
+      "IRGN1": 1,
+      "ORGN0": 1,
+      "ORGN1": 1,
+      "IPS": 2,
+      "TBI0": 1,
+      "TBI1": 0,
+      "TG0_name": "4 KiB",
+      "TG1_name": "4 KiB",
+      "SH0_name": "outer shareable",
+      "SH1_name": "outer shareable",
+      "IRGN0_name": "write-back WA",
+      "IRGN1_name": "write-back WA",
+      "ORGN0_name": "write-back WA",
+      "ORGN1_name": "write-back WA",
+      "IPS_name": "40-bit",
+      "anomalies": []
+    },
+    "sctlr": {
+      "raw": 4233394589,
+      "set": [
+        "M (MMU enable)",
+        "C (data cache)",
+        "SA",
+        "SA0",
+        "EOS",
+        "I (instr cache)",
+        "EnDB",
+        "DZE",
+        "nTWE",
+        "TSCXT",
+        "EIS",
+        "UCI",
+        "EnDA",
+        "nTLSMD",
+        "LSMAOE",
+        "EnIB",
+        "EnIA"
+      ],
+      "MMU": 1,
+      "data_cache": 1,
+      "instr_cache": 1,
+      "WXN": 0
+    },
+    "result": "PASS"
+  },
+  "adt_macos_identity": {
+    "result": "FAIL",
+    "returncode": 1,
+    "summary": "ADT still identifies as the hardware DTS: no macOS platform identity, so the kernel matches no platform expert"
+  },
+  "verdict": {
+    "artifact_internally_consistent": true,
+    "adt_identity_gate_passed": false,
+    "pr249_is_the_fix_for_the_green_bar": false,
+    "reasoning": "PR249 raises the native 4 KiB bootstrap pool from 16 to 22 pages, a capacity guard arm_vm_init checks under DEVELOPMENT||DEBUG. This board owns a 2 GiB window needing 8 pages, so the pre-PR249 pool already passed that check; the device reached set_mmu_ttb_alternate without panicking, which proves the guard never fired. The shipped ADT then identifies as a Qualcomm MTP with an empty /arm-io and no /product, so the kernel cannot select a macOS platform expert at all.",
+    "hardware_boot_verified": false,
+    "device_operations": false
+  }
+}

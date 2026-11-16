@@ -1,0 +1,104 @@
+{
+  "date": "2026-11-16",
+  "stage": "signed-probe-on-pr249-with-macos-identity-ADT",
+  "purpose": "Attach the proven OneSend/QR reporter chain to the PR249 kernel so one boot shows how far arm_vm_init gets, with the ADT identity fix in place",
+  "why_not_ramoops": {
+    "observation": "The kernel has ramoops enabled but writes no log.",
+    "cause": "0004-tb710fu-ramoops-console.patch calls tb710fu_ramoops_init() after arm_vm_init() returns (arm_init: arm_vm_init(...) then tb710fu_ramoops_init()). Before that, tb710fu_ramoops_putc() only appends to a 4096-byte RAM buffer called `early`; nothing touches the persistent zone. The stop is inside arm_vm_init, so init never runs and the zone is never written.",
+    "conclusion": "Empty pstore is expected here and is not evidence about where the kernel stopped."
+  },
+  "inputs": {
+    "kernel": {
+      "path": ".local/pr249-build/kernel/kernel.macho",
+      "sha256": "9daf5064924a2a085b1e8ee4e0871df5b9fc86dac516c8d7de9a85484f2ca8ee",
+      "bytes": 142753792
+    },
+    "adt": {
+      "sha256": "f4161ff940b78e777ca2a6f4cb02191ff00f5046cc4dc3302d8fc4ce00f9c1a0",
+      "bytes": 14212,
+      "identity": "Mac17,11 / K114cAP, model carried"
+    },
+    "payload_before": {
+      "sha256": "902c7400657403fa589bbd749223f046184a2facb125e1849660e8306ac05369"
+    },
+    "baseline_vendor_boot": "out/lzma-keys/vendor_boot-ecc0.signed.img 836ca997d766dedfef0531f7283026b443d2227302148fdd107852e25354df15"
+  },
+  "probe_build": {
+    "tool": "tools/prepare_early_report.py (pin widened to accept 9daf5064, explicit --expect-kernel-sha256)",
+    "fidelity_regression": {
+      "note": "Re-running the widened tool on cc690c9a must reproduce the historical reporter byte for byte",
+      "kernel_sha256": "f7a425a7ef9c08635618891ba665dba8b93c0712ddfdc79b47cf1bc9f74c6425",
+      "matches_shipped_reporter": true
+    },
+    "probe_kernel_sha256": "b30f219181520022bdc47883d98c54a8cfc1748ca73b67cb292bf57ee7f7a5f2",
+    "probe_kernel_bytes": 143589376,
+    "segment": {
+      "name": "__KDIAG",
+      "va": "0xfffffff00f828000",
+      "fileoff": 142753792,
+      "bytes": 835584,
+      "appended_at_file_end": true
+    },
+    "patch_islands": {
+      "changed_bytes_in_shared_prefix": 403,
+      "islands": 26,
+      "largest_island_bytes": 120,
+      "call_sites_rewritten": 24
+    },
+    "hooks_verified": {
+      "arm_init_traces": "14/14",
+      "arm_vm_init_traces": "10/10",
+      "arm_init_first_word_PACIBSP": "0xd503237f",
+      "switch_site": "0xfffffff00bb8a694",
+      "checkpoint_installed": false
+    },
+    "original_segments_preserved": "10/10 name/vm/size unchanged",
+    "markers_present": {
+      "XNU LIVE CHECKPOINT": 1,
+      "XNU VM CHECKPOINT": 1,
+      "REPORTER SELFTEST": 1
+    },
+    "production_darwinboot_parser": "PASS on both the control kernel and the probe kernel"
+  },
+  "packaging": {
+    "payload_sha256": "eb809e94008a71ceaefaab5b7aa0a4bd3b453066e26a525edb57403a464a9194",
+    "payload_bytes": 34603008,
+    "fat_clusters": 66512,
+    "kernel_lzma_sha256": "a2c94a02058d1e46d8744a06c834a87f973e89c4bf3823fba0210b41ce8c13d5",
+    "kernel_lzma_bytes": 24080471,
+    "kernel_chain_extended": "yes (probe kernel is 12,836 B larger than the clean one)",
+    "adt_sha256_unchanged": "f4161ff940b78e777ca2a6f4cb02191ff00f5046cc4dc3302d8fc4ce00f9c1a0",
+    "toml_sha256_unchanged": "a14b5a8fa15e9e8a29e160a2e87d36f72cb31bcb95140072f92359986c13a356",
+    "readback_match": true
+  },
+  "delivery": {
+    "vendor_boot_sha256": "394fdd82a7c4aa9055bada25a3349728ad25120cc8007e6946820ec10c5e9aa3",
+    "vbmeta_sha256": "366332ed4819d519d81bb2a3e8def56bf6cebb82656b01365ada26c7a7c1975f",
+    "vendor_boot_bytes": 100663296,
+    "vbmeta_bytes": 8000,
+    "files": [
+      "out/kernel-adt-probe/vendor_boot.img",
+      "out/kernel-adt-probe/vbmeta.img"
+    ]
+  },
+  "verification": {
+    "signer_self_report": "PASS, 22 other descriptors and public key unchanged",
+    "independent_rsa": "PASS on both vbmeta.img and the vendor_boot footer (recomputed from the embedded modulus, no avbtool)",
+    "independent_payload": "PASS: kernel decodes to b30f2191..., ADT f4161ff9..., toml unchanged"
+  },
+  "expected_reading": {
+    "last_line_means": "The last checkpoint text/QR is the last place the reporter ran; it is a boundary, not a fault PC",
+    "if_it_reaches_set_mmu_ttb_alternate": "arm_vm_init completed every traced call, so the stop is at or after the TTBR1 switch",
+    "if_it_stops_earlier": "The named call is the first one that did not return, which separates the stages inside arm_vm_init",
+    "no_export_pause": "This build continues the original call sequence; it does not intentionally pause before the switch",
+    "scan": "Use OneSend to scan the on-screen QR; the report continues rotating while the kernel runs"
+  },
+  "boundary": [
+    "This is a diagnostic image, not a functional fix and not hardware acceptance.",
+    "The reporter appends an 835,584 B segment and rewrites 24 BL sites; layout perturbation is expected and must be accounted for when comparing with the clean kernel.",
+    "ADT identity is included but its effect on the stop point is still unproven.",
+    "No device flash, reboot or partition operation was performed by the agent."
+  ],
+  "device_operations": false,
+  "hardware_verified": false
+}

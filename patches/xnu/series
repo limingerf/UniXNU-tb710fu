@@ -3,3 +3,4 @@
 0003-tb710fu-kernel-stack-alignment.patch
 0004-tb710fu-ramoops-console.patch
 0005-native-4k-bootstrap-pool-9g.patch
+0006-tb710fu-diag-segment-rx.patch

@@ -1,0 +1,123 @@
+{
+  "date": "2026-11-16",
+  "stage": "signed-vendor-boot-with-macos-identity-ADT",
+  "purpose": "Repair the ADT sidecar identity defect found in the PR249 delivery; no kernel recompile, no device operations",
+  "scope": {
+    "kernel_recompiled": false,
+    "prelink_rerun": false,
+    "cloud_build": false,
+    "device_operations": false,
+    "hardware_verified": false,
+    "changed_in_payload": ["EFI/UniXNU/Payloads/kernel.macho.adt"],
+    "unchanged_in_payload": [
+      "EFI/UniXNU/Payloads/kernel.macho",
+      "EFI/UniXNU/unixnu.toml"
+    ]
+  },
+  "inputs": {
+    "baseline_vendor_boot": {
+      "path": "out/lzma-keys/vendor_boot-ecc0.signed.img",
+      "sha256": "836ca997d766dedfef0531f7283026b443d2227302148fdd107852e25354df15"
+    },
+    "baseline_vbmeta": {
+      "path": "out/lzma-keys/vbmeta-ecc0.img",
+      "sha256": "3992de82a3a03584b0e03c43bd66060ef93684122bb8867c893ed6c45ea85331"
+    },
+    "board_config": "board.toml [payload.adt] chip_id=0x6050 owned_memory_size=0x80000000",
+    "os_profile": "macos-27.3-26C5035r",
+    "hardware_dtb": ".local/adt/adt-input4.dtb",
+    "generator": ".work/UniXNU/scripts/unixnu/devicetree.py (pinned 0c1bac3d51a3009dca1708b15a5198f4b43d057a)",
+    "platform_seed": "0x30c18713"
+  },
+  "adt": {
+    "before": {
+      "bytes": 11536,
+      "sha256": "4c56fb2a23d9177aa6b5820d3aba46ca66db90f8168bb6520bdd598ba097bc7b",
+      "model": "Qualcomm Technologies, Inc. Pineapple MTP",
+      "compatible0": "qcom,pineapple-mtp",
+      "product_properties": 0,
+      "chosen_has_osenvironment": false,
+      "chosen_has_boot_uuid": false,
+      "chosen_has_root_matching": false,
+      "result": "not a macOS device tree"
+    },
+    "after": {
+      "bytes": 14212,
+      "sha256": "f4161ff940b78e777ca2a6f4cb02191ff00f5046cc4dc3302d8fc4ce00f9c1a0",
+      "model": "Mac17,11",
+      "compatible0": "K114cAP",
+      "product_properties": 35,
+      "chosen_has_osenvironment": true,
+      "chosen_has_boot_uuid": true,
+      "chosen_has_root_matching": true,
+      "result": "PASS"
+    },
+    "gate": "tools/check_adt_identity.py, 9 checks PASS on after, 7 FAIL on before",
+    "remaining_gap": "/arm-io has 0 hardware nodes: the board DTS exports no unixnu,adt-name nodes (separate board-porting task)"
+  },
+  "payload": {
+    "bytes": 34603008,
+    "sha256_before": "7a3174891e8c6ec4804c7376eb18e88bf5bed25572a57f92c594a15e40170e66",
+    "sha256_after": "902c7400657403fa589bbd749223f046184a2facb125e1849660e8306ac05369",
+    "fat_clusters": 66512,
+    "fat_floor": 65525,
+    "geometry_unchanged": true,
+    "kernel_readback_sha256": "9daf5064924a2a085b1e8ee4e0871df5b9fc86dac516c8d7de9a85484f2ca8ee",
+    "kernel_readback_matches_record": true,
+    "toml_sha256": "a14b5a8fa15e9e8a29e160a2e87d36f72cb31bcb95140072f92359986c13a356",
+    "toml_unchanged": true
+  },
+  "vendor_boot": {
+    "unsigned_sha256": "78c4034c3ef46225cfad5ff892441704ea2ed9b16ac754d2ee4e6074092067a1",
+    "unsigned_bytes": 37859328,
+    "signed_bytes": 100663296,
+    "signed_sha256": "eb09e141fcb7065793554f772a0aefe18e76449ecad20d3ba314ac3aa129f901",
+    "header_unchanged": true,
+    "outside_ramdisk_unchanged": true
+  },
+  "vbmeta": {
+    "bytes": 8000,
+    "sha256": "a7472fe5d7995f1694ddca850e7d5eae71945df589c6f44d4bdda334b5b43c1e",
+    "algorithm": "SHA256_RSA4096",
+    "descriptor_counts_by_tag": {
+      "property": 13,
+      "hashtree": 4,
+      "hash": 3,
+      "chain_partition": 3
+    },
+    "descriptor_total": 23,
+    "unchanged_other_raw_descriptors": 22,
+    "identical_header": true,
+    "public_key_unchanged": true
+  },
+  "verification": {
+    "signer_self_report": "PASS (tools/sign_kernel_probe_pair.py)",
+    "independent_payload_check": "PASS (.work/audit/verify_signed_pair.py)",
+    "independent_rsa_check": "PASS (.work/audit/verify_rsa.py, signature recomputed from the embedded modulus, no avbtool)",
+    "rsa_details": {
+      "key_bits": 4096,
+      "exponent": 65537,
+      "montgomery_rr_consistent": true,
+      "pkcs1_v15_padding": true,
+      "digest_covers": "vbmeta header (256 B) + aux block; the auth block is skipped, per avbtool sign_vbmeta_blob",
+      "verified_at": ["out/kernel-adt-fix/vbmeta.img", "vendor_boot embedded footer"]
+    },
+    "negative_control": {
+      "script": ".work/audit/test_rsa_negative.py",
+      "cases": 4,
+      "tampered_images_accepted": 0,
+      "note": "descriptor / public key / signature / header byte flips all rejected"
+    }
+  },
+  "boundary": [
+    "The ADT is read at PE_init_platform(FALSE) in arm_init (line 380), which precedes arm_vm_init (line 586) where the device currently stops. The identity defect is real and blocks macOS platform selection, but it is NOT proven to be the green-bar hang: a kernel that stops inside arm_vm_init has already passed the ADT read.",
+    "A corrected ADT is necessary but not sufficient for boot. Platform expert match, MMU switch survival and console init remain unverified on hardware.",
+    "No PR249-related capacity change is implicated: the shipped 2 GiB window needs 8 bootstrap pages and the pre-PR249 16-page pool already covered it."
+  ],
+  "deliverables": {
+    "vendor_boot": "out/kernel-adt-fix/vendor_boot.img",
+    "vbmeta": "out/kernel-adt-fix/vbmeta.img",
+    "signing_report": "out/kernel-adt-fix/signing-report.json",
+    "descriptors": "out/kernel-adt-fix/descriptors.json"
+  }
+}

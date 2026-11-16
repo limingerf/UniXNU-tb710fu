@@ -33,6 +33,8 @@ def main():
     p.add_argument('--output-dir', type=Path, required=True)
     p.add_argument('--checkpoint-before-vm', action='store_true',
                    help='Explicit diagnostic stop; default continues the original arm_vm_init call')
+    p.add_argument('--expect-kernel-sha256',
+                   help='Require this exact input digest (refuses a different accepted fileset)')
     args = p.parse_args()
     root = Path(__file__).resolve().parents[1]
     src = root / 'diagnostics/early-report'
@@ -44,8 +46,19 @@ def main():
     if candidate.exists():
         raise SystemExit('Output exists; preserve previous evidence')
     original = args.kernel.read_bytes()
-    if sha(original) != 'cc690c9a0bde84c49e9cebccc288f393393d16da56620d580108f0a62692b31c':
-        raise SystemExit('Require original recorded fileset')
+    # The reporter was originally pinned to the single cc690c9a fileset. The
+    # PR249 rebuild (9daf5064) is a different accepted kernel, and wiring the
+    # reporter to it is a deliberate choice, never an accident: the caller must
+    # name the exact digest. Every hook point is re-verified below either way.
+    allowed = {
+        'cc690c9a0bde84c49e9cebccc288f393393d16da56620d580108f0a62692b31c',
+        '9daf5064924a2a085b1e8ee4e0871df5b9fc86dac516c8d7de9a85484f2ca8ee',
+    }
+    digest = sha(original)
+    if digest not in allowed:
+        raise SystemExit(f'Require a recorded fileset, got {digest}')
+    if args.expect_kernel_sha256 and digest != args.expect_kernel_sha256:
+        raise SystemExit(f'Kernel is {digest}, not the requested {args.expect_kernel_sha256}')
     manifest = json.loads((src / 'qr-sources.json').read_text())
     qr = args.qr_source.resolve()
     for record in manifest['files']:
