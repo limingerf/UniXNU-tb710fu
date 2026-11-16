@@ -1,0 +1,89 @@
+From: TB710FU clean board
+Subject: [PATCH] Bracket the TTBR1 switch with identity-mapped markers
+
+Diagnostic only; a boot without the argument redirects nothing.
+
+The reporter records stage 47 on entry to set_mmu_ttb_alternate and never draws
+again. The next traced call site exists and every instruction between the return
+address and it is mapped and executable, so control never leaves the switch.
+
+Those four instructions are fetched through TTBR1, and the ISB makes the table
+written by the MSR effective for the very next fetch. If the new table does not
+describe the kernel text, the fault lands there, and the reporter - running under
+that same table - cannot draw again. That is exactly the observed frozen screen
+with no exception report.
+
+A marker written by ordinary compiled code cannot be trusted here: a C version
+using two volatile byte stores compiled into an offset store plus a reordered
+constant, and any code placed after the MSR is fetched through the table under
+test. The stub below is a single literal asm block that emits the exact sequence
+with the address built by movz/movk, so the compiler has no freedom over an
+experiment whose entire value is the exact address and ordering of two stores.
+
+The markers are stored through the low-half 1:1 map at physical 0x93ffff000,
+the top page of the 2 GiB bootstrap window - above topOfKernelData and above the
+new page tables, so no kernel allocation can occupy it. set_mmu_ttb_alternate
+changes TTBR1 only, so the bootstrap TTBR0 map translates these stores
+identically on both sides of the MSR:
+
+    mark0 = 1   stored before the TTBR1 write
+    mark1 = 2   stored after the ISB
+
+    mark0 set, mark1 clear -> execution stopped in the MSR or the ISB, which
+                              points at the new table contents
+    both set               -> the switch completed and the fault is later
+    neither set            -> the stub was never entered
+
+Read the bytes back from Android or TWRP: dd if=/dev/mem bs=1 \
+    skip=$((0x93ffff000)) count=2
+diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -84,2 +84,33 @@
+  */
++
++/*
++ * TB710FU diagnostics: the TTBR1 switch with identity-mapped markers.
++ *
++ * One literal asm block on purpose. A C version with two volatile byte stores
++ * was compiled into `sturb w9, [x8, #-1]` with the constant for the second
++ * store hoisted ahead of the barriers, i.e. the markers did not bracket the MSR
++ * in the emitted code. The sequence below is fixed at assembly time so the two
++ * stores are guaranteed to sit on either side of the TTBR1 write, at the exact
++ * physical address, through the low-half identity map that the switch does not
++ * touch.
++ */
++static void
++set_mmu_ttb_alternate_probed(uint64_t ttbr1)
++{
++	__asm__ volatile(
++	    "movz x8, #0xf000\n"
++	    "movk x8, #0x3fff, lsl #16\n"
++	    "movk x8, #0x9, lsl #32\n"
++	    "movz w9, #1\n"
++	    "strb w9, [x8]\n"
++	    "dsb sy\n"
++	    "msr TTBR1_EL1, %[ttbr1]\n"
++	    "isb\n"
++	    "movz w9, #2\n"
++	    "strb w9, [x8, #1]\n"
++	    :
++	    : [ttbr1] "r"(ttbr1)
++	    : "x8", "w9", "memory");
++}
++
+ SECURITY_READ_ONLY_LATE(uint8_t) bootstrap_pagetables[BOOTSTRAP_TABLE_SIZE] __attribute__((aligned(ARM_PGBYTES)));
+@@ -2544,3 +2544,12 @@
+ 	arm_vm_physmap_init(args);
+-	set_mmu_ttb_alternate(cpu_ttep & TTBR_BADDR_MASK);
++	/* TB710FU diagnostics: marked switch when the boot argument asks for it. */
++	{
++		uint32_t switch_marks = 0;
++		if (PE_parse_boot_argn("TB710FU_SWITCH_MARKS", &switch_marks,
++		    sizeof(switch_marks)) && switch_marks != 0) {
++			set_mmu_ttb_alternate_probed(cpu_ttep & TTBR_BADDR_MASK);
++		} else {
++			set_mmu_ttb_alternate(cpu_ttep & TTBR_BADDR_MASK);
++		}
++	}
+ 

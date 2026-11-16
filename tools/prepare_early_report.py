@@ -138,6 +138,15 @@ def main():
         if parent == '_arm_vm_init' and site > switch_site and not args.trace_past_switch:
             raise SystemExit('Trace must not enter appended code after TTBR1 switch '
                              '(pass --trace-past-switch only with the 0006 segment mapping)')
+        # Tail transfers reproduce the original code's branch shape. Only the two
+        # call sites the kernel itself reaches with `b` may be treated as tails:
+        # _set_mmu_ttb_alternate is entered that way so the reporter can stop
+        # drawing before TTBR1 changes, and _arm_vm_init is the outer call.
+        #
+        # _set_mmu_ttb is an ordinary `bl` call made *after* the switch. It is not
+        # in this set, so it goes through `bl`, the wrapper regains control and
+        # writes stage 49. Listing it while it was treated as a tail is why stage
+        # 49 never appeared on the device.
         tail = name in ('_arm_vm_init', '_set_mmu_ttb_alternate')
         handoff = name == '_set_mmu_ttb_alternate'
         label, symbol, resume = 'diag_trace_' + str(index), 'diag_original_' + str(index), 'diag_return_' + str(index)
