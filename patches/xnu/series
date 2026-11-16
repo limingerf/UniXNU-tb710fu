@@ -5,3 +5,4 @@
 0005-native-4k-bootstrap-pool-9g.patch
 0006-tb710fu-diag-segment-rx.patch
 0007-tb710fu-switch-markers.patch
+0008-tb710fu-ramoops-in-window.patch

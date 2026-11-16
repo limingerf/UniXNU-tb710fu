@@ -1,0 +1,125 @@
+{
+  "date": "2026-11-16",
+  "stage": "signed-image-with-identity-mapped-TTBR1-switch-markers",
+  "purpose": "Determine whether execution stops inside the MSR TTBR1_EL1 / ISB pair by writing two markers that do not depend on the new page table",
+  "provenance": {
+    "cloud_run": {
+      "id": 43819437775,
+      "conclusion": "success",
+      "head_sha": "d1247d56491166c55bce70401577f29883b86a78",
+      "workflow": ".github/workflows/macos-kernel.yml"
+    },
+    "artifact": {
+      "name": "tb710fu-prelink-43819437775",
+      "bytes": 37731505,
+      "sha256": "ae175f5e76c7bb0c51f48920530604239486fee9d76c359080927d92ae7e9534",
+      "github_digest_matches": true
+    },
+    "kernel": {
+      "bytes": 142753792,
+      "sha256": "860834c55878c484be9c444588ae9c70e9bc01f40f89750e055fe4d361211bb7"
+    },
+    "patch_0007": {
+      "recorded_in_xnu_inputs": "fbba12c2cd295e607adfe0d91e7dc1d254b36622f8ffaf4efa845c424329b659",
+      "local_sha256": "fbba12c2cd295e607adfe0d91e7dc1d254b36622f8ffaf4efa845c424329b659",
+      "identical": true,
+      "series_position": 133,
+      "series_total": 133
+    }
+  },
+  "why_markers_are_identity_mapped": {
+    "observation": "stage 47 (entry to set_mmu_ttb_alternate) is written; stage 49 (set_mmu_ttb) never is",
+    "deduction": "The five instructions from the return landing point to the next wrapper are mapped and executable and touch only mapped __DATA_CONST, so control never reaches them: the switch does not return.",
+    "switch_instructions": [
+      "DSB SY",
+      "MSR TTBR1_EL1, x0",
+      "ISB",
+      "RET"
+    ],
+    "key_fact": "Each of those four instructions is fetched through TTBR1; the ISB makes the new table effective for the very next fetch. A marker in __DATA or in compiled C code would be fetched through the table under test and would inherit the exact fault being investigated.",
+    "solution": "Store the markers through the low-half 1:1 bootstrap map. The switch writes TTBR1 only, so TTBR0 still translates the low half identically on both sides of the MSR. The stores therefore survive a broken new table."
+  },
+  "marker_design": {
+    "physical_address": "0x93ffff000",
+    "size_bytes": 2,
+    "location": "top page of the 2 GiB bootstrap window 0x8c0000000..0x940000000, above topOfKernelData and above the new page tables, so no kernel allocation uses it",
+    "mark0_value": 1,
+    "mark0_timing": "before DSB / MSR TTBR1_EL1",
+    "mark1_value": 2,
+    "mark1_timing": "after ISB, before RET",
+    "gate": "TB710FU_SWITCH_MARKS=1 on the boot command line; a stock boot runs the original call",
+    "stub": "single literal asm block, because an equivalent C version with two volatile byte stores compiled to 'sturb w9, [x8, #-1]' with the constant hoisted ahead of the barriers"
+  },
+  "verification": {
+    "stub_aarch64_compile": "PASS",
+    "stub_disassembly_checks": "8/8 PASS on the standalone stub",
+    "in_kernel_machine_code": {
+      "note": "the probed function was inlined, so there is no symbol; the sequence was located by its distinctive movz/movk immediates in __TEXT_EXEC",
+      "va": "0xfffffff00bb8a6fc",
+      "sequence": [
+        "movz w8, #0xf000",
+        "movk x8, #0x3fff, lsl #16",
+        "movk x8, #0x9, lsl #32",
+        "movz w9, #1",
+        "strb w9, [x8, #0]",
+        "dsb sy",
+        "msr TTBR1_EL1, x0",
+        "isb",
+        "movz w9, #2",
+        "strb w9, [x8, #1]",
+        "b back to arm_vm_init"
+      ],
+      "order_verified": true
+    },
+    "patch_series": "0001..0007 apply in order; 0007 also applies alone; 0006 and 0007 touch the same file but disjoint line ranges",
+    "production_darwinboot_parser": "PASS on the probe kernel"
+  },
+  "probe": {
+    "kernel_sha256": "ab594a610116851509cf5e8387164e4bfa1c233400026dae510eca83bcf6f593",
+    "kernel_bytes": 143589376,
+    "segment_bytes": 835584,
+    "trace_past_switch": true,
+    "trace_points": 25
+  },
+  "payload": {
+    "sha256": "b9ae23ec964c395b12ee4f89e91b60b93de0216c64fbf855d616ecbaacf51768",
+    "bytes": 34603008,
+    "fat_clusters": 66512,
+    "kernel_lzma_sha256": "a04737a281c377b919462177d73dd12b7d8b8de482cf7fb5e6c90120056a72d1",
+    "adt_sha256": "f4161ff940b78e777ca2a6f4cb02191ff00f5046cc4dc3302d8fc4ce00f9c1a0",
+    "toml_sha256": "48dafcaeea5998a02e7648b9816d664f046a8e42f6801031092cbb3fd6dd40ca",
+    "boot_args": "-v serial=3 ramoops=0xac340000 ramoops_size=0x40000 ramoops_ecc=0 ramoops_panic_delay=15 ramoops_reset_after=120 TB710FU_SWITCH_MARKS=1",
+    "readback_ok": true
+  },
+  "delivery": {
+    "vendor_boot_sha256": "fafb1f967ec1eb0813dc7b6af4fa4a1e77f73876f88390458e7a483d6be51b69",
+    "vendor_boot_bytes": 100663296,
+    "vbmeta_sha256": "b64e33bc852b06e62b4bdc6a12b23cfb1ad803bb43d43f1fbda55eb1223d2669",
+    "vbmeta_bytes": 8000,
+    "files": [
+      "out/kernel-switch-markers/vendor_boot.img",
+      "out/kernel-switch-markers/vbmeta.img"
+    ]
+  },
+  "signature_verification": {
+    "signer_self_report": "PASS, 22 other descriptors and public key unchanged",
+    "independent_rsa": "PASS on vbmeta.img and vendor_boot footer",
+    "independent_payload": "PASS: kernel ab594a61, ADT f4161ff9, toml 48dafca",
+    "production_darwinboot_parser": "PASS"
+  },
+  "how_to_read_the_markers": {
+    "command": "dd if=/dev/mem bs=1 skip=$((0x93ffff000)) count=2 | od -An -tx1",
+    "mark0_1_mark1_0": "stub entered but MSR/ISB never completed -> the new table contents are the fault",
+    "mark0_1_mark1_2": "the switch completed; the stop is later than the switch",
+    "both_zero": "the marked stub was never entered (the boot argument did not take effect)",
+    "note": "Read from Android/TWRP after the frozen boot. This is a physical memory read, not a kernel log."
+  },
+  "boundary": [
+    "Diagnostic image, not a functional fix and not hardware acceptance.",
+    "The reporter appends 835,584 B and rewrites 25 call sites.",
+    "The marker experiment cannot by itself fix the stop; it localises it to one instruction.",
+    "No device flash, reboot or partition operation was performed by the agent."
+  ],
+  "device_operations": false,
+  "hardware_verified": false
+}

@@ -1,0 +1,70 @@
+From: TB710FU clean board
+Subject: [PATCH] Put the ramoops console region inside the managed memory span
+
+The 0004 ramoops patch targets physical 0xac340000, which is 32.3 GiB below
+gPhysBase 0x8c0000000 and outside the 2 GiB owned window
+[0x8c0000000, 0x940000000). ml_io_map cannot describe it, so the console zone
+was never written - which is why every pstore read came back empty.
+
+This moves the default region to 0x93ff00000, 256 KiB, 16 KiB aligned, 1 MiB
+below the top of the window so it avoids the identity-mapped switch-marker page
+at 0x93ffff000 introduced by 0007. That leaves roughly 1.88 GiB of headroom in
+the span and no overlap with the kernel image, boot args, device tree, page
+tables or the appended __KDIAG segment.
+
+A ramoops=<PA> boot argument still overrides the default, but only when the
+supplied address lies inside the span with room for the zone; out-of-span values
+(specifically the live 0xac340000) are rejected so an unreachable address cannot
+be selected silently. The zone is now enabled by default; ramoops_size,
+ramoops_ecc, ramoops_panic_delay, ramoops_reset_after, ramoops_reset_warm and
+ramoops_selftest keep their existing behaviour.
+
+Source: osfmk/kern/tb710fu_ramoops.c after 0004. Generated from the real source
+lines so the hunk applies cleanly. 0008 only touches ramoops.c, while 0005-0007
+touch arm_vm_init.c, so the file sets are disjoint.
+
+Boundary: tb710fu_ramoops_init() runs after arm_vm_init() returns. It therefore
+cannot capture a stop inside arm_vm_init (stage 47); 0007's identity-mapped
+markers cover that. 0008 establishes the durable console channel for boots that
+get past the switch, and fixes the "address reachable at all" problem.
+diff --git a/osfmk/kern/tb710fu_ramoops.c b/osfmk/kern/tb710fu_ramoops.c
+--- a/osfmk/kern/tb710fu_ramoops.c
++++ b/osfmk/kern/tb710fu_ramoops.c
+@@ -275,13 +275,30 @@ tb710fu_ramoops_init(void)
+ void
+ tb710fu_ramoops_init(void)
+ {
+-	uint64_t pa = 0;
+-	uint32_t size = 0x40000, ecc = 16;
+-
+-	if (!PE_parse_boot_argn("ramoops", &pa, sizeof(pa)) || pa == 0) {
+-		early_len = sizeof(early);  /* disabled: stop buffering */
+-		return;
+-	}
++	/*
++	 * TB710FU: the Android ramoops zone at 0xac340000 is 32.3 GiB below
++	 * gPhysBase (0x8c0000000) and cannot be reached by ml_io_map. Reserve
++	 * a 256 KiB region inside the managed span instead. It sits 1 MiB below
++	 * the top of the 2 GiB window so it does not collide with the 0007
++	 * switch-marker page at 0x93ffff000. See docs/LOG_REGION_IN_WINDOW.md.
++	 */
++#define TB710FU_LOG_REGION_PA    0x93ff00000ULL
++#define TB710FU_LOG_REGION_SIZE  0x40000U
++#define TB710FU_SPAN_BASE        0x8c0000000ULL
++#define TB710FU_SPAN_END         0x940000000ULL
++
++	uint64_t pa = TB710FU_LOG_REGION_PA;
++	uint64_t arg_pa = 0;
++	uint32_t size = TB710FU_LOG_REGION_SIZE, ecc = 16;
++
++	/* A boot-arg override is honoured only when it names an in-span range.
++	 * The live argument 0xac340000 is out of span and falls back to the
++	 * default instead of silently selecting an unreachable address. */
++	if (PE_parse_boot_argn("ramoops", &arg_pa, sizeof(arg_pa)) &&
++	    arg_pa >= TB710FU_SPAN_BASE &&
++	    arg_pa + size <= TB710FU_SPAN_END) {
++		pa = arg_pa;
++	}
+ 	PE_parse_boot_argn("ramoops_size", &size, sizeof(size));
+ 	PE_parse_boot_argn("ramoops_ecc", &ecc, sizeof(ecc));
+ 	PE_parse_boot_argn("ramoops_panic_delay", &panic_delay, sizeof(panic_delay));
