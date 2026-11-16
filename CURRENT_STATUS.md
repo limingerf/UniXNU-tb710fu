@@ -1,4 +1,23 @@
-# Current status · 2026-11-15
+# Current status · 2026-11-17
+
+## Mainline integration and Meizu21 audit · 2026-11-17
+
+The local `main` branch now points to `37ce6ae`, fast-forwarded from the
+diagnostic work after recording the current guard11/stage56 evidence and
+including the fileset-header fix. The worktree is on `main`; it is four commits
+ahead of `origin/main` and has not been pushed. These commits advance the
+diagnostic bring-up path; they are not a claim that the root volume or macOS
+userspace boots.
+
+The user-supplied [Meizu21 repository](https://github.com/XiaoChen8371/unixnu-meizu21)
+targets SM8650 but is a Darwin 22 transition: `board.toml` selects only
+`DarwinBoot`, the kernel provider is retained iOS 16.5/XNU, and
+`evidence/kernel-snapshot.json` says `kernel_rebuilt=false`. Its
+`meizu_ufs=1 root_apfs=ufs_super` arguments feed that retained Apple path; the
+repository contains no native UniXNU UFS, DWC3, EUD, or CDC driver to transplant.
+Its transition/rollback and protected-`super` workflow is useful process
+reference, but its memory map, 16 KiB pages, ADT, and board addresses are not
+TB710FU inputs.
 
 ## Guard11 stage56 hardware checkpoint · 2026-11-17
 
@@ -41,11 +60,13 @@ Independent RSA verification and decoded kernel/ADT/TOML readback passed; the
 vbmeta header, key and 22 unrelated descriptors are unchanged.
 
 The exception/wrapper model, stage 47/48 3200x1080 rendering, marker-root
-model, OneSend single-frame receive and rendered stage-47 QR decode passed.
-This does not yet prove the live TTBR1 root maps the reporter on the device:
-the candidate has not been booted and no device partition hash has been read
-back. No device operation was performed. Full provenance is in
-[guard11 evidence](docs/evidence/kernel-ttbr1-guard11-build.json).
+model, OneSend single-frame receive and rendered stage-47 QR decode passed. The
+user later supplied a stage-56 report labelled `src-eff36305-guard11`, showing
+`tb710fu_ramoops_init` returned at `0x93ff00000`. This confirms progress through
+that reported checkpoint; no device partition hash binds it to the exact signed
+pair, and the ramoops bytes, root-volume mount and macOS userspace remain
+unverified. No device operation was performed by this task. Full provenance is
+in [guard11 evidence](docs/evidence/kernel-ttbr1-guard11-build.json).
 
 ## Guard10 follow-up: switch returned; reporter mapping is missing · 2026-11-17
 

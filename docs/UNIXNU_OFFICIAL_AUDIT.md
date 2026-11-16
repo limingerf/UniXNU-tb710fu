@@ -27,7 +27,7 @@ run `43844823907` 已用更新后的 0006/0009 在 macOS 26 runner 完成 arm64e
 | [caihong / OnePlus Pad Pro](https://unixnu.com/zh/devices/caihong) | SM8650，iPadOS 17.7.11/XNU 10063；记录已过内核入口、MMU、kext、BSD 和 `launchd`，使用 `panic_screen`、`serial=3` 与恢复 ramdisk `rd=md0` | 有价值的同 SoC 分阶段调试参考；XNU 比当前 12377 旧，板级 PMGR、ADT、启动链不同 |
 | [houji / Xiaomi 14](https://unixnu.com/zh/devices/houji) | SM8650，Darwin 22/XNU 8796.141.3；八核、原生 UFS/HFSX；Recovery 可读取持久日志，但维护者注明极早期停机可能尚未写盘 | 说明后期日志可走独立恢复通道；不能覆盖当前 `arm_vm_init` 内部停点 |
 | [giulia / OnePlus Ace 5](https://unixnu.com/zh/devices/giulia) | SM8650，Darwin 22，CPU0 启动及该板专用 USB CDC 日志已验证 | 协议与驱动属于 giulia；不能将其 USB 终端直接用于 TB710FU |
-| [meizu21](https://unixnu.com/zh/devices/meizu21) | SM8650，但 SoC/UEFI 支持仍待建立，设备启动未验证 | 不是当前 XNU 12377 问题的启动证据 |
+| [meizu21](https://unixnu.com/zh/devices/meizu21) | 官方设备页仍列出支持待建立；另有 [XiaoChen8371/unixnu-meizu21](https://github.com/XiaoChen8371/unixnu-meizu21) 的 SM8650 Darwin 22 transition 仓库 | 该仓库保留 Darwin22 kernel/loader/UFS，`kernel_rebuilt=false`，没有原生 UniXNU UFS 或 USB 调试驱动；可参考其保护根卷和回滚流程，不能作为 XNU 12377 驱动来源 |
 | [旧 TB710FU 移植](https://unixnu.com/zh/devices/tb710fu) | iPadOS 17.7.11、arm64/XNU 10063；其设备镜像当时尚未上机 | 同机型历史可参考，但无 macOS 27/arm64e 切换路径；旧 `0xac340000` ramoops 地址在当前 2 GiB 管理窗口之外 |
 
 这些项目没有提供当前 XNU 12377 `set_mmu_ttb_alternate` 的直接修复。没有把其旧 XNU、USB 协议、SoC 私有日志布局或板级代码搬入本项目。
