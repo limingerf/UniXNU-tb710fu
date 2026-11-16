@@ -18,19 +18,24 @@ the TTBR1 switch.
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
-@@ -1801,7 +1801,24 @@ arm_vm_prot_init(__unused boot_args * args)
+@@ -1801,7 +1801,29 @@ arm_vm_prot_init(__unused boot_args * args)
  	if (segLASTDATACONSTB) {
  		arm_vm_page_granular_RWNX(segLASTDATACONSTB, segSizeLASTDATACONST, ARM64_GRANULE_ALLOW_BLOCK); // __LASTDATA_CONST may be empty, but we cannot assume this
  	}
  	arm_vm_page_granular_RWNX(segPRELINKDATAB, segSizePRELINKDATA, ARM64_GRANULE_ALLOW_BLOCK | ARM64_GRANULE_ALLOW_HINT); // Prelink __DATA for kexts (RW data)
 +
-+	/* TB710FU diagnostics: map appended code RX and state RW-NX. */
-+	{
++	/* TB710FU diagnostics: appended load commands live on the outer
++	 * collection header for a fileset kernel. */
++	kernel_mach_header_t *diag_mh = &_mh_execute_header;
++	if (kernel_mach_header_is_in_fileset(diag_mh)) {
++		diag_mh = PE_get_kc_header(KCKindPrimary);
++	}
++	if (diag_mh) {
 +		unsigned long diag_rx_size = 0, diag_rw_size = 0;
 +		vm_offset_t diag_rx_base = (vm_offset_t)getsegdatafromheader(
-+		    &_mh_execute_header, "__KDIAG", &diag_rx_size);
++		    diag_mh, "__KDIAG", &diag_rx_size);
 +		vm_offset_t diag_rw_base = (vm_offset_t)getsegdatafromheader(
-+		    &_mh_execute_header, "__KDATRW", &diag_rw_size);
++		    diag_mh, "__KDATRW", &diag_rw_size);
 +		if (diag_rx_base && diag_rx_size && diag_rw_base && diag_rw_size &&
 +		    diag_rw_base > diag_rx_base &&
 +		    diag_rw_base - diag_rx_base == diag_rx_size &&
