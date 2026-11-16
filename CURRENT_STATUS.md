@@ -5,7 +5,7 @@
 The local `main` branch includes the diagnostic bring-up path, the Ace 5 audit,
 and the CDC protocol/log-ring host slice from
 `1c6217ba46033419fd35f576f47b67ddc7ed9b98`. After this status/provenance
-update, it is eight commits ahead of `origin/main` and has not been pushed.
+update, it is nine commits ahead of `origin/main` and has not been pushed.
 These commits do not claim that the root volume or macOS userspace boots.
 
 The user-supplied [Meizu21 repository](https://github.com/XiaoChen8371/unixnu-meizu21)
@@ -52,8 +52,22 @@ resolved the device-local package kit. This was a configuration check only;
 there has been no new XNU native build for this portable source slice because
 it is not yet linked into the kernel. No DWC3 register access, XNU log hook,
 USB enumeration or UFS probe is implemented. TWRP FDT resource and hash facts,
-and the separate missing UFS sample/CRC requirement, are in
+and the later read-only UFS GPT sample, are in
 [`USB_CDC_PORT.md`](docs/USB_CDC_PORT.md).
+
+## Read-only UFS GPT sample · 2026-11-17
+
+While the device was in TWRP, ADB confirmed `/dev/block/by-name/userdata` maps
+to `/dev/block/sda14`; `/dev/block/sda` reports 4096-byte logical blocks. One
+read-only 4096-byte block at user-LUN LBA 1 had the `EFI PART` signature and a
+valid 92-byte GPT header CRC (`0d00f8ae`). CRC-32/ISO-HDLC over the full block
+is `44b9c49a`; SHA-256 is
+`03f7bbae3cd21bdce06c3f21bf24254c4e297629be14533993c0ab5d46976617`.
+
+The raw block and device serial were not retained. This is a Linux/TWRP storage
+baseline for a future read-only XNU probe, not evidence that XNU can access UFS;
+queue ownership, SMMU and DMA remain untested. Full capture metadata is in
+[`ufs-gpt-lba1-twrp.json`](docs/evidence/ufs-gpt-lba1-twrp.json).
 
 ## Guard11 stage56 hardware checkpoint · 2026-11-17
 

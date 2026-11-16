@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "purpose": "Read-only expected-byte sample for a future UFS transport probe",
+  "project_revision_at_capture": "35abab0ea7a50745220fe517a9dc782306e606b8",
+  "capture_environment": "TWRP through ADB; no XNU driver involved",
+  "device_model": "TB710FU",
+  "block_device": "/dev/block/sda",
+  "userdata_partition": "/dev/block/sda14",
+  "logical_block_bytes": 4096,
+  "lba": 1,
+  "read_bytes": 4096,
+  "read_command": "adb exec-out dd if=/dev/block/sda bs=4096 skip=1 count=1 status=none",
+  "gpt": {
+    "signature": "EFI PART",
+    "header_size": 92,
+    "stored_header_crc32": "0d00f8ae",
+    "computed_header_crc32": "0d00f8ae",
+    "header_crc_valid": true
+  },
+  "sample_crc32": {
+    "variant": "CRC-32/ISO-HDLC",
+    "algorithm": "Python zlib.crc32",
+    "value": "44b9c49a"
+  },
+  "sample_sha256": "03f7bbae3cd21bdce06c3f21bf24254c4e297629be14533993c0ab5d46976617",
+  "raw_block_retained": false,
+  "limits": [
+    "This verifies the Linux/TWRP read and GPT header only; XNU UFS transport, queue ownership, SMMU and DMA remain untested.",
+    "The sample changes if the GPT header changes.",
+    "The device serial and raw block contents are not recorded."
+  ]
+}

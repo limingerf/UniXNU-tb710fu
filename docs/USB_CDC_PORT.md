@@ -47,7 +47,22 @@ The same FDT declares UFS host `0x01d84000`, PHY `0x01d80000`, stream ID
 `0x60`, ICE and MCQ registers, plus `qcom,iommu-dma = "fastmap"`. The pinned
 Linux DTS has the same host/PHY/SID declaration. These inputs improve the
 resource comparison with Ace 5, but do not establish live XNU queue ownership,
-SMMU context contents, DMA cache behavior or a safe sample LBA/CRC.
+SMMU context contents or DMA cache behavior.
+
+## Read-only UFS sample
+
+TWRP ADB identified `/dev/block/sda14` as `userdata`; the parent user-LUN
+device `/dev/block/sda` reports a 4096-byte logical block size. A single read
+of LBA 1 returned 4096 bytes beginning with `EFI PART`. The GPT header is 92
+bytes; its stored and independently recomputed header CRC32 are both
+`0d00f8ae`. CRC-32/ISO-HDLC (`zlib.crc32`) over the entire 4096-byte sample is
+`44b9c49a`; SHA-256 is
+`03f7bbae3cd21bdce06c3f21bf24254c4e297629be14533993c0ab5d46976617`.
+
+The raw block and device serial were not retained. The machine-readable record
+is [`ufs-gpt-lba1-twrp.json`](evidence/ufs-gpt-lba1-twrp.json). This establishes
+a Linux/TWRP reference sample only. It does not test XNU's UFS transport,
+queue handoff, SMMU mapping or DMA. GPT changes will change this sample.
 
 ## Next integration gates
 
@@ -59,7 +74,7 @@ range; unknown state must refuse takeover and let normal boot continue. The
 same driver must define the XNU `serial_console`/`kprintf` hooks and keep the
 producer path nonblocking.
 
-UFS remains a separate track. First establish a safe TB710FU block sample and
-expected CRC from read-only evidence. Do not reuse Ace 5's CRC, partition LBAs,
-media policy, or its XNU 8796 class bindings. No UFS controller, USB controller,
-boot image, partition or filesystem was touched for this port step.
+UFS remains a separate track. The TWRP GPT-header block is now an expected-byte
+baseline for a future read-only XNU probe. Do not reuse Ace 5's CRC, partition
+LBAs, media policy, or its XNU 8796 class bindings. No partition or filesystem
+was modified; the sample was read through the existing TWRP/Linux UFS stack.

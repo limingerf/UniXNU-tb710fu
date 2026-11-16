@@ -72,7 +72,7 @@ to sign, flash, switch slots or modify storage in this task.
 | Interrupts | GICD `0x17100000/0x10000`, GICR `0x17180000/0x200000`, reference stride `0x40000`; reference PSCI method `smc` | Confirm GICR affinity, PSCI ownership, timer frequency and IPI behavior on this firmware |
 | Memory | Mainline reserved ranges and the previous UEFI memory table are available as sources | Actual DDR banks and loader-owned ranges require qualified stock/live firmware input |
 | USB | TWRP FDT declares DWC3 `0x00a600000`, child stream ID `0x40`, `dr_mode = "otg"` and atomic DMA | The XNU handoff's role, PHY/clocks, SMMU route and DMA state are not read back; no CDC enumeration |
-| UFS | TWRP FDT and pinned Linux DTS declare host `0x01d84000`, PHY `0x01d80000`, stream ID `0x60`; prior Android observations report 4096-byte logical/physical blocks | No selected native UFS driver, XNU queue/SMMU/DMA ownership, known-block result, root mount or persistence |
+| UFS | TWRP FDT and pinned Linux DTS declare host `0x01d84000`, PHY `0x01d80000`, stream ID `0x60`; TWRP read-only GPT-header sample at LBA 1 has a valid header CRC | No selected native UFS driver or XNU queue/SMMU/DMA read result, root mount or persistence |
 | Display | NT36532, 3200 by 2000, dual DSI with DSC; SY7758 backlight and AW37504 panel supply | No ABL stride/format qualification, native framebuffer or userspace presentation |
 | Touch | `novatek,NVT-ts-spi`, SPI4, source IRQ GPIO162; Linux selects `TOUCHSCREEN_NT36532_SPI` | Review `drivers/input/touchscreen/nt36532/`, not the distinct `novatek-nvt-ts.c`; no native HID result |
 | GPU | Adreno 750 family and its board firmware names are source references | No native submission, fence, Metal or presentation result |
