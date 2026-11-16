@@ -1,7 +1,7 @@
 From: TB710FU clean board
-Subject: [PATCH] Map an explicitly requested diagnostic segment RX before the TTBR1 switch
+Subject: [PATCH] Map the diagnostic segment RX before the TTBR1 switch
 
-Diagnostic hook, inert unless the boot command line asks for it.
+Diagnostic hook, a no-op unless the loaded kernel really has the segment.
 
 The early-reporter diagnostic appends a __KDIAG segment past __BOOTDATA, in the
 gap between __BOOTDATA and dynamic_memory_begin. arm_vm_prot_init() maps the
@@ -11,28 +11,33 @@ no translation, and entering it takes an instruction abort at its first byte.
 
 That is why every earlier probe could show at most
 "XNU enter: vm/set_mmu_ttb_alternate#1" and then nothing: the reporter had
-already run out of reachable code. The last visible line was a reporting
-boundary, not the fault PC.
+already run out of reachable code, and the last visible line was a reporting
+boundary rather than the fault PC.
 
-This maps the segment named by tb-diag-segment=<name> as RX, alongside the other
-read-only-executable mappings, all of which run before the switch. On a boot
-without that argument the block performs one failed boot-argument lookup and maps
-nothing, so a normal kernel behaves exactly as before. The pinned official build
-scripts stay untouched: the gate is the boot argument, not a compile-time macro.
+This maps __KDIAG RX alongside the other read-only-executable mappings, all of
+which run before the switch. The lookup is unconditional on purpose: an earlier
+revision gated it on a tb-diag-segment boot argument, the compiled gate was
+correct (it branches on the parse result), but the argument never reached the
+kernel on this board, so the mapping silently never happened. Selecting the
+segment by name removes that entire failure mode.
+
+Nothing is mapped unless the segment exists: getsegdatafromheader() returns NULL
+and sets size 0 for an unknown name, and the block requires both to be non-zero.
+A kernel without the diagnostic segment therefore behaves exactly as before.
 
 Not a functional fix. It exists so the reporter can keep drawing past the TTBR1
 switch on a board that has no console and no working pstore.
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
-@@ -1801,7 +1801,33 @@ arm_vm_prot_init(__unused boot_args * args)
+@@ -1801,7 +1801,31 @@ arm_vm_prot_init(__unused boot_args * args)
  	if (segLASTDATACONSTB) {
  		arm_vm_page_granular_RWNX(segLASTDATACONSTB, segSizeLASTDATACONST, ARM64_GRANULE_ALLOW_BLOCK); // __LASTDATA_CONST may be empty, but we cannot assume this
  	}
  	arm_vm_page_granular_RWNX(segPRELINKDATAB, segSizePRELINKDATA, ARM64_GRANULE_ALLOW_BLOCK | ARM64_GRANULE_ALLOW_HINT); // Prelink __DATA for kexts (RW data)
 +
 +	/*
-+	 * TB710FU diagnostics: map an explicitly requested diagnostic segment RX.
++	 * TB710FU diagnostics: map the appended diagnostic segment RX.
 +	 *
 +	 * The reporter lives past __BOOTDATA, in the gap between __BOOTDATA and
 +	 * dynamic_memory_begin. No mapping above covers it, so once arm_vm_init()
@@ -41,19 +46,17 @@ diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
 +	 * stopped. Mapping it here - before the switch - keeps the reporter
 +	 * reachable so its output shows how far execution actually gets.
 +	 *
-+	 * Gated on an explicit boot argument, so a normal boot maps nothing.
++	 * Keyed on the segment name only, with no boot argument: a kernel built
++	 * without the diagnostic segment has no such segment, the lookup returns
++	 * null with size zero, and nothing is mapped.
 +	 */
 +	{
-+		char diag_segment[32];
-+		if (PE_parse_boot_argn("tb-diag-segment", diag_segment,
-+		    sizeof(diag_segment))) {
-+			unsigned long diag_size = 0;
-+			vm_offset_t diag_base = (vm_offset_t)getsegdatafromheader(
-+			    &_mh_execute_header, diag_segment, &diag_size);
-+			if (diag_base && diag_size) {
-+				arm_vm_page_granular_ROX(diag_base, diag_size, 0,
-+				    ARM64_PAGE_UNGUARDED);
-+			}
++		unsigned long diag_size = 0;
++		vm_offset_t diag_base = (vm_offset_t)getsegdatafromheader(
++		    &_mh_execute_header, "__KDIAG", &diag_size);
++		if (diag_base && diag_size) {
++			arm_vm_page_granular_ROX(diag_base, diag_size, 0,
++			    ARM64_PAGE_UNGUARDED);
 +		}
 +	}
  
