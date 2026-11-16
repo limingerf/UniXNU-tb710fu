@@ -18,11 +18,16 @@ CDC enumeration or XNU log hook.
 There is no TB710FU XNU UFS build or hardware read. The pinned
 `ShengUfs@99d8bcd3e43dd24fc3c8437c67b5d4cc71ab94d0` contains real queue,
 SMMU and command code, but its catalog metadata targets SM8550/iOS 17. The
-arm64e XNU 12377 public-source storage route needs IOStorageFamily/APFS ABI
-inputs and signed root policies, and upstream marks that route unbuilt and
-unqualified. It cannot be enabled as a drop-in macOS 27 driver. No standalone
-UFS snapshot or probe is required before adaptation; the build/ABI inputs are
-the current blocker.
+macOS profile already supplies IPSW build `26C5035r` and the OS/SystemOS/App
+image hashes and UUIDs; the official kernel context merges them and exports
+`UNIXNU_IPSW_BUILD`. A direct component-script invocation omits that context.
+With the correct build ID supplied, the builder reaches its real next blocker:
+there is no matching signed root-policy bundle for this build in the workspace.
+The XNU compile records needed by the archive recipe are also absent until the
+official kernel build produces them. The public-source storage route still
+requires IOStorageFamily/APFS ABI inputs and is marked unbuilt/unqualified
+upstream, so it is not a drop-in macOS 27 driver. No standalone UFS probe is
+required before adaptation.
 
 ## Mainline integration and Meizu21 audit · 2026-11-17
 
