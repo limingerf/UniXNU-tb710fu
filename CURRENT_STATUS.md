@@ -2,9 +2,9 @@
 
 ## Mainline integration and Meizu21 audit · 2026-11-17
 
-The local `main` branch now points to `37ce6ae`, fast-forwarded from the
+The local `main` branch now points to `7e78c2f`, fast-forwarded from the
 diagnostic work after recording the current guard11/stage56 evidence and
-including the fileset-header fix. The worktree is on `main`; it is four commits
+including the fileset-header fix. The worktree is on `main`; it is five commits
 ahead of `origin/main` and has not been pushed. These commits advance the
 diagnostic bring-up path; they are not a claim that the root volume or macOS
 userspace boots.
@@ -19,6 +19,25 @@ Its transition/rollback and protected-`super` workflow is useful process
 reference, but its memory map, 16 KiB pages, ADT, and board addresses are not
 TB710FU inputs.
 
+## Ace 5 SM8650 USB/UFS reference audit · 2026-11-17
+
+The [Ace 5 repository](https://github.com/tycykp/UniXNU-OnePlus-Ace5) is a much
+closer reference than Meizu21. Its dated hardware record reports a real
+Darwin 22 / XNU 8796.141.3 `fastboot boot`, USB CDC on Windows `COM21` (8,802
+status bytes, zero drops), and an 8 KiB UFS read matching Android's CRC. A later
+device record reports a read-write HFSX `iOSRoot` mount and launchd/system
+service progress; SpringBoard/backboardd repeatedly crashed and no GUI appeared.
+This is native XNU hardware integration, not an OEM kernel retained behind the
+UniXNU menu.
+
+Its CDC/UFS work derives from a pinned SM8550 Vermeer integration adapted for
+Ace 5 SM8650. It is the best source for TB710FU USB/UFS bring-up, but controller
+role, PHY, clocks, SMMU stream, memory layout, and XNU 8796 interfaces need
+separate comparison with TB710FU/XNU 12377. The Ace 5 `board.toml` and
+`hardware/sm8650-ufs.json` retain stale statements that no storage driver/DMA
+was validated; the later run-bound read and root-mount records establish the
+narrower tested behavior and should be cited with their image/kernel hashes.
+
 ## Guard11 stage56 hardware checkpoint · 2026-11-17
 
 The user supplied `XNU returned: tb710fu_ramoops_init` with
@@ -29,8 +48,9 @@ yet prove that the persistent zone header and console bytes were written, and
 the device partition hash was not read back, so exact image attribution is not
 confirmed.
 
-There is still no live USB COM/XNU console. `serial=3` cannot create a missing
-UART, and EUD/CDC enumeration plus an XNU driver remain unverified. The current
+There is still no live USB COM/XNU console for TB710FU. `serial=3` cannot create
+a missing UART, and TB710FU EUD/CDC enumeration plus its XNU output driver
+remain unverified. The current
 UEFI QR viewer reads the old `0xac340000` zone; guard11 writes to
 `0x93ff00000`, so that viewer cannot yet export guard11's zone. A TWRP raw
 memory read of `0x93ff00000..0x93ff40000` is the immediate post-reboot capture

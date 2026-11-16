@@ -26,11 +26,13 @@ run `43844823907` 已用更新后的 0006/0009 在 macOS 26 runner 完成 arm64e
 |---|---|---|
 | [caihong / OnePlus Pad Pro](https://unixnu.com/zh/devices/caihong) | SM8650，iPadOS 17.7.11/XNU 10063；记录已过内核入口、MMU、kext、BSD 和 `launchd`，使用 `panic_screen`、`serial=3` 与恢复 ramdisk `rd=md0` | 有价值的同 SoC 分阶段调试参考；XNU 比当前 12377 旧，板级 PMGR、ADT、启动链不同 |
 | [houji / Xiaomi 14](https://unixnu.com/zh/devices/houji) | SM8650，Darwin 22/XNU 8796.141.3；八核、原生 UFS/HFSX；Recovery 可读取持久日志，但维护者注明极早期停机可能尚未写盘 | 说明后期日志可走独立恢复通道；不能覆盖当前 `arm_vm_init` 内部停点 |
-| [giulia / OnePlus Ace 5](https://unixnu.com/zh/devices/giulia) | SM8650，Darwin 22，CPU0 启动及该板专用 USB CDC 日志已验证 | 协议与驱动属于 giulia；不能将其 USB 终端直接用于 TB710FU |
+| [giulia / OnePlus Ace 5](https://unixnu.com/zh/devices/giulia) / [device repo](https://github.com/tycykp/UniXNU-OnePlus-Ace5) | SM8650，Darwin 22 / XNU 8796.141.3；实测 DWC3 CDC `COM21`、UFS 8 KiB 读取及后续 HFSX 根卷读写挂载；部分 launchd/system services 运行，SpringBoard/backboardd 崩溃，GUI 未呈现 | 最强同 SoC 日志和存储参考；从 SM8550 Vermeer 集成适配到 Ace 5，TB710FU 仍须复核 PHY/时钟/SMMU/ADT；不是 XNU 12377/macOS 27 的现成驱动 |
 | [meizu21](https://unixnu.com/zh/devices/meizu21) | 官方设备页仍列出支持待建立；另有 [XiaoChen8371/unixnu-meizu21](https://github.com/XiaoChen8371/unixnu-meizu21) 的 SM8650 Darwin 22 transition 仓库 | 该仓库保留 Darwin22 kernel/loader/UFS，`kernel_rebuilt=false`，没有原生 UniXNU UFS 或 USB 调试驱动；可参考其保护根卷和回滚流程，不能作为 XNU 12377 驱动来源 |
 | [旧 TB710FU 移植](https://unixnu.com/zh/devices/tb710fu) | iPadOS 17.7.11、arm64/XNU 10063；其设备镜像当时尚未上机 | 同机型历史可参考，但无 macOS 27/arm64e 切换路径；旧 `0xac340000` ramoops 地址在当前 2 GiB 管理窗口之外 |
 
-这些项目没有提供当前 XNU 12377 `set_mmu_ttb_alternate` 的直接修复。没有把其旧 XNU、USB 协议、SoC 私有日志布局或板级代码搬入本项目。
+这些项目没有提供当前 XNU 12377 `set_mmu_ttb_alternate` 的直接修复。Ace 5 的 USB CDC 与 UFS/SMMU 实机路径可作为后续移植参考，但其 XNU 8796 接口和板级资源不能直接代替本机验证。
+
+TB710FU 与 Ace 5 的现有硬件清单都记录 DWC3 基址 `0xa600000`、UFS host 基址 `0x1d84000`，因此 Ace 5 的控制器探针与启动证据可以逐项对照本机。Ace 记录中的 UFS SID `0x60`、GCC 时钟偏移和 GDSC 是 PKG110 运行 DT 的值；TB710FU 当前记录没有这些值，不能因基址相同就复制。
 
 ## 验证与边界
 
