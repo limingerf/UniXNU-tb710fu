@@ -29,7 +29,8 @@ def main():
             "-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic",
             "-fsanitize=address,undefined", "-I", str(SOURCE),
             str(test), str(SOURCE / "CdcAcmProtocol.c"),
-            str(SOURCE / "CdcLogRing.c"), "-o", str(binary),
+            str(SOURCE / "CdcLogRing.c"), str(SOURCE / "CdcTransportGuard.c"),
+            "-o", str(binary),
         ]
         subprocess.run(command, check=True)
         subprocess.run([str(binary)], check=True)

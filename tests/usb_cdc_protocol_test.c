@@ -1,5 +1,6 @@
 #include "CdcAcmProtocol.h"
 #include "CdcLogRing.h"
+#include "CdcTransportGuard.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -107,6 +108,68 @@ static void test_log_ring(void)
     ring.lock = 0;
 }
 
+static void test_transport_guard(void)
+{
+    struct tb710fu_cdc_transport_snapshot state = {
+        .usb_role = TB710FU_CDC_USB_ROLE_OTG_PERIPHERAL,
+        .clocks_verified = 1,
+        .required_clocks_enabled = 1,
+        .phy_verified = 1,
+        .phy_ready = 1,
+        .smmu_verified = 1,
+        .smmu_identity = 1,
+        .smmu_stream_id = TB710FU_CDC_DWC3_STREAM_ID,
+        .matching_streams = 1,
+        .dma_contiguous = 1,
+        .dma_address_bits = 36,
+        .dma_physical = 0x10000000,
+        .dma_bytes = TB710FU_CDC_DMA_BYTES
+    };
+
+    assert(tb710fu_cdc_preflight(0, &state) == TB710FU_CDC_PREFLIGHT_DISABLED);
+    assert(tb710fu_cdc_preflight(2, &state) == TB710FU_CDC_PREFLIGHT_BAD_BOOT_ARG);
+    assert(tb710fu_cdc_preflight(1, 0) == TB710FU_CDC_PREFLIGHT_BAD_SNAPSHOT);
+    assert(tb710fu_cdc_preflight(1, &state) == TB710FU_CDC_PREFLIGHT_READY);
+
+    state.usb_role = TB710FU_CDC_USB_ROLE_HOST;
+    assert(tb710fu_cdc_preflight(1, &state) == TB710FU_CDC_PREFLIGHT_WRONG_USB_ROLE);
+    state.usb_role = TB710FU_CDC_USB_ROLE_DEVICE;
+    state.clocks_verified = 0;
+    assert(tb710fu_cdc_preflight(1, &state) == TB710FU_CDC_PREFLIGHT_CLOCKS_UNVERIFIED);
+    state.clocks_verified = 1;
+    state.required_clocks_enabled = 0;
+    assert(tb710fu_cdc_preflight(1, &state) == TB710FU_CDC_PREFLIGHT_CLOCKS_OFF);
+    state.required_clocks_enabled = 1;
+    state.phy_verified = 0;
+    assert(tb710fu_cdc_preflight(1, &state) == TB710FU_CDC_PREFLIGHT_PHY_UNVERIFIED);
+    state.phy_verified = 1;
+    state.phy_ready = 0;
+    assert(tb710fu_cdc_preflight(1, &state) == TB710FU_CDC_PREFLIGHT_PHY_NOT_READY);
+    state.phy_ready = 1;
+    state.smmu_identity = 0;
+    assert(tb710fu_cdc_preflight(1, &state) == TB710FU_CDC_PREFLIGHT_SMMU_ROUTE);
+    state.smmu_identity = 1;
+    state.matching_streams = 2;
+    assert(tb710fu_cdc_preflight(1, &state) == TB710FU_CDC_PREFLIGHT_SMMU_ROUTE);
+    state.matching_streams = 1;
+    state.dma_contiguous = 0;
+    assert(tb710fu_cdc_preflight(1, &state) == TB710FU_CDC_PREFLIGHT_DMA_NOT_CONTIGUOUS);
+    state.dma_contiguous = 1;
+    state.dma_physical++;
+    assert(tb710fu_cdc_preflight(1, &state) == TB710FU_CDC_PREFLIGHT_DMA_ALIGNMENT);
+    state.dma_physical = 0x10000000;
+    state.dma_bytes = TB710FU_CDC_DMA_BYTES - 1;
+    assert(tb710fu_cdc_preflight(1, &state) == TB710FU_CDC_PREFLIGHT_DMA_SIZE);
+    state.dma_bytes = TB710FU_CDC_DMA_BYTES;
+    state.dma_address_bits = 32;
+    state.dma_physical = 0x100000000ULL;
+    assert(tb710fu_cdc_preflight(1, &state) == TB710FU_CDC_PREFLIGHT_DMA_ADDRESS_WIDTH);
+    state.dma_address_bits = 36;
+    state.dma_physical = 0x10000000;
+    state.smmu_verified = 0;
+    assert(tb710fu_cdc_preflight(1, &state) == TB710FU_CDC_PREFLIGHT_SMMU_UNVERIFIED);
+}
+
 int main(void)
 {
     test_device_descriptor();
@@ -114,5 +177,6 @@ int main(void)
     test_strings();
     test_setup_requests();
     test_log_ring();
+    test_transport_guard();
     return 0;
 }
