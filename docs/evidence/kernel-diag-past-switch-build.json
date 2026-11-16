@@ -1,0 +1,131 @@
+{
+  "date": "2026-11-16",
+  "stage": "signed-diagnostic-pair-backing-0006-onto-the-cloud-kernel",
+  "purpose": "Attach the QR reporter to the cloud kernel that carries patch 0006, and trace past the TTBR1 switch for the first time",
+  "chain": {
+    "note": "This delivery is the first one whose kernel was built by the cloud run that actually applied 0006; every earlier image was built from a kernel that predates it.",
+    "cloud_run": {
+      "id": 43806716346,
+      "conclusion": "success",
+      "workflow": ".github/workflows/macos-kernel.yml",
+      "stage": "prelink",
+      "head_sha": "af96168c73b6d028310d0d69d73e3c46d34ccf7a",
+      "url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43806716346"
+    },
+    "artifact": {
+      "name": "tb710fu-prelink-43806716346",
+      "id": 14198942134,
+      "zip_bytes": 37726567,
+      "zip_sha256": "32820c754e692a301a3a8ef149b0893476e4dc76f3af045395b63f888bdabc55",
+      "github_digest_matches": true
+    },
+    "kernel": {
+      "path": ".work/diag-run/kernel.macho",
+      "bytes": 142753792,
+      "sha256": "6adc7e159137d073bfeebcc1d3385bd78d08e312544949b03287ec9129231a32",
+      "build_result_matches_bytes": true
+    }
+  },
+  "patch_0006_identity": {
+    "recorded_in_xnu_inputs": "85a04e1c712577d1ea5029673233696404760ed19329183b1c7526ae96ecc5cc",
+    "local_file": "85a04e1c712577d1ea5029673233696404760ed19329183b1c7526ae96ecc5cc",
+    "identical": true,
+    "total_input_patches": 132,
+    "position": 132
+  },
+  "patch_0006_proof_in_machine_code": {
+    "note": "A listed patch is not a compiled patch. These checks read the built image.",
+    "gate_string_present": 1,
+    "gate_string_in_baseline": 0,
+    "prot_init_references_gate_string": 1,
+    "prot_init_references_in_baseline": 0,
+    "arm_vm_prot_init_bytes_changed": true,
+    "first_difference_from_entry": "0x14",
+    "same_total_file_size_as_baseline": true,
+    "explanation": "Total size is unchanged because the added work was absorbed by existing segment slack; 7,297,495 bytes differ and 5,650 symbols shifted by +0x10, so the image is not a stale reuse.",
+    "switch_site_shift": {
+      "before": "0xfffffff00bb8a694",
+      "after": "0xfffffff00bb8a71c",
+      "delta": "0x88"
+    }
+  },
+  "probe": {
+    "kernel_sha256": "91b078f48b5fb9cb0057d8896998092f807455a8f768410f9d8fdbb2a6990f4a",
+    "kernel_bytes": 143589376,
+    "segment": {
+      "name": "__KDIAG",
+      "va": "0xfffffff00f828000",
+      "bytes": 835584,
+      "fileoff": 142753792,
+      "appended_past_original": true,
+      "ends_at_eof": true
+    },
+    "trace_points": 25,
+    "trace_past_switch_enabled": true,
+    "new_point": {
+      "name": "vm/set_mmu_ttb#1",
+      "site": "0xfffffff00bb8a730",
+      "after_switch_site": "0xfffffff00bb8a71c",
+      "is_last_entry": true
+    },
+    "previous_last_point": "vm/set_mmu_ttb_alternate#1",
+    "reporter_strings": "25 enter + 25 return, one per trace point",
+    "original_segments_preserved": "10/10"
+  },
+  "why_post_switch_tracing_is_now_sound": {
+    "before": "The reporter's __KDIAG segment lived in an unmapped gap, so any code after the switch would abort at its first byte. prepare_early_report.py therefore refused to place a trace there.",
+    "now": "Patch 0006 maps the segment named by tb-diag-segment RX during arm_vm_prot_init, which runs before the switch. The trace point after the switch is safe only while that mapping is requested and present.",
+    "guard": "--trace-past-switch is refused unless the caller opts in explicitly"
+  },
+  "payload": {
+    "sha256": "2abb82989fa3c20ee4b5ba36206365af37cdd45bf1cbd915eee172cfa18d7fb3",
+    "bytes": 34603008,
+    "fat_clusters": 66512,
+    "kernel_lzma_sha256": "3112bdd149d504c8942cd3afddd1466fc31d04f71fea611fa38fc578b27ad515",
+    "kernel_lzma_bytes": 24081707,
+    "adt_sha256": "f4161ff940b78e777ca2a6f4cb02191ff00f5046cc4dc3302d8fc4ce00f9c1a0",
+    "adt_note": "macOS identity ADT (model Mac17,11), not the hardware one",
+    "toml_sha256": "2a5d399d07120152fa44f31850baf7f8e0d30b947838928439fee274b19b9f92",
+    "boot_args": "-v serial=3 ramoops=0xac340000 ramoops_size=0x40000 ramoops_ecc=0 ramoops_panic_delay=15 ramoops_reset_after=120 tb-diag-segment=__KDIAG",
+    "readback_ok": true
+  },
+  "delivery": {
+    "vendor_boot_sha256": "2c35ccc4ce015c15f2d5949397d058f9c7e467abb396d6c71dc88909b506a260",
+    "vendor_boot_bytes": 100663296,
+    "vbmeta_sha256": "dc03f3b394a1d9c67d160b048dd89f1e91228a11f5e867c91be4dc1544403083",
+    "vbmeta_bytes": 8000,
+    "files": [
+      "out/kernel-diag-past-switch/vendor_boot.img",
+      "out/kernel-diag-past-switch/vbmeta.img"
+    ]
+  },
+  "verification": {
+    "signer_self_report": "PASS, 22 other raw descriptors and the public key unchanged",
+    "independent_rsa": "PASS on vbmeta.img and on the vendor_boot footer, recomputed from the embedded modulus without avbtool",
+    "independent_payload": "PASS: kernel decodes to 91b078f4..., ADT f4161ff9..., toml 2a5d399d...",
+    "production_darwinboot_parser": "PASS on the control kernel and on the probe kernel",
+    "boot_arg_cross_check": "the argument names __KDIAG and the kernel really has that segment"
+  },
+  "parallel_track_b_adt_window": {
+    "conclusion": "fixing the ADT window cannot make the ramoops PA reachable",
+    "facts": {
+      "dram_base": "0x8c0000000",
+      "darwinboot_memory_size": "0x80000000",
+      "span": "0x8c0000000 .. 0x940000000",
+      "ramoops_console_pa": "0xac340000",
+      "distance_below_phys_base": "0x813cc0000 (32.3 GiB)"
+    },
+    "candidate_a_excluded_ranges": "IMPOSSIBLE. arm_vm_excluded_init clamps each entry to the span (end=min(end,span_end), base=max(base,gPhysBase)); an entry below physBase yields base>=end and is skipped. Expressable bytes of the ramoops range: 0.",
+    "candidate_b_larger_window": "IMPOSSIBLE. The span starts at physBase, which is 32.3 GiB above the ramoops PA; lengthening the span never reaches below its own start.",
+    "candidate_c_move_window_down": "Changes gPhysBase/virtBase and every linked address: a port rebuild, not a fix.",
+    "workable_alternative": "Reserve a log region inside the span (about 1879.9 MiB of headroom exists). An excluded entry there is accepted, so the buffer becomes reachable at all - which the ramoops PA never was. It still cannot capture a stop inside arm_vm_init by itself."
+  },
+  "boundary": [
+    "Diagnostic image, not a functional fix and not hardware acceptance.",
+    "The reporter appends 835,584 B and rewrites 25 call sites; layout perturbation is expected and the switch site moved by 0x88.",
+    "The post-switch trace point proves the mapping works only if the device boots with tb-diag-segment=__KDIAG, which this image carries.",
+    "No device flash, reboot or partition operation was performed by the agent."
+  ],
+  "device_operations": false,
+  "hardware_verified": false
+}

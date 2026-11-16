@@ -35,6 +35,10 @@ def main():
                    help='Explicit diagnostic stop; default continues the original arm_vm_init call')
     p.add_argument('--expect-kernel-sha256',
                    help='Require this exact input digest (refuses a different accepted fileset)')
+    p.add_argument('--trace-past-switch', action='store_true',
+                   help='Also trace _set_mmu_ttb and _flush_mmu_tlb after the TTBR1 '
+                        'switch. Only valid with the 0006 segment mapping and '
+                        'tb-diag-segment=__KDIAG in the boot arguments.')
     args = p.parse_args()
     root = Path(__file__).resolve().parents[1]
     src = root / 'diagnostics/early-report'
@@ -46,13 +50,18 @@ def main():
     if candidate.exists():
         raise SystemExit('Output exists; preserve previous evidence')
     original = args.kernel.read_bytes()
-    # The reporter was originally pinned to the single cc690c9a fileset. The
-    # PR249 rebuild (9daf5064) is a different accepted kernel, and wiring the
-    # reporter to it is a deliberate choice, never an accident: the caller must
-    # name the exact digest. Every hook point is re-verified below either way.
+    # The reporter was originally pinned to the single cc690c9a fileset. Later
+    # accepted kernels are listed explicitly, and the caller must always name the
+    # exact digest with --expect-kernel-sha256, so wiring the reporter to a new
+    # kernel is deliberate and never accidental. Every hook point is re-verified
+    # below regardless of which input is used.
     allowed = {
+        # original prelink with the ramoops console patch
         'cc690c9a0bde84c49e9cebccc288f393393d16da56620d580108f0a62692b31c',
+        # PR249 bootstrap pool (16 -> 22 pages)
         '9daf5064924a2a085b1e8ee4e0871df5b9fc86dac516c8d7de9a85484f2ca8ee',
+        # PR249 + 0006 diagnostic-segment mapping (run 43806716346)
+        '6adc7e159137d073bfeebcc1d3385bd78d08e312544949b03287ec9129231a32',
     }
     digest = sha(original)
     if digest not in allowed:
@@ -109,13 +118,24 @@ def main():
         ('_getsegdatafromheader', 1), ('_vm_set_page_size', 1),
         ('_arm_vm_prot_init', 1), ('_qsort', 1), ('_set_mmu_ttb_alternate', 1)]]
     switch_site, _ = tool.find_call(data, kernel_symbols, '_arm_vm_init', '_set_mmu_ttb_alternate', 1)
+    if args.trace_past_switch:
+        # Only valid when the boot image also carries
+        # tb-diag-segment=__KDIAG: patch 0006 maps this segment RX during
+        # arm_vm_prot_init, before the switch. Without that mapping the first
+        # instruction executed here after set_mmu_ttb_alternate() would abort,
+        # which is exactly why the default build stops tracing at the boundary.
+        # _set_mmu_ttb is the first call arm_vm_init makes after the TTBR1
+        # switch; reaching its entry proves execution survived the switch.
+        # _flush_mmu_tlb is a macro here, so it is not a call site.
+        specs += [('_arm_vm_init', '_set_mmu_ttb', 1)]
     traced = []
     trace_source = '.section .text.calltrace,"ax"\n'
     definitions = []
     for index, (parent, name, occurrence) in enumerate(specs):
         site, target = tool.find_call(data, kernel_symbols, parent, name, occurrence)
-        if parent == '_arm_vm_init' and site > switch_site:
-            raise SystemExit('Trace must not enter appended code after TTBR1 switch')
+        if parent == '_arm_vm_init' and site > switch_site and not args.trace_past_switch:
+            raise SystemExit('Trace must not enter appended code after TTBR1 switch '
+                             '(pass --trace-past-switch only with the 0006 segment mapping)')
         tail = name in ('_arm_vm_init', '_set_mmu_ttb_alternate')
         handoff = name == '_set_mmu_ttb_alternate'
         label, symbol, resume = 'diag_trace_' + str(index), 'diag_original_' + str(index), 'diag_return_' + str(index)

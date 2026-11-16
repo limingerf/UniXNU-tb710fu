@@ -1,15 +1,26 @@
 # Current status · 2026-11-15
 
-> 最新（2026-11-16）：**绿条的"最后一行"被证实是观测边界，不是故障点。**
+> 待验交付（2026-11-16）：**第一份内核自带 0006 的可刷镜像**已签出，
+> `out/kernel-diag-past-switch`（`2c35ccc4…` / `dc03f3b3…`）。云 run 43806716346
+> success，内核 `6adc7e15…`，0006 在 `xnu-inputs.json` 第 132/132 项且哈希一致。
+> 补丁**确已编入机器码**（`tb-diag-segment` 字符串与 `_arm_vm_prot_init` 对它的
+> 引用各 1 处，基线均 0 处；切换点位移 `0x88`）。注意总字节数未变——增长被段内
+> 填充吸收，但 7,297,495 字节不同、5,650 个符号位移，不是缓存复用。
+> 探针追踪点 25 个，新增 `vm/set_mmu_ttb#1` 位于切换点之后，可把"切换失败"
+> 与"切换后失败"彻底分开。签名经独立 RSA 复算 + 生产解析器 PASS。
+> 并行线 (b) 已证**不可行**：ADT 窗口任何调整都无法让 ramoops 地址可达
+> （在 span 下方 32.3 GiB）。见 [切换后探针交付](docs/KERNEL_DIAG_PAST_SWITCH.md)。
+
+> 背景（2026-11-16）：**绿条的"最后一行"被证实是观测边界，不是故障点。**
 > 两条独立证据：① 用 T1SZ 软件遍历 `0x8c88f9000` 新根表，切换函数、返回点
 > `arm_vm_init+0x11e4`、`_ExceptionVectorsBase` 全部映射且 EL1 可执行
 > ——"切换后返回地址不可执行"被否定。② 探针段 `__KDIAG` 落在 `__BOOTDATA`
 > 与 `dynamic_memory_begin` 之间 212 页**无映射空隙**，逐段核对为
 > `overlapping: NONE`，而报告器按设计切换后不返回附加段。
-> 已交付 `patches/xnu/0006`：切换**前**把 `tb-diag-segment=` 指定的段映射为
-> RX。默认启动零映射（行为矩阵 4/4 PASS，连段查找都不做），不需要改官方
-> 构建脚本（曾误改 `build-xnu-4k-baseline.sh`，已回退并验证与 HEAD 逐字节一致）。
-> 下一步需重新 native+prelink。见 [切换后探针](docs/DIAG_PAST_SWITCH.md)。
+> `patches/xnu/0006`：切换**前**把 `tb-diag-segment=` 指定的段映射为 RX。
+> 默认启动零映射（行为矩阵 4/4 PASS，连段查找都不做），不需要改官方构建脚本
+> （曾误改 `build-xnu-4k-baseline.sh`，已回退并验证与 HEAD 逐字节一致）。
+> 见 [切换后探针](docs/DIAG_PAST_SWITCH.md)。
 
 > 修复件（2026-11-16）：已用修补后的 `board.toml` 重新生成带 macOS 身份的 ADT
 > （`Mac17,11` / `K114cAP` / `/product` 35 项 / `/chosen` osenvironment+
