@@ -110,7 +110,9 @@ VOID diag_prepare_live_frame(TB_REPORT *s,CONST CHAR8 *message){
   field("SCTLR",diag_live_controls[0]);field("TCR",diag_live_controls[1]);
   field("OLD_TTBR0",diag_live_controls[2]);field("OLD_TTBR1",diag_live_controls[3]);
   append("last observed stage, not a fault PC or full console log\n");
-  if(diag_last_stage==47)append(diag_export_mode?"paused before TTBR1 switch; animated export, not a kernel fault\n":"reporter ends before TTBR1 switch; later progress is not observed\n");
+  if(diag_last_stage==47)append("marker helper entry; QR is captured before the TTBR1 switch\n");
+  if(diag_last_stage==48)append("marked switch helper returned after the TTBR1 write and ISB\n");
+  if(diag_last_stage==49)append("first post-switch call reached; the marked helper returned\n");
   diag_test_text_length=text_used;make_frame(TRUE);diag_live_phase=2;
   EFI_GRAPHICS_OUTPUT_BLT_PIXEL *bitmap=NULL;
   diag_test_qr_status=QrEncodeData(QrAutoVersion,QrECLevel_M,QrByteMode,0,frame,sizeof(frame),121,&bitmap);
@@ -167,7 +169,7 @@ VOID diag_live_text(TB_REPORT *s,CONST CHAR8 *message){
     CONST CHAR8 *args=(CONST CHAR8*)(UINTN)(s->BootArgsPa-s->PhysicalBase+s->VirtualBase+0x6c);
     diag_export_mode=diag_export_option(args);
   }
-  BOOLEAN qr=diag_last_stage==47; /* Do not lock a receiver to an earlier file. */
+  BOOLEAN qr=diag_last_stage==47||diag_last_stage==48||diag_last_stage==49;
   UINTN scale=s->Height>128?(s->Height-128)/121:0;
   UINTN horizontal=s->Width>32?(s->Width-32)/121:0;
   if(scale>horizontal)scale=horizontal;

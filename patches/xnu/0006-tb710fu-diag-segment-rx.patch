@@ -1,62 +1,43 @@
 From: TB710FU clean board
-Subject: [PATCH] Map the diagnostic segment RX before the TTBR1 switch
+Subject: [PATCH] Map diagnostic code RX and mutable state RW-NX before the TTBR1 switch
 
-Diagnostic hook, a no-op unless the loaded kernel really has the segment.
+Diagnostic hook, a no-op unless both diagnostic segments are present.
 
-The early-reporter diagnostic appends a __KDIAG segment past __BOOTDATA, in the
-gap between __BOOTDATA and dynamic_memory_begin. arm_vm_prot_init() maps the
-named segments and the derived ranges it knows about, and nothing covers that
-gap. Once arm_vm_init() calls set_mmu_ttb_alternate() the segment therefore has
-no translation, and entering it takes an instruction abort at its first byte.
+The early-reporter appends __KDIAG code and __KDATRW state/stack segments past
+__BOOTDATA, in the gap between __BOOTDATA and dynamic_memory_begin.
+arm_vm_prot_init() does not otherwise map this gap. Both parts must be mapped
+before the TTBR1 switch: code is RX, while the reporter state and private stack
+are RW-NX. Mapping only the code would fault as soon as the reporter stores state.
 
-That is why every earlier probe could show at most
-"XNU enter: vm/set_mmu_ttb_alternate#1" and then nothing: the reporter had
-already run out of reachable code, and the last visible line was a reporting
-boundary rather than the fault PC.
+The lookup is unconditional and uses names rather than boot arguments. Both
+segments must be present, contiguous and 16 KiB aligned; otherwise neither is
+mapped. A kernel without the diagnostic pair therefore behaves as before.
 
-This maps __KDIAG RX alongside the other read-only-executable mappings, all of
-which run before the switch. The lookup is unconditional on purpose: an earlier
-revision gated it on a tb-diag-segment boot argument, the compiled gate was
-correct (it branches on the parse result), but the argument never reached the
-kernel on this board, so the mapping silently never happened. Selecting the
-segment by name removes that entire failure mode.
-
-Nothing is mapped unless the segment exists: getsegdatafromheader() returns NULL
-and sets size 0 for an unknown name, and the block requires both to be non-zero.
-A kernel without the diagnostic segment therefore behaves exactly as before.
-
-Not a functional fix. It exists so the reporter can keep drawing past the TTBR1
-switch on a board that has no console and no working pstore.
+Not a functional fix. This keeps a no-console early reporter reachable across
+the TTBR1 switch.
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
-@@ -1801,7 +1801,31 @@ arm_vm_prot_init(__unused boot_args * args)
+@@ -1801,7 +1801,24 @@ arm_vm_prot_init(__unused boot_args * args)
  	if (segLASTDATACONSTB) {
  		arm_vm_page_granular_RWNX(segLASTDATACONSTB, segSizeLASTDATACONST, ARM64_GRANULE_ALLOW_BLOCK); // __LASTDATA_CONST may be empty, but we cannot assume this
  	}
  	arm_vm_page_granular_RWNX(segPRELINKDATAB, segSizePRELINKDATA, ARM64_GRANULE_ALLOW_BLOCK | ARM64_GRANULE_ALLOW_HINT); // Prelink __DATA for kexts (RW data)
 +
-+	/*
-+	 * TB710FU diagnostics: map the appended diagnostic segment RX.
-+	 *
-+	 * The reporter lives past __BOOTDATA, in the gap between __BOOTDATA and
-+	 * dynamic_memory_begin. No mapping above covers it, so once arm_vm_init()
-+	 * switches TTBR1 the reporter cannot draw again and every earlier probe
-+	 * ended at set_mmu_ttb_alternate#1 regardless of where the kernel really
-+	 * stopped. Mapping it here - before the switch - keeps the reporter
-+	 * reachable so its output shows how far execution actually gets.
-+	 *
-+	 * Keyed on the segment name only, with no boot argument: a kernel built
-+	 * without the diagnostic segment has no such segment, the lookup returns
-+	 * null with size zero, and nothing is mapped.
-+	 */
++	/* TB710FU diagnostics: map appended code RX and state RW-NX. */
 +	{
-+		unsigned long diag_size = 0;
-+		vm_offset_t diag_base = (vm_offset_t)getsegdatafromheader(
-+		    &_mh_execute_header, "__KDIAG", &diag_size);
-+		if (diag_base && diag_size) {
-+			arm_vm_page_granular_ROX(diag_base, diag_size, 0,
++		unsigned long diag_rx_size = 0, diag_rw_size = 0;
++		vm_offset_t diag_rx_base = (vm_offset_t)getsegdatafromheader(
++		    &_mh_execute_header, "__KDIAG", &diag_rx_size);
++		vm_offset_t diag_rw_base = (vm_offset_t)getsegdatafromheader(
++		    &_mh_execute_header, "__KDATRW", &diag_rw_size);
++		if (diag_rx_base && diag_rx_size && diag_rw_base && diag_rw_size &&
++		    diag_rw_base > diag_rx_base &&
++		    diag_rw_base - diag_rx_base == diag_rx_size &&
++		    ((diag_rx_base | diag_rx_size | diag_rw_base | diag_rw_size) & 0x3fff) == 0) {
++			arm_vm_page_granular_ROX(diag_rx_base, diag_rx_size, 0,
 +			    ARM64_PAGE_UNGUARDED);
++			arm_vm_page_granular_RWNX(diag_rw_base, diag_rw_size, 0);
 +		}
 +	}
  

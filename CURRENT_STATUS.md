@@ -1,5 +1,29 @@
 # Current status · 2026-11-15
 
+## 内核停点再审计与二维码诊断修正 · 2026-11-16
+
+用户报告最新构建仍未进入内核，设备没有可用端口。审计确认仓库记录的
+`XNU returned: vm/qsort#1` 来自切换标记版：它说明 `_qsort` 已返回到追踪器，
+不说明 qsort 崩溃。0007 的 `TB710FU_SWITCH_MARKS=1` 改走内联标记 helper，
+绕过报告器替换的 stock `set_mmu_ttb_alternate` 调用，所以原 stage 47 QR
+没有生成；现有画面不是 TTBR1 故障定位证据。A 版有屏幕反馈，但没有物理
+标记读回；较新的 B 版没有可核对的设备刷入哈希。当前真实停点仍未确诊。
+
+已准备诊断修正：0006 成对映射连续对齐的 RX `__KDIAG` 与 RW-NX `__KDATRW`；
+0009 保留标记 helper 为 noinline 符号；报告器拆段后切换后的代码、状态和私有栈
+都有正确权限；
+阶段 47/48/49 分别报告进入真实标记 helper、helper 返回、切换后首个调用。
+本地 AArch64/主机报告器测试、三阶段 Unicorn 模型、固定 OneSend receiver、
+分段几何/重定位检查及固定 DarwinBoot 生产解析器均通过。用已有 0008 内核
+生成的分段探针仅验证布局，尚未重编包含 0009 的 XNU；含 0009 的官方
+native + strict prelink 云构建待执行，设备尚未操作。详细记录见
+[TTBR1停点诊断修正](docs/KERNEL_SWITCH_QR_FIX.md)。
+
+参考项目 `bmk-keyeast/UniXNU-tb710fu` HEAD `23235249d71604f8a6f743680ef8fd1003fe7189`
+使用 iPadOS 17.7.11 / XNU 10063.141.1；没有当前 XNU 12377 的 TTBR1 路径。
+只借鉴 ramoops 格式测试和分阶段探针经验，不复用其窗口外的 `0xac340000`
+日志地址。当前状态入口中的旧 A/B 产物哈希与云 run 历史照常保留。
+
 > 并行交付完成（2026-11-16）：两份可刷镜像均已签出并独立验签，均未上机验收。
 >
 > **(A) 切换内标记** `out/kernel-switch-markers`（`fafb1f96…`/`b64e33bc…`）。

@@ -1,0 +1,14 @@
+From: TB710FU clean board
+Subject: [PATCH] Keep the marked TTBR1 helper callable for diagnostics
+
+The stage reporter must wrap the actual branch selected by
+TB710FU_SWITCH_MARKS=1. Keep the literal marker helper out of line so its
+call site and target survive native compilation as an auditable direct call.
+This changes no boot behavior when the diagnostic reporter is absent.
+diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -98,2 +98,2 @@
+-static void
++__attribute__((noinline)) static void
+ set_mmu_ttb_alternate_probed(uint64_t ttbr1)

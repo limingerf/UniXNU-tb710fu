@@ -85,3 +85,13 @@ Actual patch application to pristine pinned pmap.h plus all selected patches
 affecting it, and page-budget boundary checks through 9 GiB passed. This repairs
 the known larger-window capacity issue; it is not claimed to fix the observed
 post-MMU screen. Evidence: `docs/evidence/pr249-bootstrap-pool.json`.
+
+## TTBR1 switch-report mapping
+
+`0006-tb710fu-diag-segment-rx.patch` maps diagnostic segments only when both
+`__KDIAG` and `__KDATRW` exist, are contiguous, and meet the 16 KiB alignment
+used by the diagnostic Mach-O. It maps code RX and mutable state/stack RW-NX;
+incomplete or malformed pairs remain unmapped. `0009-tb710fu-switch-helper-noinline.patch`
+keeps the 0007 marked switch helper as a distinct call target for the stage QR
+reporter. Together these patches enable diagnostics across TTBR1; they do not
+change the page-table algorithm or claim a functional fix.

@@ -37,9 +37,13 @@ def main():
                    help='Require this exact input digest (refuses a different accepted fileset)')
     p.add_argument('--trace-past-switch', action='store_true',
                    help='Also trace _set_mmu_ttb and _flush_mmu_tlb after the TTBR1 '
-                        'switch. Only valid with the 0006 segment mapping and '
-                        'tb-diag-segment=__KDIAG in the boot arguments.')
+                        'switch. Only valid with the 0006/0009 diagnostic segment mappings.')
+    p.add_argument('--trace-switch-probe', action='store_true',
+                   help='Trace the noinline 0007 marker helper with separate QR frames '
+                        'before entry and after it returns. Requires --trace-past-switch.')
     args = p.parse_args()
+    if args.trace_switch_probe and not args.trace_past_switch:
+        raise SystemExit('--trace-switch-probe requires --trace-past-switch')
     root = Path(__file__).resolve().parents[1]
     src = root / 'diagnostics/early-report'
     source_snapshot = {str(q.relative_to(root)): sha(q.read_bytes()) for q in sorted(src.rglob('*'))
@@ -116,20 +120,21 @@ def main():
                     '_arm_vm_init']
     if args.checkpoint_before_vm:
         traced_names.remove('_arm_vm_init')
-    # No return into the appended segment after arm_vm_init changes TTBR1.
+    # Returning to appended code after TTBR1 changes requires both RX and RW-NX
+    # segment mappings; 0006/0009 establish them before this call site.
     specs = [('_arm_init', name, 1) for name in traced_names]
+    switch_target = '_set_mmu_ttb_alternate_probed' if args.trace_switch_probe else '_set_mmu_ttb_alternate'
+    if args.trace_switch_probe and switch_target not in kernel_symbols.values():
+        raise SystemExit('Kernel lacks the noinline 0009 marker helper; rebuild with patches/xnu/0009')
     specs += [('_arm_vm_init', name, occurrence) for name, occurrence in [
         ('_early_random', 1), ('_SecureDTLookupEntry', 1), ('_SecureDTGetProperty', 1),
         ('_SecureDTGetProperty', 2), ('_arm_vm_outside_add', 1),
         ('_getsegdatafromheader', 1), ('_vm_set_page_size', 1),
-        ('_arm_vm_prot_init', 1), ('_qsort', 1), ('_set_mmu_ttb_alternate', 1)]]
+        ('_arm_vm_prot_init', 1), ('_qsort', 1), (switch_target, 1)]]
     switch_site, _ = tool.find_call(data, kernel_symbols, '_arm_vm_init', '_set_mmu_ttb_alternate', 1)
     if args.trace_past_switch:
-        # Only valid when the boot image also carries
-        # tb-diag-segment=__KDIAG: patch 0006 maps this segment RX during
-        # arm_vm_prot_init, before the switch. Without that mapping the first
-        # instruction executed here after set_mmu_ttb_alternate() would abort,
-        # which is exactly why the default build stops tracing at the boundary.
+        # Patches 0006/0009 map diagnostic code RX and mutable state/stack RW-NX
+        # during arm_vm_prot_init, before the switch.
         # _set_mmu_ttb is the first call arm_vm_init makes after the TTBR1
         # switch; reaching its entry proves execution survived the switch.
         # _flush_mmu_tlb is a macro here, so it is not a call site.
@@ -144,22 +149,23 @@ def main():
                              '(pass --trace-past-switch only with the 0006 segment mapping)')
         # Tail transfers reproduce the original code's branch shape. Only the two
         # call sites the kernel itself reaches with `b` may be treated as tails:
-        # _set_mmu_ttb_alternate is entered that way so the reporter can stop
-        # drawing before TTBR1 changes, and _arm_vm_init is the outer call.
+        # _set_mmu_ttb_alternate is entered that way so the reporter stops
+        # before TTBR1 changes. The noinline marker helper is an ordinary call.
         #
         # _set_mmu_ttb is an ordinary `bl` call made *after* the switch. It is not
         # in this set, so it goes through `bl`, the wrapper regains control and
         # writes stage 49. Listing it while it was treated as a tail is why stage
         # 49 never appeared on the device.
         tail = name in ('_arm_vm_init', '_set_mmu_ttb_alternate')
-        handoff = name == '_set_mmu_ttb_alternate'
+        handoff_before = name == '_set_mmu_ttb_alternate'
+        handoff_after = name == '_set_mmu_ttb_alternate_probed'
         label, symbol, resume = 'diag_trace_' + str(index), 'diag_original_' + str(index), 'diag_return_' + str(index)
         description = name[1:] if parent == '_arm_init' else 'vm/' + name[1:] + '#' + str(occurrence)
         trace_source += ('.global ' + label + '\n.hidden ' + symbol + '\n.hidden ' + resume + '\n' +
                          label + ':\n  adrp x16,diag_last_stage\n  add x16,x16,:lo12:diag_last_stage\n' +
                          '  mov x17,#' + str(index * 2 + 1) + '\n  str x17,[x16]\n' +
                          '  adr x17,' + label + '_enter_text\n  bl diag_live_call\n')
-        if handoff:
+        if handoff_before:
             trace_source += ('  adrp x16,diag_kernel_vectors\n  add x16,x16,:lo12:diag_kernel_vectors\n' +
                              '  msr vbar_el1,x16\n  isb\n')
         if tail:
@@ -169,6 +175,8 @@ def main():
                              '  adrp x16,diag_last_stage\n  add x16,x16,:lo12:diag_last_stage\n' +
                              '  mov x17,#' + str(index * 2 + 2) + '\n  str x17,[x16]\n' +
                              '  adr x17,' + label + '_return_text\n  bl diag_live_call\n' +
+                             (('  adrp x16,diag_kernel_vectors\n  add x16,x16,:lo12:diag_kernel_vectors\n' +
+                               '  msr vbar_el1,x16\n  isb\n') if handoff_after else '') +
                              '  adrp x30,' + resume + '\n  add x30,x30,:lo12:' + resume + '\n  b ' + resume + '\n')
         trace_source += (label + '_enter_text:\n  .asciz "XNU enter: ' + description + '"\n' +
                          label + '_return_text:\n  .asciz "XNU returned: ' + description + '"\n.balign 4\n')
@@ -176,11 +184,14 @@ def main():
         traced.append({'name': name, 'parent': parent, 'occurrence': occurrence,
                        'site': hex(site), 'callee': hex(target), 'label': label,
                        'before_stage': index * 2 + 1, 'after_stage': None if tail else index * 2 + 2,
-                       'original_LR_tail_transfer': tail, 'restore_kernel_VBAR': handoff})
+                       'original_LR_tail_transfer': tail,
+                       'restore_kernel_VBAR': handoff_before or handoff_after,
+                       'kernel_VBAR_handoff': ('before-call' if handoff_before else
+                                               'after-return-report' if handoff_after else None)})
     ncmds, sizeofcmds = struct.unpack_from('<II', data, 16)
     command_at = 32 + sizeofcmds
-    if any(data[command_at:command_at + 72]):
-        raise SystemExit('Root Mach-O has no guarded spare load-command space')
+    if any(data[command_at:command_at + 144]):
+        raise SystemExit('Root Mach-O has no guarded spare space for RX and RW diagnostic segments')
     last = max(va + size for va, size, off, fs in tool.SEGMENTS)
     base = (last + 0x3fff) & ~0x3fff
     compat = output / 'compat'
@@ -212,7 +223,7 @@ def main():
   .rodata : { *(.rodata .rodata.*) }
   . = ALIGN(16); diag_rela_start = .;
   .rela.dyn : { *(.rela.dyn) } diag_rela_end = .;
-  . = ALIGN(16);
+  . = ALIGN(0x4000); diag_code_end = .; diag_data_start = .;
   .data : { *(.data.state) *(.data .data.*) *(.got .got.*) *(.bss .bss.*) *(COMMON) BYTE(0) }
   diag_stack_end = diag_stack + 16384;
   diag_image_end = .;
@@ -240,13 +251,32 @@ def main():
     if table['diag_image_base'] != base or len(payload) > 0x100000:
         raise SystemExit('Unexpected diagnostic image layout/size')
     fileoff = (len(data) + 0x3fff) & ~0x3fff
-    size = (len(payload) + 0x3fff) & ~0x3fff
-    if base + size - min(va for va, vs, off, fs in tool.SEGMENTS) >= 0x10000000 - 0x200000:
+    code_size = table['diag_data_start'] - base
+    data_file_size = len(payload) - code_size
+    data_size = (data_file_size + 0x3fff) & ~0x3fff
+    if code_size <= 0 or code_size % 0x4000 or data_file_size <= 0:
+        raise SystemExit('Diagnostic RX/RW segment split is not 16 KiB aligned or has an empty side')
+    total_size = code_size + data_size
+    if (base | fileoff | code_size | data_size) & 0x3fff:
+        raise SystemExit('Diagnostic Mach-O segments are not 16 KiB aligned')
+    relocation_count = 0
+    for at in range(table['diag_rela_start'] - base, table['diag_rela_end'] - base, 24):
+        target, info, _ = struct.unpack_from('<QQq', payload, at)
+        if info & 0xffffffff != 1027 or target < base + code_size or target + 8 > base + total_size:
+            raise SystemExit('Runtime relocation target is not wholly inside the RW-NX segment')
+        relocation_count += 1
+    if relocation_count == 0:
+        raise SystemExit('Expected PIE relocations into mutable diagnostic state')
+    if base + total_size - min(va for va, vs, off, fs in tool.SEGMENTS) >= 0x10000000 - 0x200000:
         raise SystemExit('Diagnostic exceeds loader kernel size constraint')
-    data += bytes(fileoff - len(data)) + payload + bytes(size - len(payload))
-    segment = struct.pack('<II16sQQQQiiII', 0x19, 72, b'__KDIAG', base, size, fileoff, size, 7, 7, 0, 0)
-    data[command_at:command_at + 72] = segment
-    struct.pack_into('<II', data, 16, ncmds + 1, sizeofcmds + 72)
+    data += bytes(fileoff - len(data)) + payload + bytes(total_size - len(payload))
+    code_segment = struct.pack('<II16sQQQQiiII', 0x19, 72, b'__KDIAG',
+                               base, code_size, fileoff, code_size, 5, 5, 0, 0)
+    state_segment = struct.pack('<II16sQQQQiiII', 0x19, 72, b'__KDATRW',
+                                base + code_size, data_size, fileoff + code_size,
+                                data_file_size, 3, 3, 0, 0)
+    data[command_at:command_at + 144] = code_segment + state_segment
+    struct.pack_into('<II', data, 16, ncmds + 2, sizeofcmds + 144)
     struct.pack_into('<I', data, tool.file_offset(arm), tool.branch(arm, table['diag_init']))
     # Synchronous EL1 faults enter our own VBAR table installed at arm_init.
     panic = names['_panic']
@@ -287,10 +317,16 @@ def main():
     record = {'stage': 'terminal-early-exception-and-Onesend-diagnostic', 'original_sha256': sha(original),
               'kernel_sha256': sha(data), 'kernel_bytes': len(data), 'lzma_sha256': sha(encoded),
               'lzma_bytes': len(encoded), 'segment_va': hex(base), 'segment_fileoff': fileoff,
-              'segment_bytes': size, 'payload_bytes': len(payload),
+              'segment_bytes': total_size, 'payload_bytes': len(payload),
+              'code_segment': {'name': '__KDIAG', 'va': hex(base), 'bytes': code_size,
+                               'fileoff': fileoff, 'filesize': code_size, 'protection': 'RX'},
+              'state_segment': {'name': '__KDATRW', 'va': hex(base + code_size),
+                                'bytes': data_size, 'fileoff': fileoff + code_size,
+                                'filesize': data_file_size, 'protection': 'RW-NX'},
+              'rw_runtime_relocations': relocation_count,
               'arm_init_va': hex(arm), 'arm_init_original_instruction': 'PACIBSP replayed',
               'panic_va': hex(panic), 'panic_original_word': hex(panic_word),
-              'panic_hook_installed': False, 'reporter_ends_before_TTBR1_switch': True,
+              'panic_hook_installed': False, 'reporter_has_split_RX_and_RW_NX_segments': True,
               'checkpoint_va': hex(call), 'checkpoint_original_bl': hex(original_call),
               'checkpoint_callee': hex(callee),
               'checkpoint_installed': args.checkpoint_before_vm,
@@ -299,10 +335,11 @@ def main():
               'symbols': {k: hex(v) for k, v in table.items() if k.startswith('diag_')},
               'qr_source': manifest,
               'reporter_sources': source_snapshot,
-              'user_display_request': 'overwriting text and live QR before VM switch; fault replaces screen',
+              'user_display_request': 'live QR at marker-helper entry, return, and first post-switch call',
               'report_is_full_console_log': False, 'static_single_OS_frame': True,
               'strict_alignment': True, 'live_stage_text': True, 'live_stage_QR': True,
-              'live_QR_first_stage': 47, 'VM_boundary_stage': 47,
+              'live_QR_first_stage': 47, 'live_QR_return_stage': 48,
+              'live_QR_first_post_switch_stage': 49, 'VM_boundary_stage': 47,
               'stable_transfer_at_final_checkpoint_only': True,
               'normal_QR_replay_seconds': 8, 'normal_QR_draws': 16,
               'QR_cached_variants': 4, 'QR_replay_interval_ms': 500,

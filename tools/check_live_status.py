@@ -37,7 +37,7 @@ def main():
     state = sym['diag_state']
     width, height = args.width, args.height
     fb, stride = 0xd5100000, width * 4
-    qr = args.stage == 47
+    qr = args.stage in (47, 48, 49)
     scale = min(8, (height-128)//121, (width-32)//121)
     rows = 112+121*scale if qr else 48
     uc.mem_map(fb, (stride*height+4095)&~4095)
@@ -54,7 +54,11 @@ def main():
     stack = sym['diag_stack_end']-16384
     msg = 0xfffffff00fe00000
     uc.mem_map(msg, 4096)
-    message = b'XNU enter: vm/set_mmu_ttb_alternate#1' if qr else b'XNU enter: arm_vm_init'
+    message = {
+        47: b'XNU enter: vm/set_mmu_ttb_alternate_probed#1',
+        48: b'XNU returned: vm/set_mmu_ttb_alternate_probed#1',
+        49: b'XNU enter: vm/set_mmu_ttb#1',
+    }.get(args.stage, b'XNU enter: arm_vm_init')
     uc.mem_write(msg, message+b'\0')
     stop = msg+4092
     uc.reg_write(r.UC_ARM64_REG_X0, state)

@@ -6,3 +6,4 @@
 0006-tb710fu-diag-segment-rx.patch
 0007-tb710fu-switch-markers.patch
 0008-tb710fu-ramoops-in-window.patch
+0009-tb710fu-switch-helper-noinline.patch
