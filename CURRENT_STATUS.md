@@ -1,12 +1,36 @@
 # Current status · 2026-11-17
 
+## USB/UFS driver review · 2026-11-17
+
+The official [UFS porting guide](https://unixnu.com/zh/porting/ufs) does not
+require a separate register-probe build. It orders static hardware inventory,
+implementation/adaptation and build integration first; the real driver then
+checks controller, firmware, SMMU, DMA and queue ownership as part of
+initialization. [`docs/UFS_PORT.md`](docs/UFS_PORT.md) records the known TB710FU
+resources and remaining source-review gaps. The 4 KiB LBA 1 TWRP sample is a
+later acceptance baseline, not a prerequisite for beginning the adapter.
+
+No standalone XNU USB/UFS register-snapshot hook is selected. Host CDC/UFS
+tests, `python3 tools/ci_kernel.py configure`, and the structured porting-record
+check pass. There is still no DWC3 endpoint transport, DMA/SMMU ownership path,
+CDC enumeration or XNU log hook.
+
+There is no TB710FU XNU UFS build or hardware read. The pinned
+`ShengUfs@99d8bcd3e43dd24fc3c8437c67b5d4cc71ab94d0` contains real queue,
+SMMU and command code, but its catalog metadata targets SM8550/iOS 17. The
+arm64e XNU 12377 public-source storage route needs IOStorageFamily/APFS ABI
+inputs and signed root policies, and upstream marks that route unbuilt and
+unqualified. It cannot be enabled as a drop-in macOS 27 driver. No standalone
+UFS snapshot or probe is required before adaptation; the build/ABI inputs are
+the current blocker.
+
 ## Mainline integration and Meizu21 audit · 2026-11-17
 
-The local `main` branch includes the diagnostic bring-up path, the Ace 5 audit,
-and the CDC protocol/log-ring host slice from
-`1c6217ba46033419fd35f576f47b67ddc7ed9b98`. After this status/provenance
-update, it is eleven commits ahead of `origin/main` and has not been pushed.
-These commits do not claim that the root volume or macOS userspace boots.
+At the time of this earlier mainline audit, local `main` included the diagnostic
+bring-up path, the Ace 5 audit, and the CDC protocol/log-ring host slice from
+`1c6217ba46033419fd35f576f47b67ddc7ed9b98`. It was eleven commits ahead of
+`origin/main` and had not been pushed. Those commits do not claim that the root
+volume or macOS userspace boots.
 
 The user-supplied [Meizu21 repository](https://github.com/XiaoChen8371/unixnu-meizu21)
 targets SM8650 but is a Darwin 22 transition: `board.toml` selects only

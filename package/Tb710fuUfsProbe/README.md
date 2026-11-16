@@ -1,7 +1,7 @@
-# TB710FU UFS read probe slice
+# TB710FU UFS read-path contract
 
-This directory contains a hardware-independent XNU-facing contract for a
-boot-argument-gated, one-block UFS probe. It implements only:
+This directory contains a hardware-independent, host-testable contract for a
+future one-block UFS read. It implements only:
 
 - SCSI READ(10) CDB construction for LUN 0, LBA 1, one 4096-byte block.
 - GPT signature/current-LBA/header-CRC checks and CRC-32/ISO-HDLC verification.
@@ -15,11 +15,13 @@ boot-argument-gated, one-block UFS probe. It implements only:
 
 The code does not map UFSHCI or SMMU registers, allocate XNU DMA memory, inspect
 the real SID `0x60` route, take over the firmware request list, or add an XNU
-boot hook. Those callback operations intentionally have no fake implementation
-in this slice. This is not yet a usable hardware driver and is not linked into
-the current kernel. The captured GPT bytes were not retained, so host tests use
-a synthetic GPT block and test the CRC algorithm separately; they do not
-reconstruct or simulate the captured sample bytes.
+boot hook. The enable parameter in its unit-test contract is not a separate
+register probe or runtime XNU service. Those callback operations intentionally
+have no fake implementation in this slice. This is not yet a usable hardware
+driver and is not linked into the current kernel. The captured GPT bytes were
+not retained, so host tests use a synthetic GPT block and test the CRC
+algorithm separately; they do not reconstruct or simulate the captured sample
+bytes.
 
 The captured acceptance tuple is user LUN `/dev/block/sda`, logical block size
 4096, LBA 1, sample CRC32 `44b9c49a`, and sample SHA-256

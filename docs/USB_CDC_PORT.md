@@ -69,14 +69,17 @@ queue handoff, SMMU mapping or DMA. GPT changes will change this sample.
 
 ## Next integration gates
 
-The protocol and preflight guard are not yet linked into XNU. There is no
-hardware snapshot reader, DWC3 endpoint/controller transport, or XNU
-`serial_console`/`kprintf` hook. The XNU 12377 implementation must provide those
-from target compile records, populate the guard only from bounded read-only
-register checks, and keep the producer path nonblocking. Unknown state must
-refuse takeover and let normal boot continue.
+The XNU 12377 DWC3 peripheral transport and `serial_console`/`kprintf` hook are
+not implemented. The controller must perform its bounded role, clock, PHY and
+SMMU checks during its own initialization, then keep the log producer path
+nonblocking. Unknown state must refuse DMA takeover and let normal boot
+continue. A separate register-snapshot build is not required before this work.
 
-UFS remains a separate track. The TWRP GPT-header block is now an expected-byte
-baseline for a future read-only XNU probe. Do not reuse Ace 5's CRC, partition
-LBAs, media policy, or its XNU 8796 class bindings. No partition or filesystem
-was modified; the sample was read through the existing TWRP/Linux UFS stack.
+UFS remains a separate track. The TWRP GPT-header block is an expected-byte
+baseline for the first read performed by the adapted NativeUfs driver. Its
+initialization should verify power, link, SMMU, DMA and queue ownership before
+issuing that command; a separate probe run is not required first. Do not reuse
+Ace 5's CRC, partition LBAs, media policy, or its XNU 8796 class bindings. No
+partition or filesystem was modified; the sample was read through the existing
+TWRP/Linux UFS stack. The static hardware inventory and current adapter gaps
+are collected in [UFS_PORT.md](UFS_PORT.md).
