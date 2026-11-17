@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "stage": "signed-prelinked-dual-live-volatile-ramoops-test-candidate",
+  "device_commit": "d181905f59125ec380249f54ec53e3b6f8141386",
+  "run_id": 44165508547,
+  "display_build_label": "src-d181905f-ramoops",
+  "baseline": "out/tb710fu-dual-live-wsl-44124706860-signed",
+  "baseline_vendor_sha256": "a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2",
+  "baseline_vbmeta_sha256": "3fd43a5a7adc0275eb8d241b94f1c2520b6b630ae912c3eff4a3869d76228e04",
+  "native_sha256": "edfbb6e4781ab6ebec6dc631654af2970fd2a95d0a4194a486ca91ebb68ae749",
+  "prelinked_sha256": "505dc1b352ff64eea6edc74e8b0597e301faf600fd26fa8b84e2ee79876cc3c0",
+  "packaged_kernel_sha256": "9181c38ab67c69d760564c64bb801e0678d06e693c607faa51900486d1a117f5",
+  "manifest_sha256": "274d903c71023083bd268cd1427e078fba8cc5d86cfd6ac054391bd617f16cc9",
+  "unsigned_vendor_sha256": "3e0066f45c5731acb12542ff43e9ca58d68a8e5b7059ae59d2d287822cf6fe16",
+  "images": {
+    "boot.img": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83",
+    "vendor_boot.img": "7f5ac5520ca6fe2592d050066559c5d7c81529c7468fc1be9271e9388ea1c427",
+    "vbmeta.img": "1ce6c6beb49d2282cc892300ca8b6b8d9a481cab012fcd24aa92cbdfc167de44"
+  },
+  "independent_verification": "out/live-ramoops-44165508547-signed/verification-report.json",
+  "rsa_signatures_and_salted_hashes": "PASS",
+  "unchanged_other_descriptors": 22,
+  "adt_vroot_config_unchanged": true,
+  "ramoops_policy": "volatile current-boot BSS; no reset persistence",
+  "hardware_verified": false,
+  "device_operations": false
+}

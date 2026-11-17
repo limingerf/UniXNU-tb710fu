@@ -1,5 +1,33 @@
 # Current status · 2026-11-18
 
+## Volatile ramoops runner build and signed candidate · 2026-11-18
+
+The safe current-boot policy and compact pre-worker QR fallback were built on
+the supported macOS runner in run `44165508547`, attempt 1, job `134330363445`.
+All workflow steps passed: native arm64e compile/link, pinned Mu/OneSend host
+checks, strict prelink and production DarwinBoot parser. Native SHA-256 is
+`edfbb6e4781ab6ebec6dc631654af2970fd2a95d0a4194a486ca91ebb68ae749` and the
+142,819,328-byte prelinked fileset SHA-256 is
+`505dc1b352ff64eea6edc74e8b0597e301faf600fd26fa8b84e2ee79876cc3c0`.
+Mapping is complete with empty missing/stubbed sets and allow-missing false.
+The live archive report contains the new single-frame symbol and direct calls.
+
+Using the retained signed bundle as the exact baseline, the standard-band
+kernel is `9181c38ab67c69d760564c64bb801e0678d06e693c607faa51900486d1a117f`.
+The new signed images are in `out/live-ramoops-44165508547-signed/`:
+boot `a3236acc…`, vendor_boot `7f5ac5520ca6fe2592d050066559c5d7c81529c7468fc1be9271e9388ea1c427`,
+and vbmeta `1ce6c6beb49d2282cc892300ca8b6b8d9a481cab012fcd24aa92cbdfc167de44`.
+Independent RSA, salted hash, payload, ADT/config/vroot, boot-chain and 22
+descriptor checks pass. ZIP is
+`out/tb710fu-dual-live-44165508547-signed.zip`, 35,649,194 bytes, SHA-256
+`28559a208b8b9a7a816650337faa333804cccacdcda9cf4f0b3e3feee163718d`.
+
+This is still a test candidate: ramoops is volatile current-boot BSS and does
+not survive reset; real worker scheduling, QR rotation, ramoops content, CDC
+enumeration and hardware boot remain unverified. No device operation occurred.
+Evidence: `docs/evidence/dual-live-runner-44165508547.json` and
+`docs/evidence/dual-live-signed-44165508547.json`.
+
 ## Volatile current-boot ramoops selected · 2026-11-18
 
 The user selected the safe temporary policy after the device report showed the

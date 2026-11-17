@@ -179,6 +179,7 @@ static void assert_xnu_body(size_t count, const uint8_t *backup, size_t backup_l
                       "earlybackup_bytes=%u", &retained) == 1);
         assert(retained == backup_length && current <= count);
         assert(xnu_sender.info.bytes == header_length + current);
+        assert(xnu_sender.info.block_count == 1);
         assert(xnu_sender.info.start == xnu_written - current &&
                xnu_sender.info.end == xnu_written);
         for (size_t i = 0; i < current; ++i)
