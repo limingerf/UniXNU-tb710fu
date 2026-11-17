@@ -23,7 +23,10 @@ def verify(tree, config, native_path):
             report['xnu_revision'] == LOCK['xnu_commit'], 'Wrong CDC source revisions')
     require(set(report['objects_sha256']) == {name + '.o' for name in SOURCES},
             'Incomplete CDC transport source set')
-    members = dict(audit.ar_members(archive.read_bytes()))
+    # Darwin ar retains a symbol-table member alongside real object members.
+    # It is linker metadata, not a seventh compiled transport object.
+    members = {name: data for name, data in audit.ar_members(archive.read_bytes())
+               if not name.startswith('__.SYMDEF')}
     require(set(members) == set(report['objects_sha256']), 'Unexpected CDC archive members')
     for name, expected in report['objects_sha256'].items():
         data = members[name]

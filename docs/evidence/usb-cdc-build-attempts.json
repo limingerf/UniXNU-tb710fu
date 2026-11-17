@@ -38,6 +38,15 @@
         "CdcTransportGuard.o",
         "CdcDwc3.o"
       ]
+    },
+    {
+      "run_id": 44088500248,
+      "url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44088500248",
+      "device_commit": "81a72b61c687845ee9980ea056e54eced075e9f0",
+      "conclusion": "cancelled",
+      "runner_steps_executed": 0,
+      "reason": "Queued task cancelled after a real local Darwin archive check exposed the new integration verifier counting __.SYMDEF SORTED as an object. Fixed before requesting another run.",
+      "compiler_failure": false
     }
   ],
   "runtime_qualified": false,

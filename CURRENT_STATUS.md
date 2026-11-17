@@ -29,6 +29,10 @@ the same `kern/misc_protos.h` declaration boundary as osfmk/startup.c.
 The earlier bootstrap undefined providers are expected before archives;
 the actual failing stage was archive-06/CdcXnu compilation. Neither final
 native integration nor prelink passed in this attempt.
+Queued run 44088500248 at `81a72b61c687845ee9980ea056e54eced075e9f0`
+was cancelled before runner steps when a local check of a real Darwin archive
+found that the new CDC verifier counted `__.SYMDEF SORTED` as an extra object.
+The verifier now filters that linker metadata while checking every real object.
 No actual TB710FU CDC enumeration or captured USB log is established. Unsupported
 active-DMA reset/disconnect stops the session and retains DMA. The scheduled
 worker does not promise final panic text after scheduling stops. No signing or
