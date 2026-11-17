@@ -134,6 +134,13 @@ def main():
             for path in adapter.iterdir():
                 if path.is_file() and path.suffix in ('.json', '.log', '.a'):
                     shutil.copy2(path, destination / path.name)
+        storage = work / 'tree/build/tb710fu-source-storage'
+        if storage.is_dir():
+            destination = output / 'source-storage'
+            destination.mkdir(exist_ok=True)
+            for path in storage.iterdir():
+                if path.is_file() and path.suffix in ('.json', '.log', '.a', '.bin'):
+                    shutil.copy2(path, destination / path.name)
         return
     actual = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     if actual != LOCK['unixnu']['commit']:

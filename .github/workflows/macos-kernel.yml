@@ -5,7 +5,7 @@ on:
       stage:
         description: Native compiler/linker check first; prelink also adds the original macOS kernelcache closure
         type: choice
-        options: [native, prelink, ufs-source]
+        options: [native, prelink, ufs-source, ufs-bridges]
         default: native
 permissions:
   contents: read
@@ -59,7 +59,7 @@ jobs:
           JOBS: '3'
         run: python3 tools/ci_kernel.py native
       - name: Initialize the pinned UFS interface headers
-        if: inputs.stage == 'ufs-source'
+        if: inputs.stage == 'ufs-source' || inputs.stage == 'ufs-bridges'
         run: git -C .work/UniXNU submodule update --init --depth 1 -- kits/VerifiedRoot drivers/VirtioMmioBlock
       - name: Prelink the macOS 27 kernelcache closure
         if: inputs.stage == 'prelink'
@@ -89,6 +89,17 @@ jobs:
           set -euo pipefail
           work=$(cat .work/resolved-work.txt)
           python3 .work/UniXNU/drivers/DarwinBoot/Test/test-kernel-parser.py "$work/kernel/kernel.macho" 2>&1 | tee .work/artifacts/loader-parser.log
+      - name: Compile the complete standalone source-storage archive
+        if: inputs.stage == 'ufs-bridges'
+        env:
+          UNIXNU_XNU_ARCH: arm64e
+          UNIXNU_IOS_VERSION: '27.0'
+          UNIXNU_XNU_TARGET: macosx
+        run: |
+          set -euo pipefail
+          work=$(cat .work/resolved-work.txt)
+          python3 scripts/build-tb710fu-source-storage.py --tree "$work/tree" --framework .work/UniXNU
+          cat "$work/tree/build/tb710fu-source-storage/build-report.json" >> "$GITHUB_STEP_SUMMARY"
       - name: Collect the selected logs and artifacts
         if: always()
         run: python3 tools/ci_kernel.py collect

@@ -25,22 +25,22 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def stage_source(upstream_source, stage):
+def stage_source(upstream_source, stage, patches=PATCHES):
     # Export the pinned commit, so host checks and kernel compilation cannot
     # accidentally include local cache edits, untracked files or CRLF checkout differences.
     archive = subprocess.check_output(['git', '-C', str(upstream_source), 'archive', PIN])
     with tarfile.open(fileobj=io.BytesIO(archive)) as source_archive:
         source_archive.extractall(stage, filter='data')
-    for patch in PATCHES:
+    for patch in patches:
         subprocess.run(['git', 'apply', '--check', str(patch)], cwd=stage, check=True)
         subprocess.run(['git', 'apply', str(patch)], cwd=stage, check=True)
 
 
-def run_host_tests(stage, output_dir):
+def run_host_tests(stage, output_dir, patches=PATCHES):
     compiler = shlex.split(os.environ.get('CXX', 'c++'))
     version = subprocess.check_output([*compiler, '--version'], text=True).strip()
     report = {'compiler': version, 'upstream_revision': PIN, 'tests': [],
-              'board_patches': [{'path': str(p.relative_to(ROOT)), 'sha256': sha(p)} for p in PATCHES]}
+              'board_patches': [{'path': str(p.relative_to(ROOT)), 'sha256': sha(p)} for p in patches]}
     for name in ('SmmuTakeover', 'RootCommands'):
         source = stage / 'tests' / f'{name}.cpp'
         executable = stage / f'{name}-host-test'

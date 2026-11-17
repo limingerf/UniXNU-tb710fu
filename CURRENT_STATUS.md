@@ -1,6 +1,53 @@
 # Current status · 2026-11-17
 
+## Transactional UFS target compile and source-storage bridge · 2026-11-17
+
+Run [44068063538](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44068063538)
+at device commit `bf0be756b550558cf5a4097314c0bd1d703d1a89` completed
+successfully. Both patched production host tests and the macOS 27 arm64e
+NativeUfs object compile passed. Artifact `14322470471` is 8,902,951 B,
+SHA-256 `bff7a9402c9a8726dc4a3b6360c7e04a54d58d8ef7bb7fdacfd90b11e453324b`.
+The independently downloaded archive is 595,544 B, SHA-256
+`bec56cbe2f42e76a0d162183f861da78d5a6336dcd78f36c645137125e6b561d`;
+NativeUfs.o is `5ac860852c2f62b8fd1def8bfc6524d72cc4443dda4b067f9b11b04b88e81adb`.
+The separate native-only kernel is 25,171,504 B, SHA-256
+`d49c59876a11e3d3f8d46f0828dce6b401dec61bac3bac60931e2aa283ec4343`.
+The UFS archive is not linked into that kernel; no prelink or hardware test was
+performed. `docs/evidence/ufs-source-44068063538.json` records the exact inputs.
+
+The device repository now supplies `package/SourceStorage.cpp`,
+`SourceRootPolicies.cpp` and `SourceRootBinding.cpp`, adapted from exact
+`UniXNU-sheng@1108068537d5396edb2c63b2f8c6f5b97b0a4bbc` blobs. The policy
+bridge copies and protects the firmware handoff, authenticates all policies
+before publishing, and releases its allocation on failure. Real RSA-3072
+OS/SystemOS/App headers, a full App manifest and malformed bundle tests pass
+on the host. The media bridge binds a unique BSD device and UUID through a
+retained provider chain to the real NativeUfs authentication routine.
+
+`scripts/build-tb710fu-source-storage.py` is an explicit device-owned minimal
+adaptation of the pinned official source-storage recipe, not a replacement of
+the fetched script. It compiles the public deferred base, NativeUfs, all three
+bridges, the real VerifiedRoot core/XNU crypto adapter and the independent
+public owner anchor into a separate archive. Optional RAM/Data storage,
+benchmark, file logging, process diagnostics and wireless providers are omitted
+coherently. Patch 0003 disables both declaration and call of the optional boot
+observer, so no empty diagnostic/security provider is supplied. The new
+`ufs-bridges` workflow stage is the next bounded target compile; its result is
+not covered by the successful `bf0be75` run above.
+
+A retained target fileset has been found locally, correcting the earlier
+limited search. It records the exact profile KernelCache input
+`d1003b5143ffd88439b4d45b6017f587171cfe6855660bed05370a2ea5db9fe9` and
+contains IOStorageFamily/APFS. The reproducible static dispatch/PAC audit matches
+all 326 slots, 26 block API identities/order, class size `0x90`, and four actual
+binary consumer call sites; see `docs/SOURCE_STORAGE_ABI.md`. This establishes
+static layout compatibility only. No startup hook is selected, both storage configuration switches
+remain off, and the archive/link/prelink/runtime gates stay separate. No new
+IMG has been packaged, signed or flashed.
+
 ## UFS integration and image gate audit · 2026-11-17
+
+Historical audit before run 44068063538; the current result is above.
 
 The first board-specific UFS transaction patch is now in
 `patches/ufs/0002-transactional-handoff.patch`, based on pinned

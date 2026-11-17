@@ -1,0 +1,25 @@
+diff --git a/NativeUfs.cpp b/NativeUfs.cpp
+--- a/NativeUfs.cpp
++++ b/NativeUfs.cpp
+@@ -46,7 +46,9 @@
+ extern "C" {
+ // Optional passive observer; absent in ordinary builds. It may run while a
+ // window lock is held, so its contract forbids blocking or transport access.
+-#if defined(NATIVE_UFS_SOURCE_API) && NATIVE_UFS_SOURCE_API
++#if defined(TB710FU_UFS_NO_BOOT_OBSERVER) && TB710FU_UFS_NO_BOOT_OBSERVER
++// The minimal device runtime has no boot-progress observer or import.
++#elif defined(NATIVE_UFS_SOURCE_API) && NATIVE_UFS_SOURCE_API
+ // The source runtime archive carries a weak no-op definition; a weak
+ // reference here would become an unresolved pointer-auth import instead.
+ void boot_progress_poll (void);
+@@ -1893,7 +1895,9 @@
+-#if defined(NATIVE_UFS_SOURCE_API) && NATIVE_UFS_SOURCE_API
++#if defined(TB710FU_UFS_NO_BOOT_OBSERVER) && TB710FU_UFS_NO_BOOT_OBSERVER
++// Observer disabled together with its declaration above.
++#elif defined(NATIVE_UFS_SOURCE_API) && NATIVE_UFS_SOURCE_API
+       boot_progress_poll ();
+ #else
+       if (boot_progress_poll) boot_progress_poll ();
+ #endif
+ #else
+       (void) index; (void) data; (void) length;

@@ -1,0 +1,34 @@
+{
+  "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44068063538",
+  "device_commit": "bf0be756b550558cf5a4097314c0bd1d703d1a89",
+  "conclusion": "success",
+  "stage": "ufs-source",
+  "artifact_id": 14322470471,
+  "artifact_bytes": 8902951,
+  "artifact_sha256": "bff7a9402c9a8726dc4a3b6360c7e04a54d58d8ef7bb7fdacfd90b11e453324b",
+  "framework_revision": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+  "ufs_revision": "99d8bcd3e43dd24fc3c8437c67b5d4cc71ab94d0",
+  "board_patches": [
+    {
+      "path": "patches/ufs/0001-sm8650-compatible.patch",
+      "sha256": "8697b355a151c3cdb4aae8b595c58c05f760b4c3ddd6ce458ac5c8a1571b7993"
+    },
+    {
+      "path": "patches/ufs/0002-transactional-handoff.patch",
+      "sha256": "d369b1dea509b8acd551df3cf982823cffa9092ee997f1e93a34471411bb150f"
+    }
+  ],
+  "archive_bytes": 595544,
+  "archive_sha256": "bec56cbe2f42e76a0d162183f861da78d5a6336dcd78f36c645137125e6b561d",
+  "object_sha256": "5ac860852c2f62b8fd1def8bfc6524d72cc4443dda4b067f9b11b04b88e81adb",
+  "xnu_compile_record_sha256": "5b0cb4d43b31292ed6db2e73ea0cc8ea0c99a5dc9bc064f16b60797ee2e29d64",
+  "native_kernel_bytes": 25171504,
+  "native_kernel_sha256": "d49c59876a11e3d3f8d46f0828dce6b401dec61bac3bac60931e2aa283ec4343",
+  "host_tests": ["SmmuTakeover", "RootCommands"],
+  "downloaded_hashes_independently_verified": true,
+  "linked_into_kernel": false,
+  "root_policy_ready": false,
+  "runtime_qualified": false,
+  "prelink_performed": false,
+  "image_packaged_or_signed": false
+}

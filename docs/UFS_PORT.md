@@ -68,7 +68,7 @@ The board patch `patches/ufs/0001-sm8650-compatible.patch` adds only the exact
 the pinned upstream source with this patch into an arm64e archive using that
 kernel's compiler records. The archive remains an isolated source-build result:
 the board still sets both `CONFIG_XNU_NATIVE_UFS=n` and
-`CONFIG_XNU_SOURCE_STORAGE=n`. The clean device repo does not contain the
+`CONFIG_XNU_SOURCE_STORAGE=n`. The clean device repo now contains the
 `SourceStorage.cpp`, `SourceRootPolicies.cpp`, and `SourceRootBinding.cpp`
 bridge required by the separate full source-storage recipe. Those files are
 not prerequisites for compiling the standalone NativeUfs archive. NativeUfs
@@ -132,9 +132,12 @@ The official arm64e component recipe does not accept the standalone archive as
 a kernel integration. `build-arm-driver.py ShengUfs` selects the complete
 source-storage recipe, which expects device-owned
 `SourceStorage.cpp`, `SourceRootPolicies.cpp`, and `SourceRootBinding.cpp`.
-Those files are absent here. The macOS 27 IOStorageFamily/APFS vtable and
-linkage also need an explicit ABI audit; a successful object compile or equal
-class size is not enough. Keep `CONFIG_XNU_NATIVE_UFS` and
+The minimal device-owned recipe is `scripts/build-tb710fu-source-storage.py`;
+it compiles a separate complete archive in the `ufs-bridges` workflow stage.
+See `package/Tb710fuSourceStorage/README.md` for the exact reference blobs,
+signature handoff, real media binding and coherent optional-provider omission.
+The macOS 27 IOStorageFamily/APFS interface and linkage also need explicit ABI
+checks; a successful object compile or equal class size is not enough. Keep `CONFIG_XNU_NATIVE_UFS` and
 `CONFIG_XNU_SOURCE_STORAGE` disabled until the bridge implementation, ABI
 checks, and ordered ownership handoff pass their build gates.
 
@@ -168,6 +171,13 @@ build report confirms the pinned upstream revision and XNU compile record, and
 marks `linked_into_kernel=false`, `root_policy_ready=false`, and
 `runtime_qualified=false`. The downloaded artifact's SHA-256 matches GitHub's
 digest. Local outputs are under `.work/ufs-source-44041029817/`.
+
+Run [44068063538](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44068063538)
+at `bf0be756b550558cf5a4097314c0bd1d703d1a89` also passed the transactional
+patch's host tests and macOS 27 object compile. Its 595,544-byte archive has
+SHA-256 `bec56cbe2f42e76a0d162183f861da78d5a6336dcd78f36c645137125e6b561d`.
+Exact run/artifact/input hashes are in `evidence/ufs-source-44068063538.json`.
+This result does not compile the subsequently added bridge files or patch 0003.
 
 There is still no linked TB710FU XNU UFS driver or hardware read. The full
 source-storage bridge, macOS 27 storage ABI checks, and transactional
