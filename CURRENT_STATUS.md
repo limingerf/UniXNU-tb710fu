@@ -16,14 +16,27 @@ The optional `ufs-source` workflow runs the device-owned builder after the
 minimal native kernel, using that build's XNU records and pinned framework
 interfaces. Run [44027734178](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44027734178)
 stopped before native compilation because XNU patch 0010 used stale hunk
-context after device patches 0001-0009; it is a patch-application failure, not
-a compiler failure. The corrected patch was checked and applied against the
-saved post-0009 XNU snapshots, and CDC/UFS host tests pass. A retry remains
-pending. The prior run's artifact upload was also denied because GitHub
-Actions storage is full: 39 active repository artifacts total 14.5 GB, with
-the user-provided userdata run 43724852936 accounting for 14.1 GB. Its local
-ZIP copy is retained; no remote artifact was deleted. Once built, the archive
-will remain unlinked. The full source-storage route is still not connected:
+context after device patches 0001-0009; this was a patch-application failure,
+not a compiler failure. The corrected patch was checked and applied against
+the saved post-0009 XNU snapshots, and CDC/UFS host tests pass.
+
+Run [44036380775](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44036380775)
+then applied the patch and completed the native build and UFS adapter compile.
+It produced a native-only kernel of 25,171,504 bytes with SHA-256
+`d568a98348cb0d0bb46562abd8e335985cb72cc60666a2efb48214a6050b8f59`; this is
+not prelinked or hardware-tested. An earlier bootstrap linker pass reported
+unresolved symbols, but the wrapper continued and emitted the final
+native-only record. The UFS builder printed `TB710FU NativeUfs compile passed`
+and produced `libTb710fuNativeUfs.a`; the Actions artifact upload then failed
+because storage quota is full, so the archive and build report were not
+retained remotely and have no independently checked archive hash yet.
+
+The repository had 39 active artifacts totaling 14.5 GB. The user-provided
+userdata artifact `tb710fu-macos-userdata-43724852936` accounts for 14.1 GB;
+its local ZIP copy has the same 14,135,017,096-byte size and SHA-256
+`b661a8ddbe4ad0911bbb141baa4b88a40401543bb73328fcd0d18ec02ccd8fb0` as the
+remote artifact. No remote artifact was deleted. The archive will remain
+unlinked. The full source-storage route is still not connected:
 the board disables `CONFIG_XNU_SOURCE_STORAGE`, and the clean device repository
 lacks the `SourceStorage.cpp`, `SourceRootPolicies.cpp`, and
 `SourceRootBinding.cpp` bridge files required by that recipe.

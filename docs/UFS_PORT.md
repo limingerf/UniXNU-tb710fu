@@ -74,8 +74,13 @@ The host-only `UfsReadProbe` state-machine tests pass, but that code has no XNU
 MMIO, SMMU, DMA or queue callbacks. The first optional source build,
 [run 44027734178](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44027734178),
 failed while applying XNU patch 0010, before native compilation or UFS archive
-compilation. Its context has since been corrected against the saved XNU source
-after device patches 0001-0009; the corrected patch applies locally and the
-host-only tests pass. There is no linked TB710FU XNU UFS driver or hardware
-read. The full source-storage bridge and controller ownership checks must pass
-before enabling it in the kernel configuration.
+compilation. After correcting its context against the saved XNU source following
+device patches 0001-0009, [run 44036380775](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44036380775)
+completed the native-only kernel build and printed a successful UFS compile
+message. The native kernel SHA-256 is
+`d568a98348cb0d0bb46562abd8e335985cb72cc60666a2efb48214a6050b8f59`; it was not
+prelinked. Artifact upload failed because the Actions storage quota was full,
+so the archive and build report were not retained for independent hash review.
+There is no linked TB710FU XNU UFS driver or hardware read. The full
+source-storage bridge and controller ownership checks must pass before enabling
+it in the kernel configuration.
