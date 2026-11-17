@@ -24,6 +24,12 @@ yet. Native-only kernel build run
 compiled the XNU tap patch and CDC archive together. This validates compilation
 only; it does not provide a host-visible port or hardware USB result.
 
+The same tap and archive also remain selected in the successful integrated
+native/prelink run
+[44075573981](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44075573981),
+device commit `9f01899957060ffbd81a49c793438ba152760eb9`. That run's UFS
+integration does not supply a USB transport or establish CDC enumeration.
+
 Run `python scripts/check_usb_cdc_protocol.py` to compile the host fixture with
 warnings-as-errors and AddressSanitizer/UndefinedBehaviorSanitizer, then run the
 descriptor, malformed-request, wraparound, back-pressure and fail-closed guard
@@ -81,8 +87,9 @@ queue handoff, SMMU mapping or DMA. GPT changes will change this sample.
 
 ## Next integration gates
 
-The XNU 12377 DWC3 peripheral transport and `serial_console`/`kprintf` hook are
-not implemented. The controller must perform its bounded role, clock, PHY and
+The XNU console/`kprintf` RAM tap is implemented and target-compiled; the DWC3
+peripheral transport, DMA adapter and USB drain worker remain unimplemented.
+The controller must perform its bounded role, clock, PHY and
 SMMU checks during its own initialization, then keep the log producer path
 nonblocking. Unknown state must refuse DMA takeover and let normal boot
 continue. A separate register-snapshot build is not required before this work.

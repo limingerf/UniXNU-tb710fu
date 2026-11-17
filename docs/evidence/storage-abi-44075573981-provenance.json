@@ -1,0 +1,54 @@
+{
+  "kernel": {
+    "repository": "limingerf/UniXNU-tb710fu",
+    "run_id": 43844823907,
+    "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43844823907",
+    "head_sha": "e83bd00d94fc947ecdefd3fafdd471711561dff3",
+    "sha256": "045bfc7cfad9ed2539a586043dd43211263099734f4978abd8092c213b7d7d95",
+    "native_sha256": "670f2576332d20e8f9615f2f9d84a08a2313fc68d995e8d38af6ffeeb970236a",
+    "artifact": {
+      "id": 14214828991,
+      "name": "tb710fu-prelink-43844823907",
+      "size_in_bytes": 37731619,
+      "digest": "sha256:8063bc02fc5d405cbb7e20524a21e05a844c8937495b69b77e8dedc3597a33cd"
+    },
+    "source_records": [
+      ".work/verified-prelink/verification.json",
+      "docs/evidence/kernel-switch-qr-build.json"
+    ],
+    "kernelcache_input_sha256": "d1003b5143ffd88439b4d45b6017f587171cfe6855660bed05370a2ea5db9fe9",
+    "profile": "macos-27.3-26C5035r"
+  },
+  "native": {
+    "repository": "limingerf/UniXNU-tb710fu",
+    "run_id": 44075573981,
+    "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44075573981",
+    "head_sha": "9f01899957060ffbd81a49c793438ba152760eb9",
+    "head_branch": "codex/ufs-transactional-handoff",
+    "run_attempt": 1,
+    "artifact": {
+      "id": 14324417743,
+      "name": "tb710fu-ufs-integrated-44075573981",
+      "size_in_bytes": 38354358,
+      "digest": "sha256:df2802dc432b0290e6b8db0c2a1ef27db8fc6469de2b9fb08351e9fd1d9b8016"
+    },
+    "github_run_and_artifact_metadata_read_via_authenticated_api": "2026-11-17",
+    "note": "The exact source-storage archive was linked into the native kernel, strictly prelinked and parsed in this run. The kernel section remains the fixed historical binary ABI reference; it is not this run kernel."
+  },
+  "tools": {
+    "dwarfdump": [
+      "wsl.exe",
+      "-d",
+      "Debian",
+      "--",
+      "llvm-dwarfdump-19"
+    ],
+    "llvm_mc": [
+      "wsl.exe",
+      "-d",
+      "Debian",
+      "--",
+      "llvm-mc-19"
+    ]
+  }
+}

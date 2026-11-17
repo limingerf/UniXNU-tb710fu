@@ -177,3 +177,30 @@ kernel whose native input lacks the new integration binding. It is never
 reported as containing UFS. The host suite also checks actual policy signatures
 and signature mutations, malformed bundle tables, argument conflicts, missing
 manifest inputs and the real baseline's ADT/config transformation.
+
+## Recorded positive packaging
+
+Run 44075573981 at `9f01899957060ffbd81a49c793438ba152760eb9` completed the
+native integration, strict prelink and production parser gates. The downloaded
+artifact `14324417743` was independently checked before packaging. Its new
+142,802,944-byte fileset SHA-256 is
+`9e2be0f788f84fd6c582449afaace7784085e460aff5e959a8cfc59d43b886d3`.
+The new archive also passed the repeated static block-device ABI audit.
+
+The packager source at `abc8503cb68004b4fe14f687a084a97445aab2b6` then passed
+the real positive path with twelve actual inputs. Its input manifest SHA-256 is
+`c4c9538fce0d354468f8cf8f6af6a0b5bd7fdd88f8e7a9d979bda84017a9d960`.
+The local result is
+`out/source-storage-44075573981/vendor_boot.unsigned.img`, 37,859,328 B,
+SHA-256 `32ed17f15fcf235183f141549b3ef07dc0b1fe4768a10faba8c5c3b197c86807`.
+The actual output file was independently rehashed after packaging.
+[`evidence/source-storage-image-44075573981.json`](evidence/source-storage-image-44075573981.json)
+records exact inputs, tool revision/hash, report digest, loader scope, RSA
+checks, four FAT file readbacks and the unsigned output hash. Large artifacts
+and raw ADT/seed values remain local and ignored by Git.
+
+The positive host result establishes unsigned assembly only. No new AVB
+signature, signed image pair, device operation, USB CDC enumeration or hardware
+root boot is included. The next implementation work is the missing DWC3
+transport/DMA/drain path; storage handoff, known reads and root mount retain
+their separate hardware acceptance gates.

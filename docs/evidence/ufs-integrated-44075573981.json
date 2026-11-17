@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "run_id": 44075573981,
+  "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44075573981",
+  "device_commit": "9f01899957060ffbd81a49c793438ba152760eb9",
+  "stage": "ufs-integrated",
+  "conclusion": "success",
+  "run_attempt": 1,
+  "job_id": 134012574644,
+  "completed_at": "2026-11-17T11:46:56Z",
+  "artifact_id": 14324417743,
+  "artifact_name": "tb710fu-ufs-integrated-44075573981",
+  "artifact_bytes": 38354358,
+  "artifact_sha256": "df2802dc432b0290e6b8db0c2a1ef27db8fc6469de2b9fb08351e9fd1d9b8016",
+  "framework_revision": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+  "xnu_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+  "built_xnu_source_version": "12377.121.6",
+  "original_apple_kernel_version": "13432.60.57",
+  "profile": "macos-27.3-26C5035r",
+  "successful_steps": [
+    "Build and verify the native arm64e kernel",
+    "Prelink the macOS 27 kernelcache closure",
+    "Verify the fileset with the production DarwinBoot parser"
+  ],
+  "independent_download_digest_verified": true,
+  "native_kernel_sha256": "7a1bba0855ca9ea8d9ddc3e3f937209d5e874b1082415c24ac981c26e0231a45",
+  "prelinked_kernel": {
+    "stage": "prelinked",
+    "mach_o_filetype": 12,
+    "cpu_subtype": "0xc0000002",
+    "bytes": 142802944,
+    "sha256": "9e2be0f788f84fd6c582449afaace7784085e460aff5e959a8cfc59d43b886d3",
+    "fileset_entries": 79,
+    "mapping_complete": true,
+    "hardware_boot_verified": false,
+    "runtime_qualified": false
+  },
+  "closure_components": 86,
+  "kernelcache_input_sha256": "d1003b5143ffd88439b4d45b6017f587171cfe6855660bed05370a2ea5db9fe9",
+  "prelink_missing": {},
+  "prelink_stubbed": {},
+  "archive_bytes": 1444104,
+  "archive_sha256": "e0da7e494ccd11908c3c861ec4a15765e977c45345d02465e3e89dc47142fc80",
+  "objects_sha256": {
+    "IOBlockStorageDevice.late.o": "0245537fe15dc54ad583d754a21986039cce510e00c5b50894ce7a80ecae2eb9",
+    "NativeUfs.late.o": "f7a4a794279b4b1ce61a40726c530cff93c1f3088d90b674d3947385287578c1",
+    "SourceStorage.o": "96e12eb522c2ce5da45c7a2820c646adbc30e03dfcd352928a75a4baa3de4e99",
+    "SourceRootPolicies.o": "4deefe9ad7665446b32863524538a5fdfe723fd3bd5d99d569d46f608519a360",
+    "SourceRootBinding.o": "81733ac471ce5851adcb83ea78c20f26013deaada6fecba0aa8d62a390e3ae26",
+    "verified_root.o": "496b932c5050b89a6e57b6b737470e40ab184156beb130d8db51d9f653db5556",
+    "xnu_crypto.o": "f3fe30c6519521e252451c6df74e503061f17c854d7a75600a0ad016a9850198",
+    "RootAnchor.o": "09b71a893a9d366dd4b8d1b48efbcd2bbb35780c478dc57990a0e796b8b1f4bb"
+  },
+  "interface_revisions": {
+    "kits/VerifiedRoot": "974f043d0c71ba2e60331483a41c6c6d35274ee3",
+    "drivers/VirtioMmioBlock": "4e1013eb8c45077b57f8d38d61b389fe899ea1c3"
+  },
+  "board_patches": [
+    {
+      "path": "patches/ufs/0001-sm8650-compatible.patch",
+      "sha256": "8697b355a151c3cdb4aae8b595c58c05f760b4c3ddd6ce458ac5c8a1571b7993"
+    },
+    {
+      "path": "patches/ufs/0002-transactional-handoff.patch",
+      "sha256": "d369b1dea509b8acd551df3cf982823cffa9092ee997f1e93a34471411bb150f"
+    },
+    {
+      "path": "patches/ufs/0003-minimal-source-runtime.patch",
+      "sha256": "3c3aeb2af937b9ff81f3c65ec1cf49f00bbf44a57f27e6421ba57f13faf76274"
+    }
+  ],
+  "policy_bundle_bytes": 1712,
+  "policy_bundle_sha256": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+  "integration_report_sha256": "27928dbdc93254d16edd56aa34b697ff1f3e312f3e67d162a588b6b75073b639",
+  "archive_compile_report_sha256": "b6e7b6b3c022218f38e0558ea2bdfb43f36ed333a833ba88007ae8215cb0a0f6",
+  "build_result_sha256": "67fa74db7a42fce2ffe3a6ac88e3d4590b18f41f98d00f86d6835bc9d50dac22",
+  "prelink_report_sha256": "44b0e492e601e90d8f8d7b1e27e096b3ead005d396222a0c9dd6642066e727ff",
+  "prelink_map_sha256": "e00078485c06efae31d4abf69a1efbf0a39cf0a2ec8686cc31c95551d07ce9b4",
+  "ci_integration": {
+    "schema_version": 1,
+    "profile": "macos-27.3-26C5035r",
+    "device_commit": "9f01899957060ffbd81a49c793438ba152760eb9",
+    "framework_revision": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+    "native_kernel_sha256": "7a1bba0855ca9ea8d9ddc3e3f937209d5e874b1082415c24ac981c26e0231a45",
+    "archive_sha256": "e0da7e494ccd11908c3c861ec4a15765e977c45345d02465e3e89dc47142fc80",
+    "policy_bundle_sha256": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+    "archive_compile_report_sha256": "b6e7b6b3c022218f38e0558ea2bdfb43f36ed333a833ba88007ae8215cb0a0f6",
+    "bsd_object_sha256": "3e2df2a668e27b11f7a88f86364bd89cfa9a041757f576213fe62b67da97c44b",
+    "bsd_compile_record_sha256": "91111adb384b9e1efd880fe9824ba9989f5d662093e7cf92811cb90c8f204ac0",
+    "bsd_startup_symbol": {
+      "kind": 1,
+      "section": 0,
+      "desc": 0,
+      "value": "0x0"
+    },
+    "native_startup_symbol": {
+      "kind": 15,
+      "section": 18,
+      "desc": 0,
+      "value": "0xfffffff007c1b88c"
+    },
+    "linkarchives_sha256": "0b3ce28026c7e4cb7e82c8b20483227b12f018fa8b06fb99fc484a753c9cc238",
+    "linkarchives": "-L/Users/runner/work/UniXNU-tb710fu/UniXNU-tb710fu/.work/UniXNU/out/tb710fu/macos-27.3-26C5035r/tb710fu_macos/tree/.cache/fakeroot/usr/local/lib/kernel -lfirehose_kernel /Users/runner/work/UniXNU-tb710fu/UniXNU-tb710fu/.work/UniXNU/out/tb710fu/macos-27.3-26C5035r/tb710fu_macos/tree/build/corecrypto-2023/libcorecrypto_kernel_noasm-namespaced.a -Wl,-force_load,/Users/runner/work/UniXNU-tb710fu/UniXNU-tb710fu/.work/UniXNU/out/tb710fu/macos-27.3-26C5035r/tb710fu_macos/tree/build/armdt-platform/libArmDTPlatform.a -Wl,-force_load,/Users/runner/work/UniXNU-tb710fu/UniXNU-tb710fu/.work/UniXNU/out/tb710fu/macos-27.3-26C5035r/tb710fu_macos/tree/build/armcpu/libArmCpu.a -Wl,-force_load,/Users/runner/work/UniXNU-tb710fu/UniXNU-tb710fu/.work/UniXNU/out/tb710fu/macos-27.3-26C5035r/tb710fu_macos/tree/build/libpthread-kernel/libpthread_kernel.a -Wl,-force_load,/Users/runner/work/UniXNU-tb710fu/UniXNU-tb710fu/.work/UniXNU/out/tb710fu/macos-27.3-26C5035r/tb710fu_macos/tree/build/tb710fu-cdc-log/libTb710fuCdcLog.a -Wl,-force_load,/Users/runner/work/UniXNU-tb710fu/UniXNU-tb710fu/.work/UniXNU/out/tb710fu/macos-27.3-26C5035r/tb710fu_macos/tree/build/tb710fu-source-storage/libTb710fuSourceStorage.a\n",
+    "linked_into_kernel": true,
+    "source_storage_selected": true,
+    "startup_hook_selected": true,
+    "startup_reference_strong": true,
+    "startup_symbol_defined": true,
+    "archive_force_load_count": 1,
+    "late_metaclasses_verified": true,
+    "native_ufs_personalities_selected": false,
+    "runtime_qualified": false,
+    "hardware_boot_verified": false,
+    "root_policy_handoff_exercised": false
+  },
+  "archive_members_late_constructors_and_no_observer_independently_checked": true,
+  "prelinked_startup_symbol_independently_checked": {
+    "kind": 15,
+    "section": 18,
+    "desc": 0,
+    "value": "0xfffffff00c25788c"
+  },
+  "production_loader_parser_log_sha256": "cae4e2c3c0d9b9e4aa5e05be80fc9dd2ec75b09d45062aa767b54dc0da3e11e4",
+  "production_loader_parser_result": "PASS: actual kernel /Users/runner/work/UniXNU-tb710fu/UniXNU-tb710fu/.work/UniXNU/out/tb710fu/macos-27.3-26C5035r/tb710fu_macos/kernel/kernel.macho\nPASS: arm64/arm64e capability bits, malformed ranges, fileset membership and entry\n",
+  "static_abi_result": "storage-abi-44075573981.json",
+  "local_verification_record_sha256": "efa940513d171cfc4298f9247d5ed1283c8d319c982b21b40761c8a6d5f5110f",
+  "linked_into_kernel": true,
+  "root_policy_handoff_exercised": false,
+  "runtime_qualified": false,
+  "hardware_boot_verified": false,
+  "usb_cdc_enumerated": false,
+  "limitations": [
+    "The compile report is standalone archive evidence; the separate integration report proves its later link.",
+    "The BSD object and compile record are hashed by CI, not retained as standalone artifact members for independent local replay.",
+    "Static ABI uses the fixed historical exact-profile fileset. No runtime call, DMA takeover, read or root mount was executed.",
+    "No signing, private-key read, device operation or new firmware rebuild was performed."
+  ]
+}

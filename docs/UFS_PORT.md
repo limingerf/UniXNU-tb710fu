@@ -73,10 +73,12 @@ explicit archive/startup hook for a separate integrated build, keeping
 `CONFIG_XNU_NATIVE_UFS=n` to avoid automatic personalities. The repo now contains the
 `SourceStorage.cpp`, `SourceRootPolicies.cpp`, and `SourceRootBinding.cpp`
 bridge required by the separate full source-storage recipe. Those files are
-not prerequisites for compiling the standalone NativeUfs archive. NativeUfs
-kernel integration still needs its own component/archive/configuration and
-matching ABI review. Neither route is linked into the current kernel or
-consumes the new policy bundle.
+not prerequisites for compiling the standalone NativeUfs archive. The separate
+`ufs-integrated` run 44075573981 subsequently compiled and linked the complete
+source-storage archive through that strong startup hook, then passed strict
+prelink and production DarwinBoot parsing. This build contains the real policy
+loader and media binding; their execution and firmware handoff on TB710FU remain
+unverified.
 
 ## Pinned source review
 
@@ -141,7 +143,9 @@ signature handoff, real media binding and coherent optional-provider omission.
 The macOS 27 IOStorageFamily/APFS interface and linkage also need explicit ABI
 checks; a successful object compile or equal class size is not enough. The
 complete archive and static ABI gates now pass; the selected explicit source
-runtime still needs its own native/prelink build and hardware validation.
+runtime also passed its own native/prelink build in run 44075573981. Static
+layout and successful linkage do not establish runtime metaclass registration,
+binary virtual calls, UFS DMA or APFS root behavior.
 
 ## Verification status
 
@@ -155,8 +159,10 @@ detection. A stale plan after queue stop blocks firmware DMA resumption. The
 queue tests cover idle refusal, stop/start
 failure, UTRL address restoration, request validation and quarantine. They use
 simulated register and DMA callbacks; they do not prove XNU MMIO behavior,
-firmware races, device DMA or boot. No macOS 27 compiler run has yet tested this
-new patch. The earlier host-only `UfsReadProbe` state-machine tests also pass,
+firmware races, device DMA or boot. The patched source passed the macOS 27
+target compiler in run 44068063538; the later complete archive and integrated
+builds have their own records below. The earlier host-only `UfsReadProbe`
+state-machine tests also pass,
 but that code has no XNU MMIO, SMMU, DMA or queue callbacks. The first source build,
 [run 44027734178](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44027734178),
 failed while applying patch 0010. After correcting its context against the
@@ -164,7 +170,7 @@ saved XNU source following patches 0001-0009,
 [run 44041029817](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44041029817)
 completed successfully and uploaded a verifiable artifact.
 
-The native-only kernel is 25,171,504 bytes, SHA-256
+That run's native-only kernel is 25,171,504 bytes, SHA-256
 `0bb0d07e118ea4261613536b185a4dd80aaf90b97df75653c634c2e9bc54f948`; it was
 not prelinked or hardware-tested. The standalone archive
 `libTb710fuNativeUfs.a` is 541,448 bytes, SHA-256
@@ -181,12 +187,53 @@ SHA-256 `bec56cbe2f42e76a0d162183f861da78d5a6336dcd78f36c645137125e6b561d`.
 Exact run/artifact/input hashes are in `evidence/ufs-source-44068063538.json`.
 This result does not compile the subsequently added bridge files or patch 0003.
 
-There is still no linked TB710FU XNU UFS driver or hardware read. The full
-source-storage bridge, macOS 27 storage ABI checks, and transactional
-controller/SMMU ownership handoff must pass before enabling it in the kernel
-configuration. Until then, there is no new UFS kernel payload to package.
-The existing signed UEFI-UFS image is a firmware image and is not the NativeUfs
-XNU driver. The tracked kernel packager already accepts the ADT-correct source
-baseline (`15846226236b56bd3abb104ae57f45e23307f3ea52321fd03ed153fd2e4e0718`).
-It still lacks UFS root-argument and RootPolicies sidecar inputs, so it cannot yet produce a matching
-flashable UFS kernel pair.
+Run [44071685590](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44071685590)
+at `958a893b368befc145da5aad0c348889e7b31d6d` passed the complete eight-object
+standalone archive build. Its archive SHA-256 is
+`3d1842e4113d53da81d6e4ce208a4ec136c2dc95a31c646e04b4a27eb1bd2588`.
+The deferred NativeUfs object passes the static 326-slot PAC, 26-method,
+class-size and four-consumer audit against the retained exact-profile fileset.
+That standalone run did not link the archive into its separate native kernel.
+
+Run [44075573981](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44075573981)
+at `9f01899957060ffbd81a49c793438ba152760eb9` passed the `ufs-integrated`
+native compilation/integration, strict prelink and production DarwinBoot parser
+steps. Artifact `14324417743` is 38,354,358 bytes with GitHub digest
+`df2802dc432b0290e6b8db0c2a1ef27db8fc6469de2b9fb08351e9fd1d9b8016`.
+The integration verifier requires the actual BSD compile macro and strong
+startup reference, one final startup definition, real storage/crypto exports,
+eight archive member hashes, deferred metaclasses and exactly one force-load
+in the saved linker input. See
+[`evidence/ufs-integrated-44075573981.json`](evidence/ufs-integrated-44075573981.json)
+for the exact build and independent local verification record. No XNU hardware
+UFS read, transactional DMA takeover, policy handoff, media publication or root
+mount is established by these host build gates.
+
+The integrated run's deferred NativeUfs object also passed the independent
+static ABI recheck against the retained exact-profile fileset: all 326 PAC
+slots have zero differences, the 26 named APIs match, the class size is `0x90`
+and all four binary consumer sites match. See
+[`evidence/storage-abi-44075573981.json`](evidence/storage-abi-44075573981.json).
+This remains a static comparison, with runtime registration and calls untested.
+
+The independent [`source-storage packager`](SOURCE_STORAGE_PACKAGING.md) now
+requires this integrated/prelinked kernel and its bound reports, the matching
+RootPolicies bundle, explicit UFS root arguments and verified loader lineage.
+It preserved the reviewed ADT-correct baseline while adding the policy sidecar
+and its ADT handoff property. Positive packaging produced
+`out/source-storage-44075573981/vendor_boot.unsigned.img`, 37,859,328 bytes,
+SHA-256 `32ed17f15fcf235183f141549b3ef07dc0b1fe4768a10faba8c5c3b197c86807`.
+Manifest `c4c9538fce0d354468f8cf8f6af6a0b5bd7fdd88f8e7a9d979bda84017a9d960`
+binds all twelve inputs, and packager revision
+`abc8503cb68004b4fe14f687a084a97445aab2b6` verified all three real RSA policy
+signatures, exact loader lineage, the production parser, LZMA roundtrip, all
+four FAT payload files and unchanged bytes outside the vendor ramdisk. See
+[`evidence/source-storage-image-44075573981.json`](evidence/source-storage-image-44075573981.json).
+No private key was read and no signing or device operation occurred.
+
+The next source task is implementing and target-building the USB DWC3 transport.
+The unsigned storage candidate is retained for a separately authorized hardware
+test of firmware policy handoff, transactional queue/SMMU/DMA ownership, known
+reads, media publication and APFS root mount. The existing signed UEFI-UFS image
+remains a separate firmware artifact; the new candidate is unsigned and unbooted.
+USB CDC enumeration, hardware boot and macOS userspace remain unqualified.

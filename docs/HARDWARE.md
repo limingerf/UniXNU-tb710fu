@@ -1,10 +1,14 @@
 # TB710FU hardware evidence and reuse boundaries
 
 This clean project targets Lenovo TB710FU / Xiaoxin Pad Pro GT, SM8650Q-AB,
-with the official `macos-27.3-26C5035r` profile. The immediate task is a
-native-only kernel build on a supported macOS runner. The selected components
-are `ArmDTPlatform`, `ArmCpu` and `XnuPrelink`. No clean-project hardware boot,
-prelink, root mount, macOS userspace or peripheral result is qualified.
+with the official `macos-27.3-26C5035r` profile. The selected components are
+`ArmDTPlatform`, `ArmCpu` and `XnuPrelink`, with explicit CDC RAM-tap and
+source-storage archives. Run 44075573981 at
+`9f01899957060ffbd81a49c793438ba152760eb9` passed native source-storage
+integration, strict prelink and production loader parsing. These host build
+gates do not qualify hardware storage, USB enumeration, root mount, macOS
+userspace or peripheral operation. See
+[`evidence/ufs-integrated-44075573981.json`](evidence/ufs-integrated-44075573981.json).
 
 `board.toml` defines configuration. `porting.toml` is the authoritative porting
 record. `hardware.toml` is an evidence inventory and is not consumed by UniXNU.
@@ -17,10 +21,16 @@ branches from unrelated ports. At creation this inventory records:
 | Input | Revision or identity | Role |
 | --- | --- | --- |
 | UniXNU/UniXNU | `0c1bac3d51a3009dca1708b15a5198f4b43d057a` | Official schema, recipes, documentation and OS profile |
-| XNU | `ac9718fb1af618d5ce8678d0dc6e8a58f252216f` | Source selected by the target profile |
+| XNU | `ac9718fb1af618d5ce8678d0dc6e8a58f252216f` | XNU `12377.121.6` source selected by the target profile |
 | OS profile | `macos-27.3-26C5035r` | macOS 27.3 build 26C5035r |
-| Expected Apple kernelcache SHA-256 | `d1003b5143ffd88439b4d45b6017f587171cfe6855660bed05370a2ea5db9fe9` | Later prelink input, not a native-kernel hash |
+| Expected Apple kernelcache SHA-256 | `d1003b5143ffd88439b4d45b6017f587171cfe6855660bed05370a2ea5db9fe9` | Original Apple prelink input, not a native-kernel hash |
 | SpendyYT/tb710fu-linux | `4d04410798b538fbe4b50664e3a66d9500a2ed31` | Same-device hardware source reference |
+
+The pinned profile explicitly distinguishes the built `12377.121.6` source
+from Apple's original `26C5035r` KernelCache, whose kernel is
+`13432.60.57`. The profile adds Darwin 26 system calls and macOS KPIs/build
+target to the published XNU 12377 source. The Apple version is a binary-input
+identity and must not be reported as the source version compiled here.
 
 Relevant fixed hardware sources:
 
@@ -72,7 +82,7 @@ to sign, flash, switch slots or modify storage in this task.
 | Interrupts | GICD `0x17100000/0x10000`, GICR `0x17180000/0x200000`, reference stride `0x40000`; reference PSCI method `smc` | Confirm GICR affinity, PSCI ownership, timer frequency and IPI behavior on this firmware |
 | Memory | Mainline reserved ranges and the previous UEFI memory table are available as sources | Actual DDR banks and loader-owned ranges require qualified stock/live firmware input |
 | USB | TWRP FDT declares DWC3 `0x00a600000`, child stream ID `0x40`, `dr_mode = "otg"` and atomic DMA | The XNU handoff's role, PHY/clocks, SMMU route and DMA state are not read back; no CDC enumeration |
-| UFS | TWRP FDT and pinned Linux DTS declare host `0x01d84000`, PHY `0x01d80000`, stream ID `0x60`; TWRP read-only GPT-header sample at LBA 1 has a valid header CRC | No selected native UFS driver or XNU queue/SMMU/DMA read result, root mount or persistence |
+| UFS | TWRP FDT and pinned Linux DTS declare host `0x01d84000`, PHY `0x01d80000`, stream ID `0x60`; TWRP read-only GPT-header sample at LBA 1 has a valid header CRC | The selected native source-storage driver passed compilation, linkage and strict prelink; no XNU queue/SMMU/DMA read result, root mount or persistence is qualified |
 | Display | NT36532, 3200 by 2000, dual DSI with DSC; SY7758 backlight and AW37504 panel supply | No ABL stride/format qualification, native framebuffer or userspace presentation |
 | Touch | `novatek,NVT-ts-spi`, SPI4, source IRQ GPIO162; Linux selects `TOUCHSCREEN_NT36532_SPI` | Review `drivers/input/touchscreen/nt36532/`, not the distinct `novatek-nvt-ts.c`; no native HID result |
 | GPU | Adreno 750 family and its board firmware names are source references | No native submission, fence, Metal or presentation result |
@@ -90,12 +100,15 @@ must be checked before publishing any extracted material.
 
 The prior actual UEFI checkout is `/opt/src/uefi-sheng` in WSL Debian. Its
 `Platforms/Lenovo/tb710fuPkg/` board overlay and
-`Resources/Configs/tb710fu.toml` are review candidates. They are not imported
-by the clean native-only configuration. The previous working directory also
+`Resources/Configs/tb710fu.toml` supplied review candidates. The current
+source-only firmware overlay and independent build evidence are recorded in
+[`UEFI_AUDIT.md`](UEFI_AUDIT.md) and `porting.toml`; the historical checkout
+does not become a build input merely because it exists. The previous working directory also
 contains `Binaries/tb710fu/RawFiles/uefiplat.cfg`; tie any extracted input to
 its original local image and hash before using it.
 
-Historical settings requiring a clean import and a new hardware test:
+Historical settings to reconcile with the reviewed overlay and its exact
+firmware build before a new hardware test:
 
 - FD base `0xA7100000`, size `0x300000`, Android boot header version 4.
 - `USE_CUSTOM_DISPLAY_DRIVER=0` and `TB710FU_VENDOR_HW=0`, preserving the ABL
@@ -108,8 +121,10 @@ Historical settings requiring a clean import and a new hardware test:
   the cut six-core TB710FU.
 
 The old boot-chain plan put a payload ramdisk in `vendor_boot` and used a
-ramdisk-free GKI `boot` image. It remains outside this native-only task; a
-format-valid image or successful AVB check does not prove ABL will load it.
+ramdisk-free GKI `boot` image. Current reviewed carrier and unsigned payload
+assembly inputs are documented separately in
+[`SOURCE_STORAGE_PACKAGING.md`](SOURCE_STORAGE_PACKAGING.md); a format-valid
+image or successful AVB check does not prove ABL will load it.
 
 ## Excluded previous implementations
 
@@ -136,9 +151,11 @@ format-valid image or successful AVB check does not prove ABL will load it.
 
 1. Validate `porting.toml` with the pinned official checker. This checks the
    record schema and coverage, not the hardware.
-2. Resolve the clean native-only configuration and complete one bounded
-   macOS runner build. Preserve the actual native artifact hash and log.
-3. Qualify prelink, Apple inputs, trust caches and Data seed separately.
+2. Preserve the exact source-storage native/prelink build provenance and
+   independently recheck the downloaded kernel, archive and integration reports.
+3. Verify the unsigned candidate's policy signatures, ADT, loader lineage and
+   FAT readback separately. Optional trust caches and Data remain outside the
+   selected minimal storage runtime.
 4. Review firmware, selected DT, memory and a recoverable logging path before
    proposing any device test.
 5. Report kernel entry, root mount, userspace exec, desktop and each peripheral

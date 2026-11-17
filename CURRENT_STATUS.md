@@ -1,5 +1,63 @@
 # Current status · 2026-11-17
 
+## Integrated UFS fileset and unsigned payload verified · 2026-11-17
+
+Run [44075573981](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44075573981)
+at device `9f01899957060ffbd81a49c793438ba152760eb9` passed native compilation,
+the actual storage integration verifier, strict prelink and the production
+DarwinBoot parser. Artifact `14324417743` is 38,354,358 B; its independently
+downloaded ZIP SHA-256 is
+`df2802dc432b0290e6b8db0c2a1ef27db8fc6469de2b9fb08351e9fd1d9b8016`.
+
+The integrated native input SHA-256 is
+`7a1bba0855ca9ea8d9ddc3e3f937209d5e874b1082415c24ac981c26e0231a45`.
+The prelinked MH_FILESET is 142,802,944 B, SHA-256
+`9e2be0f788f84fd6c582449afaace7784085e460aff5e959a8cfc59d43b886d3`, with
+79 executable fileset entries, 86 closure components, no missing references
+and no stubs. Its actual storage archive is 1,444,104 B, SHA-256
+`e0da7e494ccd11908c3c861ec4a15765e977c45345d02465e3e89dc47142fc80`.
+These are new integrated-run hashes, distinct from the earlier standalone run.
+The compile report's `linked_into_kernel=false` describes archive creation;
+the separate bound integration report proves its subsequent actual link.
+
+Local checks independently matched all eight archive members, arm64e object
+types, external late constructors, absence of eager registration/boot-observer
+imports, bound report hashes and a single strong startup definition inside
+the prelinked native image. CI also checked the actual BSD compile record,
+strong BSD reference and saved archive force-load input. The BSD object and
+compile record are hashed in CI but not separately retained in this artifact.
+See `docs/evidence/ufs-integrated-44075573981.json`.
+The new late NativeUfs object passes the fixed exact-profile static ABI audit:
+326 PAC slots, 26 named APIs, class size `0x90` and four consumer dispatches.
+The retained run 43844823907 ABI-reference fileset is unchanged. See
+`docs/evidence/storage-abi-44075573981.json` and its exact provenance file.
+
+The device-owned packager at `abc8503cb68004b4fe14f687a084a97445aab2b6`
+then successfully produced
+`out/source-storage-44075573981/vendor_boot.unsigned.img`, 37,859,328 B,
+SHA-256 `32ed17f15fcf235183f141549b3ef07dc0b1fe4768a10faba8c5c3b197c86807`.
+It uses the exact downloaded fileset, three-policy bundle, ADT-correct baseline
+and recorded existing LZMA/handoff loader. All twelve input hashes, three real
+RSA-3072 signatures, production parser, LZMA roundtrip, FAT geometry/four-file
+readback and unchanged bytes outside the vendor ramdisk passed. The sole ADT
+addition is zero16 `RootPolicies`; existing identity, UUIDs and seed are preserved.
+Boot arguments are explicitly
+`-v serial=3 native-source-storage=1 native-ufs-root=1`.
+See `docs/evidence/source-storage-image-44075573981.json` and
+`docs/SOURCE_STORAGE_PACKAGING.md` for exact inputs and limits.
+
+This is an unsigned candidate, not a newly signed flashable pair. No private key
+was read, no signing or device operation occurred, and no new firmware was built.
+The built source is XNU `12377.121.6`; Apple's original `26C5035r` KernelCache
+uses `13432.60.57`. Firmware policy handoff, UFS DMA takeover/reads, root mount,
+hardware boot and userspace remain unverified. USB has a target-compiled RAM
+log tap, but still lacks the DWC3 transport/DMA/drain implementation and actual
+CDC enumeration. Next implement and target-build that USB transport; hardware
+storage and USB acceptance require their own device evidence. The user's
+conditional request for a signed image after a working port is not yet met.
+
+Entries below retain the stage and limitations known at their historical time.
+
 ## Complete archive passed; native integration selected · 2026-11-17
 
 Run [44071685590](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44071685590)

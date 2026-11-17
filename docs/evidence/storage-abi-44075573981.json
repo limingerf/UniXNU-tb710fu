@@ -1,0 +1,794 @@
+{
+  "schema_version": 1,
+  "result": "static-block-device-layout-matched",
+  "runtime_qualified": false,
+  "hardware_boot_verified": false,
+  "root_mount_verified": false,
+  "provenance": {
+    "kernel": {
+      "repository": "limingerf/UniXNU-tb710fu",
+      "run_id": 43844823907,
+      "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43844823907",
+      "head_sha": "e83bd00d94fc947ecdefd3fafdd471711561dff3",
+      "sha256": "045bfc7cfad9ed2539a586043dd43211263099734f4978abd8092c213b7d7d95",
+      "native_sha256": "670f2576332d20e8f9615f2f9d84a08a2313fc68d995e8d38af6ffeeb970236a",
+      "artifact": {
+        "id": 14214828991,
+        "name": "tb710fu-prelink-43844823907",
+        "size_in_bytes": 37731619,
+        "digest": "sha256:8063bc02fc5d405cbb7e20524a21e05a844c8937495b69b77e8dedc3597a33cd"
+      },
+      "source_records": [
+        ".work/verified-prelink/verification.json",
+        "docs/evidence/kernel-switch-qr-build.json"
+      ],
+      "kernelcache_input_sha256": "d1003b5143ffd88439b4d45b6017f587171cfe6855660bed05370a2ea5db9fe9",
+      "profile": "macos-27.3-26C5035r"
+    },
+    "native": {
+      "repository": "limingerf/UniXNU-tb710fu",
+      "run_id": 44075573981,
+      "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44075573981",
+      "head_sha": "9f01899957060ffbd81a49c793438ba152760eb9",
+      "head_branch": "codex/ufs-transactional-handoff",
+      "run_attempt": 1,
+      "artifact": {
+        "id": 14324417743,
+        "name": "tb710fu-ufs-integrated-44075573981",
+        "size_in_bytes": 38354358,
+        "digest": "sha256:df2802dc432b0290e6b8db0c2a1ef27db8fc6469de2b9fb08351e9fd1d9b8016"
+      },
+      "github_run_and_artifact_metadata_read_via_authenticated_api": "2026-11-17",
+      "note": "The exact source-storage archive was linked into the native kernel, strictly prelinked and parsed in this run. The kernel section remains the fixed historical binary ABI reference; it is not this run kernel."
+    },
+    "tools": {
+      "dwarfdump": [
+        "wsl.exe",
+        "-d",
+        "Debian",
+        "--",
+        "llvm-dwarfdump-19"
+      ],
+      "llvm_mc": [
+        "wsl.exe",
+        "-d",
+        "Debian",
+        "--",
+        "llvm-mc-19"
+      ]
+    }
+  },
+  "kernel": {
+    "path": "D:\\unixnu-tb710fu-clean\\.work\\verified-prelink\\kernel.macho",
+    "bytes": 142753792,
+    "sha256": "045bfc7cfad9ed2539a586043dd43211263099734f4978abd8092c213b7d7d95"
+  },
+  "native_archive": {
+    "path": "D:\\unixnu-tb710fu-clean\\.work\\ufs-integrated-44075573981\\extracted\\source-storage\\libTb710fuSourceStorage.a",
+    "bytes": 1444104,
+    "sha256": "e0da7e494ccd11908c3c861ec4a15765e977c45345d02465e3e89dc47142fc80"
+  },
+  "kernel_zip": {
+    "path": "D:\\unixnu-tb710fu-clean\\.work\\prelinked-input.zip",
+    "bytes": 37731619,
+    "sha256": "8063bc02fc5d405cbb7e20524a21e05a844c8937495b69b77e8dedc3597a33cd",
+    "member": {
+      "name": "kernel/kernel.macho",
+      "bytes": 142753792,
+      "sha256": "045bfc7cfad9ed2539a586043dd43211263099734f4978abd8092c213b7d7d95"
+    }
+  },
+  "native_zip": {
+    "path": "D:\\unixnu-tb710fu-clean\\.work\\ufs-integrated-44075573981\\artifact.zip",
+    "bytes": 38354358,
+    "sha256": "df2802dc432b0290e6b8db0c2a1ef27db8fc6469de2b9fb08351e9fd1d9b8016",
+    "member": {
+      "name": "source-storage/libTb710fuSourceStorage.a",
+      "bytes": 1444104,
+      "sha256": "e0da7e494ccd11908c3c861ec4a15765e977c45345d02465e3e89dc47142fc80"
+    }
+  },
+  "exact_kernelcache_input_sha256": "d1003b5143ffd88439b4d45b6017f587171cfe6855660bed05370a2ea5db9fe9",
+  "original_kernelcache_independently_rehashed": false,
+  "source_revision": "99d8bcd3e43dd24fc3c8437c67b5d4cc71ab94d0",
+  "source_sha256": "8e99199aa87dc2ccebfe3366a0f6896fc8937d57670117af66c10ee52b1b28cd",
+  "source_build_evidence": {
+    "board_patches": [
+      {
+        "path": "patches/ufs/0001-sm8650-compatible.patch",
+        "sha256": "8697b355a151c3cdb4aae8b595c58c05f760b4c3ddd6ce458ac5c8a1571b7993"
+      },
+      {
+        "path": "patches/ufs/0002-transactional-handoff.patch",
+        "sha256": "d369b1dea509b8acd551df3cf982823cffa9092ee997f1e93a34471411bb150f"
+      },
+      {
+        "path": "patches/ufs/0003-minimal-source-runtime.patch",
+        "sha256": "3c3aeb2af937b9ff81f3c65ec1cf49f00bbf44a57f27e6421ba57f13faf76274"
+      }
+    ],
+    "xnu_compile_record_sha256": "45c46094ee030ab6ba6c561b6c19bda5042acddb09408e082aa53056e7d7a3ee",
+    "target": "arm64e-apple-ios27.0"
+  },
+  "source_header_inputs": {
+    "/Users/runner/work/UniXNU-tb710fu/UniXNU-tb710fu/.work/UniXNU/out/tb710fu/macos-27.3-26C5035r/tb710fu_macos/tree/build/tb710fu-source-storage/headers/include/IOKit/storage/IOBlockStorageDevice.h": "afe6609327355c84a70f764c55291d41931e47dedbfb49dc9a2b3601902cdd9c",
+    "/Users/runner/work/UniXNU-tb710fu/UniXNU-tb710fu/.work/UniXNU/out/tb710fu/macos-27.3-26C5035r/tb710fu_macos/tree/build/tb710fu-source-storage/headers/include/IOKit/storage/IOMedia.h": "f8d96b002ec37bdc32e8b715394b8324e399f73ede88ac5d2d9770780e7a3bab",
+    "/Users/runner/work/UniXNU-tb710fu/UniXNU-tb710fu/.work/UniXNU/out/tb710fu/macos-27.3-26C5035r/tb710fu_macos/tree/build/tb710fu-source-storage/headers/include/IOKit/storage/IOStorage.h": "28a83281984b4ba81e1bbb2455b6e55c3881095de06c5b92c32d1b64536da123"
+  },
+  "archive_member": {
+    "name": "NativeUfs.late.o",
+    "sha256": "f7a4a794279b4b1ce61a40726c530cff93c1f3088d90b674d3947385287578c1",
+    "bytes": 591792
+  },
+  "fileset_entries": 79,
+  "chained_fixup_sites": 453587,
+  "entries": {
+    "com.apple.iokit.IOStorageFamily": {
+      "header_va": "0xfffffff007b34120",
+      "header_fileoff": "0xb30120",
+      "defined_symbol_addresses": 967,
+      "vtable_symbols": {
+        "__ZTV24IOUserBlockStorageDevice": "0xfffffff00891a7c8",
+        "__ZTVN24IOUserBlockStorageDevice9MetaClassE": "0xfffffff00891b210",
+        "__ZTV11IODeblocker": "0xfffffff00891e380",
+        "__ZTV14IOFilterScheme": "0xfffffff00891f780",
+        "__ZTV16IOMediaBSDClient": "0xfffffff008921a58",
+        "__ZTV17IOPartitionScheme": "0xfffffff0089224b8",
+        "__ZTV18IOAppleLabelScheme": "0xfffffff00891b328",
+        "__ZTV20IOBlockStorageDevice": "0xfffffff00891cb70",
+        "__ZTV20IOBlockStorageDriver": "0xfffffff00891d6d0",
+        "__ZTV21IOGUIDPartitionScheme": "0xfffffff0089202e8",
+        "__ZTV22IOApplePartitionScheme": "0xfffffff00891bf48",
+        "__ZTV22IOFDiskPartitionScheme": "0xfffffff00891eb48",
+        "__ZTV7IOMedia": "0xfffffff008920f18",
+        "__ZTV9IOBreaker": "0xfffffff00891e760",
+        "__ZTV9IOStorage": "0xfffffff008923038",
+        "__ZTVN11IODeblocker9MetaClassE": "0xfffffff00891e648",
+        "__ZTVN14IOFilterScheme9MetaClassE": "0xfffffff0089201d0",
+        "__ZTVN16IOMediaBSDClient9MetaClassE": "0xfffffff008922388",
+        "__ZTVN17IOPartitionScheme9MetaClassE": "0xfffffff008922f20",
+        "__ZTVN18IOAppleLabelScheme9MetaClassE": "0xfffffff00891be30",
+        "__ZTVN20IOBlockStorageDevice9MetaClassE": "0xfffffff00891d5b8",
+        "__ZTVN20IOBlockStorageDriver9MetaClassE": "0xfffffff00891e268",
+        "__ZTVN21IOGUIDPartitionScheme9MetaClassE": "0xfffffff008920e00",
+        "__ZTVN22IOApplePartitionScheme9MetaClassE": "0xfffffff00891ca58",
+        "__ZTVN22IOFDiskPartitionScheme9MetaClassE": "0xfffffff00891f668",
+        "__ZTVN7IOMedia9MetaClassE": "0xfffffff008921940",
+        "__ZTVN9IOBreaker9MetaClassE": "0xfffffff00891ea30",
+        "__ZTVN9IOStorage9MetaClassE": "0xfffffff008923988"
+      }
+    },
+    "com.apple.filesystems.apfs": {
+      "header_va": "0xfffffff007d13200",
+      "header_fileoff": "0xd0f200",
+      "defined_symbol_addresses": 3304,
+      "vtable_symbols": {
+        "__ZTV26com_apple_filesystems_apfs": "0xfffffff008a918c8",
+        "__ZTVN26com_apple_filesystems_apfs9MetaClassE": "0xfffffff008a92160",
+        "__ZTV18AppleAPFSContainer": "0xfffffff008a92268",
+        "__ZTVN18AppleAPFSContainer9MetaClassE": "0xfffffff008a92cd0",
+        "__ZTV17AppleAPFSSnapshot": "0xfffffff008a92dd8",
+        "__ZTVN17AppleAPFSSnapshot9MetaClassE": "0xfffffff008a93808",
+        "__ZTV14AppleAPFSGraft": "0xfffffff008a93910",
+        "__ZTVN14AppleAPFSGraft9MetaClassE": "0xfffffff008a941b0",
+        "__ZTV15AppleAPFSVolume": "0xfffffff008a942b8",
+        "__ZTVN15AppleAPFSVolume9MetaClassE": "0xfffffff008a94cf0",
+        "__ZTV19AppleAPFSUserClient": "0xfffffff008a94df8",
+        "__ZTVN19AppleAPFSUserClient9MetaClassE": "0xfffffff008a957a0",
+        "__ZTV24AppleAPFSVolumeBSDClient": "0xfffffff008a960a0",
+        "__ZTVN24AppleAPFSVolumeBSDClient9MetaClassE": "0xfffffff008a969d0",
+        "__ZTV17APFSCryptoContext": "0xfffffff008a96ea0",
+        "__ZTVN17APFSCryptoContext9MetaClassE": "0xfffffff008a96ff0",
+        "__ZTV22CryptoBufferDescriptor": "0xfffffff008a970f8",
+        "__ZTVN22CryptoBufferDescriptor9MetaClassE": "0xfffffff008a97398",
+        "__ZTV14AppleAPFSMedia": "0xfffffff008a974a0",
+        "__ZTVN14AppleAPFSMedia9MetaClassE": "0xfffffff008a97ed0",
+        "__ZTV24AppleAPFSContainerScheme": "0xfffffff008a97fd8",
+        "__ZTVN24AppleAPFSContainerScheme9MetaClassE": "0xfffffff008a98928",
+        "__ZTV18APFSOSNumberAtomic": "0xfffffff008a98a30",
+        "__ZTVN18APFSOSNumberAtomic9MetaClassE": "0xfffffff008a98c18",
+        "__ZTV23AppleAPFSMediaBSDClient": "0xfffffff008a98d20",
+        "__ZTVN23AppleAPFSMediaBSDClient9MetaClassE": "0xfffffff008a99650"
+      }
+    }
+  },
+  "full_pac_comparison": {
+    "target_method_slots": 326,
+    "source_method_slots": 326,
+    "mismatches": [],
+    "compared_fields": [
+      "auth",
+      "key",
+      "diversity",
+      "address_diversity"
+    ]
+  },
+  "named_api_comparison": [
+    {
+      "index": 272,
+      "byte_offset": 2176,
+      "method": "doEjectMedia",
+      "source_symbol": "__ZN14NativeUfsBlock12doEjectMediaEv",
+      "target_symbols": [
+        "___cxa_pure_virtual"
+      ],
+      "target_abstract_pure_slot": true,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 17942,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 273,
+      "byte_offset": 2184,
+      "method": "doFormatMedia",
+      "source_symbol": "__ZN14NativeUfsBlock13doFormatMediaEy",
+      "target_symbols": [
+        "___cxa_pure_virtual"
+      ],
+      "target_abstract_pure_slot": true,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 41808,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 274,
+      "byte_offset": 2192,
+      "method": "doGetFormatCapacities",
+      "source_symbol": "__ZNK14NativeUfsBlock21doGetFormatCapacitiesEPyj",
+      "target_symbols": [
+        "___cxa_pure_virtual"
+      ],
+      "target_abstract_pure_slot": true,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 4725,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 275,
+      "byte_offset": 2200,
+      "method": "doLockUnlockMedia",
+      "source_symbol": "__ZN20IOBlockStorageDevice17doLockUnlockMediaEb",
+      "target_symbols": [
+        "__ZN20IOBlockStorageDevice17doLockUnlockMediaEb"
+      ],
+      "target_abstract_pure_slot": false,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 28175,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 276,
+      "byte_offset": 2208,
+      "method": "doSynchronizeCache",
+      "source_symbol": "__ZN14NativeUfsBlock18doSynchronizeCacheEv",
+      "target_symbols": [
+        "__ZN20IOBlockStorageDevice18doSynchronizeCacheEv"
+      ],
+      "target_abstract_pure_slot": false,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 43656,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 277,
+      "byte_offset": 2216,
+      "method": "getVendorString",
+      "source_symbol": "__ZN14NativeUfsBlock15getVendorStringEv",
+      "target_symbols": [
+        "___cxa_pure_virtual"
+      ],
+      "target_abstract_pure_slot": true,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 8960,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 278,
+      "byte_offset": 2224,
+      "method": "getProductString",
+      "source_symbol": "__ZN14NativeUfsBlock16getProductStringEv",
+      "target_symbols": [
+        "___cxa_pure_virtual"
+      ],
+      "target_abstract_pure_slot": true,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 17208,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 279,
+      "byte_offset": 2232,
+      "method": "getRevisionString",
+      "source_symbol": "__ZN14NativeUfsBlock17getRevisionStringEv",
+      "target_symbols": [
+        "___cxa_pure_virtual"
+      ],
+      "target_abstract_pure_slot": true,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 34227,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 280,
+      "byte_offset": 2240,
+      "method": "getAdditionalDeviceInfoString",
+      "source_symbol": "__ZN14NativeUfsBlock29getAdditionalDeviceInfoStringEv",
+      "target_symbols": [
+        "___cxa_pure_virtual"
+      ],
+      "target_abstract_pure_slot": true,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 36311,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 281,
+      "byte_offset": 2248,
+      "method": "reportBlockSize",
+      "source_symbol": "__ZN14NativeUfsBlock15reportBlockSizeEPy",
+      "target_symbols": [
+        "___cxa_pure_virtual"
+      ],
+      "target_abstract_pure_slot": true,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 40251,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 282,
+      "byte_offset": 2256,
+      "method": "reportEjectability",
+      "source_symbol": "__ZN14NativeUfsBlock18reportEjectabilityEPb",
+      "target_symbols": [
+        "___cxa_pure_virtual"
+      ],
+      "target_abstract_pure_slot": true,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 48683,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 283,
+      "byte_offset": 2264,
+      "method": "reportLockability",
+      "source_symbol": "__ZN20IOBlockStorageDevice17reportLockabilityEPb",
+      "target_symbols": [
+        "__ZN20IOBlockStorageDevice17reportLockabilityEPb"
+      ],
+      "target_abstract_pure_slot": false,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 39147,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 284,
+      "byte_offset": 2272,
+      "method": "reportMaxValidBlock",
+      "source_symbol": "__ZN14NativeUfsBlock19reportMaxValidBlockEPy",
+      "target_symbols": [
+        "___cxa_pure_virtual"
+      ],
+      "target_abstract_pure_slot": true,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 32176,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 285,
+      "byte_offset": 2280,
+      "method": "reportMediaState",
+      "source_symbol": "__ZN14NativeUfsBlock16reportMediaStateEPbS0_",
+      "target_symbols": [
+        "___cxa_pure_virtual"
+      ],
+      "target_abstract_pure_slot": true,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 54606,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 286,
+      "byte_offset": 2288,
+      "method": "reportPollRequirements",
+      "source_symbol": "__ZN20IOBlockStorageDevice22reportPollRequirementsEPbS0_",
+      "target_symbols": [
+        "__ZN20IOBlockStorageDevice22reportPollRequirementsEPbS0_"
+      ],
+      "target_abstract_pure_slot": false,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 28919,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 287,
+      "byte_offset": 2296,
+      "method": "reportRemovability",
+      "source_symbol": "__ZN14NativeUfsBlock18reportRemovabilityEPb",
+      "target_symbols": [
+        "___cxa_pure_virtual"
+      ],
+      "target_abstract_pure_slot": true,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 41416,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 288,
+      "byte_offset": 2304,
+      "method": "reportWriteProtection",
+      "source_symbol": "__ZN14NativeUfsBlock21reportWriteProtectionEPb",
+      "target_symbols": [
+        "___cxa_pure_virtual"
+      ],
+      "target_abstract_pure_slot": true,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 57027,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 289,
+      "byte_offset": 2312,
+      "method": "getWriteCacheState",
+      "source_symbol": "__ZN14NativeUfsBlock18getWriteCacheStateEPb",
+      "target_symbols": [
+        "__ZN20IOBlockStorageDevice18getWriteCacheStateEPb"
+      ],
+      "target_abstract_pure_slot": false,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 27399,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 290,
+      "byte_offset": 2320,
+      "method": "setWriteCacheState",
+      "source_symbol": "__ZN14NativeUfsBlock18setWriteCacheStateEb",
+      "target_symbols": [
+        "__ZN20IOBlockStorageDevice18setWriteCacheStateEb"
+      ],
+      "target_abstract_pure_slot": false,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 46532,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 291,
+      "byte_offset": 2328,
+      "method": "doAsyncReadWrite",
+      "source_symbol": "__ZN14NativeUfsBlock16doAsyncReadWriteEP18IOMemoryDescriptoryyP19IOStorageAttributesP19IOStorageCompletion",
+      "target_symbols": [
+        "___cxa_pure_virtual"
+      ],
+      "target_abstract_pure_slot": true,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 58235,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 292,
+      "byte_offset": 2336,
+      "method": "requestIdle",
+      "source_symbol": "__ZN20IOBlockStorageDevice11requestIdleEv",
+      "target_symbols": [
+        "__ZN20IOBlockStorageDevice11requestIdleEv"
+      ],
+      "target_abstract_pure_slot": false,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 25084,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 293,
+      "byte_offset": 2344,
+      "method": "doDiscard",
+      "source_symbol": "__ZN20IOBlockStorageDevice9doDiscardEyy",
+      "target_symbols": [
+        "__ZN20IOBlockStorageDevice9doDiscardEyy"
+      ],
+      "target_abstract_pure_slot": false,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 16379,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 294,
+      "byte_offset": 2352,
+      "method": "doUnmap",
+      "source_symbol": "__ZN20IOBlockStorageDevice7doUnmapEP26IOBlockStorageDeviceExtentjj",
+      "target_symbols": [
+        "__ZN20IOBlockStorageDevice7doUnmapEP26IOBlockStorageDeviceExtentjj"
+      ],
+      "target_abstract_pure_slot": false,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 31527,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 295,
+      "byte_offset": 2360,
+      "method": "doSetPriority",
+      "source_symbol": "__ZN20IOBlockStorageDevice13doSetPriorityEP26IOBlockStorageDeviceExtentjh",
+      "target_symbols": [
+        "__ZN20IOBlockStorageDevice13doSetPriorityEP26IOBlockStorageDeviceExtentjh"
+      ],
+      "target_abstract_pure_slot": false,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 456,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 296,
+      "byte_offset": 2368,
+      "method": "doSynchronize",
+      "source_symbol": "__ZN14NativeUfsBlock13doSynchronizeEyyj",
+      "target_symbols": [
+        "__ZN20IOBlockStorageDevice13doSynchronizeEyyj"
+      ],
+      "target_abstract_pure_slot": false,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 61575,
+        "address_diversity": 1
+      }
+    },
+    {
+      "index": 297,
+      "byte_offset": 2376,
+      "method": "doGetProvisionStatus",
+      "source_symbol": "__ZN20IOBlockStorageDevice20doGetProvisionStatusEyyPjP35IOBlockStorageProvisionDeviceExtenty",
+      "target_symbols": [
+        "__ZN20IOBlockStorageDevice20doGetProvisionStatusEyyPjP35IOBlockStorageProvisionDeviceExtenty"
+      ],
+      "target_abstract_pure_slot": false,
+      "method_name_match": true,
+      "pac_match": true,
+      "pac": {
+        "auth": 1,
+        "key": 0,
+        "diversity": 43360,
+        "address_diversity": 1
+      }
+    }
+  ],
+  "limitations": [
+    "Slots 0..271: inherited PAC layout only; not an implementation-equivalence proof.",
+    "Slots 272..297: source method name/order and target named-or-pure slot plus complete PAC metadata.",
+    "Slots 298..325: reserved4..31 remain opaque; slot/PAC equality does not qualify reserved semantics.",
+    "IOStorage/IOMedia target vtables and APFS symbols are inventoried; there is no corresponding compiled source model comparison for these classes in this check.",
+    "No SourceStorage startup, metaclass registration, binary IOStorageFamily virtual call, DMA read, media UUID/parent-chain or APFS root mount was executed."
+  ],
+  "audit_script": {
+    "path": "D:\\unixnu-tb710fu-clean\\scripts\\audit-tb710fu-storage-abi.py",
+    "bytes": 24536,
+    "sha256": "f781656bdc10e61812d3bba9b89993e6af954f3a39c0236d67b88c1df443d01c"
+  },
+  "provenance_file": {
+    "path": "D:\\unixnu-tb710fu-clean\\docs\\evidence\\storage-abi-44075573981-provenance.json",
+    "bytes": 1968,
+    "sha256": "556c573d2b7c4659b5c2cd28debf3ea8889d48d80c447c0dc3e4b0083b8dd7d6"
+  },
+  "class_size": {
+    "source_dwarf_bytes": 144,
+    "target_metaclass_bytes": 144,
+    "equal": true,
+    "target_constructor": "0xfffffff00aeb5c38",
+    "size_instruction": "0xfffffff00aeb5c58",
+    "target_constructor_hex": "5f2403d57f2303d5fd7bbfa9fd0300910164fe9021f80e9162d3fef042d444f903128052e66a009450d3fe9010e2169110420091f10300aa31b4f9f2300ac1da100000f9fd7bc1a8ff0f5fd6",
+    "limitation": "Supplementary object-size evidence; it does not establish virtual dispatch compatibility."
+  },
+  "binary_consumer_dispatch": [
+    {
+      "symbol": "__ZN20IOBlockStorageDriver21recordMediaParametersEv",
+      "address": "0xfffffff00aeba5d0",
+      "bytes": 308,
+      "code_sha256": "70f7896d6d3b888dc93ac5a9cb6489d8da0c422ccc7f5b7a443693c26152e029",
+      "code_hex": "5f2403d57f2303d5f44fbea9fd7b01a9fd430091f30300aa100040f9f10300aa31b4f9f2301ac1da11d680d21002118b080240f9f076f2f210093fd7100040f9f10300aa31b4f9f2301ac1da111981d21002118b080240f961e2049170a7f3f210093fd7c0020035f40313aa34b4f9f2700240f9901ac1da11d680d21002118b080240f9e00313aaf076f2f210093fd7100040f9f10300aa31b4f9f2301ac1da111c81d21002118b080240f96102059110b6eff210093fd780000034fd7b41a9f44fc2a8ff0f5fd6700240f9901ac1da11d680d21002118b080240f9e00313aaf076f2f210093fd761b60491100040f9f10300aa31b4f9f2301ac1da112081d21002118b080240f9e20310aaf00308aafd7b41a9f44fc2a8ff2303d5d1071eca5100f0b6208e38d4f10302aa71d8fbf2110a1fd7",
+      "disassembly": "\t.section\t__TEXT,__text,regular,pure_instructions\n\thint\t#34\n\tpacibsp\n\tstp\tx20, x19, [sp, #-32]!\n\tstp\tx29, x30, [sp, #16]\n\tadd\tx29, sp, #16\n\tmov\tx19, x0\n\tldr\tx16, [x0]\n\tmov\tx17, x0\n\tmovk\tx17, #52641, lsl #48\n\tautda\tx16, x17\n\tmov\tx17, #1712                      ; =0x6b0\n\tadd\tx16, x16, x17\n\tldr\tx8, [x16]\n\tmovk\tx16, #37815, lsl #48\n\tblraa\tx8, x16\n\tldr\tx16, [x0]\n\tmov\tx17, x0\n\tmovk\tx17, #52641, lsl #48\n\tautda\tx16, x17\n\tmov\tx17, #2248                      ; =0x8c8\n\tadd\tx16, x16, x17\n\tldr\tx8, [x16]\n\tadd\tx1, x19, #312\n\tmovk\tx16, #40251, lsl #48\n\tblraa\tx8, x16\n\tcbnz\tw0, #88\n\tmov\tx20, x19\n\tmovk\tx20, #52641, lsl #48\n\tldr\tx16, [x19]\n\tautda\tx16, x20\n\tmov\tx17, #1712                      ; =0x6b0\n\tadd\tx16, x16, x17\n\tldr\tx8, [x16]\n\tmov\tx0, x19\n\tmovk\tx16, #37815, lsl #48\n\tblraa\tx8, x16\n\tldr\tx16, [x0]\n\tmov\tx17, x0\n\tmovk\tx17, #52641, lsl #48\n\tautda\tx16, x17\n\tmov\tx17, #2272                      ; =0x8e0\n\tadd\tx16, x16, x17\n\tldr\tx8, [x16]\n\tadd\tx1, x19, #320\n\tmovk\tx16, #32176, lsl #48\n\tblraa\tx8, x16\n\tcbz\tw0, #16\n\tldp\tx29, x30, [sp, #16]\n\tldp\tx20, x19, [sp], #32\n\tretab\n\tldr\tx16, [x19]\n\tautda\tx16, x20\n\tmov\tx17, #1712                      ; =0x6b0\n\tadd\tx16, x16, x17\n\tldr\tx8, [x16]\n\tmov\tx0, x19\n\tmovk\tx16, #37815, lsl #48\n\tblraa\tx8, x16\n\tadd\tx1, x19, #301\n\tldr\tx16, [x0]\n\tmov\tx17, x0\n\tmovk\tx17, #52641, lsl #48\n\tautda\tx16, x17\n\tmov\tx17, #2304                      ; =0x900\n\tadd\tx16, x16, x17\n\tldr\tx8, [x16]\n\tmov\tx2, x16\n\tmov\tx16, x8\n\tldp\tx29, x30, [sp, #16]\n\tldp\tx20, x19, [sp], #32\n\tautibsp\n\teor\tx17, x30, x30, lsl #1\n\ttbz\tx17, #62, #8\n\tbrk\t#0xc471\n\tmov\tx17, x2\n\tmovk\tx17, #57027, lsl #48\n\tbraa\tx16, x17\n",
+      "observed_storage_dispatch": [
+        {
+          "byte_offset": 2248,
+          "index": 281,
+          "diversity": 40251,
+          "branch": "blraa",
+          "callsite": "0xfffffff00aeba630",
+          "function_operand": "x8",
+          "modifier_operand": "x16",
+          "target_slot_diversity": 40251,
+          "matches_expected": true
+        },
+        {
+          "byte_offset": 2272,
+          "index": 284,
+          "diversity": 32176,
+          "branch": "blraa",
+          "callsite": "0xfffffff00aeba684",
+          "function_operand": "x8",
+          "modifier_operand": "x16",
+          "target_slot_diversity": 32176,
+          "matches_expected": true
+        },
+        {
+          "byte_offset": 2304,
+          "index": 288,
+          "diversity": 57027,
+          "branch": "braa",
+          "callsite": "0xfffffff00aeba700",
+          "function_operand": "x16",
+          "modifier_operand": "x17",
+          "target_slot_diversity": 57027,
+          "matches_expected": true
+        }
+      ],
+      "expected_dispatch": {
+        "2248": 40251,
+        "2272": 32176,
+        "2304": 57027
+      },
+      "static_dispatch_matches": true,
+      "executed": false
+    },
+    {
+      "symbol": "__ZN20IOBlockStorageDriver14executeRequestEyP18IOMemoryDescriptorP19IOStorageAttributesP19IOStorageCompletionPNS_7ContextE",
+      "address": "0xfffffff00aeb9354",
+      "bytes": 644,
+      "code_sha256": "625eee2ecb7d71cbae2ed13f1e31bf169c4bfca33b4d36ea0de08f92e7951efc",
+      "code_hex": "5f2403d57f2303d5ff0302d1fc6f02a9fa6703a9f85f04a9f65705a9f44f06a9fd7b07a9fdc30191f30304aa089040f9c80300b4f70305aaf90303aaf50302aafa0301aaf40300aaa84840b92808c89ae80f00f9500040f9f60302aa36b4f9f2f10302aa31b4f9f2301ac1da113e80d21002118b080240f9e00302aa5072f6f210093fd7e84a40b90808c89ae80b00f9390100b4280bc0391f010071082080521cb19f9a05000014955c80521500bc72660000141c0080d288b2443918014092b00240f9d01ac1da113d80d21002118b080240f9e00315aab04af7f210093fd7fb0300aaf10316aab00240f9301ac1daf10310aaf147c1da1f0211eb40000054408e38d408c2079109fa40f9e00315aaf10308aa5172f6f231093fd7e40300aa800318aa7f070071c100005421008052020080d2e30304aa040080d204000014010080d222008052030080d2295e0094e80641f83f0300f1f702999a480308cbe80a00f9900240f9f10314aa31b4f9f2301ac1da11d680d21002118b080240f9e00314aaf076f2f210093fd7f10300aa100040f931b4f9f2301ac1daf10310aaf147c1da1f0211eb40000054408e38d408622491098e44f9e10315aae30b41a9e40317aae50313aaf10308aa716ffcf231093fd7f50300aa485c80520800bc721f00086b2003005435010035fd7b47a9f44f46a9f65745a9f85f44a9fa6743a9fc6f42a9ff030291ff0f5fd6e80314aa28b4f9f2900240f91019c1da117580d21002118b080240f9e00314aa010080d29093e1f210093fd7e00300f9e063fe90003c1e915f5c0094e00313aae10315aa020080d2fd7b47a9f44f46a9f65745a9f85f44a9fa6743a9fc6f42a9ff030291ff2303d5d0071eca5000f0b6208e38d42a510014",
+      "disassembly": "\t.section\t__TEXT,__text,regular,pure_instructions\n\thint\t#34\n\tpacibsp\n\tsub\tsp, sp, #128\n\tstp\tx28, x27, [sp, #32]\n\tstp\tx26, x25, [sp, #48]\n\tstp\tx24, x23, [sp, #64]\n\tstp\tx22, x21, [sp, #80]\n\tstp\tx20, x19, [sp, #96]\n\tstp\tx29, x30, [sp, #112]\n\tadd\tx29, sp, #112\n\tmov\tx19, x4\n\tldr\tx8, [x0, #288]\n\tcbz\tx8, #120\n\tmov\tx23, x5\n\tmov\tx25, x3\n\tmov\tx21, x2\n\tmov\tx26, x1\n\tmov\tx20, x0\n\tldr\tw8, [x5, #72]\n\tudiv\tx8, x1, x8\n\tstr\tx8, [sp, #24]\n\tldr\tx16, [x2]\n\tmov\tx22, x2\n\tmovk\tx22, #52641, lsl #48\n\tmov\tx17, x2\n\tmovk\tx17, #52641, lsl #48\n\tautda\tx16, x17\n\tmov\tx17, #496                       ; =0x1f0\n\tadd\tx16, x16, x17\n\tldr\tx8, [x16]\n\tmov\tx0, x2\n\tmovk\tx16, #45970, lsl #48\n\tblraa\tx8, x16\n\tldr\tw8, [x23, #72]\n\tudiv\tx8, x0, x8\n\tstr\tx8, [sp, #16]\n\tcbz\tx25, #36\n\tldrsb\tw8, [x25, #2]\n\tcmp\tw8, #0\n\tmov\tw8, #256                        ; =0x100\n\tcsel\tx28, x8, xzr, lt\n\tb\t#20\n\tmov\tw21, #740                       ; =0x2e4\n\tmovk\tw21, #57344, lsl #16\n\tb\t#408\n\tmov\tx28, #0                         ; =0x0\n\tldrb\tw8, [x20, #300]\n\tand\tx24, x8, #0x1\n\tldr\tx16, [x21]\n\tautda\tx16, x22\n\tmov\tx17, #488                       ; =0x1e8\n\tadd\tx16, x16, x17\n\tldr\tx8, [x16]\n\tmov\tx0, x21\n\tmovk\tx16, #47701, lsl #48\n\tblraa\tx8, x16\n\tmov\tx27, x0\n\tmov\tx17, x22\n\tldr\tx16, [x21]\n\tautda\tx16, x17\n\tmov\tx17, x16\n\txpacd\tx17\n\tcmp\tx16, x17\n\tb.eq\t#8\n\tbrk\t#0xc472\n\tadd\tx8, x16, #496\n\tldr\tx9, [x16, #496]\n\tmov\tx0, x21\n\tmov\tx17, x8\n\tmovk\tx17, #45970, lsl #48\n\tblraa\tx9, x17\n\tmov\tx4, x0\n\torr\tx0, x28, x24\n\tcmp\tw27, #1\n\tb.ne\t#24\n\tmov\tw1, #1                          ; =0x1\n\tmov\tx2, #0                          ; =0x0\n\tmov\tx3, x4\n\tmov\tx4, #0                          ; =0x0\n\tb\t#16\n\tmov\tx1, #0                          ; =0x0\n\tmov\tw2, #1                          ; =0x1\n\tmov\tx3, #0                          ; =0x0\n\tbl\t#96420\n\tldr\tx8, [x23], #16\n\tcmp\tx25, #0\n\tcsel\tx23, x23, x25, eq\n\tsub\tx8, x26, x8\n\tstr\tx8, [x23, #16]\n\tldr\tx16, [x20]\n\tmov\tx17, x20\n\tmovk\tx17, #52641, lsl #48\n\tautda\tx16, x17\n\tmov\tx17, #1712                      ; =0x6b0\n\tadd\tx16, x16, x17\n\tldr\tx8, [x16]\n\tmov\tx0, x20\n\tmovk\tx16, #37815, lsl #48\n\tblraa\tx8, x16\n\tmov\tx17, x0\n\tldr\tx16, [x0]\n\tmovk\tx17, #52641, lsl #48\n\tautda\tx16, x17\n\tmov\tx17, x16\n\txpacd\tx17\n\tcmp\tx16, x17\n\tb.eq\t#8\n\tbrk\t#0xc472\n\tadd\tx8, x16, #2328\n\tldr\tx9, [x16, #2328]\n\tmov\tx1, x21\n\tldp\tx3, x2, [sp, #16]\n\tmov\tx4, x23\n\tmov\tx5, x19\n\tmov\tx17, x8\n\tmovk\tx17, #58235, lsl #48\n\tblraa\tx9, x17\n\tmov\tx21, x0\n\tmov\tw8, #738                        ; =0x2e2\n\tmovk\tw8, #57344, lsl #16\n\tcmp\tw0, w8\n\tb.eq\t#100\n\tcbnz\tw21, #36\n\tldp\tx29, x30, [sp, #112]\n\tldp\tx20, x19, [sp, #96]\n\tldp\tx22, x21, [sp, #80]\n\tldp\tx24, x23, [sp, #64]\n\tldp\tx26, x25, [sp, #48]\n\tldp\tx28, x27, [sp, #32]\n\tadd\tsp, sp, #128\n\tretab\n\tmov\tx8, x20\n\tmovk\tx8, #52641, lsl #48\n\tldr\tx16, [x20]\n\tautda\tx16, x8\n\tmov\tx17, #936                       ; =0x3a8\n\tadd\tx16, x16, x17\n\tldr\tx8, [x16]\n\tmov\tx0, x20\n\tmov\tx1, #0                          ; =0x0\n\tmovk\tx16, #3228, lsl #48\n\tblraa\tx8, x16\n\tstr\tx0, [sp]\n\tadrp\tx0, #-54018048\n\tadd\tx0, x0, #1935\n\tbl\t#94588\n\tmov\tx0, x19\n\tmov\tx1, x21\n\tmov\tx2, #0                          ; =0x0\n\tldp\tx29, x30, [sp, #112]\n\tldp\tx20, x19, [sp, #96]\n\tldp\tx22, x21, [sp, #80]\n\tldp\tx24, x23, [sp, #64]\n\tldp\tx26, x25, [sp, #48]\n\tldp\tx28, x27, [sp, #32]\n\tadd\tsp, sp, #128\n\tautibsp\n\teor\tx16, x30, x30, lsl #1\n\ttbz\tx16, #62, #8\n\tbrk\t#0xc471\n\tb\t#83112\n",
+      "observed_storage_dispatch": [
+        {
+          "byte_offset": 2328,
+          "index": 291,
+          "diversity": 58235,
+          "branch": "blraa",
+          "callsite": "0xfffffff00aeb9524",
+          "function_operand": "x9",
+          "modifier_operand": "x17",
+          "target_slot_diversity": 58235,
+          "matches_expected": true
+        }
+      ],
+      "expected_dispatch": {
+        "2328": 58235
+      },
+      "static_dispatch_matches": true,
+      "executed": false
+    }
+  ],
+  "full_local_report": {
+    "path": ".work/ufs-storage-abi-review/tracked-script-result-44075573981.json",
+    "sha256": "24e52f09d0b95688f0fb9940bede60dc9ae21bd5a9250bfca60afc7581f331e9"
+  },
+  "kernel_report": {
+    "path": "D:\\unixnu-tb710fu-clean\\.work\\verified-prelink\\kernel.json",
+    "bytes": 8741,
+    "sha256": "1d356dbf84f5a2a9e682a6a14ed3ae3a3b6c0c66c11c8754cc195b98d1715e1b"
+  },
+  "compile_report": {
+    "path": "D:\\unixnu-tb710fu-clean\\.work\\ufs-integrated-44075573981\\extracted\\source-storage\\build-report.json",
+    "bytes": 132186,
+    "sha256": "b6e7b6b3c022218f38e0558ea2bdfb43f36ed333a833ba88007ae8215cb0a0f6"
+  }
+}

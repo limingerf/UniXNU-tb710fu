@@ -59,3 +59,23 @@ binary virtual calls, policy handoff, SMMU/queue/DMA ownership, media publicatio
 and APFS root mount still require separate build and runtime verification. This
 standalone audit does not cover the later selected strong startup hook and
 native archive integration; those have a separate build report.
+
+The actual archive from integrated run 44075573981 was audited again after the
+startup/compiler-flag changes. Its archive SHA-256 is
+`e0da7e494ccd11908c3c861ec4a15765e977c45345d02465e3e89dc47142fc80`;
+`NativeUfs.late.o` is 591,792 B, SHA-256
+`f7a4a794279b4b1ce61a40726c530cff93c1f3088d90b674d3947385287578c1`.
+All 326 PAC slots, 26 named APIs, class size `0x90` and four binary dispatch
+sites match the same fixed run 43844823907 reference. The new result is
+[`evidence/storage-abi-44075573981.json`](evidence/storage-abi-44075573981.json),
+with its own provenance file. To repeat it, use the complete-archive options
+above and `.work/ufs-integrated-44075573981/{artifact.zip,extracted/source-storage/}`
+as the native archive/report inputs. Do not replace the retained reference
+kernel with this run's new kernel while reusing the historical provenance.
+
+The separately bound
+[`integration evidence`](evidence/ufs-integrated-44075573981.json) establishes
+that the new archive was linked into a native kernel which passed strict
+prelink and production parsing. The static comparison remains a build input;
+it does not execute metaclass initialization, policy handoff, virtual calls,
+DMA or APFS mounting.

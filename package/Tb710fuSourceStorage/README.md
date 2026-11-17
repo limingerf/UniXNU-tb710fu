@@ -55,8 +55,9 @@ headers under `scripts/policies/26C5035r`, a supplied full App manifest,
 signature/table mutations and the independent trusted key. Layout cases cover
 invalid magic/version/count, table truncation, gaps/overlap, 64-bit overflow,
 short envelopes, inconsistent total lengths, trailing bytes and failure of
-each authentication callback. These are host checks; XNU memory protection,
-allocation cleanup and the runtime handoff still need a target compiler and
+each authentication callback. These are host checks; the production bridges
+also passed target compilation and native integration in the runs below.
+XNU memory protection, allocation cleanup and the firmware handoff still need
 runtime verification. Debian `g++ 14.2.0` passed these cases with
 `-Wall -Wextra -Werror`; the helper test also passed AddressSanitizer and
 UndefinedBehaviorSanitizer with the same real policy inputs.
@@ -107,6 +108,20 @@ board selected `SOURCE_STORAGE=y`, the explicit archive and strong hook for a
 separate `ufs-integrated` build. `NATIVE_UFS=n` keeps automatic personalities
 absent. The uniquely named wrapper follows the fixed archive protocol and
 records precise generated-link invalidation; it does not replace an official
-script. An archive compile supplies neither
-an integrated/prelinked storage kernel, runtime APFS qualification nor a hardware
-boot result. The fetched official script remains unchanged.
+script. Run
+[44075573981](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44075573981)
+at device commit `9f01899957060ffbd81a49c793438ba152760eb9` then passed native
+compilation/integration verification, strict prelink and production DarwinBoot
+parsing. Its separate integration report binds the strong BSD startup reference,
+final storage/crypto symbols, deferred metaclasses, actual archive members and
+one saved archive force-load input. The standalone archive's
+`linked_into_kernel=false` compile report remains accurate for that stage;
+the integration report records the subsequent real link.
+
+The source build remains XNU `12377.121.6` at
+`ac9718fb1af618d5ce8678d0dc6e8a58f252216f`, as selected by the pinned macOS
+profile. Apple's original `26C5035r` KernelCache uses `13432.60.57`; that is
+the binary input for prelink and ABI review, not the compiled source version.
+Neither successful linkage nor static ABI matching establishes runtime
+metaclass registration, policy handoff, DMA takeover, authenticated UFS reads,
+APFS root mount or hardware boot. The fetched official script remains unchanged.
