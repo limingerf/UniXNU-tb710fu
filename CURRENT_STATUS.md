@@ -1,5 +1,26 @@
 # Current status · 2026-11-17
 
+## Native USB CDC transport implemented; target validation pending · 2026-11-17
+
+The independent DWC3 core and XNU polling adapter are now implemented. Patch
+0012 starts the opt-in worker before vfsinit; runtime requires `tb710fu-cdc=1`.
+EP0 enumeration, line coding/DTR/SerialState, log IN, discard-only OUT, normal
+SETUP-only bus reset and completion-before-consume are covered by the actual
+production core host fixture with separate CPU/device DMA views. Protocol,
+RAM ring/tap, hardware predicates and core tests passed ASan/UBSan locally.
+The adapter checks live clocks/PHY controls, device role and a unique identity
+SID40 route, then validates permanent contiguous DMA and cache geometry.
+Source/hash provenance is in `docs/evidence/usb-cdc-sources.json`.
+
+The device recipe now selects all six real sources. A separate CI gate will
+check actual BSD compile/import, final strong definitions and force-load input.
+The supported macOS native/prelink target has not yet validated these new inputs.
+No actual TB710FU CDC enumeration or captured USB log is established. Unsupported
+active-DMA reset/disconnect stops the session and retains DMA. The scheduled
+worker does not promise final panic text after scheduling stops. No signing or
+device operation occurred; the older unsigned image below contains no new
+transport or enabling boot argument.
+
 ## Integrated UFS fileset and unsigned payload verified · 2026-11-17
 
 Run [44075573981](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44075573981)

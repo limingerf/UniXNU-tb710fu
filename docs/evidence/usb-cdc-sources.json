@@ -1,0 +1,91 @@
+{
+  "reference_revision": "4d04410798b538fbe4b50664e3a66d9500a2ed31",
+  "files": {
+    "linux-sm8650.dtsi": {
+      "url": "https://github.com/SpendyYT/tb710fu-linux/blob/4d04410798b538fbe4b50664e3a66d9500a2ed31/arch/arm64/boot/dts/qcom/sm8650.dtsi",
+      "bytes": 203471,
+      "sha256": "a1606dfe264a11411afbdf7a0b9da6b28deaaa6254eae79a6aee45d7ab24d817"
+    },
+    "linux-gcc-sm8650.c": {
+      "url": "https://github.com/SpendyYT/tb710fu-linux/blob/4d04410798b538fbe4b50664e3a66d9500a2ed31/drivers/clk/qcom/gcc-sm8650.c",
+      "bytes": 104294,
+      "sha256": "786f10e9095a2477beb5a938b10d2bfe75cd5a954bdc95b15c0ecd1b2070a8c0"
+    },
+    "linux-gdsc.c": {
+      "url": "https://github.com/SpendyYT/tb710fu-linux/blob/4d04410798b538fbe4b50664e3a66d9500a2ed31/drivers/clk/qcom/gdsc.c",
+      "bytes": 17097,
+      "sha256": "a2cee94ffe167d55664c7d685842e4f29f7b482d9aa237d2c9817f786b3f7243"
+    },
+    "linux-phy-snps-eusb2.c": {
+      "url": "https://github.com/SpendyYT/tb710fu-linux/blob/4d04410798b538fbe4b50664e3a66d9500a2ed31/drivers/phy/phy-snps-eusb2.c",
+      "bytes": 18215,
+      "sha256": "6672c6923c1e1b057e227bdb1d573d67c2618a8521a0cee29b84ce1323360c17"
+    },
+    "linux-tcsrcc-sm8650.c": {
+      "url": "https://github.com/SpendyYT/tb710fu-linux/blob/4d04410798b538fbe4b50664e3a66d9500a2ed31/drivers/clk/qcom/tcsrcc-sm8650.c",
+      "bytes": 4705,
+      "sha256": "91742be435be5d65efa45c2fa85caaae36750d3353401d7af799a18d6a68c9f8"
+    },
+    "linux-dwc3-qcom.c": {
+      "url": "https://github.com/SpendyYT/tb710fu-linux/blob/4d04410798b538fbe4b50664e3a66d9500a2ed31/drivers/usb/dwc3/dwc3-qcom.c",
+      "bytes": 21011,
+      "sha256": "cf8257168ad0e8e201a003e7d2e3344cdfa08b33eb6ae6451728bc497d2ce008"
+    }
+  },
+  "hardware_read_performed": false,
+  "limits": [
+    "Static source/control fields only; no device was accessed.",
+    "eUSB2 PHY has no exported lock/ready status in this driver. Repeater/rails/link not proven by active control bits.",
+    "Identity DMA route must be validated from current SMMUv2 geometry and registers; no SM8550 IDR constants or RAM range can substitute."
+  ],
+  "schema_version": 1,
+  "xnu_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+  "kernel_source_version": "12377.121.6",
+  "dwc3_reference": {
+    "repository": "https://github.com/FFT-infra/QcomXnuUsbDebug",
+    "revision": "18bcc385bc0c97ff38343a83040f19711392867b",
+    "license": "MIT reference, not vendored",
+    "files": {
+      "qcom-debug-dwc3.c": {
+        "sha256": "16681b8e405b0d3862cb3289005f210b80b5bea2cc33adc26b2258d18ab9cea6",
+        "bytes": 29610
+      },
+      "qcom-debug-regs.h": {
+        "sha256": "5e9a362cfa6385f55a793b48965963559fc2c1f167cab9d3afa3845603328e4b",
+        "bytes": 21849
+      },
+      "qcom-debug-m1n1-license": {
+        "sha256": "11ca423a564b52d3b7f260398baa20d016c25ae180fbdd0067c27b7d1ed7b420",
+        "bytes": 1076
+      }
+    }
+  },
+  "linux_dwc3": {
+    "revision": "v6.1",
+    "repository": "https://github.com/torvalds/linux",
+    "files": {
+      "core.h": {
+        "path": "drivers/usb/dwc3/core.h",
+        "sha256": "d3dc53d87f054d8a8c60ac8bb176038a5516852c4014a18ae16c3b48560aa5f1",
+        "bytes": 53708
+      },
+      "ep0.c": {
+        "path": "drivers/usb/dwc3/ep0.c",
+        "sha256": "299502e1fa9bc01e62c8837aae8073f7ee4e8960baec3d957d84ca6e3676e2f3",
+        "bytes": 28397
+      },
+      "gadget.c": {
+        "path": "drivers/usb/dwc3/gadget.c",
+        "sha256": "fabb32e58d56c66fea5d3eb6ce7974773b615726d299a7ee3b96a8a5c3f26469",
+        "bytes": 123189
+      }
+    }
+  },
+  "implementation": "Independent device-owned CDC core and SM8650/XNU adapter; no Vermeer code copied; no external controller source vendored.",
+  "reviewed_corrections": [
+    "EP0 OUT transfer resource index zero is valid (Linux ep0.c 1102-1106).",
+    "ACK old GEVNTCOUNT while polling halt before replacing event DMA addresses (Linux gadget.c 2555-2560).",
+    "Bound serial strings to 30 printable ASCII characters; all selected control replies avoid aligned-short DATA requiring a chained ZLP (Linux ep0.c 1016-1038).",
+    "Keep armed SETUP on a normal USB reset (Linux gadget.c 3872-3889); refuse unsupported active-DMA reset/disconnect recovery."
+  ]
+}

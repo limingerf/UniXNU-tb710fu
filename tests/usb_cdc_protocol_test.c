@@ -58,14 +58,52 @@ static void test_strings(void)
                                               4, "x", 1) == 0);
 }
 
+static void test_dual_speed_descriptors(void)
+{
+    uint8_t descriptor[67];
+    uint8_t device[18];
+    assert(tb710fu_cdc_build_device_descriptor(device, sizeof(device), 1, 1, 0) == 18);
+    assert(tb710fu_cdc_build_device_qualifier_descriptor(descriptor, sizeof(descriptor)) == 10);
+    assert(descriptor[0] == 10 && descriptor[1] == 6);
+    assert(memcmp(&descriptor[2], &device[2], 6) == 0);
+    assert(descriptor[8] == device[17] && descriptor[9] == 0);
+    assert(tb710fu_cdc_build_device_qualifier_descriptor(descriptor, 9) == 0);
+    assert(tb710fu_cdc_build_device_qualifier_descriptor(NULL, 10) == 0);
+
+    assert(tb710fu_cdc_build_other_speed_configuration_descriptor(
+        descriptor, sizeof(descriptor), TB710FU_CDC_HIGH_SPEED, 0x80, 50) == 67);
+    assert(descriptor[1] == 7 && descriptor[2] == 67 && descriptor[3] == 0);
+    assert(descriptor[57] == 64 && descriptor[58] == 0);
+    assert(descriptor[64] == 64 && descriptor[65] == 0);
+    assert(tb710fu_cdc_build_other_speed_configuration_descriptor(
+        descriptor, sizeof(descriptor), TB710FU_CDC_FULL_SPEED, 0x80, 50) == 67);
+    assert(descriptor[1] == 7);
+    assert(descriptor[57] == 0 && descriptor[58] == 2);
+    assert(descriptor[64] == 0 && descriptor[65] == 2);
+    assert(tb710fu_cdc_build_other_speed_configuration_descriptor(
+        descriptor, 66, TB710FU_CDC_FULL_SPEED, 0x80, 50) == 0);
+    assert(tb710fu_cdc_build_other_speed_configuration_descriptor(
+        NULL, sizeof(descriptor), TB710FU_CDC_FULL_SPEED, 0x80, 50) == 0);
+    assert(tb710fu_cdc_build_other_speed_configuration_descriptor(
+        descriptor, sizeof(descriptor), (enum tb710fu_cdc_speed)2, 0x80, 50) == 0);
+    assert(tb710fu_cdc_build_other_speed_configuration_descriptor(
+        descriptor, sizeof(descriptor), TB710FU_CDC_FULL_SPEED, 0, 50) == 0);
+    assert(tb710fu_cdc_build_other_speed_configuration_descriptor(
+        descriptor, sizeof(descriptor), TB710FU_CDC_FULL_SPEED, 0x80, 251) == 0);
+}
+
 static void test_setup_requests(void)
 {
     assert(tb710fu_cdc_classify_setup(0x80, 6, 0x0100, 0, 18) == TB710FU_CDC_REQ_GET_DESCRIPTOR);
     assert(tb710fu_cdc_classify_setup(0x80, 6, 0x0302, 0x0409, 16) == TB710FU_CDC_REQ_GET_DESCRIPTOR);
+    assert(tb710fu_cdc_classify_setup(0x80, 6, 0x0600, 0, 10) == TB710FU_CDC_REQ_GET_DESCRIPTOR);
+    assert(tb710fu_cdc_classify_setup(0x80, 6, 0x0700, 0, 67) == TB710FU_CDC_REQ_GET_DESCRIPTOR);
     assert(tb710fu_cdc_classify_setup(0x00, 5, 127, 0, 0) == TB710FU_CDC_REQ_SET_ADDRESS);
     assert(tb710fu_cdc_classify_setup(0x00, 9, 1, 0, 0) == TB710FU_CDC_REQ_SET_CONFIGURATION);
     assert(tb710fu_cdc_classify_setup(0x80, 8, 0, 0, 1) == TB710FU_CDC_REQ_GET_CONFIGURATION);
     assert(tb710fu_cdc_classify_setup(0x82, 0, 0, 0x81, 2) == TB710FU_CDC_REQ_GET_STATUS);
+    assert(tb710fu_cdc_classify_setup(0x82, 0, 0, 0x00, 2) == TB710FU_CDC_REQ_GET_STATUS);
+    assert(tb710fu_cdc_classify_setup(0x82, 0, 0, 0x80, 2) == TB710FU_CDC_REQ_GET_STATUS);
     assert(tb710fu_cdc_classify_setup(0x01, 11, 0, 1, 0) == TB710FU_CDC_REQ_SET_INTERFACE);
     assert(tb710fu_cdc_classify_setup(0x81, 10, 0, 0, 1) == TB710FU_CDC_REQ_GET_INTERFACE);
     assert(tb710fu_cdc_classify_setup(0x21, 0x20, 0, 0, 7) == TB710FU_CDC_REQ_SET_LINE_CODING);
@@ -80,6 +118,16 @@ static void test_setup_requests(void)
     assert(tb710fu_cdc_classify_setup(0x80, 6, 0x0302, 0, 16) == TB710FU_CDC_REQ_BAD);
     assert(tb710fu_cdc_classify_setup(0x80, 6, 0x0400, 0, 9) == TB710FU_CDC_REQ_BAD);
     assert(tb710fu_cdc_classify_setup(0x80, 6, 0x0500, 0, 7) == TB710FU_CDC_REQ_BAD);
+    assert(tb710fu_cdc_classify_setup(0x80, 6, 0x0601, 0, 10) == TB710FU_CDC_REQ_BAD);
+    assert(tb710fu_cdc_classify_setup(0x80, 6, 0x0600, 1, 10) == TB710FU_CDC_REQ_BAD);
+    assert(tb710fu_cdc_classify_setup(0x80, 6, 0x0701, 0, 67) == TB710FU_CDC_REQ_BAD);
+    assert(tb710fu_cdc_classify_setup(0x80, 6, 0x0700, 1, 67) == TB710FU_CDC_REQ_BAD);
+    assert(tb710fu_cdc_classify_setup(0x80, 6, 0x0800, 0, 8) == TB710FU_CDC_REQ_BAD);
+    assert(tb710fu_cdc_classify_setup(0x82, 0, 0, 0x0100, 2) == TB710FU_CDC_REQ_BAD);
+    assert(tb710fu_cdc_classify_setup(0x82, 0, 1, 0x80, 2) == TB710FU_CDC_REQ_BAD);
+    assert(tb710fu_cdc_classify_setup(0x82, 0, 0, 0x80, 1) == TB710FU_CDC_REQ_BAD);
+    assert(tb710fu_cdc_classify_setup(0x02, 1, 0, 0x00, 0) == TB710FU_CDC_REQ_BAD);
+    assert(tb710fu_cdc_classify_setup(0x02, 1, 0, 0x80, 0) == TB710FU_CDC_REQ_BAD);
     assert(tb710fu_cdc_classify_setup(0xc0, 0x55, 0, 0, 0) == TB710FU_CDC_REQ_BAD);
 }
 
@@ -174,6 +222,7 @@ int main(void)
 {
     test_device_descriptor();
     test_configuration_descriptors();
+    test_dual_speed_descriptors();
     test_strings();
     test_setup_requests();
     test_log_ring();

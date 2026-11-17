@@ -29,14 +29,14 @@ def load_audit():
     return module
 
 
-def hook_symbol(macho):
+def hook_symbol(macho, symbol='_native_source_storage_start'):
     table = next(pos for cmd, pos, _ in macho.commands if cmd == 2)
     symoff, count, stroff, _ = struct.unpack_from('<4I', macho.data, table + 8)
     matches = []
     for index in range(count):
         strx, kind, section, desc, value = struct.unpack_from('<IBBHQ', macho.data, symoff + index * 16)
         name = macho.data[stroff + strx:macho.data.index(b'\0', stroff + strx)].decode()
-        if name == '_native_source_storage_start' and not kind & 0xe0:
+        if name == symbol and not kind & 0xe0:
             matches.append({'kind': kind, 'section': section, 'desc': desc, 'value': hex(value)})
     return matches
 
@@ -50,7 +50,7 @@ def force_load_count(text, archive):
     return count
 
 
-def hook_macro_selected(arguments):
+def hook_macro_selected(arguments, macro='XNU_TB710FU_SOURCE_STORAGE'):
     definitions = []
     for index, argument in enumerate(arguments):
         if argument in ('-D', '-U') and index + 1 < len(arguments):
@@ -60,9 +60,9 @@ def hook_macro_selected(arguments):
             operation, value = argument[:2], argument[2:]
         else:
             continue
-        if value.split('=', 1)[0] == 'XNU_TB710FU_SOURCE_STORAGE':
+        if value.split('=', 1)[0] == macro:
             definitions.append((operation, value))
-    return bool(definitions) and all(item == ('-D', 'XNU_TB710FU_SOURCE_STORAGE=1') for item in definitions)
+    return bool(definitions) and all(item == ('-D', macro + '=1') for item in definitions)
 
 
 def verify(tree, config, native_path):

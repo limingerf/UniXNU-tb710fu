@@ -1,6 +1,63 @@
 # TB710FU USB CDC port · 2026-11-17
 
-## Implemented slice
+## Native transport integration
+
+The current device sources add an independent USB 2 CDC log transport in
+`CdcDwc3.c`, a polling XNU worker in `CdcXnu.c`, and source-backed SM8650
+register predicates in `CdcHardware.h`. Patch `0012` strongly starts the worker
+before `vfsinit()` only when the CDC build macro is selected. Runtime startup
+also requires the exact boot argument `tb710fu-cdc=1`. This is a log channel:
+bulk OUT input is received and discarded, rather than executing commands.
+
+The core handles EP0 SETUP/DATA/STATUS, full/high-speed and other-speed
+descriptors, seven-byte line coding, host DTR, SerialState notifications,
+bulk IN log bytes and terminating zero-length packets. It starts control DATA
+immediately after SETUP. A normal reset with only SETUP armed preserves that
+TRB, including the common Windows reset after the first eight descriptor bytes.
+Other active transfers require proven cancellation; unsupported reset,
+disconnect and controller failures halt the session and permanently retain DMA.
+Reconnect/reconfiguration recovery is not implemented. A completed bulk IN is
+committed to the RAM ring once; consumer lock contention retries the commit
+without transmitting the same bytes again.
+
+The worker reads the actual clock, PHY control, DWC3 role and unique SID `0x40`
+SMMUv2 route before writes. It accepts only explicit identity/bypass DMA,
+derives register geometry and address width, allocates a permanent contiguous
+16 KiB arena and checks every physical page. It then rechecks ownership before
+the QSCRATCH USB2 VBUS override and DWC3 halt/reset. It changes no clock, PHY,
+PMIC or SMMU register. Cache maintenance uses ARM64 `dc cvac`/`dc ivac` with
+barriers and separate event/TRB/buffer lines; cache lines over 64 bytes are
+refused. PHY control bits do not prove analog readiness or powered rails.
+
+Development enumeration uses shared test VID:PID `1209:0001` and synthetic
+serial `TB710FUCDC001`; these are not production identifiers or the device's
+private serial. The `1209:710f` values in protocol tests remain fixtures only.
+
+Run the three `scripts/check_usb_cdc_{protocol,hardware,transport}.py` checks.
+The last executes the production core with modeled MMIO/DMA rather than a
+second implementation. The archive recipe retains source/header, compile
+command, dependency-record, object and archive hashes. A separate CI verifier
+checks the actual BSD macro/strong import, final strong transport definitions,
+archive members and saved force-load input. Changing archive bytes invalidates
+only pinned XNU's generated actual LD output to prevent stale incremental links.
+
+Target compilation, strict prelink and true host enumeration are separate gates.
+There is currently no TB710FU COM-port or captured USB-byte evidence for this
+transport. The worker requires scheduling: it cannot promise the final panic
+bytes after the scheduler has stopped, or logs before this BSD startup point.
+The early RAM tap retains earlier text only if boot reaches the worker.
+
+## Sources and baseline
+
+Programming facts are checked against Linux v6.1
+`drivers/usb/dwc3/{core.h,ep0.c,gadget.c}` and the official USB guide's MIT
+reference `FFT-infra/QcomXnuUsbDebug` at
+`18bcc385bc0c97ff38343a83040f19711392867b`. The latter was reviewed for DWC3
+behavior, not adopted wholesale: it targets another SoC and its recovery is
+not proof of DMA cancellation here. No unlicensed Vermeer controller code is
+copied. SM8650 clock/GDSC/eUSB2/TCSR/QSCRATCH facts come from the pinned
+same-device Linux revision below. File hashes and URLs are recorded in
+`docs/evidence/usb-cdc-sources.json`.
 
 `package/Tb710fuUsbCdc/` contains an independent, hardware-free CDC-ACM
 protocol layer. It builds USB 2.0 device/configuration/string descriptors,
@@ -19,7 +76,7 @@ starts. It deliberately does not tap `serial_putc_options`, which is called
 under `_cnputc` for serial output and would record each byte twice. The tap
 filters carriage returns to retain one newline per line. It only captures
 bytes; no DWC3 endpoint, CDC enumeration or queue drain over USB is connected
-yet. Native-only kernel build run
+in that historical baseline. Native-only kernel build run
 [44041029817](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44041029817)
 compiled the XNU tap patch and CDC archive together. This validates compilation
 only; it does not provide a host-visible port or hardware USB result.
@@ -85,14 +142,16 @@ is [`ufs-gpt-lba1-twrp.json`](evidence/ufs-gpt-lba1-twrp.json). This establishes
 a Linux/TWRP reference sample only. It does not test XNU's UFS transport,
 queue handoff, SMMU mapping or DMA. GPT changes will change this sample.
 
-## Next integration gates
+## Hardware acceptance
 
-The XNU console/`kprintf` RAM tap is implemented and target-compiled; the DWC3
-peripheral transport, DMA adapter and USB drain worker remain unimplemented.
-The controller must perform its bounded role, clock, PHY and
-SMMU checks during its own initialization, then keep the log producer path
-nonblocking. Unknown state must refuse DMA takeover and let normal boot
-continue. A separate register-snapshot build is not required before this work.
+The target build must include the new core, worker and startup hook together.
+A device test must identify the exact image, enumerate the CDC ACM device,
+open its COM/tty port with DTR asserted and capture known XNU log bytes. Test
+initial enumeration, sustained output and the failure path independently.
+Unknown firmware role/clock/PHY/SMMU state refuses takeover while normal boot
+continues; it does not trigger guessed reinitialization. A separate register
+snapshot build is not required. Opening at 115200 8N1 is conventional; the
+line-coding setting does not change USB link speed.
 
 UFS remains a separate track. The TWRP GPT-header block is an expected-byte
 baseline for the first read performed by the adapted NativeUfs driver. Its

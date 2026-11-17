@@ -41,6 +41,12 @@ jobs:
           python-version: '3.13'
       - name: Validate macOS profile and source locks
         run: python3 tools/ci_kernel.py configure
+      - name: Exercise the actual CDC protocol, hardware predicates and DWC3 core
+        run: |
+          set -euo pipefail
+          python3 scripts/check_usb_cdc_protocol.py
+          python3 scripts/check_usb_cdc_hardware.py
+          python3 scripts/check_usb_cdc_transport.py
       - name: Install the official host tools
         run: |
           set -euo pipefail

@@ -2,6 +2,7 @@
 
 #define CDC_DEVICE_DESCRIPTOR_SIZE 18u
 #define CDC_CONFIGURATION_DESCRIPTOR_SIZE 67u
+#define CDC_DEVICE_QUALIFIER_DESCRIPTOR_SIZE 10u
 #define CDC_LANGUAGE_ID 0x0409u
 
 static void put_u16le(uint8_t *out, uint16_t value)
@@ -67,6 +68,41 @@ size_t tb710fu_cdc_build_configuration_descriptor(uint8_t *out, size_t capacity,
     return CDC_CONFIGURATION_DESCRIPTOR_SIZE;
 }
 
+size_t tb710fu_cdc_build_device_qualifier_descriptor(uint8_t *out, size_t capacity)
+{
+    if (out == NULL || capacity < CDC_DEVICE_QUALIFIER_DESCRIPTOR_SIZE) {
+        return 0;
+    }
+    /* USB 2.0 section 9.6.2: same device class and EP0 packet size at FS/HS. */
+    const uint8_t descriptor[CDC_DEVICE_QUALIFIER_DESCRIPTOR_SIZE] = {
+        10, 6, 0x00, 0x02, 0x02, 0x02, 0x01, 64, 1, 0
+    };
+    for (size_t i = 0; i < sizeof(descriptor); ++i) {
+        out[i] = descriptor[i];
+    }
+    return sizeof(descriptor);
+}
+
+size_t tb710fu_cdc_build_other_speed_configuration_descriptor(
+    uint8_t *out, size_t capacity, enum tb710fu_cdc_speed current_speed,
+    uint8_t attributes, uint8_t max_power_2ma)
+{
+    if (current_speed != TB710FU_CDC_FULL_SPEED &&
+        current_speed != TB710FU_CDC_HIGH_SPEED) {
+        return 0;
+    }
+    const enum tb710fu_cdc_speed other_speed =
+        current_speed == TB710FU_CDC_HIGH_SPEED ? TB710FU_CDC_FULL_SPEED :
+                                                TB710FU_CDC_HIGH_SPEED;
+    const size_t length = tb710fu_cdc_build_configuration_descriptor(
+        out, capacity, other_speed, attributes, max_power_2ma);
+    if (length != 0) {
+        /* USB 2.0 section 9.6.4: configuration descriptor with type 7. */
+        out[1] = 7;
+    }
+    return length;
+}
+
 size_t tb710fu_cdc_build_string_descriptor(uint8_t *out, size_t capacity,
                                            uint8_t string_index,
                                            const char *ascii, size_t length)
@@ -109,6 +145,11 @@ static int valid_endpoint(uint16_t index)
     return index == 0x01u || index == 0x81u || index == 0x82u;
 }
 
+static int valid_status_endpoint(uint16_t index)
+{
+    return index == 0x00u || index == 0x80u || valid_endpoint(index);
+}
+
 enum tb710fu_cdc_request tb710fu_cdc_classify_setup(uint8_t request_type,
                                                    uint8_t request,
                                                    uint16_t value,
@@ -121,10 +162,11 @@ enum tb710fu_cdc_request tb710fu_cdc_classify_setup(uint8_t request_type,
             const uint8_t descriptor_type = (uint8_t)(value >> 8);
             const uint8_t descriptor_index = (uint8_t)value;
             if (descriptor_type != 1 && descriptor_type != 2 &&
-                descriptor_type != 3 && descriptor_type != 6) {
+                descriptor_type != 3 && descriptor_type != 6 && descriptor_type != 7) {
                 return TB710FU_CDC_REQ_BAD;
             }
-            if ((descriptor_type == 1 || descriptor_type == 2 || descriptor_type == 6) &&
+            if ((descriptor_type == 1 || descriptor_type == 2 ||
+                 descriptor_type == 6 || descriptor_type == 7) &&
                 (descriptor_index != 0 || index != 0)) {
                 return TB710FU_CDC_REQ_BAD;
             }
@@ -159,7 +201,7 @@ enum tb710fu_cdc_request tb710fu_cdc_classify_setup(uint8_t request_type,
         }
         break;
     case 0x82:
-        if (request == 0 && value == 0 && valid_endpoint(index) && length == 2) {
+        if (request == 0 && value == 0 && valid_status_endpoint(index) && length == 2) {
             return TB710FU_CDC_REQ_GET_STATUS;
         }
         break;

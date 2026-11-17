@@ -28,6 +28,7 @@ sys.dont_write_bytecode = True
 from check_adt_identity import inspect as inspect_adt, name_of, read_nodes
 from check_payload_fat import geometry
 from verify_kernel import verify_image
+from verify_storage_integration import force_load_count, hook_symbol, load_audit
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = json.loads((ROOT / 'upstream.lock.json').read_text())
@@ -47,6 +48,17 @@ LZMA_GUID = uuid.UUID('ee4e5898-3914-4259-9d6e-dc7bd79403cf')
 INPUTS = {'source_vendor', 'source_vbmeta', 'kernel', 'kernel_report', 'kernel_map',
           'build_report', 'integration_report', 'source_storage_archive',
           'source_storage_report', 'root_policies', 'loader_boot', 'loader_artifact'}
+CDC_INPUTS = {'usb_cdc_integration_report', 'usb_cdc_archive', 'usb_cdc_report'}
+CDC_SYMBOLS = {
+    'CdcKernelTap': ('_tb710fu_cdc_log_tap_putc', '_tb710fu_cdc_log_tap_copy',
+                     '_tb710fu_cdc_log_tap_consume'),
+    'CdcLogRing': ('_tb710fu_cdc_log_ring_append', '_tb710fu_cdc_log_ring_copy',
+                   '_tb710fu_cdc_log_ring_consume'),
+    'CdcAcmProtocol': ('_tb710fu_cdc_classify_setup',),
+    'CdcTransportGuard': ('_tb710fu_cdc_preflight',),
+    'CdcDwc3': ('_tb710fu_dwc3_start', '_tb710fu_dwc3_poll', '_tb710fu_dwc3_stop'),
+    'CdcXnu': ('_tb710fu_cdc_start',),
+}
 OBJECTS = {'IOBlockStorageDevice.late.o', 'NativeUfs.late.o', 'SourceStorage.o',
            'SourceRootPolicies.o', 'SourceRootBinding.o', 'verified_root.o',
            'xnu_crypto.o', 'RootAnchor.o'}
@@ -86,9 +98,12 @@ def validate_args(text):
     # This is deliberately a minimal reviewed set. No Sheng hardware/probe
     # parameters, root-device overrides, memory disk or old physical ramoops PA.
     allowed = {'-v', 'serial', 'native-source-storage', 'native-ufs-root',
+               'tb710fu-cdc',
                'ramoops_size', 'ramoops_ecc', 'ramoops_panic_delay', 'ramoops_reset_after'}
     require(set(values) <= allowed, 'Unsupported boot arguments: ' + ', '.join(sorted(set(values) - allowed)))
     require('-v' not in values or values['-v'] is None, '-v takes no value')
+    if 'tb710fu-cdc' in values:
+        require(values['tb710fu-cdc'] == '1', 'tb710fu-cdc must be exactly 1 when supplied')
     for key, expected in (('serial', 3), ('ramoops_size', 0x40000), ('ramoops_reset_after', 0)):
         if key in values:
             require(values[key] is not None and int(values[key], 0) == expected,
@@ -287,6 +302,132 @@ def verify_prelink(data, official, pairing, build, integration, profile):
     return checked
 
 
+def require_cdc_definition(image, name, context):
+    symbols = hook_symbol(image, name)
+    require(len(symbols) == 1 and symbols[0]['kind'] & 14 == 14 and
+            symbols[0]['kind'] & 1 and not symbols[0]['desc'] & 0x80,
+            f'{context}: require one real strong CDC definition: {name}')
+    symbol = symbols[0]
+    require(0 < symbol['section'] <= len(image.sections),
+            f'{context}: CDC definition has no real section: {name}')
+    section = image.sections[symbol['section'] - 1]
+    address = int(symbol['value'], 16)
+    require(section['name'] == '__text' and section['flags'] & 0x80000000 and
+            section['va'] <= address and address + 4 <= section['va'] + section['size'],
+            f'{context}: CDC definition is not backed by executable text: {name}')
+    require(image.offset(address, 4) + 4 <= len(image.data),
+            f'{context}: CDC instruction bytes are out of bounds: {name}')
+    return symbol
+
+
+def verify_usb_cdc(integration_bytes, source_bytes, archive, kernel, official, build, storage):
+    """Bind optional CDC evidence and inspect the actual retained native code.
+
+    The native input hash is the official prelink's input hash: emitting a
+    fileset rewrites file offsets, so hashing its embedded slice is not an
+    independent hash of the original native executable.
+    """
+    integration, source = json_bytes(integration_bytes), json_bytes(source_bytes)
+    require(build.get('usb_cdc_transport_linked') is True and
+            build.get('usb_cdc_integration_report_sha256') == sha(integration_bytes),
+            'Build result does not bind this exact CDC transport integration report')
+    require(build.get('sha256') == sha(kernel), 'CDC build result describes a different prelinked kernel')
+    require(integration.get('schema_version') == 1 and integration.get('profile') == LOCK['os_profile'] and
+            integration.get('framework_revision') == LOCK['unixnu']['commit'] and
+            integration.get('xnu_revision') == LOCK['xnu_commit'],
+            'Missing exact CDC transport integration source/profile identity')
+    require(re.fullmatch(r'[0-9a-f]{40}', integration.get('device_commit', '')) is not None and
+            integration['device_commit'] == storage.get('device_commit'),
+            'CDC and source-storage integration reports describe different device revisions')
+    require(integration.get('native_kernel_sha256') == official['inputs']['native_sha256'] ==
+            storage.get('native_kernel_sha256'),
+            'CDC report does not describe this exact prelink native input')
+    for key in ('linked_into_kernel', 'transport_sources_compiled'):
+        require(integration.get(key) is True, 'CDC integration gate did not pass: ' + key)
+    require(integration.get('archive_force_load_count') == 1 and
+            integration.get('runtime_boot_argument') == 'tb710fu-cdc=1',
+            'CDC requires one real force-load and its exact opt-in argument')
+    for report in (integration, source):
+        for key in ('runtime_qualified', 'cdc_enumeration_verified'):
+            require(report.get(key) is False, 'CDC packaging must retain unverified hardware/runtime qualification: ' + key)
+    require(integration.get('hardware_boot_verified') is False,
+            'CDC packaging must retain unverified hardware boot')
+    require(source.get('framework_revision') == LOCK['unixnu']['commit'] and
+            source.get('xnu_revision') == LOCK['xnu_commit'] and
+            source.get('transport_sources_compiled') is True and source.get('linked_into_kernel') is False,
+            'CDC compile record is not the complete pinned transport archive stage')
+    require(integration.get('archive_compile_report_sha256') == sha(source_bytes),
+            'CDC integration does not bind this exact archive compile report')
+    require(integration.get('archive_sha256') == sha(archive) == source.get('archive_sha256'),
+            'CDC actual archive differs from the bound integration/compile reports')
+    members = archive_objects(archive)
+    expected = {name + '.o' for name in CDC_SYMBOLS}
+    require(set(members) == expected and members == source.get('objects_sha256') and
+            source.get('objects') == {name + '.c': members[name + '.o'] for name in CDC_SYMBOLS},
+            'CDC actual archive must match all six compiled transport objects')
+    c_sources = {'kits/tb710fu/Tb710fuUsbCdc/' + name + '.c' for name in CDC_SYMBOLS}
+    require(isinstance(source.get('sources'), dict) and c_sources <= set(source['sources']) and
+            all(re.fullmatch(r'[0-9a-f]{64}', value) for value in source['sources'].values()),
+            'CDC compile report lacks the complete transport source hashes')
+    for key in ('compile_commands_sha256', 'dependency_records_sha256'):
+        records = source.get(key, {})
+        require(isinstance(records, dict) and set(records) == {name + '.c' for name in CDC_SYMBOLS} and
+                all(re.fullmatch(r'[0-9a-f]{64}', value) for value in records.values()),
+                'CDC compile report lacks exact target compile provenance: ' + key)
+    require(re.fullmatch(r'[0-9a-f]{64}', source.get('compile_record_sha256', '')) is not None,
+            'CDC compile report lacks the actual XNU C compile record hash')
+    imported = integration.get('bsd_startup_symbol', {})
+    require(set(imported) == {'kind', 'section', 'desc', 'value'} and
+            imported.get('kind', 0) & 14 == 0 and imported.get('kind', 0) & 1 and
+            not imported.get('desc', 0) & 0x40 and imported.get('section') == 0,
+            'CDC BSD startup reference is not a strong real import')
+    defined = integration.get('native_startup_symbol', {})
+    require(set(defined) == {'kind', 'section', 'desc', 'value'} and
+            defined.get('kind', 0) & 14 == 14 and defined.get('kind', 0) & 1 and
+            not defined.get('desc', 0) & 0x80 and defined.get('section', 0) > 0,
+            'CDC native integration startup is not a strong definition')
+    for key in ('bsd_object_sha256', 'bsd_compile_record_sha256', 'linkarchives_sha256'):
+        require(re.fullmatch(r'[0-9a-f]{64}', integration.get(key, '')) is not None,
+                'CDC integration lacks actual link/startup provenance: ' + key)
+    linkarchives = integration.get('linkarchives', '')
+    require(sha(linkarchives.encode()) == integration['linkarchives_sha256'],
+            'CDC integration link input text/hash differ')
+    require(isinstance(source.get('archive'), str) and
+            source['archive'].endswith('/build/tb710fu-cdc-log/libTb710fuCdcLog.a') and
+            force_load_count(linkarchives, source['archive']) == 1,
+            'CDC actual link input must force-load this exact source archive once')
+    audit = load_audit()
+    actual = {name.rstrip('/'): data for name, data in audit.ar_members(archive)
+              if not name.startswith('__.SYMDEF')}
+    try:
+        for component, names in CDC_SYMBOLS.items():
+            image = audit.MachO(actual[component + '.o'])
+            require(image.kind == 1 and image.subtype & 0xffffff == 2,
+                    'CDC archive member is not an arm64e target object: ' + component)
+            for name in names:
+                require_cdc_definition(image, name, component)
+        fileset = audit.MachO(kernel)
+        require(fileset.kind == 12 and 'com.apple.kernel' in fileset.entries,
+                'CDC transport requires the real prelinked native fileset entry')
+        native = audit.MachO(kernel, fileset.entries['com.apple.kernel'][1])
+        require(native.kind == 2 and native.subtype & 0xffffff == 2,
+                'CDC fileset native entry is not arm64e MH_EXECUTE')
+        for names in CDC_SYMBOLS.values():
+            for name in names:
+                require_cdc_definition(native, name, 'Prelinked native kernel')
+    except (AssertionError, KeyError, StopIteration, struct.error, UnicodeDecodeError) as error:
+        raise ValueError('CDC archive/fileset Mach-O evidence is incomplete or invalid') from error
+    return {'device_commit': integration['device_commit'],
+            'native_kernel_sha256': integration['native_kernel_sha256'],
+            'archive_sha256': sha(archive), 'archive_objects_verified': len(members),
+            'integration_report_sha256': sha(integration_bytes),
+            'archive_compile_report_sha256': sha(source_bytes),
+            'strong_transport_definitions_verified': sum(map(len, CDC_SYMBOLS.values())),
+            'runtime_boot_argument': integration['runtime_boot_argument'],
+            'cdc_enumeration_verified': False, 'runtime_qualified': False,
+            'hardware_boot_verified': False}
+
+
 def unique_child(node, name):
     matches = [child for child in node[1] if name_of(child) == name]
     require(len(matches) == 1, 'Require unique ADT node: ' + name)
@@ -446,8 +587,12 @@ def checked_inputs(manifest_path, expected):
     manifest = json_bytes(raw)
     require(set(manifest) == {'schema_version', 'profile', 'framework', 'boot_args', 'files'}, 'Unknown or missing manifest fields')
     require(manifest.get('schema_version') == 1 and manifest.get('profile') == LOCK['os_profile'], 'Wrong manifest schema/profile')
-    require(set(manifest.get('files', {})) == INPUTS, 'Manifest must name exactly these files: ' + ', '.join(sorted(INPUTS)))
-    validate_args(manifest.get('boot_args'))
+    arguments = validate_args(manifest.get('boot_args'))
+    supplied = set(manifest.get('files', {}))
+    expected_inputs = INPUTS | CDC_INPUTS if 'tb710fu-cdc' in arguments or supplied & CDC_INPUTS else INPUTS
+    require(supplied == expected_inputs,
+            'Manifest must name exactly these files' +
+            (' for CDC transport' if expected_inputs != INPUTS else '') + ': ' + ', '.join(sorted(expected_inputs)))
     paths, records = {}, {}
     for name, item in manifest['files'].items():
         require(set(item) == {'path', 'sha256'} and re.fullmatch(r'[0-9a-f]{64}', item['sha256']), 'Missing explicit input path/hash: ' + name)
@@ -481,6 +626,11 @@ def package(manifest_path, manifest_sha, output):
     kernel, policies, storage = [paths[name].read_bytes() for name in ('kernel', 'root_policies', 'source_storage_archive')]
     verified = verify_prelink(kernel, official, pairing, build, integration, profile)
     integrated = verify_integration(integration, archive_report, storage, policies, official['inputs']['native_sha256'])
+    cdc = None
+    if CDC_INPUTS <= set(paths):
+        cdc = verify_usb_cdc(paths['usb_cdc_integration_report'].read_bytes(),
+                             paths['usb_cdc_report'].read_bytes(), paths['usb_cdc_archive'].read_bytes(),
+                             kernel, official, build, integration)
     loader = verify_loader(paths['loader_boot'].read_bytes(), paths['loader_artifact'])
     require(not output.exists(), 'Output directory exists; preserve earlier evidence')
     original = paths['source_vendor'].read_bytes()
@@ -546,6 +696,8 @@ def package(manifest_path, manifest_sha, output):
                   'unsigned_bytes': len(image), 'unsigned_sha256': sha(image), 'outer_vendor_fields_preserved': True,
                   'signing_performed': False, 'private_key_read': False, 'device_operations': False,
                   'hardware_boot_verified': False, 'runtime_qualified': False}
+        if cdc is not None:
+            report['usb_cdc_transport'] = cdc
         # Validation, actual parser and readback all finish before any output
         # directory exists. Intermediates stay in the disposable local directory.
         output.mkdir(parents=True, exist_ok=False)

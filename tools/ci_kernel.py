@@ -141,6 +141,13 @@ def main():
             for path in storage.iterdir():
                 if path.is_file() and path.suffix in ('.json', '.log', '.a', '.bin'):
                     shutil.copy2(path, destination / path.name)
+        cdc = work / 'tree/build/tb710fu-cdc-log'
+        if cdc.is_dir():
+            destination = output / 'usb-cdc'
+            destination.mkdir(exist_ok=True)
+            for path in cdc.iterdir():
+                if path.is_file() and path.suffix in ('.json', '.log', '.a', '.d'):
+                    shutil.copy2(path, destination / path.name)
         return
     actual = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     if actual != LOCK['unixnu']['commit']:
@@ -189,6 +196,12 @@ def main():
               'source_commit': actual, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
               'cpu_subtype': checked['cpu_subtype'], 'mach_o_filetype': checked['mach_o_filetype'],
               'prelink_skipped': native, 'hardware_boot_verified': False}
+    from verify_cdc_integration import verify as verify_cdc
+    integrated_cdc = verify_cdc(ctx.tree, ctx.need_config(), ctx.tree / ctx.board['kernel']['prelink']['kernel'])
+    (output / 'usb-cdc-integration.json').write_text(json.dumps(integrated_cdc, indent=2) + '\n')
+    record['usb_cdc_transport_linked'] = True
+    record['usb_cdc_integration_report_sha256'] = hashlib.sha256(
+        (output / 'usb-cdc-integration.json').read_bytes()).hexdigest()
     if ctx.need_config().get('XNU_SOURCE_STORAGE'):
         from verify_storage_integration import verify as verify_storage
         integrated = verify_storage(ctx.tree, ctx.need_config(), ctx.tree / ctx.board['kernel']['prelink']['kernel'])

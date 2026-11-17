@@ -111,3 +111,15 @@ checked against that prepared source context. The separate native-link verifier
 checks the actual BSD compile record, strong object reference, final definition
 and saved `linkarchives` input. This does not prove runtime class registration
 or root mounting, and adds no weak security or hardware provider.
+
+## Explicit USB CDC startup
+
+`0012-tb710fu-cdc-start.patch` adds the real `tb710fu_cdc_start()` call before
+`vfsinit()`, under `XNU_TB710FU_CDC=1`. It applies to the selected post-0011
+source. The worker separately requires `tb710fu-cdc=1` and performs live
+hardware and DMA checks before takeover. Actual BSD strong imports, archive
+force-loading and final definitions are checked by `tools/verify_cdc_integration.py`.
+This startup placement can retain earlier buffered console output if boot
+reaches BSD initialization; it cannot capture USB output before then or promise
+the last panic bytes after scheduling stops. Source/build checks do not establish
+CDC enumeration on TB710FU.

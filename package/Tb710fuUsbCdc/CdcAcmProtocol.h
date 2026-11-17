@@ -32,6 +32,11 @@ size_t tb710fu_cdc_build_configuration_descriptor(uint8_t *out, size_t capacity,
                                                   enum tb710fu_cdc_speed speed,
                                                   uint8_t attributes,
                                                   uint8_t max_power_2ma);
+size_t tb710fu_cdc_build_device_qualifier_descriptor(uint8_t *out, size_t capacity);
+/* current_speed is the speed of this connection; describe the opposite speed. */
+size_t tb710fu_cdc_build_other_speed_configuration_descriptor(
+    uint8_t *out, size_t capacity, enum tb710fu_cdc_speed current_speed,
+    uint8_t attributes, uint8_t max_power_2ma);
 size_t tb710fu_cdc_build_string_descriptor(uint8_t *out, size_t capacity,
                                            uint8_t string_index,
                                            const char *ascii, size_t length);
