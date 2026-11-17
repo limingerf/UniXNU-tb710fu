@@ -1,0 +1,751 @@
+{
+  "result": "PASS",
+  "stage": "macOS-native-success-then-strict-official-WSL-prelink-success",
+  "native_source_commit": "7f409ffbc282c918e9ec2a5996c6e413b7a9682a",
+  "host_checker_commit": "03c5da1ede9dbdf7f96e28293abd838e01d3bee3",
+  "native_run_id": 44124706860,
+  "native_run_attempt": 2,
+  "native_job_id": 134197243714,
+  "native_kernel": {
+    "path": ".work/wsl-dual-live/native-input/kernel.native.macho",
+    "bytes": 25406216,
+    "sha256": "da18f5aac95b488b838cf6fd71ce4a58432d4f2da023ea433a9e744a1ada08b0"
+  },
+  "prelinked_kernel": {
+    "path": ".work/wsl-dual-live/prelinked/kernel.macho",
+    "bytes": 142819328,
+    "sha256": "adc7b6d867d0ec161dd757fc5c3c5087e822489b2d489c29943cf9083155f2ba"
+  },
+  "official_report": {
+    "path": ".work/wsl-dual-live/prelinked/kernel.json",
+    "bytes": 8482,
+    "sha256": "ddcd98e96242ae26fd5d38313145d40baa4377a97c87ed9f9febf51a4f2d490b"
+  },
+  "official_map": {
+    "path": ".work/wsl-dual-live/prelinked/kernel.map.json",
+    "bytes": 666342,
+    "sha256": "b4bb61fc8c963e8c97b62e8f826cd1f73742228a932ddb537835c19007e30524"
+  },
+  "prelink_source_verification": {
+    "path": ".work/wsl-dual-live/official-prelink-audit.json",
+    "bytes": 6738,
+    "sha256": "d13ce0409619acd95fe5a121f10bb59df0349085fb76c71b4eb7a31c1ea5897f"
+  },
+  "native_artifact_verification": {
+    "path": ".work/wsl-dual-live/native-input-verification.json",
+    "bytes": 20294,
+    "sha256": "92c8dffa0cfb29aad2f850272ee1a97b4d3bd6c0abd99493cfe6920b9a38ea87"
+  },
+  "build_result": {
+    "path": ".work/wsl-dual-live/prelinked/build-result.json",
+    "bytes": 911,
+    "sha256": "77387b47773e5cece391f06347a1d60d6c6155ceb0780f586e98b4ff914d6ea5"
+  },
+  "command_record": {
+    "path": ".work/wsl-dual-live/prelinked/command.json",
+    "bytes": 4502,
+    "sha256": "8b6dcd6faef51fd56c9d89668d823e479ea045f0cf168636f37fad7559129b1e"
+  },
+  "prelink_log": {
+    "path": ".work/wsl-dual-live/prelinked/prelink.log",
+    "bytes": 271,
+    "sha256": "69ce039084f203285811ea5d57b35c18d31560919c6120212a892465ad070f68"
+  },
+  "production_parser_log": {
+    "path": ".work/wsl-dual-live/prelinked/loader-parser.log",
+    "bytes": 174,
+    "sha256": "692b046bd662a80aad83729672fdf475303359448caa84fa9b96286aef7bf979"
+  },
+  "production_parser_sha256": "b3b87de8908dbb30f55fb7732826a2449f568faf32b9ae0d59ab7f8121d86757",
+  "mapping_complete": true,
+  "missing": {},
+  "stubbed": {},
+  "allow_missing": false,
+  "production_parser_passed": true,
+  "prelink_revision": "440589b0c31625f17edf363e24b3c82c51c70bb9",
+  "kernelcache_sha256": "d1003b5143ffd88439b4d45b6017f587171cfe6855660bed05370a2ea5db9fe9",
+  "native_recompiled": false,
+  "prelink_environment": "WSL Debian",
+  "original_ci_run_conclusion": "failure",
+  "original_ci_prelink_skipped": true,
+  "elapsed_seconds": 24.012,
+  "hardware_verified": false,
+  "signing_performed": false,
+  "device_operations": false,
+  "runner_script": {
+    "path": ".work/wsl-dual-live/run-prelink.py",
+    "bytes": 5506,
+    "sha256": "9ce586e03265b54c81f4c140f46a41556e505ecca14bfddf31e5f1420fa854cf"
+  },
+  "schema_version": 1,
+  "native_ci_evidence": "docs/evidence/dual-live-native-44124706860-attempt2.json",
+  "original_native_record": {
+    "stage": "native-only",
+    "profile": "macos-27.3-26C5035r",
+    "source_commit": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+    "bytes": 25406216,
+    "sha256": "da18f5aac95b488b838cf6fd71ce4a58432d4f2da023ea433a9e744a1ada08b0",
+    "cpu_subtype": "0xc0000002",
+    "mach_o_filetype": 2,
+    "prelink_skipped": true,
+    "hardware_boot_verified": false,
+    "usb_cdc_transport_linked": true,
+    "usb_cdc_integration_report_sha256": "eb14faa3fe19170161b61de2ea16e2f09eccb86b2406a0e4bf5814c69069b0b3",
+    "live_log_linked": true,
+    "live_log_integration_report_sha256": "d35985a0fdf730b0ee2a6d16ed36e821bf2314c4d7f61f89d6d85539bef9dafd",
+    "source_storage_linked": true,
+    "storage_integration_report_sha256": "0df37b1a54fbb57c66911f1ccdf272345bfe778945534a10ea7f3198e2c6bea1"
+  },
+  "official_prelink_report": {
+    "format": "MH_FILESET",
+    "inputs": {
+      "kernelcache_sha256": "d1003b5143ffd88439b4d45b6017f587171cfe6855660bed05370a2ea5db9fe9",
+      "native_sha256": "da18f5aac95b488b838cf6fd71ce4a58432d4f2da023ea433a9e744a1ada08b0",
+      "entry": "com.apple.kernel"
+    },
+    "matcher_version": 8,
+    "matcher_signature": "92454ffd2835401495a52e9cee39d2088e4c59521fc6fce7c4f7c3e1211804c2",
+    "reference_sha256": null,
+    "closure": [
+      "com.apple.AppleFSCompression.AppleFSCompressionTypeDataless",
+      "com.apple.AppleFSCompression.AppleFSCompressionTypeZlib",
+      "com.apple.AppleSystemPolicy",
+      "com.apple.UVCService",
+      "com.apple.driver.AppleARMPlatform",
+      "com.apple.driver.AppleARMWatchdogTimer",
+      "com.apple.driver.AppleAudioClockLibs",
+      "com.apple.driver.AppleDiskImages2",
+      "com.apple.driver.AppleEffaceableStorage",
+      "com.apple.driver.AppleFDEKeyStore",
+      "com.apple.driver.AppleHIDKeyboard",
+      "com.apple.driver.AppleIISController",
+      "com.apple.driver.AppleInputDeviceSupport",
+      "com.apple.driver.AppleM2ScalerCSCDriver",
+      "com.apple.driver.AppleMobileFileIntegrity",
+      "com.apple.driver.AppleMultitouchDriver",
+      "com.apple.driver.ApplePMGR",
+      "com.apple.driver.AppleTopCaseHIDEventDriver",
+      "com.apple.driver.AppleUSBDeviceMux",
+      "com.apple.driver.AppleUSBHostMergeProperties",
+      "com.apple.driver.AppleUSBXDCI",
+      "com.apple.driver.DiskImages",
+      "com.apple.driver.DiskImages.FileBackingStore",
+      "com.apple.driver.DiskImages.KernelBacked",
+      "com.apple.driver.DiskImages.RAMBackingStore",
+      "com.apple.driver.DiskImages.ReadWriteDiskImage",
+      "com.apple.driver.DiskImages.UDIFDiskImage",
+      "com.apple.driver.IODARTFamily",
+      "com.apple.driver.IOSlaveProcessor",
+      "com.apple.driver.corecapture",
+      "com.apple.driver.driverkit.serial",
+      "com.apple.driver.mDNSOffloadUserClient",
+      "com.apple.driver.usb.AppleUSBCommon",
+      "com.apple.driver.usb.AppleUSBHostCompositeDevice",
+      "com.apple.driver.usb.AppleUSBHostPlatformProperties",
+      "com.apple.driver.usb.AppleUSBHub",
+      "com.apple.driver.usb.AppleUSBXHCI",
+      "com.apple.driver.usb.IOUSBHostHIDDevice",
+      "com.apple.filesystems.apfs",
+      "com.apple.filesystems.hfs.kext",
+      "com.apple.filesystems.lifs",
+      "com.apple.iokit.CoreAnalyticsFamily",
+      "com.apple.iokit.EndpointSecurity",
+      "com.apple.iokit.IO80211Family",
+      "com.apple.iokit.IOAVFamily",
+      "com.apple.iokit.IOAccessoryManager",
+      "com.apple.iokit.IOAudio2Family",
+      "com.apple.iokit.IOBluetoothFamily",
+      "com.apple.iokit.IOCECFamily",
+      "com.apple.iokit.IOCryptoAcceleratorFamily",
+      "com.apple.iokit.IOGPUFamily",
+      "com.apple.iokit.IOGraphicsFamily",
+      "com.apple.iokit.IOHDCPFamily",
+      "com.apple.iokit.IOHIDFamily",
+      "com.apple.iokit.IOMobileGraphicsFamily",
+      "com.apple.iokit.IONetworkingFamily",
+      "com.apple.iokit.IOPCIFamily",
+      "com.apple.iokit.IOPortFamily",
+      "com.apple.iokit.IOReportFamily",
+      "com.apple.iokit.IOSCSIArchitectureModelFamily",
+      "com.apple.iokit.IOSCSIBlockCommandsDevice",
+      "com.apple.iokit.IOSerialFamily",
+      "com.apple.iokit.IOSkywalkFamily",
+      "com.apple.iokit.IOSlowAdaptiveClockingFamily",
+      "com.apple.iokit.IOStorageFamily",
+      "com.apple.iokit.IOSurface",
+      "com.apple.iokit.IOTimeSyncFamily",
+      "com.apple.iokit.IOUSBDeviceFamily",
+      "com.apple.iokit.IOUSBHostFamily",
+      "com.apple.iokit.IOUSBMassStorageDriver",
+      "com.apple.kec.Libm",
+      "com.apple.kec.corecrypto",
+      "com.apple.kext.AppleMatch",
+      "com.apple.kext.CoreTrust",
+      "com.apple.kpi.bsd",
+      "com.apple.kpi.dsep",
+      "com.apple.kpi.iokit",
+      "com.apple.kpi.libkern",
+      "com.apple.kpi.mach",
+      "com.apple.kpi.private",
+      "com.apple.kpi.unsupported",
+      "com.apple.plugin.IOgPTPPlugin",
+      "com.apple.security.AppleImage4",
+      "com.apple.security.Image4",
+      "com.apple.security.quarantine",
+      "com.apple.security.sandbox"
+    ],
+    "collection_base": "0xfffffff007004000",
+    "collection_slide": "0x1f000000000",
+    "native_link_address": "0xfffffff007004000",
+    "statistics": {
+      "segment_layout": {
+        "__TEXT": {
+          "old": "0xfffffff007004000",
+          "new": "0xfffffff00719c000",
+          "size": "0x1a4000"
+        },
+        "__DATA_CONST": {
+          "old": "0xfffffff0071a8000",
+          "new": "0xfffffff007dc4000",
+          "size": "0x144000"
+        },
+        "__TEXT_EXEC": {
+          "old": "0xfffffff0072ec000",
+          "new": "0xfffffff00b924000",
+          "size": "0xa14000"
+        },
+        "__KLD": {
+          "old": "0xfffffff007d00000",
+          "new": "0xfffffff00c338000",
+          "size": "0x4000"
+        },
+        "__LASTDATA_CONST": {
+          "old": "0xfffffff007d04000",
+          "new": "0xfffffff007f08000",
+          "size": "0x4000"
+        },
+        "__LAST": {
+          "old": "0xfffffff007d08000",
+          "new": "0xfffffff00c33c000",
+          "size": "0x0"
+        },
+        "__KLDDATA": {
+          "old": "0xfffffff007d08000",
+          "new": "0xfffffff00f75c000",
+          "size": "0x8000"
+        },
+        "__DATA": {
+          "old": "0xfffffff007d10000",
+          "new": "0xfffffff00c884000",
+          "size": "0x22c000"
+        },
+        "__BOOTDATA": {
+          "old": "0xfffffff007f3c000",
+          "new": "0xfffffff00f764000",
+          "size": "0xd4000"
+        },
+        "__PRELINK_TEXT": {
+          "old": "0xfffffff004004000",
+          "new": "0xfffffff00c33c000",
+          "size": "0x0"
+        },
+        "__PRELINK_INFO": {
+          "old": "0xfffffff008010000",
+          "new": "0xfffffff00c33c000",
+          "size": "0x0"
+        },
+        "__PLK_TEXT_EXEC": {
+          "old": "0xfffffff008010000",
+          "new": "0xfffffff00c33c000",
+          "size": "0x0"
+        },
+        "__PRELINK_DATA": {
+          "old": "0xfffffff008010000",
+          "new": "0xfffffff00cab0000",
+          "size": "0x0"
+        },
+        "__PLK_DATA_CONST": {
+          "old": "0xfffffff008010000",
+          "new": "0xfffffff00c33c000",
+          "size": "0x0"
+        },
+        "__PLK_LLVM_COV": {
+          "old": "0xfffffff008010000",
+          "new": "0xfffffff00c33c000",
+          "size": "0x0"
+        },
+        "__PLK_LINKEDIT": {
+          "old": "0xfffffff008010000",
+          "new": "0xfffffff00c33c000",
+          "size": "0x0"
+        },
+        "__LINKINFO": {
+          "old": "0xfffffff008010000",
+          "new": "0xfffffff00e6c4000",
+          "size": "0x48000"
+        },
+        "__LINKEDIT": {
+          "old": "0xfffffff008058000",
+          "new": "0xfffffff00e70c000",
+          "size": "0x9cc000"
+        }
+      },
+      "native_original_branches_rebound": 0,
+      "native_split_relocations": {
+        "kind_4": 53,
+        "kind_3": 17203,
+        "pointers": 118553,
+        "kind_5": 152556,
+        "kind_6": 161856,
+        "kind_7": 2310
+      },
+      "native_chain_sites": 118553,
+      "old_kernel_sites_dropped": 71544,
+      "unselected_chain_sites_dropped": 609757,
+      "kext_chain_sites_kept": 336083,
+      "kext_pointers_rebound": 244406,
+      "inline_data_pools_preserved": 6,
+      "inline_data_bytes_preserved": 7204,
+      "component_hmacs": {
+        "com.apple.kec.corecrypto": "af83a7a90d19d9291c1a1799e2f38dc3a6dec2fc8ef06c1ee382ed07288211b8"
+      },
+      "corecrypto_hmac_sha256": "a5806b1ccabb4a48cf1c6c339c62e2ab9767b209d842bbf69fac5b69d98aac66",
+      "unselected_entries_dropped": 291,
+      "native_base": "0xfffffff00719c000",
+      "native_fileoff": "0x198000"
+    },
+    "native_original_branches": [],
+    "missing": {},
+    "stubbed": {},
+    "stub_symbol": null,
+    "personalities_dropped": [
+      "com.apple.iokit.IOAccessoryManager",
+      "com.apple.iokit.IOPCIFamily",
+      "com.apple.iokit.IOSerialFamily",
+      "com.apple.iokit.IOSkywalkFamily",
+      "com.apple.driver.AppleUSBHostMergeProperties",
+      "com.apple.security.Image4",
+      "com.apple.driver.usb.AppleUSBHostPlatformProperties"
+    ],
+    "early_security_init": {
+      "com.apple.driver.AppleMobileFileIntegrity": "0xfffffe0009840dd4"
+    },
+    "missing_address_space": "output collection",
+    "mapping_complete": true,
+    "runtime_qualified": false,
+    "loadable": false,
+    "candidate_bytes": 142819328,
+    "candidate_sha256": "adc7b6d867d0ec161dd757fc5c3c5087e822489b2d489c29943cf9083155f2ba",
+    "kernelcache": "/mnt/d/unixnu-tb710fu-clean/.work/wsl-prelink-inputs/kernelcache.decompressed",
+    "native": "/mnt/d/unixnu-tb710fu-clean/.work/wsl-dual-live/native-input/kernel.native.macho",
+    "map": "/mnt/d/unixnu-tb710fu-clean/.work/wsl-dual-live/prelinked/kernel.map.json",
+    "output": "/mnt/d/unixnu-tb710fu-clean/.work/wsl-dual-live/prelinked/kernel.macho",
+    "candidate_written": true,
+    "allow_missing": false
+  },
+  "official_map_summary": {
+    "method": "symbol-names",
+    "inputs": {
+      "kernelcache_sha256": "d1003b5143ffd88439b4d45b6017f587171cfe6855660bed05370a2ea5db9fe9",
+      "native_sha256": "da18f5aac95b488b838cf6fd71ce4a58432d4f2da023ea433a9e744a1ada08b0",
+      "entry": "com.apple.kernel"
+    },
+    "matcher_version": 8,
+    "matcher_signature": "92454ffd2835401495a52e9cee39d2088e4c59521fc6fce7c4f7c3e1211804c2",
+    "stats": {
+      "kext_targets": 3856,
+      "functions_matched": 3430,
+      "data_matched": 287,
+      "missing": 139,
+      "conflicts": {},
+      "missing_by_referrer": {
+        "com.apple.driver.FairPlayIOKit": 2,
+        "com.apple.driver.SEPHibernation": 16,
+        "com.apple.driver.EXDisplayPipeT605X": 28,
+        "com.apple.driver.AppleT6050CLPC": 1,
+        "com.apple.driver.AppleT6050dCLPC": 1,
+        "com.apple.driver.AppleProcessorTrace": 23,
+        "com.apple.driver.AppleSART": 5,
+        "com.apple.driver.AppleT8110DART": 9,
+        "com.apple.iokit.IONVMeFamily": 5,
+        "com.apple.driver.AppleT6050": 2,
+        "com.apple.driver.AppleH16ANEInterface": 23,
+        "com.apple.filesystems.acfs": 2,
+        "com.apple.AGXG17X": 9,
+        "com.apple.driver.AppleH16CameraInterface": 20,
+        "com.apple.EXBrightKext": 54,
+        "com.apple.EXBrightPILKext": 53,
+        "com.apple.ExclaveKextClient": 24,
+        "com.apple.driver.AFKHIDTBDevice": 36,
+        "com.apple.driver.AppleALSColorSensor": 50,
+        "com.apple.driver.AppleAOP2": 27,
+        "com.apple.driver.AudioSharedDARTMapperProxy": 35,
+        "com.apple.driver.DMAChannelProxy": 34,
+        "com.apple.driver.ExclavesAudioKext": 37,
+        "com.apple.driver.IOPAudioVoiceTriggerDevice": 41,
+        "com.apple.driver.SecureRTBuddyProxy": 34,
+        "com.apple.driver.ExclaveSEPManagerProxy": 13,
+        "com.apple.driver.AppleFirmwareKit": 1,
+        "com.apple.filesystems.nfs": 6,
+        "com.apple.driver.AppleSEPManager": 1
+      }
+    },
+    "conflicts": []
+  },
+  "official_source_audit": {
+    "result": "PASS",
+    "repository": "UniXNU/XnuPrelink",
+    "commit": "440589b0c31625f17edf363e24b3c82c51c70bb9",
+    "tree_api": "https://api.github.com/repos/UniXNU/XnuPrelink/git/trees/440589b0c31625f17edf363e24b3c82c51c70bb9?recursive=1",
+    "tree_response_sha256": "0d44cc5b6b000287f11c8c51be01d09560a23bba6a69fd6042e00b4e07101b0b",
+    "archive_url": "https://codeload.github.com/UniXNU/XnuPrelink/zip/440589b0c31625f17edf363e24b3c82c51c70bb9",
+    "archive_sha256": "237bea40805515ae4636b7dba57726ee472e31bd61c8c0df80961440cb45fcaa",
+    "independent_all_blobs_verified": 25,
+    "all_python_files": {
+      "emit_prelink.py": {
+        "sha256": "07ac0cbd44dc81deb51bd579eb1ae8d26c5c38022eb3e577662b16111e83f95b",
+        "git_blob_sha1": "173c741da3ae2d0d70fbb7c5250fcd7ed062ba11",
+        "cached_raw_sha256": "83e1395f8ec22307b0a0592962e8c04e48aeace95a277a24fb83919ed040bd4d",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      },
+      "fileset_emit.py": {
+        "sha256": "d3d2f4785edfd310333cc7e023a8885ba4ac58762657963413a1fc284509f159",
+        "git_blob_sha1": "a82ddaf4a5e4b67605d446e7260b55409f0a9f04",
+        "cached_raw_sha256": "ef3bb9ded403882a47c2c8971063f6a266c9640df89ef30dfd97fdea34b931d9",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      },
+      "fileset_layout.py": {
+        "sha256": "85e23971aab0342896ead15069ae309272f5a08bcfa21a68e599ff3b5e672151",
+        "git_blob_sha1": "384818e1ad7322d041a6418fab39567a12c6cc7c",
+        "cached_raw_sha256": "5538b8911d3e6c2c58819fb7e77cebc9631690b847196ee84f6b3a1f319affe9",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      },
+      "fileset_match.py": {
+        "sha256": "d87f4f10aeb306466948719f1674f26877b71bb1c60a4d8535687d2e1ff1a007",
+        "git_blob_sha1": "c3e4206b275ce66ef781af150b1cfa98ac82f337",
+        "cached_raw_sha256": "bc2de4c8b312988847c728fc8051305de42c8f53e39351498168c95879e8fd57",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      },
+      "fileset_names.py": {
+        "sha256": "6c6bd6cdf8f4029c13afb8c116d8069fbd8ed8f408ef66dec0b90b51fdc3da80",
+        "git_blob_sha1": "eccbde113040da1022dbc6a020caf14e15e4639c",
+        "cached_raw_sha256": "85bc4089f443433d72cab7eec540e37ee1aeaafb6b6e1fa05ff180a5de68ce19",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      },
+      "fileset_segmented.py": {
+        "sha256": "bbefc290f5b5c02bbd740aaf8de6d940ea1101c3c62add75926267888beb1794",
+        "git_blob_sha1": "00ae54bfa02b3cae8be734602e92444d1c4babbd",
+        "cached_raw_sha256": "37b39d24fce69d077f08673f4ced84ca2c2dc189c461835ca21e4d7701cfcf33",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      },
+      "fileset_shape.py": {
+        "sha256": "d256a5714846268554493de069f53b896d3d17e3afcd0ec343fb938734832ca1",
+        "git_blob_sha1": "d9397b0e3efdbbf90d121371f6af9e9a6d215fa1",
+        "cached_raw_sha256": "2b24120e7fbcf99966153b54594d1e2629a4706f807b19061f891b711a415348",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      },
+      "kc_image.py": {
+        "sha256": "2a2561308b27ace4e21dd4e45924bdeca937ee13047b7c6fd5ce580018f68747",
+        "git_blob_sha1": "1407d8ebfcd5866d92e1b5263dcdcd9ce99c6f42",
+        "cached_raw_sha256": "3980c263ab44adcd61721477358f98f9d7294c1e3ffe54faf71f38062b585ea1",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      },
+      "native_prelink.py": {
+        "sha256": "5bd80b8c63deec29b747c28253e02308a56d5f8cdb37c9d315e7c8af7012d017",
+        "git_blob_sha1": "3ff30958b4367b68bd8577da5ec53d2dacff0dfd",
+        "cached_raw_sha256": "a2da7ea8a4431f6c26418ecab9be718c0fbd2f0aa2334ba8d32c2270d2ac81dc",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      },
+      "test_codeless.py": {
+        "sha256": "2c4ac17ceadc75de993490e970dedb4179b5231445f30f10c1c742fe2cf0680a",
+        "git_blob_sha1": "d38c5fb8ac575f27f23f3e9d46f0711d9d1753ab",
+        "cached_raw_sha256": "81070184822151a04b0321f6a18a2dc7407e4b3290b5b8ca79a9fec8f296d4d0",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      },
+      "test_emit_prelink.py": {
+        "sha256": "69b40226cb263a744ec9be9e684f61d83885fed9badeec40bdbd18f5bbe34aea",
+        "git_blob_sha1": "4d0c6947561eb0caea4589a4ea7cba11e414a444",
+        "cached_raw_sha256": "8468ac5f0adcf73987bb5acf2f740badf76bc144dd5ca9e4adb8020a211e3cb5",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      },
+      "test_fileset_emit.py": {
+        "sha256": "f79d53be06c32b5bfd5740526c6bffe5fdfee790d5ffbcbe37d2d263502c1ff8",
+        "git_blob_sha1": "d3ffe3ecf9028a3295a16325418f39b55bd31ebb",
+        "cached_raw_sha256": "46433f6a2ce95743d16c957f0770fffcedb34038037e67a3170187088f03b106",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      },
+      "test_fileset_layout.py": {
+        "sha256": "ea846c076c4baf4fab499a6f05be44cfa9f7fd2b2f09c9afd036b39e6f017b60",
+        "git_blob_sha1": "79f137c8467446d87cfde6df8a176ccb5b4c5b20",
+        "cached_raw_sha256": "88e65b930a31c9d4dad6ea03aaba2752890e415e0ca1ae928f5967f7d3269592",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      },
+      "test_fileset_match.py": {
+        "sha256": "d8a735436ae04efa4f46c47da13d8c8a6f58491be7a7cd2eefa845d1a68e537e",
+        "git_blob_sha1": "281e52f08f1cc0b1df9a2f3ad79b9ff8f6479b9f",
+        "cached_raw_sha256": "52e4795b22de2ff8b3be6baaab1e49a248459bdf5d0b1882c053b65a52571f6f",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      },
+      "test_fileset_shape.py": {
+        "sha256": "a73ff889796dcf3e51e8f4a7cd1c69c2d94b5b3dca3266d4f1b2d66dda55b925",
+        "git_blob_sha1": "8e8b499b9a11012e3aa452c41e6409eedad48980",
+        "cached_raw_sha256": "43a2fb4b544ca61ab4ee8c685df776c124da2245fd15ba0cceb10d1450e4945a",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      },
+      "test_native_prelink.py": {
+        "sha256": "c9aba30c6790604ed77a1a1cd368f11ea04d67d8ad7820f102e98ec711d508be",
+        "git_blob_sha1": "0925627a9d15d04290bad91b57e8ca7978077ad9",
+        "cached_raw_sha256": "9dd7567686286a51669b871a3cd36baadbb32da28beb86ff586bb01a7d5962cf",
+        "cached_raw_bytes_match": false,
+        "cached_crlf_normalized_bytes_match": true
+      }
+    },
+    "independent_python_bytes_match_official": true,
+    "cached_python_crlf_normalized_bytes_match_official": true,
+    "execution_source": "/mnt/d/unixnu-tb710fu-clean/.work/wsl-dual-live/official-XnuPrelink",
+    "cache_modified": false
+  },
+  "kernelcache_input_verification": {
+    "path": ".work/wsl-prelink-inputs/input-verification.json",
+    "bytes": 5056,
+    "sha256": "db6fb2556d3a77e045fdb9bf5a3ba9ac885a4080a53eb023c73896832dbfc1dc"
+  },
+  "host_qr_verification": {
+    "result": "PASS",
+    "host_checker_commit": "03c5da1ede9dbdf7f96e28293abd838e01d3bee3",
+    "native_source_commit": "7f409ffbc282c918e9ec2a5996c6e413b7a9682a",
+    "source_hashes": {
+      "scripts/check_live_log_qr.py": "8ba4e0de6032836c73bb683b2394bd766b3cdf1c7158416c74c7e5f4482b66d2",
+      "package/Tb710fuLiveLog/LiveQr.c": "9c4a88505810891b62b703b7066372a8503b5abac650da1ea00ca40030532794",
+      "package/Tb710fuLiveLog/LiveQr.h": "c865c7c0a747737348eb0ea10ae5b8af02a2c4cbb9bf6248a082ec7b281750dd",
+      "package/Tb710fuLiveLog/LiveQrCompat.h": "75c75a7ce2cc79fe548ed43ff5a6f871c95f9ed9064611f2d595de4759423965",
+      "package/Tb710fuLiveLog/LiveProtocol.c": "693aab42c163b053844ee1a1dfa1082fc8b4547f1a68c308304ad0a892b9286d",
+      "package/Tb710fuLiveLog/LiveProtocol.h": "70e76df948e17c468401f1e9ce771f042c9497d9e563adea155b03c5a640d8d2",
+      "package/Tb710fuLiveLog/Test/live_qr_test.c": "73d49846baf31d0cd2de6c4ad8a0aa8b34592a89f2f7efd0b90d1aa14a4614d5",
+      "diagnostics/early-report/qr-sources.json": "4fdde01133e35e111f191aa6bb44847442ed3212d277a3b28d4bfab085a69dc2"
+    },
+    "reports": {
+      "0": {
+        "qr-host-check.json": "66c610d7ba0673d0f95ef39efef43c70dcdc621b558ff160990243fae8860a3a",
+        "qr-independent-decode.json": "44a2ec8412698165a6c8ab4f64b78046420bfd389b698c5c4dcb7ee7be439afa"
+      },
+      "1": {
+        "qr-host-check.json": "3b70eb12ccfb63696b07f012c245dc96157eba038f9cc79bcd4e1763b97cc0ff",
+        "qr-independent-decode.json": "44a2ec8412698165a6c8ab4f64b78046420bfd389b698c5c4dcb7ee7be439afa"
+      }
+    },
+    "native_kernel_sha256": "da18f5aac95b488b838cf6fd71ce4a58432d4f2da023ea433a9e744a1ada08b0",
+    "native_artifact_verification_sha256": "92c8dffa0cfb29aad2f850272ee1a97b4d3bd6c0abd99493cfe6920b9a38ea87",
+    "native_live_archive_report_sha256": "c4145815671ed9ca8f09d8e7f9e05b75635e62b334818d987d89ff3c4e3744d9",
+    "native_recompiled": false,
+    "hardware_verified": false
+  },
+  "queued_ci_cancelled_before_runner": {
+    "observed_at": "2026-11-17T17:07:17.326325+00:00",
+    "run": {
+      "id": 44131818618,
+      "head_sha": "03c5da1ede9dbdf7f96e28293abd838e01d3bee3",
+      "run_attempt": 1,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "created_at": "2026-11-17T16:58:35Z",
+      "updated_at": "2026-11-17T17:06:48Z",
+      "run_started_at": "2026-11-17T16:58:35Z",
+      "html_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44131818618"
+    },
+    "jobs": [
+      {
+        "id": 134210671049,
+        "status": "completed",
+        "conclusion": "cancelled",
+        "labels": [
+          "macos-26"
+        ],
+        "runner_id": 0,
+        "runner_name": "",
+        "runner_group_id": 0,
+        "runner_group_name": "",
+        "created_at": "2026-11-17T16:58:37Z",
+        "started_at": "2026-11-17T16:58:37Z",
+        "completed_at": "2026-11-17T17:06:48Z",
+        "steps": []
+      }
+    ],
+    "cancellation_context": "Root reports one POST cancel at 2026-11-17T17:06:45Z following the user request to use WSL; this subagent only read status.",
+    "native_compile_started": false,
+    "prelink_started": false,
+    "subagent_mutations": false
+  },
+  "actual_prelink_command": {
+    "argv": [
+      "/usr/bin/python3",
+      "/mnt/d/unixnu-tb710fu-clean/.work/wsl-dual-live/official-XnuPrelink/emit_prelink.py",
+      "--kernel",
+      "/mnt/d/unixnu-tb710fu-clean/.work/wsl-dual-live/native-input/kernel.native.macho",
+      "--prelinked",
+      "/mnt/d/unixnu-tb710fu-clean/.work/wsl-prelink-inputs/kernelcache.decompressed",
+      "--slide=0",
+      "--root",
+      "com.apple.AppleFSCompression.AppleFSCompressionTypeZlib",
+      "--root",
+      "com.apple.AppleFSCompression.AppleFSCompressionTypeDataless",
+      "--root",
+      "com.apple.driver.AppleARMPlatform",
+      "--root",
+      "com.apple.driver.AppleARMWatchdogTimer",
+      "--root",
+      "com.apple.driver.AppleAudioClockLibs",
+      "--root",
+      "com.apple.driver.AppleEffaceableStorage",
+      "--root",
+      "com.apple.driver.AppleIISController",
+      "--root",
+      "com.apple.driver.AppleM2ScalerCSCDriver",
+      "--root",
+      "com.apple.driver.AppleMobileFileIntegrity",
+      "--root",
+      "com.apple.driver.ApplePMGR",
+      "--root",
+      "com.apple.driver.IODARTFamily",
+      "--root",
+      "com.apple.filesystems.apfs",
+      "--root",
+      "com.apple.filesystems.hfs.kext",
+      "--root",
+      "com.apple.iokit.CoreAnalyticsFamily",
+      "--root",
+      "com.apple.iokit.IOAVFamily",
+      "--root",
+      "com.apple.iokit.IOAudio2Family",
+      "--root",
+      "com.apple.iokit.IOCECFamily",
+      "--root",
+      "com.apple.iokit.IOCryptoAcceleratorFamily",
+      "--root",
+      "com.apple.iokit.IOGPUFamily",
+      "--root",
+      "com.apple.iokit.IOHDCPFamily",
+      "--root",
+      "com.apple.iokit.IOMobileGraphicsFamily",
+      "--root",
+      "com.apple.iokit.IOReportFamily",
+      "--root",
+      "com.apple.iokit.IOSlowAdaptiveClockingFamily",
+      "--root",
+      "com.apple.iokit.IOStorageFamily",
+      "--root",
+      "com.apple.iokit.IOSurface",
+      "--root",
+      "com.apple.kec.Libm",
+      "--root",
+      "com.apple.kec.corecrypto",
+      "--root",
+      "com.apple.kext.AppleMatch",
+      "--root",
+      "com.apple.kext.CoreTrust",
+      "--root",
+      "com.apple.security.AppleImage4",
+      "--root",
+      "com.apple.security.sandbox",
+      "--root",
+      "com.apple.security.quarantine",
+      "--root",
+      "com.apple.AppleSystemPolicy",
+      "--root",
+      "com.apple.iokit.IOHIDFamily",
+      "--root",
+      "com.apple.iokit.IOTimeSyncFamily",
+      "--root",
+      "com.apple.plugin.IOgPTPPlugin",
+      "--root",
+      "com.apple.driver.AppleDiskImages2",
+      "--root",
+      "com.apple.driver.DiskImages",
+      "--root",
+      "com.apple.driver.DiskImages.FileBackingStore",
+      "--root",
+      "com.apple.driver.DiskImages.KernelBacked",
+      "--root",
+      "com.apple.driver.DiskImages.RAMBackingStore",
+      "--root",
+      "com.apple.driver.DiskImages.ReadWriteDiskImage",
+      "--root",
+      "com.apple.driver.DiskImages.UDIFDiskImage",
+      "--root",
+      "com.apple.driver.AppleMultitouchDriver",
+      "--root",
+      "com.apple.iokit.IONetworkingFamily",
+      "--root",
+      "com.apple.iokit.IOUSBDeviceFamily",
+      "--root",
+      "com.apple.driver.AppleUSBXDCI",
+      "--root",
+      "com.apple.driver.AppleUSBDeviceMux",
+      "--root",
+      "com.apple.iokit.IOUSBHostFamily",
+      "--root",
+      "com.apple.driver.usb.AppleUSBXHCI",
+      "--root",
+      "com.apple.driver.usb.AppleUSBHub",
+      "--root",
+      "com.apple.driver.usb.AppleUSBHostCompositeDevice",
+      "--root",
+      "com.apple.driver.usb.IOUSBHostHIDDevice",
+      "--root",
+      "com.apple.iokit.IOUSBMassStorageDriver",
+      "--root",
+      "com.apple.iokit.IOSCSIArchitectureModelFamily",
+      "--root",
+      "com.apple.iokit.IOSCSIBlockCommandsDevice",
+      "--root",
+      "com.apple.iokit.IOBluetoothFamily",
+      "--root",
+      "com.apple.iokit.IO80211Family",
+      "--root",
+      "com.apple.iokit.EndpointSecurity",
+      "--root",
+      "com.apple.driver.AppleHIDKeyboard",
+      "--root",
+      "com.apple.driver.AppleTopCaseHIDEventDriver",
+      "--root",
+      "com.apple.driver.AppleInputDeviceSupport",
+      "--root",
+      "com.apple.iokit.IOGraphicsFamily",
+      "--root",
+      "com.apple.driver.driverkit.serial",
+      "--root",
+      "com.apple.UVCService",
+      "--root",
+      "com.apple.driver.AppleFDEKeyStore",
+      "--root",
+      "com.apple.filesystems.lifs",
+      "--root",
+      "!com.apple.driver.AppleOnboardSerial",
+      "--root",
+      "!com.apple.driver.AppleSMC",
+      "--early-security-init",
+      "com.apple.driver.AppleMobileFileIntegrity=0xfffffe0009840dd4",
+      "--output",
+      "/mnt/d/unixnu-tb710fu-clean/.work/wsl-dual-live/prelinked/kernel.macho"
+    ],
+    "cwd": "/mnt/d/unixnu-tb710fu-clean/.work/wsl-dual-live/official-XnuPrelink",
+    "native_recompiled": false
+  },
+  "signing_evidence": "docs/evidence/dual-live-wsl-signed-44124706860.json",
+  "candidate_limit": "Host/native/prelink/parser checks and signed image delivery only; hardware display, USB enumeration, root mount and userspace remain unverified."
+}

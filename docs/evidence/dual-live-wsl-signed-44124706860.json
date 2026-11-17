@@ -1,0 +1,221 @@
+{
+  "schema_version": 1,
+  "stage": "signed-native-live-ramoops-bundle-independently-verified",
+  "kernel_run_id": 44124706860,
+  "kernel_source_commit": "7f409ffbc282c918e9ec2a5996c6e413b7a9682a",
+  "explicit_user_authorization": "Local image signing for hardware testing; no device commands authorized or run.",
+  "files": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "3fd43a5a7adc0275eb8d241b94f1c2520b6b630ae912c3eff4a3869d76228e04"
+    }
+  },
+  "unsigned_vendor_sha256": "3e5afb0a3ab7a5ef7105a16b2ab53117583c13e6943151e166bf5fc5e69e3ee8",
+  "unsigned_payload_byte_for_byte_preserved": true,
+  "rsa4096_pkcs1_sha256_independent_checks": {
+    "vendor_boot_footer": "PASS",
+    "vbmeta": "PASS",
+    "boot_footer": "PASS"
+  },
+  "salted_image_hash_checks": {
+    "vendor_boot": "PASS",
+    "boot": "PASS"
+  },
+  "unchanged_other_raw_descriptors": 22,
+  "identical_vbmeta_header": true,
+  "public_key_unchanged": true,
+  "boot_chain_public_key_matches": true,
+  "boot_chain_rollback_index_location": 3,
+  "boot_rollback_index": 1736035200,
+  "vbmeta_rollback_index": 0,
+  "vbmeta_rollback_index_location": 0,
+  "vbmeta_flags": 1,
+  "public_avb_key_sha256": "7728e30f50bfa5cea165f473175a08803f6a8346642b5aa10913e9d9e6defef6",
+  "boot_original_bytes": 659456,
+  "vendor_boot_original_bytes": 37859328,
+  "packaged_kernel_sha256": "27669f1fd468b8422837652174483e8744f01379e9e34c69e8e8c65a53343c41",
+  "packaged_kernel_bytes": 142819328,
+  "original_prelink_sha256": "adc7b6d867d0ec161dd757fc5c3c5087e822489b2d489c29943cf9083155f2ba",
+  "diagnostics": {
+    "stage": "verified-standard-early-bands-derivative",
+    "result": "PASS",
+    "original_prelink_sha256": "adc7b6d867d0ec161dd757fc5c3c5087e822489b2d489c29943cf9083155f2ba",
+    "kernel_sha256": "27669f1fd468b8422837652174483e8744f01379e9e34c69e8e8c65a53343c41",
+    "kernel_bytes": 142819328,
+    "patch_spans_verified": 6,
+    "compact_probes_verified": 3,
+    "other_bytes_unchanged": true,
+    "segments_unchanged": true,
+    "no_QR_reporter_or_waits": true,
+    "hardware_verified": false
+  },
+  "live_log": {
+    "archive_sha256": "9fd004e41c234b87f030064d5059eca67c96b081bba00eb7dc23520215ad973f",
+    "archive_objects_verified": 6,
+    "integration_report_sha256": "d35985a0fdf730b0ee2a6d16ed36e821bf2314c4d7f61f89d6d85539bef9dafd",
+    "compile_report_sha256": "c4145815671ed9ca8f09d8e7f9e05b75635e62b334818d987d89ff3c4e3744d9",
+    "strong_definitions_verified": 16,
+    "runtime_boot_argument": "tb710fu-live-log=1",
+    "dual_source_log_contract": {
+      "schema_version": 1,
+      "left": {
+        "slot": 0,
+        "source": "xnu-console",
+        "capture_ring_bytes": 65536,
+        "current_tail_bytes_max": 3072,
+        "early_backup_bytes_max": 512,
+        "early_backup_separate_metadata_and_raw_section": true,
+        "export_body_bytes_max": 4096
+      },
+      "right": {
+        "slot": 1,
+        "source": "ramoops",
+        "current_tail_bytes_max": 4096,
+        "provider": "tb710fu_ramoops_snapshot_copy",
+        "export_body_bytes_max": 4096
+      },
+      "frames_per_poll_max": 1,
+      "complete_rounds_before_replacement_min": 2
+    },
+    "independent_xnu_capture_and_actual_ramoops_calls_verified": true,
+    "runtime_qualified": false,
+    "qr_hardware_display_verified": false
+  },
+  "fat_clusters": 66512,
+  "payload_sha256": "c960b945ae3878aed860523e165593373c4697b587a8e50857a3577f52b153c6",
+  "file_readback_sha256": {
+    "Payloads/kernel.macho": "1601b0af6d31dffba85d7e18b7fdf683531f3c7e9fc3fb924701869120ebbccc",
+    "Payloads/kernel.macho.adt": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+    "Payloads/kernel.macho.vroot": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+    "unixnu.toml": "ea386850fa2a39822d33c2a992d13b34fec1f8f6cade88c2e00ea803699966d3"
+  },
+  "boot_args": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 debug=0x8 -enable_kprintf_spam startup_debug=1",
+  "signer_path": "tools/sign_kernel_probe_pair.py",
+  "signer_sha256": "03b357881a34734743befa1eadbf060f98479378f0a2196b0bf300deb3590290",
+  "avbtool_sha256": "f647dc4efc190f192d1522ca06d058de6a99ed3b44f95c8cb385f20dfb8a7da7",
+  "independent_verifier_sha256": "ee14202e71e88d311b6a844d2e82a125f052d1de05eee5f51b121248badd4b12",
+  "packaging_report_sha256": "3c3211f07628967f34767d3767ab108f556cd7f94ddbf9ac8a6cfa9a2ae8d413",
+  "signing_report_sha256": "156b6426d9af982524e66998de98a17625aa25f01ffb6c5cf35d508b90fa007e",
+  "private_key_used_locally": true,
+  "signing_performed": true,
+  "new_firmware_built": false,
+  "device_operations": false,
+  "hardware_boot_verified": false,
+  "cdc_enumeration_verified": false,
+  "usb_log_bytes_captured": false,
+  "limits": [
+    "Only local signing and host verification were performed; no device reboot, flash, partition or filesystem operation.",
+    "CDC live adoption can refuse unknown firmware ownership or DMA state. Worker needs BSD startup and scheduling; active-DMA reset/reconnect recovery remains unsupported.",
+    "Actual CDC enumeration, log-byte capture, hardware UFS/root mount and macOS userspace remain unverified."
+  ],
+  "source_commit": "7f409ffbc282c918e9ec2a5996c6e413b7a9682a",
+  "host_checker_commit": "03c5da1ede9dbdf7f96e28293abd838e01d3bee3",
+  "display_build_label": "src-7f409ffb-ramoops",
+  "pipeline_provenance": {
+    "schema_version": 1,
+    "stage": "macos-native-plus-local-wsl-official-prelink-signed-test-candidate",
+    "native_source_commit": "7f409ffbc282c918e9ec2a5996c6e413b7a9682a",
+    "host_checker_commit": "03c5da1ede9dbdf7f96e28293abd838e01d3bee3",
+    "display_build_label": "src-7f409ffb-ramoops",
+    "native": {
+      "environment": "GitHub macOS arm64 runner",
+      "run_id": 44124706860,
+      "run_attempt": 2,
+      "job_id": 134197243714,
+      "run_overall_conclusion": "failure",
+      "native_step_conclusion": "success",
+      "ci_prelink_step_conclusion": "skipped",
+      "recompiled_in_wsl": false,
+      "artifact_id": 14348543182,
+      "artifact_zip_sha256": "d98ca6fb83670db0f3099ee31c03cae16ee46d55b23ccc27be1b74d5d1a02349",
+      "kernel_sha256": "da18f5aac95b488b838cf6fd71ce4a58432d4f2da023ea433a9e744a1ada08b0",
+      "kernel_bytes": 25406216,
+      "original_native_only_record_preserved": true,
+      "ci_evidence_sha256": "992a89f48481ab4fd7028a0877e56caad1c9ff601b93cf78b8737a239a8e0422",
+      "build_result_sha256": "0ba4e2e312cd582567a52f4a9d352fd2729bdb67d09169d3a615224b51ea5e85"
+    },
+    "prelink": {
+      "environment": "WSL Debian",
+      "result": "PASS",
+      "verification_path": ".work/wsl-dual-live/prelink-verification.json",
+      "verification_sha256": "4d012686c843f1c6cf1c047f2cb9f598134af064d64b9b33f0b7b3d1031081bb",
+      "kernel_sha256": "adc7b6d867d0ec161dd757fc5c3c5087e822489b2d489c29943cf9083155f2ba",
+      "kernel_bytes": 142819328,
+      "mapping_complete": true,
+      "missing": {},
+      "stubbed": {},
+      "allow_missing": false,
+      "official_report_sha256": "ddcd98e96242ae26fd5d38313145d40baa4377a97c87ed9f9febf51a4f2d490b",
+      "official_map_sha256": "b4bb61fc8c963e8c97b62e8f826cd1f73742228a932ddb537835c19007e30524",
+      "source_verification_sha256": "d13ce0409619acd95fe5a121f10bb59df0349085fb76c71b4eb7a31c1ea5897f",
+      "native_artifact_verification_sha256": "92c8dffa0cfb29aad2f850272ee1a97b4d3bd6c0abd99493cfe6920b9a38ea87",
+      "local_build_result_sha256": "77387b47773e5cece391f06347a1d60d6c6155ceb0780f586e98b4ff914d6ea5"
+    },
+    "host_checks": {
+      "checker_commit": "03c5da1ede9dbdf7f96e28293abd838e01d3bee3",
+      "verification_sha256": "2b2e59cd36bb4632ac57042a426ca4f697a8c178ddc6b3dd0686091e1b841967",
+      "native_live_archive_report_sha256": "c4145815671ed9ca8f09d8e7f9e05b75635e62b334818d987d89ff3c4e3744d9",
+      "reports": {
+        "0": {
+          "qr-host-check.json": "66c610d7ba0673d0f95ef39efef43c70dcdc621b558ff160990243fae8860a3a",
+          "qr-independent-decode.json": "44a2ec8412698165a6c8ab4f64b78046420bfd389b698c5c4dcb7ee7be439afa"
+        },
+        "1": {
+          "qr-host-check.json": "3b70eb12ccfb63696b07f012c245dc96157eba038f9cc79bcd4e1763b97cc0ff",
+          "qr-independent-decode.json": "44a2ec8412698165a6c8ab4f64b78046420bfd389b698c5c4dcb7ee7be439afa"
+        }
+      }
+    },
+    "packaging": {
+      "packaging_report_sha256": "3c3211f07628967f34767d3767ab108f556cd7f94ddbf9ac8a6cfa9a2ae8d413",
+      "standard_band_report_sha256": "ab57b75d0b9ec3e2898a28feb145bafbfc80b699ab3a8c64ed297b1be02c6ab4",
+      "standard_band_verification_sha256": "c2826b2e3e9f46f15f4c75f31ca9dee9055e1249e289bef64983ef8d0a2ec961",
+      "packaged_kernel_sha256": "27669f1fd468b8422837652174483e8744f01379e9e34c69e8e8c65a53343c41"
+    },
+    "signatures": {
+      "signing_report_sha256": "156b6426d9af982524e66998de98a17625aa25f01ffb6c5cf35d508b90fa007e",
+      "verification_report_sha256": "936f39f6566480002c3a754d5a8310f95c230a444c5e008ee99e6885c3eec065",
+      "independent_rsa_checks": {
+        "vendor_boot_footer": "PASS",
+        "vbmeta": "PASS",
+        "boot_footer": "PASS"
+      },
+      "files": {
+        "boot.img": {
+          "bytes": 100663296,
+          "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+        },
+        "vendor_boot.img": {
+          "bytes": 100663296,
+          "sha256": "a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2"
+        },
+        "vbmeta.img": {
+          "bytes": 8000,
+          "sha256": "3fd43a5a7adc0275eb8d241b94f1c2520b6b630ae912c3eff4a3869d76228e04"
+        }
+      }
+    },
+    "hardware_boot_verified": false,
+    "runtime_qualified": false,
+    "device_operations": false
+  },
+  "pipeline_provenance_sha256": "b94d6103bba5cff936ebdd4cfa12a626cebc6c26f0ae1478c37b842cb38f837c",
+  "local_prelink_verification_sha256": "4d012686c843f1c6cf1c047f2cb9f598134af064d64b9b33f0b7b3d1031081bb",
+  "signing_authorization": "Continuing explicit local-signing authorization for this next test candidate; no device operations.",
+  "image_evidence": "docs/evidence/dual-live-wsl-image-44124706860.json",
+  "zip": {
+    "path": "out/tb710fu-dual-live-wsl-44124706860-signed.zip",
+    "bytes": 35661040,
+    "sha256": "d1fa85940a3fa910bce83639cc33ad6a0c71ce2c21936a46ba6178702138afce",
+    "members_verified": true
+  },
+  "verification_report_sha256": "936f39f6566480002c3a754d5a8310f95c230a444c5e008ee99e6885c3eec065"
+}

@@ -1,5 +1,72 @@
 # Current status · 2026-11-18
 
+## Dual-live WSL continuation completed; signed test bundle ready · 2026-11-18
+
+The requested dual-live candidate is complete at the host/image stage. Exact
+native source remains `7f409ffbc282c918e9ec2a5996c6e413b7a9682a`, compiled on
+the macOS runner in run 44124706860 attempt 2, job 134197243714. Its overall
+failure and original native-only records are preserved. Host checker revision
+`03c5da1ede9dbdf7f96e28293abd838e01d3bee3` changes no native target inputs.
+The user requested WSL instead of waiting; queued run 44131818618 was cancelled
+before acquiring any runner. No duplicate native build was performed locally.
+
+The unchanged official XnuPrelink `440589b0c31625f17edf363e24b3c82c51c70bb9`
+was independently checked against all 25 Git blobs, including 16 Python files,
+then executed in WSL with the pinned original kernelcache. Native input SHA-256
+is `da18f5aac95b488b838cf6fd71ce4a58432d4f2da023ea433a9e744a1ada08b0`.
+The new 142,819,328-byte strict fileset SHA-256 is
+`adc7b6d867d0ec161dd757fc5c3c5087e822489b2d489c29943cf9083155f2ba`.
+Mapping is complete, conflicts/missing/stubbed are zero, allow-missing is false,
+and the actual production DarwinBoot parser passes. WSL Mu DEBUG 0/1 and
+independent ZXing recovery pass, bound to the current host checker and the
+same native production sources. No XNU source was recompiled in WSL.
+
+The separate six-span standard-band transform preserves all other kernel
+bytes and segments; final kernel SHA-256 is
+`27669f1fd468b8422837652174483e8744f01379e9e34c69e8e8c65a53343c41`.
+The 20-input manifest SHA-256 is
+`a71501afc1275c6edd2728b89ae477313b942329f68350017ae3e0dca3c9f37a`.
+Strict source/archive/integration, parser, policy, loader, FAT/LZMA readbacks
+and separately authorized local AVB signing all pass. Independent three-image
+RSA verification, salted hashes, unchanged payload and 22 unrelated descriptors,
+header/public key/rollback checks pass. The matching signed images are in
+`out/live-ramoops-44124706860-signed/`; source/run/local-prelink provenance is
+included in the ZIP, and no key or raw IPSW member is included.
+
+ZIP: `out/tb710fu-dual-live-wsl-44124706860-signed.zip`, 35,661,040 bytes,
+SHA-256 `d1fa85940a3fa910bce83639cc33ad6a0c71ce2c21936a46ba6178702138afce`.
+Signed vendor_boot SHA-256 is
+`a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2`;
+matching vbmeta is `3fd43a5a7adc0275eb8d241b94f1c2520b6b630ae912c3eff4a3869d76228e04`.
+The existing signed boot SHA-256 remains
+`a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`.
+Evidence: `docs/evidence/dual-live-wsl-{prelink,image,signed}-44124706860.json`.
+
+Display label: `src-7f409ffb-ramoops`. LEFT exports independent live XNU debug
+text with its immutable early backup in every file; RIGHT exports live current-
+boot ramoops. Standard green/blue/magenta bands remain, with no checkpoint replay
+waits. Real display, animation, log contents/retention, CDC enumeration and USB
+bytes, UFS/root mount and macOS userspace still require hardware evidence.
+No device command, flash, reboot, partition or filesystem operation occurred.
+
+## User switches queued remainder to WSL · 2026-11-18
+
+The user requested WSL instead of waiting for the hosted runner. The single
+03c5da1ede9dbdf7f96e28293abd838e01d3bee3 run 44131818618 was cancelled once
+while queued at 17:06:45Z; the final remote state is cancelled, runner_id 0,
+empty runner name and no steps. No compilation or prelink occurred in that run.
+
+The WSL continuation reuses the exact macOS-compiled native kernel from
+44124706860 attempt 2 at 7f409ffbc282c918e9ec2a5996c6e413b7a9682a, preserving
+its original native-only record and overall failed CI result. Its failure was
+the later host namespace test, not native compilation. The 03c5da1e revision
+changes only that host checker and status/evidence; target sources are identical.
+The display label therefore remains src-7f409ffb-ramoops. Local WSL Mu checks
+for DEBUG 0 and 1 and independent ZXing reconstruction pass. The original
+kernelcache is independently rehashed to the exact pinned d1003b51…9fe9.
+Official strict local prelink and packaging are next; no local prelink success
+or new signed dual-live image is established by this entry.
+
 ## Dual-live native build passes; host Mach-O name check corrected · 2026-11-18
 
 Run 44124706860 attempt 2, job 134197243714, at exact device source
