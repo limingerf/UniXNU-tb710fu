@@ -58,6 +58,14 @@ map DMA, issue a read-only command, and compare a fresh LBA 1 read against the
 recorded sample. Root publication and persistence are later gates; no partition
 or filesystem write is part of this porting step.
 
+The board patch `patches/ufs/0001-sm8650-compatible.patch` adds only the exact
+`qcom,sm8650-ufshc` compatible already declared by the TB710FU DT. The optional
+`ufs-source` kernel workflow stage first completes the minimal native kernel,
+then compiles the pinned upstream source with this patch into an arm64e archive.
+That archive is an isolated source-build result; it is deliberately not linked
+into the kernel until the macOS 27 owner-policy bundle and userdata `.vroot`
+tables are available and verified.
+
 ## Verification status
 
 The host-only `UfsReadProbe` state-machine tests pass, but that code has no XNU

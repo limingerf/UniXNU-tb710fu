@@ -34,7 +34,18 @@ def main():
         ]
         subprocess.run(command, check=True)
         subprocess.run([str(binary)], check=True)
-    print("CDC descriptor, request and log-ring tests passed")
+
+        tap_test = SOURCE / "Test/cdc_kernel_tap_test.c"
+        tap_binary = Path(temporary) / "cdc-kernel-tap-test"
+        tap_command = compiler_command() + [
+            "-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic",
+            "-fsanitize=address,undefined", "-I", str(SOURCE),
+            str(tap_test), str(SOURCE / "CdcKernelTap.c"),
+            str(SOURCE / "CdcLogRing.c"), "-o", str(tap_binary),
+        ]
+        subprocess.run(tap_command, check=True)
+        subprocess.run([str(tap_binary)], check=True)
+    print("CDC descriptors, requests, log ring and kernel tap tests passed")
 
 
 if __name__ == "__main__":

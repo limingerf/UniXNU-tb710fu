@@ -5,6 +5,7 @@ CONFIG_XNU_CRYPTO_BOOTSTRAP="source"
 CONFIG_XNU_KERNEL_CHAINED_FIXUPS=y
 CONFIG_XNU_DT_PANIC_REGION=y
 CONFIG_XNU_ARMVIRT_PLATFORM=n
+CONFIG_XNU_EXTRA_LD_ARCHIVES="-Wl,-force_load,{tree}/build/tb710fu-cdc-log/libTb710fuCdcLog.a"
 
 # No block provider is qualified yet. Do not enable security/crypto probes to hide
 # missing owner-root globals or pretend that the TB710FU UFS driver exists.

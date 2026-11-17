@@ -5,7 +5,7 @@ on:
       stage:
         description: Native compiler/linker check first; prelink also adds the original macOS kernelcache closure
         type: choice
-        options: [native, prelink]
+        options: [native, prelink, ufs-source]
         default: native
 permissions:
   contents: read
@@ -63,6 +63,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 tools/ci_kernel.py prelink
+      - name: Compile the TB710FU UFS source adapter
+        if: inputs.stage == 'ufs-source'
+        env:
+          UNIXNU_XNU_ARCH: arm64e
+          UNIXNU_IOS_VERSION: '27.0'
+          UNIXNU_XNU_TARGET: macosx
+        run: |
+          set -euo pipefail
+          python3 .work/UniXNU/scripts/build-tb710fu-ufs-adapter.py
+          cp .work/UniXNU/build/tb710fu-ufs-adapter/build-report.json .work/artifacts/ufs-adapter-build.json
       - name: Verify the fileset with the production DarwinBoot parser
         if: inputs.stage == 'prelink'
         run: |

@@ -1,5 +1,26 @@
 # Current status · 2026-11-17
 
+## USB/UFS adapter build prepared · 2026-11-17
+
+The USB debug path now has a device-owned 64 KiB RAM tap. XNU `_cnputc` and
+the direct `PE_kputc` UART paths append characters without touching MMIO; a
+later worker can drain them. The XNU patch and arm64e archive recipe are wired
+into the native kernel build, and host tests cover the tap. This is not yet a
+USB transport or host-visible COM port: DWC3 endpoint/TRB handling, SID `0x40`
+DMA ownership, startup and enumeration remain unimplemented. The official
+`QcomDwc3` component is Apple XDCI/XHCI stack integration, not CDC-ACM, and its
+PHY headers have a separate GPL-2.0-only license.
+
+An optional `ufs-source` runner stage performs the minimal native kernel build
+first, then compiles pinned `ShengUfs@99d8bcd3e43dd24fc3c8437c67b5d4cc71ab94d0`
+with a board patch that adds the TB710FU `qcom,sm8650-ufshc` match. The driver
+archive is intentionally not linked into that kernel. The official macOS 27
+source-storage route still requires owner-signed OS/SystemOS policies and the
+matching `.vroot` tables in userdata. The root-volume image from run
+`43724852936` is a valid image input, but does not contain those policy
+artifacts. No target kernel or UFS archive result exists for this new change
+until the supported macOS runner completes.
+
 ## USB/UFS driver review · 2026-11-17
 
 The official [UFS porting guide](https://unixnu.com/zh/porting/ufs) does not

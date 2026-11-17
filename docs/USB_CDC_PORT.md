@@ -12,6 +12,13 @@ transport write. `CdcTransportGuard` separately rejects transport startup
 unless a caller supplies a verified device role, clocks/PHY, unique identity
 SMMU route, and a contiguous, aligned DMA range.
 
+`CdcKernelTap` provides a statically allocated 64 KiB RAM queue for XNU console
+bytes. Patch `0010` adds nonblocking writes from `_cnputc` and the direct
+`PE_kputc` UART paths, so the queue can retain text before a future USB worker
+starts. It only captures bytes; no DWC3 endpoint, CDC enumeration or queue
+drain over USB is connected yet. The target kernel build must validate the
+archive and XNU patch together.
+
 Run `python scripts/check_usb_cdc_protocol.py` to compile the host fixture with
 warnings-as-errors and AddressSanitizer/UndefinedBehaviorSanitizer, then run the
 descriptor, malformed-request, wraparound, back-pressure and fail-closed guard

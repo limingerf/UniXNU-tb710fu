@@ -27,6 +27,7 @@ archives = [
   "component:ArmDTPlatform",
   "component:ArmCpu",
   "build-libpthread-kernel.py",
+	"build-tb710fu-cdc-log.py",
 ]
 
 [package.defconfig]

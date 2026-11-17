@@ -1,0 +1,39 @@
+diff --git a/osfmk/console/serial_console.c b/osfmk/console/serial_console.c
+--- a/osfmk/console/serial_console.c
++++ b/osfmk/console/serial_console.c
+@@ -1,2 +1,3 @@
+ #include <kern/tb710fu_ramoops.h>
+ #include <kern/boot_progress.h>
++extern void tb710fu_cdc_log_tap_putc(char);
+@@ -263,4 +264,5 @@ _cnputc(char c, bool poll)
+ 	if (c != '\r') {
+ 		tb710fu_ramoops_putc(c);
++		tb710fu_cdc_log_tap_putc(c);
+ 	}
+ 	if (boot_progress_active()) { boot_progress_putc(c); return; }
+diff --git a/pexpert/arm/pe_kprintf.c b/pexpert/arm/pe_kprintf.c
+--- a/pexpert/arm/pe_kprintf.c
++++ b/pexpert/arm/pe_kprintf.c
+@@ -1,1 +1,2 @@
+ #include <kern/boot_progress.h>
++extern void tb710fu_cdc_log_tap_putc(char);
+@@ -163,4 +164,7 @@ serial_putc_crlf(char c)
+ {
++	if (c != '\r') {
++		tb710fu_cdc_log_tap_putc(c);
++	}
+ 	if (c == '\n') {
+ 		uart_putc('\r');
+ 	}
+ 	uart_putc(c);
+ }
+@@ -172,4 +176,5 @@ serial_putc_options(char c, bool poll)
+ {
++	if (c != '\r') { tb710fu_cdc_log_tap_putc(c); }
+ 	uart_putc_options(c, poll);
+ }
+@@ -179,4 +184,5 @@ serial_putc(char c)
+ {
++	if (c != '\r') { tb710fu_cdc_log_tap_putc(c); }
+ 	uart_putc(c);
+ }
