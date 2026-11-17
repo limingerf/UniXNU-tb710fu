@@ -67,8 +67,10 @@ The board patch `patches/ufs/0001-sm8650-compatible.patch` adds only the exact
 `ufs-source` workflow first completes the minimal native kernel, then compiles
 the pinned upstream source with this patch into an arm64e archive using that
 kernel's compiler records. The archive remains an isolated source-build result:
-the board still sets both `CONFIG_XNU_NATIVE_UFS=n` and
-`CONFIG_XNU_SOURCE_STORAGE=n`. The clean device repo now contains the
+that standalone run did not link it. After the complete bridge archive passed
+in run 44071685590, the board selected `CONFIG_XNU_SOURCE_STORAGE=y` and the
+explicit archive/startup hook for a separate integrated build, keeping
+`CONFIG_XNU_NATIVE_UFS=n` to avoid automatic personalities. The repo now contains the
 `SourceStorage.cpp`, `SourceRootPolicies.cpp`, and `SourceRootBinding.cpp`
 bridge required by the separate full source-storage recipe. Those files are
 not prerequisites for compiling the standalone NativeUfs archive. NativeUfs
@@ -137,9 +139,9 @@ it compiles a separate complete archive in the `ufs-bridges` workflow stage.
 See `package/Tb710fuSourceStorage/README.md` for the exact reference blobs,
 signature handoff, real media binding and coherent optional-provider omission.
 The macOS 27 IOStorageFamily/APFS interface and linkage also need explicit ABI
-checks; a successful object compile or equal class size is not enough. Keep `CONFIG_XNU_NATIVE_UFS` and
-`CONFIG_XNU_SOURCE_STORAGE` disabled until the bridge implementation, ABI
-checks, and ordered ownership handoff pass their build gates.
+checks; a successful object compile or equal class size is not enough. The
+complete archive and static ABI gates now pass; the selected explicit source
+runtime still needs its own native/prelink build and hardware validation.
 
 ## Verification status
 
@@ -184,6 +186,7 @@ source-storage bridge, macOS 27 storage ABI checks, and transactional
 controller/SMMU ownership handoff must pass before enabling it in the kernel
 configuration. Until then, there is no new UFS kernel payload to package.
 The existing signed UEFI-UFS image is a firmware image and is not the NativeUfs
-XNU driver. The tracked kernel packager also has no accepted ADT-correct source
-baseline or UFS root-argument input, so it cannot yet produce a matching
+XNU driver. The tracked kernel packager already accepts the ADT-correct source
+baseline (`15846226236b56bd3abb104ae57f45e23307f3ea52321fd03ed153fd2e4e0718`).
+It still lacks UFS root-argument and RootPolicies sidecar inputs, so it cannot yet produce a matching
 flashable UFS kernel pair.

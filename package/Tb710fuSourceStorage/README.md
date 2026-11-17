@@ -5,7 +5,8 @@
 original IOStorageFamily, checks the public base size, authenticates RootPolicies,
 loads APFS, registers the deferred public base and NativeUfs classes, then
 attaches the real UFS service to IOPlatformExpertDevice. Startup requires
-`native-source-storage=1`. There is currently no selected XNU startup hook.
+`native-source-storage=1`. Device patch 0011 selects a conditional strong
+`bsd_init` hook after `vfsinit()` for the source-storage integration build.
 Equal class size supplements a separate dispatch/PAC audit; it cannot replace it.
 
 `../SourceRootBinding.cpp` adapts reference blob
@@ -101,7 +102,11 @@ generated. Deferred objects are checked for the exported constructor and the
 absence of an eager `__mod_init_func` section.
 
 The optional `ufs-bridges` workflow compiles this standalone archive after the
-minimal kernel. The board does not select it for linking or startup, and both
-storage configuration switches remain off. An archive compile supplies neither
+native kernel. After the standalone archive passed in run 44071685590, the
+board selected `SOURCE_STORAGE=y`, the explicit archive and strong hook for a
+separate `ufs-integrated` build. `NATIVE_UFS=n` keeps automatic personalities
+absent. The uniquely named wrapper follows the fixed archive protocol and
+records precise generated-link invalidation; it does not replace an official
+script. An archive compile supplies neither
 an integrated/prelinked storage kernel, runtime APFS qualification nor a hardware
 boot result. The fetched official script remains unchanged.

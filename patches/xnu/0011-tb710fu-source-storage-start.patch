@@ -1,0 +1,25 @@
+Subject: [PATCH] tb710fu conditionally start the real source-storage runtime
+
+Base: UniXNU 0c1bac3d51a3009dca1708b15a5198f4b43d057a;
+XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f with the selected complete
+arch/pre-OS/macOS/device series through 0010.
+Source placement: UniXNU-sheng 1108068537d5396edb2c63b2f8c6f5b97b0a4bbc,
+patches/xnu-12377/source-storage-runtime.patch. Use a conditional strong call,
+so a disabled provider emits no import and a selected provider must link.
+Verification: git apply --check against the selected post-0010 source context.
+Native target compilation and linking are separate required build stages.
+
+diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -794,6 +794,10 @@
+ 	/* Initialize the file systems. */
+ 	bsd_init_kprintf("calling vfsinit\n");
+ 	vfsinit();
++#if defined(XNU_TB710FU_SOURCE_STORAGE) && XNU_TB710FU_SOURCE_STORAGE
++	extern void native_source_storage_start(void);
++	native_source_storage_start();
++#endif
+ #if DEVELOPMENT || DEBUG
+ 	native_apfs_load_probe();
+ 	native_mobile_graphics_load_probe();

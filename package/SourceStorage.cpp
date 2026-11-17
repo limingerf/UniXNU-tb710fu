@@ -31,8 +31,8 @@ extern "C" const OSMetaClass *native_source_storage_parent(void)
     return storageParent;
 }
 
-// Caller must be bsd_init after vfsinit, before root discovery. This file is
-// currently compiled into a standalone archive; no startup hook is selected.
+// The device's conditional strong bsd_init hook calls this after vfsinit,
+// before root discovery. The boot argument remains an explicit runtime gate.
 extern "C" void native_source_storage_start(void)
 {
     unsigned enabled = 0;

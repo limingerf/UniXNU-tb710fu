@@ -98,3 +98,16 @@ collection header because post-link tooling appends these load commands to the
 outer MH_FILESET header; non-fileset kernels use `_mh_execute_header`. Together
 these patches enable diagnostics across TTBR1; they do not change the page-table
 algorithm or claim a functional fix.
+
+## Explicit source-storage startup
+
+`0011-tb710fu-source-storage-start.patch` adapts the post-`vfsinit()` placement
+from `UniXNU-sheng@1108068537d5396edb2c63b2f8c6f5b97b0a4bbc`,
+`patches/xnu-12377/source-storage-runtime.patch`. The device uses a conditional
+strong reference under `XNU_TB710FU_SOURCE_STORAGE=1`. Disabled configurations
+emit no reference; enabled builds must link the actual implementation. It is
+applied after the selected arch/macOS/device series through 0010 and has been
+checked against that prepared source context. The separate native-link verifier
+checks the actual BSD compile record, strong object reference, final definition
+and saved `linkarchives` input. This does not prove runtime class registration
+or root mounting, and adds no weak security or hardware provider.

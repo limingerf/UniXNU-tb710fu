@@ -5,7 +5,7 @@ on:
       stage:
         description: Native compiler/linker check first; prelink also adds the original macOS kernelcache closure
         type: choice
-        options: [native, prelink, ufs-source, ufs-bridges]
+        options: [native, prelink, ufs-source, ufs-bridges, ufs-integrated]
         default: native
 permissions:
   contents: read
@@ -53,16 +53,15 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version
           xcrun --sdk macosx --show-sdk-version
           df -h .
+      - name: Initialize the pinned UFS interface headers
+        run: git -C .work/UniXNU submodule update --init --depth 1 -- kits/VerifiedRoot drivers/VirtioMmioBlock
       - name: Build and verify the native arm64e kernel
         env:
           GITHUB_TOKEN: ${{ github.token }}
           JOBS: '3'
         run: python3 tools/ci_kernel.py native
-      - name: Initialize the pinned UFS interface headers
-        if: inputs.stage == 'ufs-source' || inputs.stage == 'ufs-bridges'
-        run: git -C .work/UniXNU submodule update --init --depth 1 -- kits/VerifiedRoot drivers/VirtioMmioBlock
       - name: Prelink the macOS 27 kernelcache closure
-        if: inputs.stage == 'prelink'
+        if: inputs.stage == 'prelink' || inputs.stage == 'ufs-integrated'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 tools/ci_kernel.py prelink
@@ -84,7 +83,7 @@ jobs:
           cp "$adapter/host-tests.json" .work/artifacts/ufs-adapter-host-tests.json
           cat "$adapter/build-report.json" >> "$GITHUB_STEP_SUMMARY"
       - name: Verify the fileset with the production DarwinBoot parser
-        if: inputs.stage == 'prelink'
+        if: inputs.stage == 'prelink' || inputs.stage == 'ufs-integrated'
         run: |
           set -euo pipefail
           work=$(cat .work/resolved-work.txt)

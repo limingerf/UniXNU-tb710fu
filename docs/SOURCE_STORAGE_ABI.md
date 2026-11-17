@@ -56,5 +56,6 @@ source or flag changes; the `bf0be75` result does not cover later bridge code.
 
 Static layout matching is one integration input. Late metaclass registration,
 binary virtual calls, policy handoff, SMMU/queue/DMA ownership, media publication
-and APFS root mount still require separate build and runtime verification. The
-board's storage switches and startup hook remain disabled.
+and APFS root mount still require separate build and runtime verification. This
+standalone audit does not cover the later selected strong startup hook and
+native archive integration; those have a separate build report.

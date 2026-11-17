@@ -38,6 +38,8 @@ CXX=clang++ python3 scripts/build-tb710fu-ufs-adapter.py \
 
 `build/tb710fu-ufs-adapter/host-tests.json` beneath that tree records compiler,
 commands, patch hashes and input hashes. Tests use simulated MMIO and DMA;
-they do not qualify TB710FU hardware or the macOS 27 storage ABI. Both kernel
-storage switches remain disabled until separate integration and runtime gates
-pass.
+they do not qualify TB710FU hardware. The separate static block-device ABI
+audit is documented in `docs/SOURCE_STORAGE_ABI.md`. After the complete archive
+build passed, the board selected `SOURCE_STORAGE=y` plus explicit archive and
+startup integration; `NATIVE_UFS=n` keeps automatic personalities absent.
+That integration requires its own native/prelink and runtime verification.

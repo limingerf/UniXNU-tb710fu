@@ -1,6 +1,44 @@
 # Current status · 2026-11-17
 
+## Complete archive passed; native integration selected · 2026-11-17
+
+Run [44071685590](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44071685590)
+at device `958a893b368befc145da5aad0c348889e7b31d6d` passed the complete
+standalone source-storage build. Artifact `14323717445` is 8,970,853 B,
+SHA-256 `4a59e9babc100c99b3df0b6ed7745605a6bad76c7efd56afb9f9eef30343cb74`.
+Its eight-object archive is 1,444,104 B, SHA-256
+`3d1842e4113d53da81d6e4ce208a4ec136c2dc95a31c646e04b4a27eb1bd2588`.
+The downloaded ZIP, member hashes, external late constructors and absence of
+eager class registration/boot-observer imports were independently checked.
+The 1,712-byte RootPolicies bundle SHA-256 is
+`49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68`.
+The late NativeUfs object also passes the same 326-slot/26-method/class-size
+and four-consumer static ABI audit. See
+`docs/evidence/ufs-bridges-44071685590.json` and
+`docs/evidence/storage-abi-44071685590.json`.
+
+The device now selects the reviewed integration inputs for the next bounded
+`ufs-integrated` native/prelink build. `CONFIG_XNU_SOURCE_STORAGE=y`, while
+`CONFIG_XNU_NATIVE_UFS=n` deliberately keeps automatic personalities absent.
+An explicitly force-loaded archive and conditional strong `bsd_init` call
+after `vfsinit()` replace that automatic startup route. The unique device
+wrapper invokes the original device recipe using `UNIXNU_DEVICE`; it neither
+replaces an official script nor fetches source during compilation. When the
+archive changes, it invalidates only the verified generated actual LD output,
+because the supported extra-archive flag alone lacks an incremental dependency.
+
+The interface gitlinks are initialized before native compilation. A new verifier
+will require the BSD hook's compile macro and strong reference, exactly one
+final startup definition, the real storage/crypto symbols, archive/member
+hashes and the actual saved `linkarchives` input. The successful standalone
+run above does not establish these new native-link/prelink gates. Owner-root
+audit/trust, Data/RAM, GPU, wireless and boot diagnostics remain off.
+No new IMG has been signed, flashed or booted; USB CDC enumeration and the
+runtime storage/root mount remain unqualified.
+
 ## Transactional UFS target compile and source-storage bridge · 2026-11-17
+
+Historical entry before the complete archive result and integration selection above.
 
 Run [44068063538](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44068063538)
 at device commit `bf0be756b550558cf5a4097314c0bd1d703d1a89` completed
@@ -45,6 +83,14 @@ static layout compatibility only. No startup hook is selected, both storage conf
 remain off, and the archive/link/prelink/runtime gates stay separate. No new
 IMG has been packaged, signed or flashed.
 
+Packaging audit correction: `tools/package_kernel_diagnostic.py` already
+accepts the ADT-correct `out/kernel-log-region/vendor_boot.img` baseline,
+SHA-256 `15846226236b56bd3abb104ae57f45e23307f3ea52321fd03ed153fd2e4e0718`.
+Its absence from the allowlist was an earlier mistaken conclusion. The actual
+remaining packaging inputs are an integrated/prelinked UFS kernel, a matching
+RootPolicies sidecar and ADT handoff, explicit UFS boot arguments, and verified
+loader provenance. Baseline allowlisting is not the blocker.
+
 ## UFS integration and image gate audit · 2026-11-17
 
 Historical audit before run 44068063538; the current result is above.
@@ -87,9 +133,9 @@ one `NativeUfs.o` archive and explicitly reports
 `runtime_qualified=false`; the board keeps both storage config switches off.
 
 No integrated kernel has been built or prelinked, so there is no new UFS kernel
-payload to package. The existing generic kernel packager accepts older
-`vendor_boot` baselines, not the current ADT-correct baseline, and does not
-provide a UFS root-argument input. The existing signed UEFI-UFS boot image is a
+payload to package. The existing generic kernel packager accepts the
+ADT-correct `vendor_boot` baseline but does not provide a UFS root-argument or
+RootPolicies sidecar input. The existing signed UEFI-UFS boot image is a
 different artifact and does not contain the NativeUfs XNU driver. No new image
 was packaged or signed. Next: run the bounded `ufs-source` workflow for the
 macOS 27 object compile. Then implement the real source-storage bridges and

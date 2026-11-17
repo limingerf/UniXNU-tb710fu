@@ -1,0 +1,47 @@
+{
+  "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44071685590",
+  "device_commit": "958a893b368befc145da5aad0c348889e7b31d6d",
+  "stage": "ufs-bridges",
+  "conclusion": "success",
+  "artifact_id": 14323717445,
+  "artifact_bytes": 8970853,
+  "artifact_sha256": "4a59e9babc100c99b3df0b6ed7745605a6bad76c7efd56afb9f9eef30343cb74",
+  "archive_bytes": 1444104,
+  "archive_sha256": "3d1842e4113d53da81d6e4ce208a4ec136c2dc95a31c646e04b4a27eb1bd2588",
+  "objects_sha256": {
+    "IOBlockStorageDevice.late.o": "0245537fe15dc54ad583d754a21986039cce510e00c5b50894ce7a80ecae2eb9",
+    "NativeUfs.late.o": "588fb07ad24f39da46288a5be774e7092859b40af74e65f83d60794fe3143745",
+    "SourceStorage.o": "a09230480eb112381cd214a6489a2f22af39a08bcfaabc3662fcf9f68ce7eccc",
+    "SourceRootPolicies.o": "4deefe9ad7665446b32863524538a5fdfe723fd3bd5d99d569d46f608519a360",
+    "SourceRootBinding.o": "81733ac471ce5851adcb83ea78c20f26013deaada6fecba0aa8d62a390e3ae26",
+    "verified_root.o": "496b932c5050b89a6e57b6b737470e40ab184156beb130d8db51d9f653db5556",
+    "xnu_crypto.o": "f3fe30c6519521e252451c6df74e503061f17c854d7a75600a0ad016a9850198",
+    "RootAnchor.o": "09b71a893a9d366dd4b8d1b48efbcd2bbb35780c478dc57990a0e796b8b1f4bb"
+  },
+  "interface_revisions": {
+    "kits/VerifiedRoot": "974f043d0c71ba2e60331483a41c6c6d35274ee3",
+    "drivers/VirtioMmioBlock": "4e1013eb8c45077b57f8d38d61b389fe899ea1c3"
+  },
+  "board_patches": [
+    {
+      "path": "patches/ufs/0001-sm8650-compatible.patch",
+      "sha256": "8697b355a151c3cdb4aae8b595c58c05f760b4c3ddd6ce458ac5c8a1571b7993"
+    },
+    {
+      "path": "patches/ufs/0002-transactional-handoff.patch",
+      "sha256": "d369b1dea509b8acd551df3cf982823cffa9092ee997f1e93a34471411bb150f"
+    },
+    {
+      "path": "patches/ufs/0003-minimal-source-runtime.patch",
+      "sha256": "3c3aeb2af937b9ff81f3c65ec1cf49f00bbf44a57f27e6421ba57f13faf76274"
+    }
+  ],
+  "policy_bundle_sha256": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+  "policy_bundle_bytes": 1712,
+  "independent_member_hash_and_late_constructor_checks_passed": true,
+  "static_abi_result": "storage-abi-44071685590.json",
+  "linked_into_kernel": false,
+  "startup_hook_selected": false,
+  "root_policy_handoff_exercised": false,
+  "runtime_qualified": false
+}

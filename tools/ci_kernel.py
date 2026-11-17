@@ -189,6 +189,13 @@ def main():
               'source_commit': actual, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
               'cpu_subtype': checked['cpu_subtype'], 'mach_o_filetype': checked['mach_o_filetype'],
               'prelink_skipped': native, 'hardware_boot_verified': False}
+    if ctx.need_config().get('XNU_SOURCE_STORAGE'):
+        from verify_storage_integration import verify as verify_storage
+        integrated = verify_storage(ctx.tree, ctx.need_config(), ctx.tree / ctx.board['kernel']['prelink']['kernel'])
+        (output / 'source-storage-integration.json').write_text(json.dumps(integrated, indent=2) + '\n')
+        record['source_storage_linked'] = True
+        record['storage_integration_report_sha256'] = hashlib.sha256(
+            (output / 'source-storage-integration.json').read_bytes()).hexdigest()
     (output / 'build-result.json').write_text(json.dumps(record, indent=2) + '\n')
     print(json.dumps(record, indent=2), flush=True)
     shutil.copytree(work / 'kernel', output / 'kernel', dirs_exist_ok=True)
