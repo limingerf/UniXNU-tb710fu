@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "attempts": [
+    {
+      "run_id": 44084514457,
+      "url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44084514457",
+      "device_commit": "fbdd30ab98d16115c16ac7319b861e05af456623",
+      "conclusion": "failure",
+      "actual_failure_stage": "patch application before compilation",
+      "artifact_id": 14329735673,
+      "artifact_bytes": 13325,
+      "artifact_sha256": "b55071fc490b4b3cb1e62cc27ccc230b8e7700cb4a1d15356c7c45e97eeb3927",
+      "job_log_sha256": "d45d78a0d79ca95732086adad41056e6bdcf40e7dcdbb4660d2991df47a43e86",
+      "cdc_host_tests": "PASS",
+      "native_link_verified": false,
+      "prelink_verified": false,
+      "correction": "Wrong 0012 leading context fixed; independent Git-root application and resulting startup order verified."
+    },
+    {
+      "run_id": 44085996576,
+      "url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44085996576",
+      "device_commit": "6f4f1ddd7aa3346be94183c3592c888874cadec9",
+      "conclusion": "failure",
+      "actual_failure_stage": "archive-06 CdcXnu compilation",
+      "artifact_id": 14328449848,
+      "artifact_bytes": 106130,
+      "artifact_sha256": "b33403a65e69f7532515fac882ed79c19d6fb93d41bc118e3cea1e69cdee1d8e",
+      "job_log_sha256": "76863024cda5c437292b5f31b76ddada51ccb889da7ade9f567c7bde8296149c",
+      "cdc_host_tests": "PASS",
+      "native_link_verified": false,
+      "prelink_verified": false,
+      "first_actual_error": "osfmk/libsa/arm/types.h:59: dev_t redefinition, reached through BSD sys/param.h under MACH_KERNEL_PRIVATE.",
+      "correction": "Use osfmk kern/misc_protos.h instead of BSD sys/param.h and sys/systm.h; retain compiler warnings as errors.",
+      "portable_target_objects_checked": [
+        "CdcKernelTap.o",
+        "CdcLogRing.o",
+        "CdcAcmProtocol.o",
+        "CdcTransportGuard.o",
+        "CdcDwc3.o"
+      ]
+    }
+  ],
+  "runtime_qualified": false,
+  "cdc_enumeration_verified": false,
+  "signing_performed": false,
+  "device_operations": false
+}

@@ -21,6 +21,14 @@ invocation. Its leading context was wrong. The corrected patch is actually
 applied in an independent Git fixture with verified changed bytes and startup
 order; see `docs/evidence/usb-cdc-startup-patch-check.json`. The initial nested
 fixture had silently skipped patch paths, so its exit code was insufficient.
+Run 44085996576 at `6f4f1ddd7aa3346be94183c3592c888874cadec9` then applied
+the complete series and compiled/checked the five portable CDC objects. It
+stopped compiling `CdcXnu.c`: BSD `sys/param.h`/`sys/systm.h` conflicted with
+the replayed osfmk/MACH_KERNEL_PRIVATE declarations. The adapter now uses
+the same `kern/misc_protos.h` declaration boundary as osfmk/startup.c.
+The earlier bootstrap undefined providers are expected before archives;
+the actual failing stage was archive-06/CdcXnu compilation. Neither final
+native integration nor prelink passed in this attempt.
 No actual TB710FU CDC enumeration or captured USB log is established. Unsupported
 active-DMA reset/disconnect stops the session and retains DMA. The scheduled
 worker does not promise final panic text after scheduling stops. No signing or

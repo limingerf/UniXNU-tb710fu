@@ -55,9 +55,10 @@ The early RAM tap retains earlier text only if boot reaches the worker.
 ## Sources and baseline
 
 Programming facts are checked against Linux v6.1
-`drivers/usb/dwc3/{core.h,ep0.c,gadget.c}` and the official USB guide's MIT
+`drivers/usb/dwc3/{core.h,ep0.c,gadget.c}` and the MIT
 reference `FFT-infra/QcomXnuUsbDebug` at
-`18bcc385bc0c97ff38343a83040f19711392867b`. The latter was reviewed for DWC3
+`18bcc385bc0c97ff38343a83040f19711392867b`, identified through the pinned
+official `docs/zh/devices/alioth-taishang1024.md` CDC evidence. It was reviewed for DWC3
 behavior, not adopted wholesale: it targets another SoC and its recovery is
 not proof of DMA cancellation here. No unlicensed Vermeer controller code is
 copied. SM8650 clock/GDSC/eUSB2/TCSR/QSCRATCH facts come from the pinned

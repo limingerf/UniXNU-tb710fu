@@ -4,8 +4,9 @@
 // sm8650.dtsi, gcc-sm8650.c, gdsc.c, tcsrcc-sm8650.c, phy-snps-eusb2.c,
 // dwc3-qcom.c; SMMU fields: ARM IHI 0062. This is firmware adoption only:
 // no clock, regulator, PMIC repeater, PHY, SMMU or UFS reinitialization.
-#include <sys/param.h>
-#include <sys/systm.h>
+// Replay an osfmk/startup.c compile record (MACH_KERNEL_PRIVATE). Use its
+// native declarations; BSD param/systm mixes incompatible BSD/libsa types.
+#include <kern/misc_protos.h>
 #include <kern/clock.h>
 #include <kern/thread.h>
 #include <kern/sched_prim.h>
