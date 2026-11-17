@@ -77,7 +77,8 @@ jobs:
         run: |
           set -euo pipefail
           work=$(cat .work/resolved-work.txt)
-          python3 scripts/check_live_log_qr.py --qr-source "$work/tree/build/tb710fu-live-log/upstream" --output-dir .work/artifacts/live-qr-check
+          python3 scripts/check_live_log_qr.py --qr-source "$work/tree/build/tb710fu-live-log/upstream" --output-dir .work/artifacts/live-qr-check --xnu-debug 0
+          python3 scripts/check_live_log_qr.py --qr-source "$work/tree/build/tb710fu-live-log/upstream" --output-dir .work/artifacts/live-qr-debug1-check --xnu-debug 1
           python3 scripts/check_live_console_capture.py --cc clang --xnu "$work/tree/.cache/xnu-work" --framework .work/UniXNU --output-dir .work/artifacts/live-console-check
       - name: Prelink the macOS 27 kernelcache closure
         if: inputs.stage == 'prelink' || inputs.stage == 'ufs-integrated'

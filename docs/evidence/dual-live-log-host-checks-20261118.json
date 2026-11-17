@@ -1,0 +1,2044 @@
+{
+  "schema_version": 1,
+  "stage": "dual-live-source-host-checks",
+  "result": "PASS",
+  "changes": [
+    "Independent 64KiB XNU capture and actual current-boot ramoops in two live slots.",
+    "Immutable early512 backup in each XNU metadata/raw-section file.",
+    "QR-only DEBUG config isolation; pinned Mu bytes and native compile flags unchanged."
+  ],
+  "current_source_hashes_verified": true,
+  "checks": {
+    ".work/dual-live-protocol-check/protocol-check.json": {
+      "sha256": "6772fd28631465bf8186e92d2b6f76b32648081db8482d843ff4383f330af3ef",
+      "report": {
+        "result": "PASS",
+        "compile_command": [
+          "cc",
+          "-std=c11",
+          "-Wall",
+          "-Wextra",
+          "-Werror",
+          "-pedantic",
+          "-fsanitize=address,undefined",
+          "-fno-omit-frame-pointer",
+          "-I",
+          "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+          "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/Test/live_protocol_test.c",
+          "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveProtocol.c",
+          "-o",
+          "/mnt/d/unixnu-tb710fu-clean/.work/dual-live-protocol-check/live-protocol-test"
+        ],
+        "receiver_command": [
+          "/mnt/c/Program Files/WindowsApps/OpenAI.CodexPrimaryRuntime.v26-1116-1220-0_26.1116.1220.0_x64__3k8sg7r9htsxt/dependencies/node/bin/node.exe",
+          "D:\\unixnu-tb710fu-clean\\package\\Tb710fuLiveLog\\Test\\check_receiver.mjs",
+          "--receiver",
+          "D:\\unixnu-tb710fu-clean\\.local\\early-fault-qr\\onesend-receiver.mjs",
+          "--fixtures",
+          "D:\\unixnu-tb710fu-clean\\.work\\dual-live-protocol-check",
+          "--output",
+          "D:\\unixnu-tb710fu-clean\\.work\\dual-live-protocol-check\\receiver-check.json"
+        ],
+        "sources_sha256": {
+          "package/Tb710fuLiveLog/LiveProtocol.c": "693aab42c163b053844ee1a1dfa1082fc8b4547f1a68c308304ad0a892b9286d",
+          "package/Tb710fuLiveLog/LiveProtocol.h": "70e76df948e17c468401f1e9ce771f042c9497d9e563adea155b03c5a640d8d2",
+          "package/Tb710fuLiveLog/Test/live_protocol_test.c": "3b8d98859f9491b9a7a584056e0bc7141ccc93b89df0557a89a70c0f00b1d35b",
+          "package/Tb710fuLiveLog/Test/check_receiver.mjs": "2834f7faca18117700acdc376138e59a1ecd1cdf3ac1667e4a8e7ce94077a2a5"
+        },
+        "receiver_source": {
+          "repository": "makerjackie/onesend",
+          "commit": "39e95ce59df2f2dc38d2556dd4239cec6a0ca35f",
+          "files": [
+            {
+              "path": "website/app/web-transfer-protocol.mjs",
+              "sha256": "fd94d7f24ba27892d07c2d18cf67986dd793501d2b6298332cbb21863d7ccae3"
+            }
+          ]
+        },
+        "receiver_copy": {
+          "path": "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/onesend-receiver.mjs",
+          "sha256": "fd94d7f24ba27892d07c2d18cf67986dd793501d2b6298332cbb21863d7ccae3",
+          "pinned_url": "https://raw.githubusercontent.com/makerjackie/onesend/39e95ce59df2f2dc38d2556dd4239cec6a0ca35f/website/app/web-transfer-protocol.mjs",
+          "fetched_to_cache": false
+        },
+        "verification_inputs_sha256": {
+          "scripts/check_live_log_protocol.py": "d3d27f5761555ec9333bcad513c0a7df9a20ace2cc2caa05569bb1ab65ac1136",
+          "diagnostics/early-report/receiver-sources.json": "e4d98b21efef130a5aa573a8f60e63b791243ad0b8b6124cee707d83e5e4e3ea"
+        },
+        "sanitizers": "AddressSanitizer/UndefinedBehaviorSanitizer",
+        "capture_checks": {
+          "result": "PASS",
+          "capacity_bytes": 65536,
+          "tail_limit": 4096,
+          "zero_init_empty": true,
+          "two_wraps_and_boundary_tail": true,
+          "busy_writer_drops_without_wait": true,
+          "busy_reader_preserves_output": true,
+          "absolute_position_saturates": true,
+          "invalid_outputs_preserved": true,
+          "source_enum_and_two_round_gate": true,
+          "file_body_range_bounds": true
+        },
+        "interop_result": {
+          "result": "PASS",
+          "receiver_source": {
+            "repository": "makerjackie/onesend",
+            "commit": "39e95ce59df2f2dc38d2556dd4239cec6a0ca35f",
+            "files": [
+              {
+                "path": "website/app/web-transfer-protocol.mjs",
+                "sha256": "fd94d7f24ba27892d07c2d18cf67986dd793501d2b6298332cbb21863d7ccae3"
+              }
+            ]
+          },
+          "cases": [
+            {
+              "block_count": 1,
+              "log_bytes": 17,
+              "source": "ramoops",
+              "source_bytes": 17,
+              "backup_bytes_retained": 0,
+              "rounds": 4,
+              "fixed_recovery_single_frame": null,
+              "exact_reference_sender_frames": true,
+              "immutable_raw_log_and_all_crcs": true,
+              "ordered_unordered_duplicate_drop_late_join": "PASS",
+              "corrupted_frame_refused": true,
+              "replacement_session_requires_receiver_reset": true
+            },
+            {
+              "block_count": 2,
+              "log_bytes": 900,
+              "source": "ramoops",
+              "source_bytes": 900,
+              "backup_bytes_retained": 0,
+              "rounds": 4,
+              "fixed_recovery_single_frame": null,
+              "exact_reference_sender_frames": true,
+              "immutable_raw_log_and_all_crcs": true,
+              "ordered_unordered_duplicate_drop_late_join": "PASS",
+              "corrupted_frame_refused": true,
+              "replacement_session_requires_receiver_reset": true
+            },
+            {
+              "block_count": 6,
+              "log_bytes": 4096,
+              "source": "ramoops",
+              "source_bytes": 4096,
+              "backup_bytes_retained": 0,
+              "rounds": 4,
+              "fixed_recovery_single_frame": null,
+              "exact_reference_sender_frames": true,
+              "immutable_raw_log_and_all_crcs": true,
+              "ordered_unordered_duplicate_drop_late_join": "PASS",
+              "corrupted_frame_refused": true,
+              "replacement_session_requires_receiver_reset": true
+            },
+            {
+              "block_count": 1,
+              "log_bytes": 512,
+              "source": "ramoops",
+              "source_bytes": 512,
+              "backup_bytes_retained": 0,
+              "rounds": 4,
+              "fixed_recovery_single_frame": true,
+              "exact_reference_sender_frames": true,
+              "immutable_raw_log_and_all_crcs": true,
+              "ordered_unordered_duplicate_drop_late_join": "PASS",
+              "corrupted_frame_refused": true,
+              "replacement_session_requires_receiver_reset": true
+            },
+            {
+              "block_count": 1,
+              "log_bytes": 17,
+              "source": "xnu",
+              "source_bytes": 17,
+              "backup_bytes_retained": 0,
+              "rounds": 4,
+              "fixed_recovery_single_frame": null,
+              "exact_reference_sender_frames": true,
+              "immutable_raw_log_and_all_crcs": true,
+              "ordered_unordered_duplicate_drop_late_join": "PASS",
+              "corrupted_frame_refused": true,
+              "replacement_session_requires_receiver_reset": true
+            },
+            {
+              "block_count": 6,
+              "log_bytes": 3693,
+              "source": "xnu",
+              "source_bytes": 3072,
+              "backup_bytes_retained": 512,
+              "rounds": 4,
+              "fixed_recovery_single_frame": null,
+              "exact_reference_sender_frames": true,
+              "immutable_raw_log_and_all_crcs": true,
+              "ordered_unordered_duplicate_drop_late_join": "PASS",
+              "corrupted_frame_refused": true,
+              "replacement_session_requires_receiver_reset": true
+            },
+            {
+              "block_count": 2,
+              "log_bytes": 621,
+              "source": "xnu",
+              "source_bytes": 0,
+              "backup_bytes_retained": 512,
+              "rounds": 4,
+              "fixed_recovery_single_frame": null,
+              "exact_reference_sender_frames": true,
+              "immutable_raw_log_and_all_crcs": true,
+              "ordered_unordered_duplicate_drop_late_join": "PASS",
+              "corrupted_frame_refused": true,
+              "replacement_session_requires_receiver_reset": true
+            }
+          ],
+          "limits": "Portable C sender and unchanged pinned browser protocol; camera acquisition, kernel scheduling and real ramoops bytes remain hardware gates."
+        },
+        "device_operations": false,
+        "hardware_verified": false
+      }
+    },
+    ".work/dual-live-protocol-check/crosscompile-check.json": {
+      "sha256": "9c370500ec945b66b4b078bb7c4bd4236150bb6242a2a2570b3f022672be9dee",
+      "report": {
+        "result": "PASS",
+        "compile_command": [
+          "clang",
+          "--target=arm64e-apple-ios27.0",
+          "-std=c11",
+          "-Oz",
+          "-ffreestanding",
+          "-fno-builtin",
+          "-mgeneral-regs-only",
+          "-mstrict-align",
+          "-Wall",
+          "-Wextra",
+          "-Werror",
+          "-Wconversion",
+          "-Wsign-conversion",
+          "-Wmissing-prototypes",
+          "-I",
+          "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+          "-c",
+          "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveProtocol.c",
+          "-o",
+          "/mnt/d/unixnu-tb710fu-clean/.work/dual-live-protocol-check/LiveProtocol.arm64e.o"
+        ],
+        "object_sha256": "4fd334a998e1e70f1f972d9839f908e824a220970df404b959112e0500f81ff2",
+        "instruction_check": {
+          "command": [
+            "llvm-objdump",
+            "--disassemble",
+            "--no-show-raw-insn",
+            "/mnt/d/unixnu-tb710fu-clean/.work/dual-live-protocol-check/LiveProtocol.arm64e.o"
+          ],
+          "instruction_count": 480,
+          "disassembly_sha256": "b6cf3fc7e5a9e2de8f6751426a0e3a6eb2ab852b985309d5a17d7b2d47dc6d29",
+          "fp_simd_found": false,
+          "direct_translation_control_writes_found": false
+        },
+        "supported_native_build": false
+      }
+    },
+    ".work/live-dual-xnu-adapter-check/adapter-check.json": {
+      "sha256": "c70ad8e6c71f69b3a3bdb8082a53872b74835dcf565ad7271ecba85fcad7af15",
+      "report": {
+        "schema_version": 1,
+        "stage": "native-live-xnu-adapter-host-check",
+        "result": "PASS",
+        "groups": 10,
+        "invalid_video_cases": 15,
+        "sanitizers": [
+          "address",
+          "undefined"
+        ],
+        "source_sha256": {
+          "tests/live_xnu_adapter_test.c": "417762e5b4cabf31f72977f97318c03bb026e99efb7a334a9ae394c6699d56db",
+          "scripts/check_live_xnu_adapter.py": "6751fb840dedc72f38663c6d2f3023cf369721d93c5fc7b349e249a546630398",
+          "patches/xnu/0013-tb710fu-ramoops-snapshot.patch": "746ddf60c1bcc9af5c71b37a6ec8ea6310d6f0033719e0c6fd309d56b848f8dc",
+          "patches/xnu/0014-tb710fu-native-live-log.patch": "6d403de5b14abd2e7605b0089490945ba522b7a30e57328cfe1fa9c59cb1ab12",
+          "package/Tb710fuLiveLog/LiveXnu.c": "96344e7b6f84864b65b31756166fe75d7a39161192ac4eabf3536aae519bc887",
+          "package/Tb710fuLiveLog/LiveProtocol.c": "693aab42c163b053844ee1a1dfa1082fc8b4547f1a68c308304ad0a892b9286d",
+          "package/Tb710fuLiveLog/LiveProtocol.h": "70e76df948e17c468401f1e9ce771f042c9497d9e563adea155b03c5a640d8d2",
+          "package/Tb710fuLiveLog/LiveDisplay.c": "ee5516ab08d41a49c9990b647a213dcc5c204549f498e7f53560efd1c5bb2521",
+          "package/Tb710fuLiveLog/LiveDisplay.h": "de45b5da36ceac0246a66f424eba459ccc0e03bd9337dde290dec6b50c3beec4",
+          "diagnostics/early-report/Font.h": "e3174a605a6cfb351e5fd613f5c0d29c509a873fc3218b79fc4e7115fe405071"
+        },
+        "derived_header_sha256": {
+          "tb710fu_ramoops.h": "3421611b8dda2500ec5f57f05c713ae05525f61e62e9bcafcfa9d63974b12e5f",
+          "tb710fu_live_log.h": "6d0f3ba6ebc0319847a106b2509f1f11ea4289bd42f848b46d2b38f2d0bb2879"
+        },
+        "compiler": "gcc (Debian 14.2.0-19) 14.2.0",
+        "output": "PASS: 10 dual-stream LiveXnu adapter groups (15 invalid video cases)",
+        "qr_encoder": "Stubbed frame recorder; production Mu QR checked separately.",
+        "checks": {
+          "independent_xnu_and_ramoops_bytes": true,
+          "zero_initialized_capture_survives_display_init": true,
+          "every_left_file_retains_early_backup_after_wrap": true,
+          "metadata_lengths_and_current_filename_range": true,
+          "stream_frames_match_own_immutable_envelopes": true,
+          "two_round_replacement_gate_per_stream": true,
+          "one_frame_per_global_500ms_tick_including_refresh": true,
+          "initial_raw_ramoops_frame_before_freeze": true,
+          "dual_slots_preserve_other_stream": true,
+          "small_screen_alternates_one_bounded_rectangle": true,
+          "capture_and_render_contention_skip_without_wait": true,
+          "worker_creation_does_not_imply_execution": true,
+          "busy_empty_freeze_is_not_retried_as_early": true
+        },
+        "limits": "Host XNU-service simulation; native ABI, real scheduling/MMU/caches and device behavior unverified.",
+        "device_operations": false
+      }
+    },
+    ".work/live-dual-console-capture-check/capture-check.json": {
+      "sha256": "2fa471ef81658ed91a6be7f13239dfef6f26f756000fc3dcc120dae34d0f427b",
+      "report": {
+        "result": "PASS",
+        "cases": 18,
+        "source_xnu": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+        "patched_source_sha256": "1983cf3b2435c99a7d86b712c84fb5a42e89d7bfc8e17084060f83d6d42fa68a",
+        "patched_pe_source_sha256": "cfc4bb74deb3e495a51c5ac4374e66bdea8a4c5c417b50b28c891a9d061a26eb",
+        "extracted_production_sha256": "51a7c58890b59c85d12234dcd06392841e19dea2226c9a2ce8481a1575193d49",
+        "patches_sha256": {
+          "/mnt/d/unixnu-tb710fu-clean/.work/UniXNU/patches/xnu-12377/zzz-boot-progress.patch": "2e765b4416bab549027a7024c4777b003ca833b80addcc29daafbbcf65241e28",
+          "/mnt/d/unixnu-tb710fu-clean/.work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-verbose-text-console.patch": "5c92f574d1e6b5458a61ea9335a5cc44a6b6627a017a8b56c603aec7533dc8b2",
+          "/mnt/d/unixnu-tb710fu-clean/patches/xnu/0004-tb710fu-ramoops-console.patch": "63a2e0e2086605a8a909fca75150f3eddf789f0cd1042d659d752e22d0a45ea8",
+          "/mnt/d/unixnu-tb710fu-clean/patches/xnu/0010-tb710fu-cdc-kernel-log-tap.patch": "f66f5189329e14f382dab34788500f7f940c45321e053a9aa3aad4d5960623d6",
+          "/mnt/d/unixnu-tb710fu-clean/patches/xnu/0014-tb710fu-native-live-log.patch": "6d403de5b14abd2e7605b0089490945ba522b7a30e57328cfe1fa9c59cb1ab12"
+        },
+        "test_sha256": "a5aa5a5c087808dd7ec558729c01e3065e02ee3403da582b10b979cba01069e3",
+        "sanitizers": [
+          "address",
+          "undefined"
+        ],
+        "output": "PASS: 18 production serial/PE capture, preinit and no-duplicate cases",
+        "checks": {
+          "actual_serial_and_pe_function_bodies": true,
+          "independent_xnu_ramoops_cdc_and_uart_recorders": true,
+          "normal_and_disabled_xnu_capture_once": true,
+          "preinit_inactive_disabled_xnu_capture": true,
+          "pe_direct_crlf_and_raw_capture_once": true,
+          "serial_options_callback_does_not_duplicate_taps": true
+        },
+        "limits": "Actual production function bodies with host console-service stubs; no native or hardware qualification.",
+        "device_operations": false
+      }
+    },
+    ".work/live-qr-dual-debug0/qr-host-check.json": {
+      "sha256": "13f585f3fd42558a13981fdcef2cb55913468d2abe37baac8b0363d31a06ee1e",
+      "report": {
+        "result": "PASS",
+        "stage": "real-live-QR-and-Mu-host-test",
+        "xnu_object_like_DEBUG_before_compat": 0,
+        "sanitizers": [
+          "address",
+          "undefined"
+        ],
+        "QR_source": {
+          "repository": "microsoft/mu_plus",
+          "commit": "b8d46c71610318e36a661819e1e3c0b8bdda413a",
+          "files": [
+            {
+              "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.inf",
+              "sha256": "79c46eb751f2fd53bd6c8521df99af1f2be0e9590cfc8af665e6f7f0bb151bd4"
+            },
+            {
+              "path": "MsGraphicsPkg/Include/Library/QrEncoderLib.h",
+              "sha256": "96b2e3c1a0b5271e2cf97bc48f33839a9a6b9535d9d37700bce2b4c7d3ee56f5"
+            },
+            {
+              "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c",
+              "sha256": "055d446e6a75f9ea687cf3561ae933d266a6e48acda9c905edf2b62dea1f2d2a"
+            },
+            {
+              "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c",
+              "sha256": "125f1bda27f84d2b4a71a4b86d9364daff47b6aa7b0f2dfdc1bc0a309cc6c15a"
+            },
+            {
+              "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.h",
+              "sha256": "2ad084b975448abaadd3ce4e6037c83201677a447c6a3845346503d7041c6bdf"
+            }
+          ]
+        },
+        "source_hashes": {
+          "package/Tb710fuLiveLog/LiveQr.c": "9c4a88505810891b62b703b7066372a8503b5abac650da1ea00ca40030532794",
+          "package/Tb710fuLiveLog/LiveQr.h": "c865c7c0a747737348eb0ea10ae5b8af02a2c4cbb9bf6248a082ec7b281750dd",
+          "package/Tb710fuLiveLog/LiveQrCompat.h": "75c75a7ce2cc79fe548ed43ff5a6f871c95f9ed9064611f2d595de4759423965",
+          "package/Tb710fuLiveLog/LiveProtocol.c": "693aab42c163b053844ee1a1dfa1082fc8b4547f1a68c308304ad0a892b9286d",
+          "package/Tb710fuLiveLog/LiveProtocol.h": "70e76df948e17c468401f1e9ce771f042c9497d9e563adea155b03c5a640d8d2",
+          "package/Tb710fuLiveLog/Test/live_qr_test.c": "73d49846baf31d0cd2de6c4ad8a0aa8b34592a89f2f7efd0b90d1aa14a4614d5"
+        },
+        "test_script_sha256": "6770528f219e08e11bd34c6fa66ddbebe149c38cfbb6ac4def130b1c21faee36",
+        "compile_commands": [
+          [
+            "gcc",
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-pedantic",
+            "-fno-builtin",
+            "-fno-omit-frame-pointer",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/include",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+            "-DDEBUG=0",
+            "-include",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+            "-c",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQr.c",
+            "-o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/LiveQr.o"
+          ],
+          [
+            "gcc",
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-pedantic",
+            "-fno-builtin",
+            "-fno-omit-frame-pointer",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/include",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+            "-DDEBUG=0",
+            "-include",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+            "-fwrapv",
+            "-Wno-sign-compare",
+            "-Wno-unused-parameter",
+            "-Wno-shift-negative-value",
+            "-Wno-unused-but-set-variable",
+            "-Wno-strict-prototypes",
+            "-c",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c",
+            "-o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/QrEncoderLib.o"
+          ],
+          [
+            "gcc",
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-pedantic",
+            "-fno-builtin",
+            "-fno-omit-frame-pointer",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/include",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+            "-DDEBUG=0",
+            "-include",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+            "-fwrapv",
+            "-Wno-sign-compare",
+            "-Wno-unused-parameter",
+            "-Wno-shift-negative-value",
+            "-Wno-unused-but-set-variable",
+            "-Wno-strict-prototypes",
+            "-c",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c",
+            "-o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/QrEncoderTables.o"
+          ],
+          [
+            "gcc",
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-pedantic",
+            "-fno-builtin",
+            "-fno-omit-frame-pointer",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/include",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/Test/live_qr_test.c",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveProtocol.c",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/LiveQr.o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/QrEncoderLib.o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/QrEncoderTables.o",
+            "-o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/live-qr-test"
+          ]
+        ],
+        "QR_symbols": {
+          "LiveQr.c": "                 U __asan_init\n                 U __asan_option_detect_stack_use_after_return\n                 U __asan_register_globals\n                 U __asan_report_load1\n                 U __asan_report_load8\n                 U __asan_report_store1\n                 U __asan_report_store4\n                 U __asan_report_store8\n                 U __asan_stack_malloc_0\n                 U __asan_unregister_globals\n                 U __asan_version_mismatch_check_v8\n0000000000000459 T tb_live_qr_AllocateCopyPool\n0000000000000366 T tb_live_qr_AllocatePool\n000000000000041b T tb_live_qr_AllocateZeroPool\n000000000000024d T tb_live_qr_CopyMem\n00000000000004a8 T tb_live_qr_encode\n000000000000049d T tb_live_qr_FreePool\n0000000000000000 T tb_live_qr_memcpy\n0000000000000174 T tb_live_qr_memset\n                 U tb_live_qr_QrEncodeData\n000000000000027a T tb_live_qr_SetMem32\n                 U __ubsan_handle_pointer_overflow_abort\n                 U __ubsan_handle_type_mismatch_v1_abort\n",
+          "QrEncoderLib.c": "                 U __asan_handle_no_return\n                 U __asan_init\n                 U __asan_option_detect_stack_use_after_return\n                 U __asan_register_globals\n                 U __asan_report_load1\n                 U __asan_report_load2\n                 U __asan_report_load4\n                 U __asan_report_load8\n                 U __asan_report_store1\n                 U __asan_report_store8\n                 U __asan_report_store_n\n                 U __asan_stack_malloc_1\n                 U __asan_stack_malloc_2\n                 U __asan_unregister_globals\n                 U __asan_version_mismatch_check_v8\n00000000000005c4 B __odr_asan.tb_live_qr_gBitStream\n00000000000005c3 B __odr_asan.tb_live_qr_gBitStreamCount\n00000000000005c0 B __odr_asan.tb_live_qr_gBltBuffer\n00000000000005c7 B __odr_asan.tb_live_qr_gCodeWordCount\n00000000000005c8 B __odr_asan.tb_live_qr_gCodeWords\n00000000000005c5 B __odr_asan.tb_live_qr_gECWordCount\n00000000000005c6 B __odr_asan.tb_live_qr_gECWords\n00000000000005c1 B __odr_asan.tb_live_qr_gFlags\n00000000000005ca B __odr_asan.tb_live_qr_gQrBitmap\n00000000000005c9 B __odr_asan.tb_live_qr_gQrBitmapLen\n00000000000005cd B __odr_asan.tb_live_qr_gQrLevel\n00000000000005cb B __odr_asan.tb_live_qr_gQrMask\n00000000000005cc B __odr_asan.tb_live_qr_gQrMode\n00000000000005ce B __odr_asan.tb_live_qr_gQrSize\n00000000000005c2 B __odr_asan.tb_live_qr_gQrT\n00000000000005cf B __odr_asan.tb_live_qr_gQrVersion\n                 U tb_live_qr_AllocateCopyPool\n                 U tb_live_qr_AllocatePool\n                 U tb_live_qr_AllocateZeroPool\n                 U tb_live_qr_alogTable\n0000000000000350 T tb_live_qr_CheckQrVersion\n                 U tb_live_qr_CopyMem\n                 U tb_live_qr_FreePool\n                 U tb_live_qr_gAlignmentLocations\n                 U tb_live_qr_gAlphaNumerics\n00000000000002c0 B tb_live_qr_gBitStream\n0000000000000300 B tb_live_qr_gBitStreamCount\n00000000000003c0 B tb_live_qr_gBltBuffer\n0000000000000200 B tb_live_qr_gCodeWordCount\n00000000000001c0 B tb_live_qr_gCodeWords\n0000000000000280 B tb_live_qr_gECWordCount\n0000000000000240 B tb_live_qr_gECWords\n0000000000000380 B tb_live_qr_gFlags\n                 U tb_live_qr_gFormatInfo\n                 U tb_live_qr_gGeneratorPolynomials\n                 U tb_live_qr_gLengthBits\n0000000000000140 B tb_live_qr_gQrBitmap\n0000000000000180 B tb_live_qr_gQrBitmapLen\n0000000000000080 B tb_live_qr_gQrLevel\n0000000000000100 B tb_live_qr_gQrMask\n00000000000000c0 B tb_live_qr_gQrMode\n0000000000000040 B tb_live_qr_gQrSize\n0000000000000340 B tb_live_qr_gQrT\n                 U tb_live_qr_gQrTable\n0000000000000000 B tb_live_qr_gQrVersion\n                 U tb_live_qr_gVersionInfo\n                 U tb_live_qr_InitializeLogTables\n                 U tb_live_qr_logTable\n0000000000009382 T tb_live_qr_QrEncodeData\n                 U tb_live_qr_SetMem32\n                 U __ubsan_handle_divrem_overflow_abort\n                 U __ubsan_handle_out_of_bounds_abort\n                 U __ubsan_handle_pointer_overflow_abort\n                 U __ubsan_handle_shift_out_of_bounds_abort\n                 U __ubsan_handle_type_mismatch_v1_abort\n",
+          "QrEncoderTables.c": "                 U __asan_init\n                 U __asan_register_globals\n                 U __asan_report_store1\n                 U __asan_unregister_globals\n                 U __asan_version_mismatch_check_v8\n0000000000000241 B __odr_asan.tb_live_qr_alogTable\n000000000000024f B __odr_asan.tb_live_qr_Code10\n000000000000024e B __odr_asan.tb_live_qr_Code13\n000000000000024d B __odr_asan.tb_live_qr_Code15\n000000000000024c B __odr_asan.tb_live_qr_Code16\n000000000000024b B __odr_asan.tb_live_qr_Code17\n000000000000024a B __odr_asan.tb_live_qr_Code18\n0000000000000249 B __odr_asan.tb_live_qr_Code20\n0000000000000248 B __odr_asan.tb_live_qr_Code22\n0000000000000247 B __odr_asan.tb_live_qr_Code24\n0000000000000246 B __odr_asan.tb_live_qr_Code26\n0000000000000245 B __odr_asan.tb_live_qr_Code28\n0000000000000244 B __odr_asan.tb_live_qr_Code30\n0000000000000250 B __odr_asan.tb_live_qr_Code7\n0000000000000251 B __odr_asan.tb_live_qr_gAlignmentLocations\n0000000000000255 B __odr_asan.tb_live_qr_gAlphaNumerics\n0000000000000253 B __odr_asan.tb_live_qr_gFormatInfo\n0000000000000243 B __odr_asan.tb_live_qr_gGeneratorPolynomials\n0000000000000254 B __odr_asan.tb_live_qr_gLengthBits\n0000000000000256 B __odr_asan.tb_live_qr_gQrTable\n0000000000000252 B __odr_asan.tb_live_qr_gVersionInfo\n0000000000000242 B __odr_asan.tb_live_qr_logTable\n0000000000000240 B __odr_asan.tb_live_qr_QR_modulo\n0000000000000120 B tb_live_qr_alogTable\n0000000000001120 R tb_live_qr_Code10\n0000000000001160 R tb_live_qr_Code13\n00000000000011a0 R tb_live_qr_Code15\n00000000000011e0 R tb_live_qr_Code16\n0000000000001220 R tb_live_qr_Code17\n0000000000001260 R tb_live_qr_Code18\n00000000000012a0 R tb_live_qr_Code20\n00000000000012e0 R tb_live_qr_Code22\n0000000000001320 R tb_live_qr_Code24\n0000000000001360 R tb_live_qr_Code26\n00000000000013a0 R tb_live_qr_Code28\n00000000000013e0 R tb_live_qr_Code30\n00000000000010e0 R tb_live_qr_Code7\n0000000000000fa0 R tb_live_qr_gAlignmentLocations\n0000000000000de0 R tb_live_qr_gAlphaNumerics\n0000000000000e80 R tb_live_qr_gFormatInfo\n0000000000000000 D tb_live_qr_gGeneratorPolynomials\n0000000000000e40 R tb_live_qr_gLengthBits\n0000000000000000 R tb_live_qr_gQrTable\n0000000000000ee0 R tb_live_qr_gVersionInfo\n0000000000000000 T tb_live_qr_InitializeLogTables\n0000000000000000 B tb_live_qr_logTable\n0000000000001420 R tb_live_qr_QR_modulo\n                 U __ubsan_handle_out_of_bounds_abort\n                 U __ubsan_handle_pointer_overflow_abort\n                 U __ubsan_handle_type_mismatch_v1_abort\n"
+        },
+        "repeated_encodes": 64,
+        "Mu_compile_semantics": "-fwrapv for its signed all-one mask; fixed Mu bytes unchanged",
+        "fixtures": {
+          "fixed512": {
+            "bytes": 512,
+            "blocks": 1,
+            "frames": 2
+          },
+          "live4096": {
+            "bytes": 4096,
+            "blocks": 6,
+            "frames": 12
+          },
+          "xnu-backup": {
+            "early_bytes": 512,
+            "current_bytes": 3072,
+            "blocks": 6,
+            "frames": 12
+          }
+        },
+        "independent_decode_pending": true,
+        "hardware_verified": false
+      }
+    },
+    ".work/live-qr-dual-debug0/qr-independent-decode.json": {
+      "sha256": "44a2ec8412698165a6c8ab4f64b78046420bfd389b698c5c4dcb7ee7be439afa",
+      "report": {
+        "result": "PASS",
+        "decoder": "independent ZXing-C++",
+        "cases": [
+          {
+            "fixture": "fixed512",
+            "QR_frames_decoded": 2,
+            "block_count": 1,
+            "file_bytes": 512,
+            "filename": "TB710FU-ramoops-fixed-0-4294967296-4294967808.log",
+            "file_sha256": "702af9b45f0b6d9d825184534c261926c531cf79e7aa6da0731acc59454f65c6",
+            "all_decoded_frame_bytes_exact": true,
+            "recovered_file_bytes_exact": true
+          },
+          {
+            "fixture": "live4096",
+            "QR_frames_decoded": 12,
+            "block_count": 6,
+            "file_bytes": 4096,
+            "filename": "TB710FU-ramoops-live-1-4294967296-4294971392.log",
+            "file_sha256": "bc972b49e49e6a5c094bcf9b47ad2f262e7f2f2812c60f87ce7879c6134748a0",
+            "all_decoded_frame_bytes_exact": true,
+            "recovered_file_bytes_exact": true
+          },
+          {
+            "fixture": "xnu-backup",
+            "QR_frames_decoded": 12,
+            "block_count": 6,
+            "file_bytes": 3711,
+            "filename": "TB710FU-xnu-live-2-4294967296-4294970368.log",
+            "file_sha256": "b9c7da672389d983fcccaa32cb3e4fd614b03f734f961b7697d586cf0372601c",
+            "all_decoded_frame_bytes_exact": true,
+            "recovered_file_bytes_exact": true
+          }
+        ],
+        "hardware_verified": false
+      }
+    },
+    ".work/live-qr-dual-debug1/qr-host-check.json": {
+      "sha256": "13d4c730f9b062dd190ecccc7e96b64f252fde9f4e43d9564266e69897b5791c",
+      "report": {
+        "result": "PASS",
+        "stage": "real-live-QR-and-Mu-host-test",
+        "xnu_object_like_DEBUG_before_compat": 1,
+        "sanitizers": [
+          "address",
+          "undefined"
+        ],
+        "QR_source": {
+          "repository": "microsoft/mu_plus",
+          "commit": "b8d46c71610318e36a661819e1e3c0b8bdda413a",
+          "files": [
+            {
+              "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.inf",
+              "sha256": "79c46eb751f2fd53bd6c8521df99af1f2be0e9590cfc8af665e6f7f0bb151bd4"
+            },
+            {
+              "path": "MsGraphicsPkg/Include/Library/QrEncoderLib.h",
+              "sha256": "96b2e3c1a0b5271e2cf97bc48f33839a9a6b9535d9d37700bce2b4c7d3ee56f5"
+            },
+            {
+              "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c",
+              "sha256": "055d446e6a75f9ea687cf3561ae933d266a6e48acda9c905edf2b62dea1f2d2a"
+            },
+            {
+              "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c",
+              "sha256": "125f1bda27f84d2b4a71a4b86d9364daff47b6aa7b0f2dfdc1bc0a309cc6c15a"
+            },
+            {
+              "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.h",
+              "sha256": "2ad084b975448abaadd3ce4e6037c83201677a447c6a3845346503d7041c6bdf"
+            }
+          ]
+        },
+        "source_hashes": {
+          "package/Tb710fuLiveLog/LiveQr.c": "9c4a88505810891b62b703b7066372a8503b5abac650da1ea00ca40030532794",
+          "package/Tb710fuLiveLog/LiveQr.h": "c865c7c0a747737348eb0ea10ae5b8af02a2c4cbb9bf6248a082ec7b281750dd",
+          "package/Tb710fuLiveLog/LiveQrCompat.h": "75c75a7ce2cc79fe548ed43ff5a6f871c95f9ed9064611f2d595de4759423965",
+          "package/Tb710fuLiveLog/LiveProtocol.c": "693aab42c163b053844ee1a1dfa1082fc8b4547f1a68c308304ad0a892b9286d",
+          "package/Tb710fuLiveLog/LiveProtocol.h": "70e76df948e17c468401f1e9ce771f042c9497d9e563adea155b03c5a640d8d2",
+          "package/Tb710fuLiveLog/Test/live_qr_test.c": "73d49846baf31d0cd2de6c4ad8a0aa8b34592a89f2f7efd0b90d1aa14a4614d5"
+        },
+        "test_script_sha256": "6770528f219e08e11bd34c6fa66ddbebe149c38cfbb6ac4def130b1c21faee36",
+        "compile_commands": [
+          [
+            "gcc",
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-pedantic",
+            "-fno-builtin",
+            "-fno-omit-frame-pointer",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug1/include",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+            "-DDEBUG=1",
+            "-include",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+            "-c",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQr.c",
+            "-o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug1/LiveQr.o"
+          ],
+          [
+            "gcc",
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-pedantic",
+            "-fno-builtin",
+            "-fno-omit-frame-pointer",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug1/include",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+            "-DDEBUG=1",
+            "-include",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+            "-fwrapv",
+            "-Wno-sign-compare",
+            "-Wno-unused-parameter",
+            "-Wno-shift-negative-value",
+            "-Wno-unused-but-set-variable",
+            "-Wno-strict-prototypes",
+            "-c",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c",
+            "-o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug1/QrEncoderLib.o"
+          ],
+          [
+            "gcc",
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-pedantic",
+            "-fno-builtin",
+            "-fno-omit-frame-pointer",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug1/include",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+            "-DDEBUG=1",
+            "-include",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+            "-fwrapv",
+            "-Wno-sign-compare",
+            "-Wno-unused-parameter",
+            "-Wno-shift-negative-value",
+            "-Wno-unused-but-set-variable",
+            "-Wno-strict-prototypes",
+            "-c",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c",
+            "-o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug1/QrEncoderTables.o"
+          ],
+          [
+            "gcc",
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-pedantic",
+            "-fno-builtin",
+            "-fno-omit-frame-pointer",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug1/include",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/Test/live_qr_test.c",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveProtocol.c",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug1/LiveQr.o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug1/QrEncoderLib.o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug1/QrEncoderTables.o",
+            "-o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug1/live-qr-test"
+          ]
+        ],
+        "QR_symbols": {
+          "LiveQr.c": "                 U __asan_init\n                 U __asan_option_detect_stack_use_after_return\n                 U __asan_register_globals\n                 U __asan_report_load1\n                 U __asan_report_load8\n                 U __asan_report_store1\n                 U __asan_report_store4\n                 U __asan_report_store8\n                 U __asan_stack_malloc_0\n                 U __asan_unregister_globals\n                 U __asan_version_mismatch_check_v8\n0000000000000459 T tb_live_qr_AllocateCopyPool\n0000000000000366 T tb_live_qr_AllocatePool\n000000000000041b T tb_live_qr_AllocateZeroPool\n000000000000024d T tb_live_qr_CopyMem\n00000000000004a8 T tb_live_qr_encode\n000000000000049d T tb_live_qr_FreePool\n0000000000000000 T tb_live_qr_memcpy\n0000000000000174 T tb_live_qr_memset\n                 U tb_live_qr_QrEncodeData\n000000000000027a T tb_live_qr_SetMem32\n                 U __ubsan_handle_pointer_overflow_abort\n                 U __ubsan_handle_type_mismatch_v1_abort\n",
+          "QrEncoderLib.c": "                 U __asan_handle_no_return\n                 U __asan_init\n                 U __asan_option_detect_stack_use_after_return\n                 U __asan_register_globals\n                 U __asan_report_load1\n                 U __asan_report_load2\n                 U __asan_report_load4\n                 U __asan_report_load8\n                 U __asan_report_store1\n                 U __asan_report_store8\n                 U __asan_report_store_n\n                 U __asan_stack_malloc_1\n                 U __asan_stack_malloc_2\n                 U __asan_unregister_globals\n                 U __asan_version_mismatch_check_v8\n00000000000005c4 B __odr_asan.tb_live_qr_gBitStream\n00000000000005c3 B __odr_asan.tb_live_qr_gBitStreamCount\n00000000000005c0 B __odr_asan.tb_live_qr_gBltBuffer\n00000000000005c7 B __odr_asan.tb_live_qr_gCodeWordCount\n00000000000005c8 B __odr_asan.tb_live_qr_gCodeWords\n00000000000005c5 B __odr_asan.tb_live_qr_gECWordCount\n00000000000005c6 B __odr_asan.tb_live_qr_gECWords\n00000000000005c1 B __odr_asan.tb_live_qr_gFlags\n00000000000005ca B __odr_asan.tb_live_qr_gQrBitmap\n00000000000005c9 B __odr_asan.tb_live_qr_gQrBitmapLen\n00000000000005cd B __odr_asan.tb_live_qr_gQrLevel\n00000000000005cb B __odr_asan.tb_live_qr_gQrMask\n00000000000005cc B __odr_asan.tb_live_qr_gQrMode\n00000000000005ce B __odr_asan.tb_live_qr_gQrSize\n00000000000005c2 B __odr_asan.tb_live_qr_gQrT\n00000000000005cf B __odr_asan.tb_live_qr_gQrVersion\n                 U tb_live_qr_AllocateCopyPool\n                 U tb_live_qr_AllocatePool\n                 U tb_live_qr_AllocateZeroPool\n                 U tb_live_qr_alogTable\n0000000000000350 T tb_live_qr_CheckQrVersion\n                 U tb_live_qr_CopyMem\n                 U tb_live_qr_FreePool\n                 U tb_live_qr_gAlignmentLocations\n                 U tb_live_qr_gAlphaNumerics\n00000000000002c0 B tb_live_qr_gBitStream\n0000000000000300 B tb_live_qr_gBitStreamCount\n00000000000003c0 B tb_live_qr_gBltBuffer\n0000000000000200 B tb_live_qr_gCodeWordCount\n00000000000001c0 B tb_live_qr_gCodeWords\n0000000000000280 B tb_live_qr_gECWordCount\n0000000000000240 B tb_live_qr_gECWords\n0000000000000380 B tb_live_qr_gFlags\n                 U tb_live_qr_gFormatInfo\n                 U tb_live_qr_gGeneratorPolynomials\n                 U tb_live_qr_gLengthBits\n0000000000000140 B tb_live_qr_gQrBitmap\n0000000000000180 B tb_live_qr_gQrBitmapLen\n0000000000000080 B tb_live_qr_gQrLevel\n0000000000000100 B tb_live_qr_gQrMask\n00000000000000c0 B tb_live_qr_gQrMode\n0000000000000040 B tb_live_qr_gQrSize\n0000000000000340 B tb_live_qr_gQrT\n                 U tb_live_qr_gQrTable\n0000000000000000 B tb_live_qr_gQrVersion\n                 U tb_live_qr_gVersionInfo\n                 U tb_live_qr_InitializeLogTables\n                 U tb_live_qr_logTable\n0000000000009382 T tb_live_qr_QrEncodeData\n                 U tb_live_qr_SetMem32\n                 U __ubsan_handle_divrem_overflow_abort\n                 U __ubsan_handle_out_of_bounds_abort\n                 U __ubsan_handle_pointer_overflow_abort\n                 U __ubsan_handle_shift_out_of_bounds_abort\n                 U __ubsan_handle_type_mismatch_v1_abort\n",
+          "QrEncoderTables.c": "                 U __asan_init\n                 U __asan_register_globals\n                 U __asan_report_store1\n                 U __asan_unregister_globals\n                 U __asan_version_mismatch_check_v8\n0000000000000241 B __odr_asan.tb_live_qr_alogTable\n000000000000024f B __odr_asan.tb_live_qr_Code10\n000000000000024e B __odr_asan.tb_live_qr_Code13\n000000000000024d B __odr_asan.tb_live_qr_Code15\n000000000000024c B __odr_asan.tb_live_qr_Code16\n000000000000024b B __odr_asan.tb_live_qr_Code17\n000000000000024a B __odr_asan.tb_live_qr_Code18\n0000000000000249 B __odr_asan.tb_live_qr_Code20\n0000000000000248 B __odr_asan.tb_live_qr_Code22\n0000000000000247 B __odr_asan.tb_live_qr_Code24\n0000000000000246 B __odr_asan.tb_live_qr_Code26\n0000000000000245 B __odr_asan.tb_live_qr_Code28\n0000000000000244 B __odr_asan.tb_live_qr_Code30\n0000000000000250 B __odr_asan.tb_live_qr_Code7\n0000000000000251 B __odr_asan.tb_live_qr_gAlignmentLocations\n0000000000000255 B __odr_asan.tb_live_qr_gAlphaNumerics\n0000000000000253 B __odr_asan.tb_live_qr_gFormatInfo\n0000000000000243 B __odr_asan.tb_live_qr_gGeneratorPolynomials\n0000000000000254 B __odr_asan.tb_live_qr_gLengthBits\n0000000000000256 B __odr_asan.tb_live_qr_gQrTable\n0000000000000252 B __odr_asan.tb_live_qr_gVersionInfo\n0000000000000242 B __odr_asan.tb_live_qr_logTable\n0000000000000240 B __odr_asan.tb_live_qr_QR_modulo\n0000000000000120 B tb_live_qr_alogTable\n0000000000001120 R tb_live_qr_Code10\n0000000000001160 R tb_live_qr_Code13\n00000000000011a0 R tb_live_qr_Code15\n00000000000011e0 R tb_live_qr_Code16\n0000000000001220 R tb_live_qr_Code17\n0000000000001260 R tb_live_qr_Code18\n00000000000012a0 R tb_live_qr_Code20\n00000000000012e0 R tb_live_qr_Code22\n0000000000001320 R tb_live_qr_Code24\n0000000000001360 R tb_live_qr_Code26\n00000000000013a0 R tb_live_qr_Code28\n00000000000013e0 R tb_live_qr_Code30\n00000000000010e0 R tb_live_qr_Code7\n0000000000000fa0 R tb_live_qr_gAlignmentLocations\n0000000000000de0 R tb_live_qr_gAlphaNumerics\n0000000000000e80 R tb_live_qr_gFormatInfo\n0000000000000000 D tb_live_qr_gGeneratorPolynomials\n0000000000000e40 R tb_live_qr_gLengthBits\n0000000000000000 R tb_live_qr_gQrTable\n0000000000000ee0 R tb_live_qr_gVersionInfo\n0000000000000000 T tb_live_qr_InitializeLogTables\n0000000000000000 B tb_live_qr_logTable\n0000000000001420 R tb_live_qr_QR_modulo\n                 U __ubsan_handle_out_of_bounds_abort\n                 U __ubsan_handle_pointer_overflow_abort\n                 U __ubsan_handle_type_mismatch_v1_abort\n"
+        },
+        "repeated_encodes": 64,
+        "Mu_compile_semantics": "-fwrapv for its signed all-one mask; fixed Mu bytes unchanged",
+        "fixtures": {
+          "fixed512": {
+            "bytes": 512,
+            "blocks": 1,
+            "frames": 2
+          },
+          "live4096": {
+            "bytes": 4096,
+            "blocks": 6,
+            "frames": 12
+          },
+          "xnu-backup": {
+            "early_bytes": 512,
+            "current_bytes": 3072,
+            "blocks": 6,
+            "frames": 12
+          }
+        },
+        "independent_decode_pending": true,
+        "hardware_verified": false
+      }
+    },
+    ".work/live-qr-dual-debug1/qr-independent-decode.json": {
+      "sha256": "44a2ec8412698165a6c8ab4f64b78046420bfd389b698c5c4dcb7ee7be439afa",
+      "report": {
+        "result": "PASS",
+        "decoder": "independent ZXing-C++",
+        "cases": [
+          {
+            "fixture": "fixed512",
+            "QR_frames_decoded": 2,
+            "block_count": 1,
+            "file_bytes": 512,
+            "filename": "TB710FU-ramoops-fixed-0-4294967296-4294967808.log",
+            "file_sha256": "702af9b45f0b6d9d825184534c261926c531cf79e7aa6da0731acc59454f65c6",
+            "all_decoded_frame_bytes_exact": true,
+            "recovered_file_bytes_exact": true
+          },
+          {
+            "fixture": "live4096",
+            "QR_frames_decoded": 12,
+            "block_count": 6,
+            "file_bytes": 4096,
+            "filename": "TB710FU-ramoops-live-1-4294967296-4294971392.log",
+            "file_sha256": "bc972b49e49e6a5c094bcf9b47ad2f262e7f2f2812c60f87ce7879c6134748a0",
+            "all_decoded_frame_bytes_exact": true,
+            "recovered_file_bytes_exact": true
+          },
+          {
+            "fixture": "xnu-backup",
+            "QR_frames_decoded": 12,
+            "block_count": 6,
+            "file_bytes": 3711,
+            "filename": "TB710FU-xnu-live-2-4294967296-4294970368.log",
+            "file_sha256": "b9c7da672389d983fcccaa32cb3e4fd614b03f734f961b7697d586cf0372601c",
+            "all_decoded_frame_bytes_exact": true,
+            "recovered_file_bytes_exact": true
+          }
+        ],
+        "hardware_verified": false
+      }
+    },
+    ".work/dual-qr-arm64e/check.json": {
+      "sha256": "9e9591db5bc707e370aa9bac4d39aefd80c70fdce332e88cde7efcc45955bd3b",
+      "report": {
+        "result": "PASS",
+        "objects": [
+          {
+            "command": [
+              "clang",
+              "--target=arm64e-apple-ios27.0.0",
+              "-O2",
+              "-Wall",
+              "-Wextra",
+              "-Werror",
+              "-mgeneral-regs-only",
+              "-mstrict-align",
+              "-ffreestanding",
+              "-fno-builtin",
+              "-DDEBUG=0",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/include",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+              "-include",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+              "-c",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQr.c",
+              "-o",
+              "/mnt/d/unixnu-tb710fu-clean/.work/dual-qr-arm64e/LiveQr-debug0.o"
+            ],
+            "object_sha256": "653d158d51a6669238e967878c8ce9201d90d89ba9ba3781d8b8d98176a1d7bf",
+            "source_sha256": "9c4a88505810891b62b703b7066372a8503b5abac650da1ea00ca40030532794"
+          },
+          {
+            "command": [
+              "clang",
+              "--target=arm64e-apple-ios27.0.0",
+              "-O2",
+              "-Wall",
+              "-Wextra",
+              "-Werror",
+              "-mgeneral-regs-only",
+              "-mstrict-align",
+              "-ffreestanding",
+              "-fno-builtin",
+              "-DDEBUG=0",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/include",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+              "-include",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+              "-fwrapv",
+              "-Wno-sign-compare",
+              "-Wno-unused-parameter",
+              "-Wno-shift-negative-value",
+              "-Wno-unused-but-set-variable",
+              "-c",
+              "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c",
+              "-o",
+              "/mnt/d/unixnu-tb710fu-clean/.work/dual-qr-arm64e/QrEncoderLib-debug0.o"
+            ],
+            "object_sha256": "5d40e63ac5834f6f63e9078e4a978e4a3a4cf6de2490b3859c19c8b04a8cbfcf",
+            "source_sha256": "055d446e6a75f9ea687cf3561ae933d266a6e48acda9c905edf2b62dea1f2d2a"
+          },
+          {
+            "command": [
+              "clang",
+              "--target=arm64e-apple-ios27.0.0",
+              "-O2",
+              "-Wall",
+              "-Wextra",
+              "-Werror",
+              "-mgeneral-regs-only",
+              "-mstrict-align",
+              "-ffreestanding",
+              "-fno-builtin",
+              "-DDEBUG=0",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/include",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+              "-include",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+              "-fwrapv",
+              "-Wno-sign-compare",
+              "-Wno-unused-parameter",
+              "-Wno-shift-negative-value",
+              "-Wno-unused-but-set-variable",
+              "-c",
+              "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c",
+              "-o",
+              "/mnt/d/unixnu-tb710fu-clean/.work/dual-qr-arm64e/QrEncoderTables-debug0.o"
+            ],
+            "object_sha256": "fd775040255c240f8cbd51dbcc7e442890b61c5027823a4c2e38b21896a1a719",
+            "source_sha256": "125f1bda27f84d2b4a71a4b86d9364daff47b6aa7b0f2dfdc1bc0a309cc6c15a"
+          },
+          {
+            "command": [
+              "clang",
+              "--target=arm64e-apple-ios27.0.0",
+              "-O2",
+              "-Wall",
+              "-Wextra",
+              "-Werror",
+              "-mgeneral-regs-only",
+              "-mstrict-align",
+              "-ffreestanding",
+              "-fno-builtin",
+              "-DDEBUG=1",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/include",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+              "-include",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+              "-c",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQr.c",
+              "-o",
+              "/mnt/d/unixnu-tb710fu-clean/.work/dual-qr-arm64e/LiveQr-debug1.o"
+            ],
+            "object_sha256": "653d158d51a6669238e967878c8ce9201d90d89ba9ba3781d8b8d98176a1d7bf",
+            "source_sha256": "9c4a88505810891b62b703b7066372a8503b5abac650da1ea00ca40030532794"
+          },
+          {
+            "command": [
+              "clang",
+              "--target=arm64e-apple-ios27.0.0",
+              "-O2",
+              "-Wall",
+              "-Wextra",
+              "-Werror",
+              "-mgeneral-regs-only",
+              "-mstrict-align",
+              "-ffreestanding",
+              "-fno-builtin",
+              "-DDEBUG=1",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/include",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+              "-include",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+              "-fwrapv",
+              "-Wno-sign-compare",
+              "-Wno-unused-parameter",
+              "-Wno-shift-negative-value",
+              "-Wno-unused-but-set-variable",
+              "-c",
+              "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c",
+              "-o",
+              "/mnt/d/unixnu-tb710fu-clean/.work/dual-qr-arm64e/QrEncoderLib-debug1.o"
+            ],
+            "object_sha256": "5d40e63ac5834f6f63e9078e4a978e4a3a4cf6de2490b3859c19c8b04a8cbfcf",
+            "source_sha256": "055d446e6a75f9ea687cf3561ae933d266a6e48acda9c905edf2b62dea1f2d2a"
+          },
+          {
+            "command": [
+              "clang",
+              "--target=arm64e-apple-ios27.0.0",
+              "-O2",
+              "-Wall",
+              "-Wextra",
+              "-Werror",
+              "-mgeneral-regs-only",
+              "-mstrict-align",
+              "-ffreestanding",
+              "-fno-builtin",
+              "-DDEBUG=1",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/include",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+              "-include",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+              "-fwrapv",
+              "-Wno-sign-compare",
+              "-Wno-unused-parameter",
+              "-Wno-shift-negative-value",
+              "-Wno-unused-but-set-variable",
+              "-c",
+              "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c",
+              "-o",
+              "/mnt/d/unixnu-tb710fu-clean/.work/dual-qr-arm64e/QrEncoderTables-debug1.o"
+            ],
+            "object_sha256": "fd775040255c240f8cbd51dbcc7e442890b61c5027823a4c2e38b21896a1a719",
+            "source_sha256": "125f1bda27f84d2b4a71a4b86d9364daff47b6aa7b0f2dfdc1bc0a309cc6c15a"
+          }
+        ],
+        "limits": "Portable three-object cross compilation with simulated object DEBUG config; actual XNU headers/toolchain and native link still require supported macOS CI.",
+        "hardware_verified": false
+      }
+    },
+    ".work/live-dual-adapter/patch-check.json": {
+      "sha256": "190f7e8654d138979f93374a457e77ab5bc8a437b14e3381e1968be6af38bd55",
+      "report": {
+        "result": "PASS",
+        "source_xnu": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+        "framework": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+        "base_fixture": "/mnt/d/unixnu-tb710fu-clean/.work/fix-live-header-exports/xnu-lf",
+        "base_fixture_apply_check_sha256": "0fd1dfe8a0ef51c7cfbf49bed62e1e146a860fc759ab7c4f9acd8a54acaa392c",
+        "previous_patch_sha256": "4de6721645e04e752f12ec540d0f7d2add654c153a01de5d30ee4d4e2cc64763",
+        "new_patch_sha256": "6d403de5b14abd2e7605b0089490945ba522b7a30e57328cfe1fa9c59cb1ab12",
+        "preimage_sha256": {
+          "osfmk/arm/arm_init.c": "936c00f99ed80065526031114384f6937503a5ffd93e671231f75d97aaa99f91",
+          "osfmk/kern/startup.c": "c4f226c70e0ae819609e56837298f071c979a22fe8d71986c4c06f8de11bdcc2",
+          "osfmk/console/video_console.c": "e6196daa2cb7d9c7ae080f3a75e70f5f63da5e9cea11f7d32bf3f24efb08cea5",
+          "pexpert/arm/pe_kprintf.c": "747898eb01cd46bf7df6c6c91f4d7f156d86976dace72c19796787297f0e6595",
+          "osfmk/kern/tb710fu_live_log.h": null,
+          "osfmk/console/serial_console.c": "79dc60755a8cdfaa128aaa701679b7dbe6b34e7a5919595a57e5c75c269c62cd",
+          "osfmk/kern/Makefile": "fb49c1aebe945bf729d1290de5208bcb5a6c7527e9c5dc82c3ad178b8bbe1e6b"
+        },
+        "postimage_sha256": {
+          "osfmk/arm/arm_init.c": "e8c7bf720f626869a7af5cde8d400cc9451ea3fdbe09f59878a4bd75561ef50f",
+          "osfmk/kern/startup.c": "f5383088743ee8cd8e8377031a5dde7e2646d34988dc3ceefbbba25b8e92d7ab",
+          "osfmk/console/video_console.c": "9551ccd4673187ded32c9a5336b633bf1d45a8b88153a27da53176e0346fbe0f",
+          "pexpert/arm/pe_kprintf.c": "cfc4bb74deb3e495a51c5ac4374e66bdea8a4c5c417b50b28c891a9d061a26eb",
+          "osfmk/kern/tb710fu_live_log.h": "6d0f3ba6ebc0319847a106b2509f1f11ea4289bd42f848b46d2b38f2d0bb2879",
+          "osfmk/console/serial_console.c": "1983cf3b2435c99a7d86b712c84fb5a42e89d7bfc8e17084060f83d6d42fa68a",
+          "osfmk/kern/Makefile": "1b0c1071d482cc7146bdd0d99259c6e2337edf95c6864819d1603142c83e2d01"
+        },
+        "checks": {
+          "previous_patch_reversed_from_exact_fixture": true,
+          "new_patch_check_and_apply": true,
+          "generated_postimage_matches_applied": true,
+          "both_real_headers_exported_once": true
+        }
+      }
+    },
+    ".work/live-dual-adapter/all-140-check.json": {
+      "sha256": "82d00cba54b6681f6e38ff751045891356d1cbb8cf347ec78e8c1a10c8bf583e",
+      "report": {
+        "result": "PASS",
+        "source_xnu": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+        "framework": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+        "source_method": "pristine git archive; all 140 exact selected patches checked and actually applied in order in independent Linux temporary directory",
+        "manifest_path": "/mnt/d/unixnu-tb710fu-clean/.work/fix-live-header-exports/run-xnu-inputs.json",
+        "manifest_sha256": "eaa4632969456a0f290e5ed1da74bdb95c2a708df9623b27b29c4ca028245008",
+        "prior_run_id": 44112832250,
+        "all_140_ordered_patches_applied": true,
+        "first_139_input_hashes_unchanged": true,
+        "new_0014_postimages_match_preimage_generation_fixture": true,
+        "real_headers_exported_once": true,
+        "patches": [
+          {
+            "position": 1,
+            "path": ".work/UniXNU/patches/xnu-12377/bcm2837-machine-config.patch",
+            "sha256": "aee609b3a399a34aecd1fdff8a96622ab520b531bc981a9bd8e1f45c458e3adf",
+            "prior_run_sha256": "aee609b3a399a34aecd1fdff8a96622ab520b531bc981a9bd8e1f45c458e3adf",
+            "check_and_apply": true
+          },
+          {
+            "position": 2,
+            "path": ".work/UniXNU/patches/xnu-12377/local-availability.patch",
+            "sha256": "fc43703425115c82a3bdde8621053dd32de1a525e3764b365f5aacfe11897e26",
+            "prior_run_sha256": "fc43703425115c82a3bdde8621053dd32de1a525e3764b365f5aacfe11897e26",
+            "check_and_apply": true
+          },
+          {
+            "position": 3,
+            "path": ".work/UniXNU/patches/xnu-12377/cxx-flag-dependencies.patch",
+            "sha256": "020ff181e766c138ec3cf42b7197a4eb2c74f0afc4c077966e3cb3adbf691c59",
+            "prior_run_sha256": "020ff181e766c138ec3cf42b7197a4eb2c74f0afc4c077966e3cb3adbf691c59",
+            "check_and_apply": true
+          },
+          {
+            "position": 4,
+            "path": ".work/UniXNU/patches/xnu-12377/external-archive-dependencies.patch",
+            "sha256": "7f6e2e1971747e59714c580ce245a47d1aa5217d1a8c09293ee034ba0b350f70",
+            "prior_run_sha256": "7f6e2e1971747e59714c580ce245a47d1aa5217d1a8c09293ee034ba0b350f70",
+            "check_and_apply": true
+          },
+          {
+            "position": 5,
+            "path": ".work/UniXNU/patches/xnu-12377/public-entitlements-header.patch",
+            "sha256": "132dd15ce3fc31dbe175c2fcf1d9cebcd42559cc1d97391ce2bd11122ffb652b",
+            "prior_run_sha256": "132dd15ce3fc31dbe175c2fcf1d9cebcd42559cc1d97391ce2bd11122ffb652b",
+            "check_and_apply": true
+          },
+          {
+            "position": 6,
+            "path": ".work/UniXNU/patches/xnu-12377/apple-only-cpu-tunables.patch",
+            "sha256": "3e639e6549c6fc56599d95c4a84ae5ee6123628108ece5976c30e65c19659dee",
+            "prior_run_sha256": "3e639e6549c6fc56599d95c4a84ae5ee6123628108ece5976c30e65c19659dee",
+            "check_and_apply": true
+          },
+          {
+            "position": 7,
+            "path": ".work/UniXNU/patches/xnu-12377/non-apple-cache-monitor.patch",
+            "sha256": "b0c1dcf6f2763318bb28a5c15bf2bc990bc8aadb6a2a819bdde6bdffec3f55a5",
+            "prior_run_sha256": "b0c1dcf6f2763318bb28a5c15bf2bc990bc8aadb6a2a819bdde6bdffec3f55a5",
+            "check_and_apply": true
+          },
+          {
+            "position": 8,
+            "path": ".work/UniXNU/patches/xnu-12377/native-4k-bootstrap-capacity.patch",
+            "sha256": "0f6e27ff7ffaa6daed425b6a57e2edce981f27cc5326845ee76b7b402531957b",
+            "prior_run_sha256": "0f6e27ff7ffaa6daed425b6a57e2edce981f27cc5326845ee76b7b402531957b",
+            "check_and_apply": true
+          },
+          {
+            "position": 9,
+            "path": ".work/UniXNU/patches/xnu-12377/native-dt-panic-region.patch",
+            "sha256": "091fdf08b4043b36619fddb4bd580878673889f053b232169585491512a24733",
+            "prior_run_sha256": "091fdf08b4043b36619fddb4bd580878673889f053b232169585491512a24733",
+            "check_and_apply": true
+          },
+          {
+            "position": 10,
+            "path": ".work/UniXNU/patches/xnu-12377/armvirt-platform-personality.patch",
+            "sha256": "855da0e94e36ad86b8cec4adb72bd0d608f07e87d8e8945b2c7ad0d7b499d37a",
+            "prior_run_sha256": "855da0e94e36ad86b8cec4adb72bd0d608f07e87d8e8945b2c7ad0d7b499d37a",
+            "check_and_apply": true
+          },
+          {
+            "position": 11,
+            "path": ".work/UniXNU/patches/xnu-12377/native-aes-personality.patch",
+            "sha256": "4c8e5c18b7605c5adfcee8e4ec9e9c7fa1dee39c9db11173aad47dcef7f2ab9f",
+            "prior_run_sha256": "4c8e5c18b7605c5adfcee8e4ec9e9c7fa1dee39c9db11173aad47dcef7f2ab9f",
+            "check_and_apply": true
+          },
+          {
+            "position": 12,
+            "path": ".work/UniXNU/patches/xnu-12377/null-root-media.patch",
+            "sha256": "c4bb264feffc582f5e0633a34ac53cbb749f5a3e2cd9b3d898f80cffcedc3739",
+            "prior_run_sha256": "c4bb264feffc582f5e0633a34ac53cbb749f5a3e2cd9b3d898f80cffcedc3739",
+            "check_and_apply": true
+          },
+          {
+            "position": 13,
+            "path": ".work/UniXNU/patches/xnu-12377/zzx-pmap-sync-64bit-pa.patch",
+            "sha256": "e15821f127754419735cf64bd036d2f88d2d45a303427d1c935b4da6c34c1148",
+            "prior_run_sha256": "e15821f127754419735cf64bd036d2f88d2d45a303427d1c935b4da6c34c1148",
+            "check_and_apply": true
+          },
+          {
+            "position": 14,
+            "path": ".work/UniXNU/patches/xnu-12377/native-quiet-managed-page-report.patch",
+            "sha256": "2d4c2d744a954d7de2d905082402682f68dda954586ae280d02f68b0dfe83ad7",
+            "prior_run_sha256": "2d4c2d744a954d7de2d905082402682f68dda954586ae280d02f68b0dfe83ad7",
+            "check_and_apply": true
+          },
+          {
+            "position": 15,
+            "path": ".work/UniXNU/patches/xnu-12377/native-priv-work-interval.patch",
+            "sha256": "784d7b9f444850a5b6e0766771e9d8bb4ca3c1af64a4e861a321ce99ca2f72cb",
+            "prior_run_sha256": "784d7b9f444850a5b6e0766771e9d8bb4ca3c1af64a4e861a321ce99ca2f72cb",
+            "check_and_apply": true
+          },
+          {
+            "position": 16,
+            "path": ".work/UniXNU/patches/xnu-12377/native-work-interval-instance.patch",
+            "sha256": "7a18a6c31e7af0b2fd7b2105fb22c64fab80673f078a41f0469718eb24721c8e",
+            "prior_run_sha256": "7a18a6c31e7af0b2fd7b2105fb22c64fab80673f078a41f0469718eb24721c8e",
+            "check_and_apply": true
+          },
+          {
+            "position": 17,
+            "path": ".work/UniXNU/patches/xnu-12377/native-work-interval-soft-fail.patch",
+            "sha256": "d1ae08cca0a059a20a7c6b5c405dc75487777658203306a829b627cef49d3be7",
+            "prior_run_sha256": "d1ae08cca0a059a20a7c6b5c405dc75487777658203306a829b627cef49d3be7",
+            "check_and_apply": true
+          },
+          {
+            "position": 18,
+            "path": ".work/UniXNU/patches/xnu-12377/kernel-sdk-root.patch",
+            "sha256": "ce6eb317c60db1a5a4e9411029bd014bdc691364ea5ce57ec205faf00cff61ea",
+            "prior_run_sha256": "ce6eb317c60db1a5a4e9411029bd014bdc691364ea5ce57ec205faf00cff61ea",
+            "check_and_apply": true
+          },
+          {
+            "position": 19,
+            "path": ".work/UniXNU/patches/xnu-12377/source-machine-layer.patch",
+            "sha256": "5aa6607f97c3f823a94dd67df7cf14a0c2a27cfa435513ab29bc7a33f9bda500",
+            "prior_run_sha256": "5aa6607f97c3f823a94dd67df7cf14a0c2a27cfa435513ab29bc7a33f9bda500",
+            "check_and_apply": true
+          },
+          {
+            "position": 20,
+            "path": ".work/UniXNU/patches/xnu-12377/native-pac-keys.patch",
+            "sha256": "66209d4bb536e1fe557e31ca9f2fb090d66058d8ff469dd86957ecb1ae802528",
+            "prior_run_sha256": "66209d4bb536e1fe557e31ca9f2fb090d66058d8ff469dd86957ecb1ae802528",
+            "check_and_apply": true
+          },
+          {
+            "position": 21,
+            "path": ".work/UniXNU/patches/xnu-12377/native-pac-arm64-user-jop.patch",
+            "sha256": "09904a9e97a5f5885bb65a7adcb087aea133d1308f5f10da386c729973fef8e2",
+            "prior_run_sha256": "09904a9e97a5f5885bb65a7adcb087aea133d1308f5f10da386c729973fef8e2",
+            "check_and_apply": true
+          },
+          {
+            "position": 22,
+            "path": ".work/UniXNU/patches/xnu-12377/native-at-par-sync.patch",
+            "sha256": "ba976042976864629d65b5e38d661fb4c52f1c5ad2840dc723de52eaf506556d",
+            "prior_run_sha256": "ba976042976864629d65b5e38d661fb4c52f1c5ad2840dc723de52eaf506556d",
+            "check_and_apply": true
+          },
+          {
+            "position": 23,
+            "path": ".work/UniXNU/patches/xnu-12377/public-entitlements-v2-header.patch",
+            "sha256": "3646aa669c4126b715f5b3504ec6f641a38d15399addbc67ab47308d35245e1c",
+            "prior_run_sha256": "3646aa669c4126b715f5b3504ec6f641a38d15399addbc67ab47308d35245e1c",
+            "check_and_apply": true
+          },
+          {
+            "position": 24,
+            "path": ".work/UniXNU/patches/xnu-12377/no-apple-cpu-counters.patch",
+            "sha256": "3d1a22541d38519be6fac6e9ef5b795d35bcfba2cfb4181e0dce1d0fa3ec75df",
+            "prior_run_sha256": "3d1a22541d38519be6fac6e9ef5b795d35bcfba2cfb4181e0dce1d0fa3ec75df",
+            "check_and_apply": true
+          },
+          {
+            "position": 25,
+            "path": ".work/UniXNU/patches/xnu-12377/apple-only-core-type.patch",
+            "sha256": "78c2bd61a204ae682f878bc498d98cd0b7bec4ff56ef9eb69e3b036fdd1aaf7e",
+            "prior_run_sha256": "78c2bd61a204ae682f878bc498d98cd0b7bec4ff56ef9eb69e3b036fdd1aaf7e",
+            "check_and_apply": true
+          },
+          {
+            "position": 26,
+            "path": ".work/UniXNU/patches/xnu-12377/public-pmap-sart.patch",
+            "sha256": "c83beaf7f6eeb9aa149e070c5c549ace08020a74414e3beacb3f4db097671d3f",
+            "prior_run_sha256": "c83beaf7f6eeb9aa149e070c5c549ace08020a74414e3beacb3f4db097671d3f",
+            "check_and_apply": true
+          },
+          {
+            "position": 27,
+            "path": ".work/UniXNU/patches/xnu-12377/public-pmap-without-monitor.patch",
+            "sha256": "4e5fad954cb6b451ff6417da5c9fda708c8176b8caba494e48546ce4a8aa1121",
+            "prior_run_sha256": "4e5fad954cb6b451ff6417da5c9fda708c8176b8caba494e48546ce4a8aa1121",
+            "check_and_apply": true
+          },
+          {
+            "position": 28,
+            "path": ".work/UniXNU/patches/xnu-12377/optional-kernel-support-archive.patch",
+            "sha256": "f344edb0abb74082aa382ac902e0dec1045b3d501981a0e0aa8776f77fd82786",
+            "prior_run_sha256": "f344edb0abb74082aa382ac902e0dec1045b3d501981a0e0aa8776f77fd82786",
+            "check_and_apply": true
+          },
+          {
+            "position": 29,
+            "path": ".work/UniXNU/patches/xnu-12377/public-missing-definitions.patch",
+            "sha256": "ab0bf398fff722610ecdd8a50db912fb8355d5a7f2775c6a5a715a6e366e2555",
+            "prior_run_sha256": "ab0bf398fff722610ecdd8a50db912fb8355d5a7f2775c6a5a715a6e366e2555",
+            "check_and_apply": true
+          },
+          {
+            "position": 30,
+            "path": ".work/UniXNU/patches/xnu-12377/source-corecrypto14-bootstrap.patch",
+            "sha256": "7f678a620312094e5a31fb98659a01ba0e6e6318658e329feb16e4e006f614dd",
+            "prior_run_sha256": "7f678a620312094e5a31fb98659a01ba0e6e6318658e329feb16e4e006f614dd",
+            "check_and_apply": true
+          },
+          {
+            "position": 31,
+            "path": ".work/UniXNU/patches/xnu-12377/source-pthread-bootstrap.patch",
+            "sha256": "b97b7e63cf1fa89f1d931e961963d2f91665e13b4a782c421ca63e93b1b901e6",
+            "prior_run_sha256": "b97b7e63cf1fa89f1d931e961963d2f91665e13b4a782c421ca63e93b1b901e6",
+            "check_and_apply": true
+          },
+          {
+            "position": 32,
+            "path": ".work/UniXNU/patches/xnu-12377/native-arm-pan.patch",
+            "sha256": "9d171dd00a8ac07c0ca6374258f4ee6ce6d02667abd0117415585d616b0e08e8",
+            "prior_run_sha256": "9d171dd00a8ac07c0ca6374258f4ee6ce6d02667abd0117415585d616b0e08e8",
+            "check_and_apply": true
+          },
+          {
+            "position": 33,
+            "path": ".work/UniXNU/patches/xnu-12377/mockfs-intermediate-lookup.patch",
+            "sha256": "03680b2105cdf617aee78fd512ad9aba7b2f2a72af0b65f7197110724b6bf35a",
+            "prior_run_sha256": "03680b2105cdf617aee78fd512ad9aba7b2f2a72af0b65f7197110724b6bf35a",
+            "check_and_apply": true
+          },
+          {
+            "position": 34,
+            "path": ".work/UniXNU/patches/xnu-12377/mockfs-memory-device-width.patch",
+            "sha256": "1fdb181fca7dc57d35cc206b59769f4635174b9e133ed9ee07aeb293c5d572a4",
+            "prior_run_sha256": "1fdb181fca7dc57d35cc206b59769f4635174b9e133ed9ee07aeb293c5d572a4",
+            "check_and_apply": true
+          },
+          {
+            "position": 35,
+            "path": ".work/UniXNU/patches/xnu-12377/mockfs-statfs.patch",
+            "sha256": "c620dc455f8a56700f4b3bd25ffcb2e9b14a9e8e5cf8a57205ff2e22433fab23",
+            "prior_run_sha256": "c620dc455f8a56700f4b3bd25ffcb2e9b14a9e8e5cf8a57205ff2e22433fab23",
+            "check_and_apply": true
+          },
+          {
+            "position": 36,
+            "path": ".work/UniXNU/patches/xnu-12377/mockfs-test-file.patch",
+            "sha256": "cc8c6b1c17b11258b438b29b67fcc7db27981eb8d3cf278069f78bf8b341248c",
+            "prior_run_sha256": "cc8c6b1c17b11258b438b29b67fcc7db27981eb8d3cf278069f78bf8b341248c",
+            "check_and_apply": true
+          },
+          {
+            "position": 37,
+            "path": ".work/UniXNU/patches/xnu-12377/mockfs-typed-allocation.patch",
+            "sha256": "2173750f195ab4032f7a8d47276ad3074f6268c2fd68dd33afa0670aaef0aa32",
+            "prior_run_sha256": "2173750f195ab4032f7a8d47276ad3074f6268c2fd68dd33afa0670aaef0aa32",
+            "check_and_apply": true
+          },
+          {
+            "position": 38,
+            "path": ".work/UniXNU/patches/xnu-12377/native-lookup-trace.patch",
+            "sha256": "056421b3f1b31034d6301f0a17cda78d675f726b3ad02d468ea5c0fddbd6f30d",
+            "prior_run_sha256": "056421b3f1b31034d6301f0a17cda78d675f726b3ad02d468ea5c0fddbd6f30d",
+            "check_and_apply": true
+          },
+          {
+            "position": 39,
+            "path": ".work/UniXNU/patches/xnu-12377/native-union-getattrlistbulk.patch",
+            "sha256": "2908dcc79ebd0cd657c741f8e1de04dab720eeb12f495da97ab09d0416ee10f8",
+            "prior_run_sha256": "2908dcc79ebd0cd657c741f8e1de04dab720eeb12f495da97ab09d0416ee10f8",
+            "check_and_apply": true
+          },
+          {
+            "position": 40,
+            "path": ".work/UniXNU/patches/xnu-12377/native-union-lower-directory.patch",
+            "sha256": "905c52369f6ff5336323dc729f38d238ba735b607de826f433615ec7aba8d927",
+            "prior_run_sha256": "905c52369f6ff5336323dc729f38d238ba735b607de826f433615ec7aba8d927",
+            "check_and_apply": true
+          },
+          {
+            "position": 41,
+            "path": ".work/UniXNU/patches/xnu-12377/native-union-statfs-fsid.patch",
+            "sha256": "b517214ef32568ad9fa3d0a381c488e028ea8c24c7f562640ac7e66f43048c5b",
+            "prior_run_sha256": "b517214ef32568ad9fa3d0a381c488e028ea8c24c7f562640ac7e66f43048c5b",
+            "check_and_apply": true
+          },
+          {
+            "position": 42,
+            "path": ".work/UniXNU/patches/xnu-12377/native-work-interval-trace.patch",
+            "sha256": "049b262f6fc24ba10cd0f454a1d7d97a3284d6679430e41af44516cca5ccfbff",
+            "prior_run_sha256": "049b262f6fc24ba10cd0f454a1d7d97a3284d6679430e41af44516cca5ccfbff",
+            "check_and_apply": true
+          },
+          {
+            "position": 43,
+            "path": ".work/UniXNU/patches/xnu-12377/offline-component-load-probes.patch",
+            "sha256": "2ebb33e36766dd4b8282ca27067173aa0a12567daf69e24facde439ffecf8732",
+            "prior_run_sha256": "2ebb33e36766dd4b8282ca27067173aa0a12567daf69e24facde439ffecf8732",
+            "check_and_apply": true
+          },
+          {
+            "position": 44,
+            "path": ".work/UniXNU/patches/xnu-12377/offline-legacy-start.patch",
+            "sha256": "1d9922f3b17e28a7f8b67d58ec0f9f4dbfdb5eb1aa4b54b9520f6b8cbe1ff312",
+            "prior_run_sha256": "1d9922f3b17e28a7f8b67d58ec0f9f4dbfdb5eb1aa4b54b9520f6b8cbe1ff312",
+            "check_and_apply": true
+          },
+          {
+            "position": 45,
+            "path": ".work/UniXNU/patches/xnu-12377/offline-native-gpu-broker.patch",
+            "sha256": "e8148bfbf2a87238db07a61681a732436e7b28aaf40b7b919429b438b80aa4a0",
+            "prior_run_sha256": "e8148bfbf2a87238db07a61681a732436e7b28aaf40b7b919429b438b80aa4a0",
+            "check_and_apply": true
+          },
+          {
+            "position": 46,
+            "path": ".work/UniXNU/patches/xnu-12377/offline-owner-boot-manifest.patch",
+            "sha256": "5eb2a393ca5c3fd3c39fc861330ec4082e8001af5187382e49f911d8103ec4dd",
+            "prior_run_sha256": "5eb2a393ca5c3fd3c39fc861330ec4082e8001af5187382e49f911d8103ec4dd",
+            "check_and_apply": true
+          },
+          {
+            "position": 47,
+            "path": ".work/UniXNU/patches/xnu-12377/offline-owner-cache-carrier.patch",
+            "sha256": "55c588e619f9f54fbfef401b0b9198bfd54f67cdb361c25b1756d8b5efc5b9c3",
+            "prior_run_sha256": "55c588e619f9f54fbfef401b0b9198bfd54f67cdb361c25b1756d8b5efc5b9c3",
+            "check_and_apply": true
+          },
+          {
+            "position": 48,
+            "path": ".work/UniXNU/patches/xnu-12377/offline-owner-root-binding-audit.patch",
+            "sha256": "3bdd80daa9b76003e414eeb08dfa68284fa6d0757740b7aac8bc9b4533ba228f",
+            "prior_run_sha256": "3bdd80daa9b76003e414eeb08dfa68284fa6d0757740b7aac8bc9b4533ba228f",
+            "check_and_apply": true
+          },
+          {
+            "position": 49,
+            "path": ".work/UniXNU/patches/xnu-12377/offline-owner-root-crypto-probe.patch",
+            "sha256": "1b94332c8c8f1287311854fe4d65794322f14d4d7ee7aad871e2e076ae2fd140",
+            "prior_run_sha256": "1b94332c8c8f1287311854fe4d65794322f14d4d7ee7aad871e2e076ae2fd140",
+            "check_and_apply": true
+          },
+          {
+            "position": 50,
+            "path": ".work/UniXNU/patches/xnu-12377/offline-owner-z-air-init.patch",
+            "sha256": "e32f4224e22628eaa4516467875bc922be555bc112424c1b49551fefef4779f8",
+            "prior_run_sha256": "e32f4224e22628eaa4516467875bc922be555bc112424c1b49551fefef4779f8",
+            "check_and_apply": true
+          },
+          {
+            "position": 51,
+            "path": ".work/UniXNU/patches/xnu-12377/zzw-native-adreno-sandbox-grant.patch",
+            "sha256": "88edfd3614b05635c75ee721d623b4f4bcb8e3b46e26f6c528dcedb069192cbe",
+            "prior_run_sha256": "88edfd3614b05635c75ee721d623b4f4bcb8e3b46e26f6c528dcedb069192cbe",
+            "check_and_apply": true
+          },
+          {
+            "position": 52,
+            "path": ".work/UniXNU/patches/xnu-12377/zzwb-native-sandbox-grant-set-properties.patch",
+            "sha256": "17d14e224d62616a88ab802b111c327f8c6ec9835404981b5f6b8a0df62f21d7",
+            "prior_run_sha256": "17d14e224d62616a88ab802b111c327f8c6ec9835404981b5f6b8a0df62f21d7",
+            "check_and_apply": true
+          },
+          {
+            "position": 53,
+            "path": ".work/UniXNU/patches/xnu-12377/zzyc-owner-skip-launch-constraints.patch",
+            "sha256": "0b23e9bb5a3e58e26a12d567660129b1cb7d0fac031e5c94849012cd36e766f2",
+            "prior_run_sha256": "0b23e9bb5a3e58e26a12d567660129b1cb7d0fac031e5c94849012cd36e766f2",
+            "check_and_apply": true
+          },
+          {
+            "position": 54,
+            "path": ".work/UniXNU/patches/xnu-12377/native-4k-user-abi.patch",
+            "sha256": "878c05a48cf1d1579e87630897fbb74814f9aef1e6974ba16879f171c147ec59",
+            "prior_run_sha256": "878c05a48cf1d1579e87630897fbb74814f9aef1e6974ba16879f171c147ec59",
+            "check_and_apply": true
+          },
+          {
+            "position": 55,
+            "path": ".work/UniXNU/patches/xnu-12377/native-4k-signature-hash-cache.patch",
+            "sha256": "de977185c493e2c5398a1c0a279c192cb8bba07f2d38ad09f4a84e9e50621cb8",
+            "prior_run_sha256": "de977185c493e2c5398a1c0a279c192cb8bba07f2d38ad09f4a84e9e50621cb8",
+            "check_and_apply": true
+          },
+          {
+            "position": 56,
+            "path": ".work/UniXNU/patches/xnu-12377/native-4k-shared-region-slide.patch",
+            "sha256": "076be2859a0a7cf31574995c4a985da13f7b914ec55724eb82ae11a19b800b13",
+            "prior_run_sha256": "076be2859a0a7cf31574995c4a985da13f7b914ec55724eb82ae11a19b800b13",
+            "check_and_apply": true
+          },
+          {
+            "position": 57,
+            "path": ".work/UniXNU/patches/xnu-12377/native-text-fixup.patch",
+            "sha256": "49571672a1f864c0004107de638ae76c1afb34eec6f04d324df8846989b694fd",
+            "prior_run_sha256": "49571672a1f864c0004107de638ae76c1afb34eec6f04d324df8846989b694fd",
+            "check_and_apply": true
+          },
+          {
+            "position": 58,
+            "path": ".work/UniXNU/patches/xnu-12377/non-apple-iommu-bootstrap.patch",
+            "sha256": "9eb174b826c07fac68b5c2a50ff060846f6667bd7bf9161d7ec94b55a49097e3",
+            "prior_run_sha256": "9eb174b826c07fac68b5c2a50ff060846f6667bd7bf9161d7ec94b55a49097e3",
+            "check_and_apply": true
+          },
+          {
+            "position": 59,
+            "path": ".work/UniXNU/patches/xnu-12377/offline-owner-systemos-mount.patch",
+            "sha256": "aa56b25d0daa730c5e1d3da8eb42cd3f76da32366a9c5a32b51c0e3a7a68f64f",
+            "prior_run_sha256": "aa56b25d0daa730c5e1d3da8eb42cd3f76da32366a9c5a32b51c0e3a7a68f64f",
+            "check_and_apply": true
+          },
+          {
+            "position": 60,
+            "path": ".work/UniXNU/patches/xnu-12377/zzy-native-gpu-addon-mount.patch",
+            "sha256": "1483202946d5e5b4e8d4e7e5f96f25a84ddf6ed5c385930a3792e4e50b3b21bf",
+            "prior_run_sha256": "1483202946d5e5b4e8d4e7e5f96f25a84ddf6ed5c385930a3792e4e50b3b21bf",
+            "check_and_apply": true
+          },
+          {
+            "position": 61,
+            "path": ".work/UniXNU/patches/xnu-12377/zzy-staged-system-apps.patch",
+            "sha256": "835082c443b4497d625ca0b3006df898232c81780c232fb3ec1c1e2b0d69f381",
+            "prior_run_sha256": "835082c443b4497d625ca0b3006df898232c81780c232fb3ec1c1e2b0d69f381",
+            "check_and_apply": true
+          },
+          {
+            "position": 62,
+            "path": ".work/UniXNU/patches/xnu-12377/zzyb-native-cryptex-os-view.patch",
+            "sha256": "650d5b6da6f20445c9da632e0ab16525de4882728b2274acd1c10dc5f1e7cdd7",
+            "prior_run_sha256": "650d5b6da6f20445c9da632e0ab16525de4882728b2274acd1c10dc5f1e7cdd7",
+            "check_and_apply": true
+          },
+          {
+            "position": 63,
+            "path": ".work/UniXNU/patches/xnu-12377/arm64e-threaded-starts.patch",
+            "sha256": "cbeac2e43c63f726a97bb754b3d48e8305c9aada907cc1ad64d91d773965dc53",
+            "prior_run_sha256": "cbeac2e43c63f726a97bb754b3d48e8305c9aada907cc1ad64d91d773965dc53",
+            "check_and_apply": true
+          },
+          {
+            "position": 64,
+            "path": ".work/UniXNU/patches/xnu-12377/native-security-init.patch",
+            "sha256": "03f8feda7480bd915ca19d1f040ed590c8474847de89b237914de3f6673b2943",
+            "prior_run_sha256": "03f8feda7480bd915ca19d1f040ed590c8474847de89b237914de3f6673b2943",
+            "check_and_apply": true
+          },
+          {
+            "position": 65,
+            "path": ".work/UniXNU/patches/xnu-12377/trustcache-runtime-layout.patch",
+            "sha256": "389238acb4e12e5ecdd11295aeb46ade69923439e76483250569e4155046432b",
+            "prior_run_sha256": "389238acb4e12e5ecdd11295aeb46ade69923439e76483250569e4155046432b",
+            "check_and_apply": true
+          },
+          {
+            "position": 66,
+            "path": ".work/UniXNU/patches/xnu-12377/fileset-unmapped-call.patch",
+            "sha256": "ba41d37493e0fcf2557c5ec57eff2d5790c768b27af63debfe69d5d3e9695f77",
+            "prior_run_sha256": "ba41d37493e0fcf2557c5ec57eff2d5790c768b27af63debfe69d5d3e9695f77",
+            "check_and_apply": true
+          },
+          {
+            "position": 67,
+            "path": ".work/UniXNU/patches/xnu-12377/native-4k-block-split.patch",
+            "sha256": "411acef69d746d3bf33e38ad0b835debd2658fa0c0e25dcaa61a718bed7fca06",
+            "prior_run_sha256": "411acef69d746d3bf33e38ad0b835debd2658fa0c0e25dcaa61a718bed7fca06",
+            "check_and_apply": true
+          },
+          {
+            "position": 68,
+            "path": ".work/UniXNU/patches/xnu-12377/native-modload-lock-order.patch",
+            "sha256": "3e0ab6401a83d43599d6b35abd211da2bc7d988834cd9e6521dd46ebe1c1bfe5",
+            "prior_run_sha256": "3e0ab6401a83d43599d6b35abd211da2bc7d988834cd9e6521dd46ebe1c1bfe5",
+            "check_and_apply": true
+          },
+          {
+            "position": 69,
+            "path": ".work/UniXNU/patches/xnu-12377/native-union-readdir-eof.patch",
+            "sha256": "764075e4cb2d9905e6e9488cf1ad9d3bb9c958eca06bd454d7de2afc4354e136",
+            "prior_run_sha256": "764075e4cb2d9905e6e9488cf1ad9d3bb9c958eca06bd454d7de2afc4354e136",
+            "check_and_apply": true
+          },
+          {
+            "position": 70,
+            "path": "patches/pre-os/sheng-platform-power-context.patch",
+            "sha256": "c29aa89c9ace1bcbb9d6820686b6ef1dd231f408273b7f76e3c15c47d79a5e86",
+            "prior_run_sha256": "c29aa89c9ace1bcbb9d6820686b6ef1dd231f408273b7f76e3c15c47d79a5e86",
+            "check_and_apply": true
+          },
+          {
+            "position": 71,
+            "path": ".work/UniXNU/patches/xnu-12377/zzz-boot-progress.patch",
+            "sha256": "2e765b4416bab549027a7024c4777b003ca833b80addcc29daafbbcf65241e28",
+            "prior_run_sha256": "2e765b4416bab549027a7024c4777b003ca833b80addcc29daafbbcf65241e28",
+            "check_and_apply": true
+          },
+          {
+            "position": 72,
+            "path": ".work/UniXNU/patches/xnu-12377/darwin26-syscalls.patch",
+            "sha256": "dfe21bb568b995aa2074b1a7db0c7dcc290cc7459d2b7a1814e2ab06996fab85",
+            "prior_run_sha256": "dfe21bb568b995aa2074b1a7db0c7dcc290cc7459d2b7a1814e2ab06996fab85",
+            "check_and_apply": true
+          },
+          {
+            "position": 73,
+            "path": ".work/UniXNU/patches/xnu-12377/darwin26-kpi.patch",
+            "sha256": "ff00540665aadcf36caa3a42c81f6b2456d710171caf49a43146ceb42dd609a3",
+            "prior_run_sha256": "ff00540665aadcf36caa3a42c81f6b2456d710171caf49a43146ceb42dd609a3",
+            "check_and_apply": true
+          },
+          {
+            "position": 74,
+            "path": ".work/UniXNU/patches/xnu-12377/darwin26-shared-region.patch",
+            "sha256": "2f936e9d87d2724f569e43e1847c13a3cd4859eb0ec0f8fbb6956ae1bd779723",
+            "prior_run_sha256": "2f936e9d87d2724f569e43e1847c13a3cd4859eb0ec0f8fbb6956ae1bd779723",
+            "check_and_apply": true
+          },
+          {
+            "position": 75,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-machine-config.patch",
+            "sha256": "742dcded530a5ea7fa73e74959b5d0e42186c94776312cec90872a334a7c7362",
+            "prior_run_sha256": "742dcded530a5ea7fa73e74959b5d0e42186c94776312cec90872a334a7c7362",
+            "check_and_apply": true
+          },
+          {
+            "position": 76,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-target-kernel.patch",
+            "sha256": "f182317b88d22160938c605582655a4b396a29064cb8e0eebf806c94881c0f64",
+            "prior_run_sha256": "f182317b88d22160938c605582655a4b396a29064cb8e0eebf806c94881c0f64",
+            "check_and_apply": true
+          },
+          {
+            "position": 77,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-darwin26-kpi.patch",
+            "sha256": "329377813816cefb7546b7e3f79933dffe24ea5e75a4f4df569453137ee01781",
+            "prior_run_sha256": "329377813816cefb7546b7e3f79933dffe24ea5e75a4f4df569453137ee01781",
+            "check_and_apply": true
+          },
+          {
+            "position": 78,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-owner-data-firmlinks.patch",
+            "sha256": "b286c46973a87a78ca297fae195ea173ce707bb38290993d385c76c733f7abda",
+            "prior_run_sha256": "b286c46973a87a78ca297fae195ea173ce707bb38290993d385c76c733f7abda",
+            "check_and_apply": true
+          },
+          {
+            "position": 79,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-shared-region-size.patch",
+            "sha256": "8aa1567d533273ffc9eb8bbaa803a328c6bc1569434cecba25a2468aa6558ffc",
+            "prior_run_sha256": "8aa1567d533273ffc9eb8bbaa803a328c6bc1569434cecba25a2468aa6558ffc",
+            "check_and_apply": true
+          },
+          {
+            "position": 80,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-verbose-text-console.patch",
+            "sha256": "5c92f574d1e6b5458a61ea9335a5cc44a6b6627a017a8b56c603aec7533dc8b2",
+            "prior_run_sha256": "5c92f574d1e6b5458a61ea9335a5cc44a6b6627a017a8b56c603aec7533dc8b2",
+            "check_and_apply": true
+          },
+          {
+            "position": 81,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-user-address-space.patch",
+            "sha256": "f28a535b4bd10accaa2e7d58d137e41a04e6d78619854112dd21c08bc55d5c53",
+            "prior_run_sha256": "f28a535b4bd10accaa2e7d58d137e41a04e6d78619854112dd21c08bc55d5c53",
+            "check_and_apply": true
+          },
+          {
+            "position": 82,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-union-one-volume.patch",
+            "sha256": "a399d5b712a9aa383d539f9ad116a86c7a8e93922c1bb230c4c0d2690c288cec",
+            "prior_run_sha256": "a399d5b712a9aa383d539f9ad116a86c7a8e93922c1bb230c4c0d2690c288cec",
+            "check_and_apply": true
+          },
+          {
+            "position": 83,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-union-shutdown.patch",
+            "sha256": "77c5478988842db076e3229be30e3cc408b8162eda32c6aa14803d4f665eb688",
+            "prior_run_sha256": "77c5478988842db076e3229be30e3cc408b8162eda32c6aa14803d4f665eb688",
+            "check_and_apply": true
+          },
+          {
+            "position": 84,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-kqworkloop-limits.patch",
+            "sha256": "06e696b92c8b61e0a16854059becc7a2cc95954970d49ce453e377e0eaf0d3c9",
+            "prior_run_sha256": "06e696b92c8b61e0a16854059becc7a2cc95954970d49ce453e377e0eaf0d3c9",
+            "check_and_apply": true
+          },
+          {
+            "position": 85,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-exec-log.patch",
+            "sha256": "a9b871d73df01e6a345465d7df4dd8e0854c0a47e33f4bd1ef65d7f32d06c571",
+            "prior_run_sha256": "a9b871d73df01e6a345465d7df4dd8e0854c0a47e33f4bd1ef65d7f32d06c571",
+            "check_and_apply": true
+          },
+          {
+            "position": 86,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-apfs-boot-shim.patch",
+            "sha256": "6e86844257f7671812627e1f42c6653177a798457909b2e68e9f61eb770108c0",
+            "prior_run_sha256": "6e86844257f7671812627e1f42c6653177a798457909b2e68e9f61eb770108c0",
+            "check_and_apply": true
+          },
+          {
+            "position": 87,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-read-only-system-volume.patch",
+            "sha256": "e902f4eccd55e174674ba19accafe06680d8456d75ed2a160b61d0e022f65867",
+            "prior_run_sha256": "e902f4eccd55e174674ba19accafe06680d8456d75ed2a160b61d0e022f65867",
+            "check_and_apply": true
+          },
+          {
+            "position": 88,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-rw-held-report.patch",
+            "sha256": "645bf6477c424e91ac8e6584e944c8e2a14303eb73c6928036f08e3aea18c5ac",
+            "prior_run_sha256": "645bf6477c424e91ac8e6584e944c8e2a14303eb73c6928036f08e3aea18c5ac",
+            "check_and_apply": true
+          },
+          {
+            "position": 89,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-end-rename-swap.patch",
+            "sha256": "0128a7357f9cb9a5c7ae8e047d7bb2284e2f3d4c82be2d7a1346dbaae6833d2b",
+            "prior_run_sha256": "0128a7357f9cb9a5c7ae8e047d7bb2284e2f3d4c82be2d7a1346dbaae6833d2b",
+            "check_and_apply": true
+          },
+          {
+            "position": 90,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-service-port-derive-check.patch",
+            "sha256": "cb5699ea7b2147154e2226ed25a215e913dded24ef833e43eed35d8b09196e3f",
+            "prior_run_sha256": "cb5699ea7b2147154e2226ed25a215e913dded24ef833e43eed35d8b09196e3f",
+            "check_and_apply": true
+          },
+          {
+            "position": 91,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-gpu-bundles.patch",
+            "sha256": "4ee8429db41ce56fb2f71628fd08a581749f0fbe53ca418960970e6aaa80ec4f",
+            "prior_run_sha256": "4ee8429db41ce56fb2f71628fd08a581749f0fbe53ca418960970e6aaa80ec4f",
+            "check_and_apply": true
+          },
+          {
+            "position": 92,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-owner-root-authenticated-open.patch",
+            "sha256": "957d750a135537a82efbce283f5e6c6ef08105b3e4e371ce8663283820a56b5b",
+            "prior_run_sha256": "957d750a135537a82efbce283f5e6c6ef08105b3e4e371ce8663283820a56b5b",
+            "check_and_apply": true
+          },
+          {
+            "position": 93,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-hardware-volume.patch",
+            "sha256": "2045ddb651ac999851f54cb590b2e3cadd4d260a9d93d7faca11b4de8a8a8d6a",
+            "prior_run_sha256": "2045ddb651ac999851f54cb590b2e3cadd4d260a9d93d7faca11b4de8a8a8d6a",
+            "check_and_apply": true
+          },
+          {
+            "position": 94,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-droidvm-k27-parity.patch",
+            "sha256": "f73fa8d4f32a7283fcdc54e2338c4cb46c7f5ccc7e74e77c1120af99b1b61212",
+            "prior_run_sha256": "f73fa8d4f32a7283fcdc54e2338c4cb46c7f5ccc7e74e77c1120af99b1b61212",
+            "check_and_apply": true
+          },
+          {
+            "position": 95,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-app-cryptex.patch",
+            "sha256": "9d7d516c15e06ff9674ef2a840333f96136eef0bc4abe54cb050e85face9c343",
+            "prior_run_sha256": "9d7d516c15e06ff9674ef2a840333f96136eef0bc4abe54cb050e85face9c343",
+            "check_and_apply": true
+          },
+          {
+            "position": 96,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-vm-volume.patch",
+            "sha256": "57f4a4a0660486c4475f9588ee1375726fad3f87e4ce4e40db870eb1f7a40d67",
+            "prior_run_sha256": "57f4a4a0660486c4475f9588ee1375726fad3f87e4ce4e40db870eb1f7a40d67",
+            "check_and_apply": true
+          },
+          {
+            "position": 97,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-addon-sbin.patch",
+            "sha256": "93e8d35a59f0944e77ff58326321d23d4b8a0d5f13f33e8d52852bf8ab6c37b4",
+            "prior_run_sha256": "93e8d35a59f0944e77ff58326321d23d4b8a0d5f13f33e8d52852bf8ab6c37b4",
+            "check_and_apply": true
+          },
+          {
+            "position": 98,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/window-memory-excluded-ranges.patch",
+            "sha256": "a53fdc0d23cdac9d8764e81e64a37cbfa8cb46967ea1151ca7eedd20467fb9e0",
+            "prior_run_sha256": "a53fdc0d23cdac9d8764e81e64a37cbfa8cb46967ea1151ca7eedd20467fb9e0",
+            "check_and_apply": true
+          },
+          {
+            "position": 99,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/xnuconfig-macos-memorystatus-policy.patch",
+            "sha256": "d0cb7dc1b0f26253bfd4ab3b7db178456588e1f1436f2704e8568c3568dee74b",
+            "prior_run_sha256": "d0cb7dc1b0f26253bfd4ab3b7db178456588e1f1436f2704e8568c3568dee74b",
+            "check_and_apply": true
+          },
+          {
+            "position": 100,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/xnuconfig-work-interval-counters.patch",
+            "sha256": "32ca7ef7a42211019b0241933decda97f087e359806b8b426438710615d60e44",
+            "prior_run_sha256": "32ca7ef7a42211019b0241933decda97f087e359806b8b426438710615d60e44",
+            "check_and_apply": true
+          },
+          {
+            "position": 101,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/xnuconfig-timebase-trap-count.patch",
+            "sha256": "dd508b13e5c42999d083fee3ca8b473d81e106ac3ba486ce16989098a118d96c",
+            "prior_run_sha256": "dd508b13e5c42999d083fee3ca8b473d81e106ac3ba486ce16989098a118d96c",
+            "check_and_apply": true
+          },
+          {
+            "position": 102,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/vfs-union-readdir-report.patch",
+            "sha256": "5b2e6c608c0ec541eef22cbbb0bd6e4f3294dd2e97f6134995902429f6126021",
+            "prior_run_sha256": "5b2e6c608c0ec541eef22cbbb0bd6e4f3294dd2e97f6134995902429f6126021",
+            "check_and_apply": true
+          },
+          {
+            "position": 103,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/vfs-union-below-walk.patch",
+            "sha256": "3927500afda98a2891e343fedf55da36880706327a0d98853c44b4912bfd2973",
+            "prior_run_sha256": "3927500afda98a2891e343fedf55da36880706327a0d98853c44b4912bfd2973",
+            "check_and_apply": true
+          },
+          {
+            "position": 104,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/vmwait-vnode-pager-peek-name.patch",
+            "sha256": "34ed2da324eedf57ee7d8ae905a0d325fe33c463380ee9ac2e04a2d4c2ee8b93",
+            "prior_run_sha256": "34ed2da324eedf57ee7d8ae905a0d325fe33c463380ee9ac2e04a2d4c2ee8b93",
+            "check_and_apply": true
+          },
+          {
+            "position": 105,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/kperf-timebase-scale-no-division.patch",
+            "sha256": "370fc00a276422d1af727f54e248d03d6bd58a320e29cc86d379afe0852de771",
+            "prior_run_sha256": "370fc00a276422d1af727f54e248d03d6bd58a320e29cc86d379afe0852de771",
+            "check_and_apply": true
+          },
+          {
+            "position": 106,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/kperf-static-if-builtin-args.patch",
+            "sha256": "a49f70ab09698d189b110542b1c3ce926c3377b9ab5b2da6cd71fe486910bc77",
+            "prior_run_sha256": "a49f70ab09698d189b110542b1c3ce926c3377b9ab5b2da6cd71fe486910bc77",
+            "check_and_apply": true
+          },
+          {
+            "position": 107,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/cshash-native4k-stats.patch",
+            "sha256": "8c58ab81d9a03a729e351fda3657602c6270ff872183abff7f8afaf2f46d730c",
+            "prior_run_sha256": "8c58ab81d9a03a729e351fda3657602c6270ff872183abff7f8afaf2f46d730c",
+            "check_and_apply": true
+          },
+          {
+            "position": 108,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/payload-boot-memory-report.patch",
+            "sha256": "57e4e44e4b68796e9b42a97d6bffd264e687b3c0e92956fd961118a7f76f9a1f",
+            "prior_run_sha256": "57e4e44e4b68796e9b42a97d6bffd264e687b3c0e92956fd961118a7f76f9a1f",
+            "check_and_apply": true
+          },
+          {
+            "position": 109,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/payload-addon-release.patch",
+            "sha256": "727ecd908d5f7657e7bdd5fb64e4849035010c4d396714c4ed94d1f8534132fa",
+            "prior_run_sha256": "727ecd908d5f7657e7bdd5fb64e4849035010c4d396714c4ed94d1f8534132fa",
+            "check_and_apply": true
+          },
+          {
+            "position": 110,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/cshash-native4k-parallel.patch",
+            "sha256": "009aca233c9a39043bd8bd49d5e29eb843bc9c8187d3d6cd6c1c11c29db39090",
+            "prior_run_sha256": "009aca233c9a39043bd8bd49d5e29eb843bc9c8187d3d6cd6c1c11c29db39090",
+            "check_and_apply": true
+          },
+          {
+            "position": 111,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/gpubundle-system-extensions-view.patch",
+            "sha256": "0a39e206c61fb1640a8fe24f8b193c521b64a686e5d08d65e96a6907003beebe",
+            "prior_run_sha256": "0a39e206c61fb1640a8fe24f8b193c521b64a686e5d08d65e96a6907003beebe",
+            "check_and_apply": true
+          },
+          {
+            "position": 112,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/timebase-user-scaled-read.patch",
+            "sha256": "15e12fbef76af69ec2db486d471d9bc2e87c4f2469b4f4132795cadc3c9e154b",
+            "prior_run_sha256": "15e12fbef76af69ec2db486d471d9bc2e87c4f2469b4f4132795cadc3c9e154b",
+            "check_and_apply": true
+          },
+          {
+            "position": 113,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/cshash-native4k-lazy.patch",
+            "sha256": "8ba554c3de727b89ab52dd937ea154582ac2e8c512d2b52987d378512ac724af",
+            "prior_run_sha256": "8ba554c3de727b89ab52dd937ea154582ac2e8c512d2b52987d378512ac724af",
+            "check_and_apply": true
+          },
+          {
+            "position": 114,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/gpucache-system-shader-cache-view.patch",
+            "sha256": "821c08e837cee037c5fd6b7c6280d6a24695abb42e907facbef0c0c033361e53",
+            "prior_run_sha256": "821c08e837cee037c5fd6b7c6280d6a24695abb42e907facbef0c0c033361e53",
+            "check_and_apply": true
+          },
+          {
+            "position": 115,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/payload-radix-root-at-startup.patch",
+            "sha256": "9cdc7cd087396d2329a889ccfd2e72ebafc87be46d5184fff115ed094b5e0daa",
+            "prior_run_sha256": "9cdc7cd087396d2329a889ccfd2e72ebafc87be46d5184fff115ed094b5e0daa",
+            "check_and_apply": true
+          },
+          {
+            "position": 116,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/cssha-digest-time.patch",
+            "sha256": "35c566f43145e86dca35b1e3de1bf4489afc341bab08219fea5ef57731af8959",
+            "prior_run_sha256": "35c566f43145e86dca35b1e3de1bf4489afc341bab08219fea5ef57731af8959",
+            "check_and_apply": true
+          },
+          {
+            "position": 117,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/gpupool-device-pager-close.patch",
+            "sha256": "cc7b0fc02cf2a4a4c417c3c1e219b36e178cdee63d5ebac92ab6978ded8203a9",
+            "prior_run_sha256": "cc7b0fc02cf2a4a4c417c3c1e219b36e178cdee63d5ebac92ab6978ded8203a9",
+            "check_and_apply": true
+          },
+          {
+            "position": 118,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/memwired-kc-segment-release.patch",
+            "sha256": "c2fa78ec97d6c0cd812d781ef9b8a95f356ca728c9ba86834c494aaffd0b69c0",
+            "prior_run_sha256": "c2fa78ec97d6c0cd812d781ef9b8a95f356ca728c9ba86834c494aaffd0b69c0",
+            "check_and_apply": true
+          },
+          {
+            "position": 119,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/memwired-booter-size-accounting.patch",
+            "sha256": "77290ec06193538cbb4d3d552abaff4a2dffd19a4fd72e13597edabed97a24c1",
+            "prior_run_sha256": "77290ec06193538cbb4d3d552abaff4a2dffd19a4fd72e13597edabed97a24c1",
+            "check_and_apply": true
+          },
+          {
+            "position": 120,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/memwired-cs-lazy-page-chunks.patch",
+            "sha256": "1dfedaa1b2bcd50d267ac123af6690965f0404f731ed80a02ffbe6431a2b2ded",
+            "prior_run_sha256": "1dfedaa1b2bcd50d267ac123af6690965f0404f731ed80a02ffbe6431a2b2ded",
+            "check_and_apply": true
+          },
+          {
+            "position": 121,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/platform-error-name-address.patch",
+            "sha256": "2e50174296dfba7ad9c3d2bad55c1e95adffba83abd5545b52e08b7a1c576899",
+            "prior_run_sha256": "2e50174296dfba7ad9c3d2bad55c1e95adffba83abd5545b52e08b7a1c576899",
+            "check_and_apply": true
+          },
+          {
+            "position": 122,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/window-outside-memory-adoption.patch",
+            "sha256": "c7213ddfb7a2431fb83ca6aad8adc4294616bb8dee972700b5966eb37bf08f21",
+            "prior_run_sha256": "c7213ddfb7a2431fb83ca6aad8adc4294616bb8dee972700b5966eb37bf08f21",
+            "check_and_apply": true
+          },
+          {
+            "position": 123,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/contig-search-report.patch",
+            "sha256": "611141ba904a2022017a75c008a2dfe7051e3a9b3dbfaa8cdd130e9c4ef7d5b1",
+            "prior_run_sha256": "611141ba904a2022017a75c008a2dfe7051e3a9b3dbfaa8cdd130e9c4ef7d5b1",
+            "check_and_apply": true
+          },
+          {
+            "position": 124,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/kmem-alloc-failure-report.patch",
+            "sha256": "c4d20883a56d7cd8df2a85e5eebe8d96407be746fbe2f67fd98202da3c3e562b",
+            "prior_run_sha256": "c4d20883a56d7cd8df2a85e5eebe8d96407be746fbe2f67fd98202da3c3e562b",
+            "check_and_apply": true
+          },
+          {
+            "position": 125,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-4k-zone-va-budget.patch",
+            "sha256": "8f81d764410b4b4844edb67c6d919eedf23d7117bc06fbacb7536774d0fd1aac",
+            "prior_run_sha256": "8f81d764410b4b4844edb67c6d919eedf23d7117bc06fbacb7536774d0fd1aac",
+            "check_and_apply": true
+          },
+          {
+            "position": 126,
+            "path": ".work/UniXNU/profiles/os/macos-27.3-26C5035r/patches/xnu-12377/macos-swapin-io-priority.patch",
+            "sha256": "223c955fdc6317d204a982ad6c9a58dd7a0622ea6eb468dae26cab1a9d9e659e",
+            "prior_run_sha256": "223c955fdc6317d204a982ad6c9a58dd7a0622ea6eb468dae26cab1a9d9e659e",
+            "check_and_apply": true
+          },
+          {
+            "position": 127,
+            "path": "patches/xnu/0001-tb710fu-gate-owner-authenticated-open.patch",
+            "sha256": "a7e7ab45b1f13bf7f79bbb893f8a8ccbaeeee90979ef4f80c4dc2ee23416013d",
+            "prior_run_sha256": "a7e7ab45b1f13bf7f79bbb893f8a8ccbaeeee90979ef4f80c4dc2ee23416013d",
+            "check_and_apply": true
+          },
+          {
+            "position": 128,
+            "path": "patches/xnu/0002-tb710fu-gate-optional-exit-trace.patch",
+            "sha256": "88ad2557b9d198ec61b4d95ccd27119795f48c89a7281b7b3fa989796f175738",
+            "prior_run_sha256": "88ad2557b9d198ec61b4d95ccd27119795f48c89a7281b7b3fa989796f175738",
+            "check_and_apply": true
+          },
+          {
+            "position": 129,
+            "path": "patches/xnu/0003-tb710fu-kernel-stack-alignment.patch",
+            "sha256": "ea70cc516e8599d2eee746b211d875391f76bdeb0d8d89bd732c8b652a8da503",
+            "prior_run_sha256": "ea70cc516e8599d2eee746b211d875391f76bdeb0d8d89bd732c8b652a8da503",
+            "check_and_apply": true
+          },
+          {
+            "position": 130,
+            "path": "patches/xnu/0004-tb710fu-ramoops-console.patch",
+            "sha256": "63a2e0e2086605a8a909fca75150f3eddf789f0cd1042d659d752e22d0a45ea8",
+            "prior_run_sha256": "63a2e0e2086605a8a909fca75150f3eddf789f0cd1042d659d752e22d0a45ea8",
+            "check_and_apply": true
+          },
+          {
+            "position": 131,
+            "path": "patches/xnu/0005-native-4k-bootstrap-pool-9g.patch",
+            "sha256": "9e496bd6ee9aaad341899e202630a8a90c4efe79cc8ea33b5ea2e56598254732",
+            "prior_run_sha256": "9e496bd6ee9aaad341899e202630a8a90c4efe79cc8ea33b5ea2e56598254732",
+            "check_and_apply": true
+          },
+          {
+            "position": 132,
+            "path": "patches/xnu/0006-tb710fu-diag-segment-rx.patch",
+            "sha256": "7be986c3744b7d9c9ca77f0d6b09e8e20b9ba74e587e527ac26281f9717a1a6c",
+            "prior_run_sha256": "7be986c3744b7d9c9ca77f0d6b09e8e20b9ba74e587e527ac26281f9717a1a6c",
+            "check_and_apply": true
+          },
+          {
+            "position": 133,
+            "path": "patches/xnu/0007-tb710fu-switch-markers.patch",
+            "sha256": "fbba12c2cd295e607adfe0d91e7dc1d254b36622f8ffaf4efa845c424329b659",
+            "prior_run_sha256": "fbba12c2cd295e607adfe0d91e7dc1d254b36622f8ffaf4efa845c424329b659",
+            "check_and_apply": true
+          },
+          {
+            "position": 134,
+            "path": "patches/xnu/0008-tb710fu-ramoops-in-window.patch",
+            "sha256": "533ff244b8dae7884874050e77e14eebe3bfd301e11541224f5ce3fd69c9c905",
+            "prior_run_sha256": "533ff244b8dae7884874050e77e14eebe3bfd301e11541224f5ce3fd69c9c905",
+            "check_and_apply": true
+          },
+          {
+            "position": 135,
+            "path": "patches/xnu/0009-tb710fu-switch-helper-noinline.patch",
+            "sha256": "428930eac4be4354579051d746fcbee2e71be458c31dc460af818aef289ec42a",
+            "prior_run_sha256": "428930eac4be4354579051d746fcbee2e71be458c31dc460af818aef289ec42a",
+            "check_and_apply": true
+          },
+          {
+            "position": 136,
+            "path": "patches/xnu/0010-tb710fu-cdc-kernel-log-tap.patch",
+            "sha256": "f66f5189329e14f382dab34788500f7f940c45321e053a9aa3aad4d5960623d6",
+            "prior_run_sha256": "f66f5189329e14f382dab34788500f7f940c45321e053a9aa3aad4d5960623d6",
+            "check_and_apply": true
+          },
+          {
+            "position": 137,
+            "path": "patches/xnu/0011-tb710fu-source-storage-start.patch",
+            "sha256": "40c788f84b456883f461331ffff98ad02e478effb1a4c5600933d347b2dcc318",
+            "prior_run_sha256": "40c788f84b456883f461331ffff98ad02e478effb1a4c5600933d347b2dcc318",
+            "check_and_apply": true
+          },
+          {
+            "position": 138,
+            "path": "patches/xnu/0012-tb710fu-cdc-start.patch",
+            "sha256": "34b8d3b323c7a24f3be4d2ad2b732e74ec8309f65e252397e23aa94ac81f42f7",
+            "prior_run_sha256": "34b8d3b323c7a24f3be4d2ad2b732e74ec8309f65e252397e23aa94ac81f42f7",
+            "check_and_apply": true
+          },
+          {
+            "position": 139,
+            "path": "patches/xnu/0013-tb710fu-ramoops-snapshot.patch",
+            "sha256": "746ddf60c1bcc9af5c71b37a6ec8ea6310d6f0033719e0c6fd309d56b848f8dc",
+            "prior_run_sha256": "746ddf60c1bcc9af5c71b37a6ec8ea6310d6f0033719e0c6fd309d56b848f8dc",
+            "check_and_apply": true
+          },
+          {
+            "position": 140,
+            "path": "patches/xnu/0014-tb710fu-native-live-log.patch",
+            "sha256": "6d403de5b14abd2e7605b0089490945ba522b7a30e57328cfe1fa9c59cb1ab12",
+            "prior_run_sha256": "7da52042381c803d3087750c3010bad4bc19903587420df87064019b27547c5a",
+            "check_and_apply": true
+          }
+        ],
+        "postimages_sha256": {
+          "osfmk/arm/arm_init.c": "e8c7bf720f626869a7af5cde8d400cc9451ea3fdbe09f59878a4bd75561ef50f",
+          "osfmk/kern/startup.c": "f5383088743ee8cd8e8377031a5dde7e2646d34988dc3ceefbbba25b8e92d7ab",
+          "osfmk/console/video_console.c": "9551ccd4673187ded32c9a5336b633bf1d45a8b88153a27da53176e0346fbe0f",
+          "pexpert/arm/pe_kprintf.c": "cfc4bb74deb3e495a51c5ac4374e66bdea8a4c5c417b50b28c891a9d061a26eb",
+          "osfmk/kern/tb710fu_live_log.h": "6d0f3ba6ebc0319847a106b2509f1f11ea4289bd42f848b46d2b38f2d0bb2879",
+          "osfmk/console/serial_console.c": "1983cf3b2435c99a7d86b712c84fb5a42e89d7bfc8e17084060f83d6d42fa68a",
+          "osfmk/kern/Makefile": "1b0c1071d482cc7146bdd0d99259c6e2337edf95c6864819d1603142c83e2d01"
+        },
+        "limits": "Source patch application only; no native build, prelink or hardware proof."
+      }
+    }
+  },
+  "package_verifier_tests": {
+    "command": [
+      "python",
+      "tools/test_live_log_package.py"
+    ],
+    "tests": 11,
+    "result": "PASS",
+    "negative_subcases": "80+ missing/malformed/inline/source-path/contract/member/provenance cases"
+  },
+  "clang_linux_note": "Clang19 compile succeeded after host-only pinned-Mu legacy-prototype allowance, but local Clang ASan runtime is absent; runtime sanitizer checks ran using GCC. Supported macOS Clang/native link remains a separate CI gate.",
+  "hardware_verified": false,
+  "new_native_prelink_completed": false,
+  "device_operations": false
+}

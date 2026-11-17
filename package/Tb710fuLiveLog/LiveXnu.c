@@ -21,12 +21,24 @@
 #endif
 
 static TB_LIVE_DISPLAY display;
-static struct tb710fu_live_log_sender live_sender, fixed_sender;
-static uint8_t snapshot[TB710FU_LIVE_LOG_MAX_BYTES], frame[752];
-static uint32_t fixed_pixels[121u * 121u];
-static unsigned enabled, guard, redraw, worker_started, sleep_channel, fixed_valid;
-static uint64_t frequency, next_frame, generation;
-static unsigned small_screen_phase;
+static struct tb710fu_live_log_sender xnu_sender, ramoops_sender;
+/* Zero initialization is the capture-ring initialization. Never clear this in
+ * display init: PE/console output can arrive before VM and LiveLog init. */
+static struct tb710fu_live_capture xnu_capture;
+static struct tb710fu_live_capture_info early_state, xnu_state;
+static struct tb710fu_ramoops_snapshot ramoops_state;
+static uint8_t snapshot[TB710FU_LIVE_LOG_MAX_BYTES];
+static uint8_t xnu_file[TB710FU_LIVE_LOG_MAX_BYTES], early_bytes[512], frame[752];
+static unsigned enabled, guard, redraw, worker_started, sleep_channel, early_frozen, early_once;
+static unsigned next_slot;
+static uint64_t frequency, next_frame, xnu_generation, ramoops_generation, xnu_last_dropped;
+
+/* This strong writer is capture only: no framebuffer, encoding, allocation,
+ * polling or logging. A contending writer records a drop and returns. */
+void tb710fu_live_log_putc(char c)
+{
+    (void)tb710fu_live_capture_putc(&xnu_capture, c);
+}
 
 static uint64_t live_ticks(void)
 {
@@ -53,58 +65,96 @@ int tb710fu_live_log_active(void)
     return __atomic_load_n(&enabled, __ATOMIC_ACQUIRE) == 1u;
 }
 
-static void status_line(const struct tb710fu_ramoops_snapshot *state,
-                        const struct tb710fu_live_log_info *info)
+static const char *state_name(unsigned state)
+{
+    return state == 0 ? "unmapped" : state == 1 ? "busy" :
+           state == 2 ? "empty" : "ready";
+}
+
+static void status_line(unsigned slot)
 {
     char text[256];
-    const char *label = state->state == 0 ? "unmapped" :
-                        state->state == 1 ? "busy" :
-                        state->state == 2 ? "empty" : "ready";
     (void)snprintf(text, sizeof(text),
-        TB_LIVE_BUILD_LABEL " %s | LEFT fixed=%s | RIGHT live | gen=%llu end=%llu drop=%llu frame=%u/%u",
-        label, fixed_valid ? "ready" : "pending", (unsigned long long)info->generation,
-        (unsigned long long)state->end, (unsigned long long)state->dropped,
-        info->next_sequence, info->block_count);
+        "LEFT XNU | RIGHT RAMOOPS | earlybackup=%s | showing=%s | X=%s R=%s | %.64s",
+        __atomic_load_n(&early_frozen, __ATOMIC_ACQUIRE) ? state_name(early_state.state) : "pending",
+        slot == 0 ? "XNU" : "RAMOOPS", state_name(xnu_state.state),
+        state_name(ramoops_state.state), TB_LIVE_BUILD_LABEL);
     (void)tb_live_display_status(&display, text);
 }
 
-/* Every call handles at most one live frame. There is no replay wait. */
+static void snapshot_xnu(void)
+{
+    if (!__atomic_load_n(&early_frozen, __ATOMIC_ACQUIRE)) return;
+    size_t capacity = __atomic_load_n(&worker_started, __ATOMIC_ACQUIRE) ? 3072u : 512u;
+    int copied = tb710fu_live_capture_copy(&xnu_capture, snapshot, capacity, &xnu_state);
+    if (xnu_state.state != TB710FU_LIVE_CAPTURE_EMPTY &&
+        xnu_state.state != TB710FU_LIVE_CAPTURE_READY) return;
+    struct tb710fu_live_log_info info = {0};
+    (void)tb710fu_live_log_get_info(&xnu_sender, &info);
+    if (!tb710fu_live_log_can_snapshot(&xnu_sender) ||
+        (xnu_sender.valid && xnu_state.start == info.start && xnu_state.end == info.end &&
+         xnu_state.dropped == xnu_last_dropped)) return;
+    /* The header supplies exact raw-section lengths; no separator or newline is
+     * inserted into either captured byte sequence. The filename range describes
+     * only the current tail, not metadata or the preserved early backup. */
+    int header = snprintf((char *)xnu_file, 512u,
+        "TB710FU XNU DEBUG EXPORT v1\nsource=xnu-debug\nbuild=%.64s\n"
+        "earlybackup_state=%s\nearlybackup_start=%llu\nearlybackup_end=%llu\n"
+        "earlybackup_bytes=%u\ncurrent_start=%llu\ncurrent_end=%llu\ncurrent_bytes=%u\n"
+        "dropped=%llu\nraw_layout=earlybackup_then_current\nraw_bytes_begin\n",
+        TB_LIVE_BUILD_LABEL, state_name(early_state.state),
+        (unsigned long long)early_state.start, (unsigned long long)early_state.end,
+        early_state.copied, (unsigned long long)xnu_state.start,
+        (unsigned long long)xnu_state.end, (unsigned)copied,
+        (unsigned long long)xnu_state.dropped);
+    if (header < 0 || header >= 512) return;
+    size_t length = (size_t)header;
+    for (size_t i = 0; i < early_state.copied; ++i) xnu_file[length++] = early_bytes[i];
+    for (int i = 0; i < copied; ++i) xnu_file[length++] = snapshot[i];
+    if (tb710fu_live_log_snapshot_file(&xnu_sender, xnu_file, length,
+        xnu_generation + 1u, xnu_state.start, xnu_state.end) == TB710FU_LIVE_LOG_READY) {
+        ++xnu_generation;
+        xnu_last_dropped = xnu_state.dropped;
+    }
+}
+
+static void snapshot_ramoops(void)
+{
+    size_t capacity = __atomic_load_n(&worker_started, __ATOMIC_ACQUIRE) ?
+                      sizeof(snapshot) : 512u;
+    int copied = tb710fu_ramoops_snapshot_copy(snapshot, capacity, &ramoops_state);
+    struct tb710fu_live_log_info info = {0};
+    (void)tb710fu_live_log_get_info(&ramoops_sender, &info);
+    if (copied > 0 && tb710fu_live_log_can_snapshot(&ramoops_sender) &&
+        (!ramoops_sender.valid || ramoops_state.start != info.start || ramoops_state.end != info.end)) {
+        if (tb710fu_live_log_snapshot(&ramoops_sender, snapshot, (size_t)copied,
+            ramoops_generation + 1u, ramoops_state.start, ramoops_state.end) == TB710FU_LIVE_LOG_READY)
+            ++ramoops_generation;
+    }
+}
+
+/* Each global 500 ms tick handles at most one stream/frame. Slots alternate;
+ * drawing one dual-screen slot never clears the other stream's last frame. */
 void tb710fu_live_log_poll(void)
 {
     if (!tb710fu_live_log_active()) return;
     if (__atomic_exchange_n(&guard, 1u, __ATOMIC_ACQUIRE)) return;
     uint64_t now = live_ticks();
+    if (now < next_frame) goto done;
     unsigned refresh = __atomic_exchange_n(&redraw, 0u, __ATOMIC_ACQ_REL);
-    if (!refresh && now < next_frame) goto done;
     next_frame = now + frequency / 2u;
     if (refresh) (void)tb_live_display_bands(&display);
-    struct tb710fu_ramoops_snapshot state = {0};
-    struct tb710fu_live_log_info info = {0};
-    size_t capacity = __atomic_load_n(&worker_started, __ATOMIC_ACQUIRE) ?
-                      sizeof(snapshot) : 512u;
-    int copied = tb710fu_ramoops_snapshot_copy(snapshot, capacity, &state);
-    (void)tb710fu_live_log_get_info(&live_sender, &info);
-    if (copied > 0 && tb710fu_live_log_can_snapshot(&live_sender) &&
-        (!live_sender.valid || state.start != info.start || state.end != info.end)) {
-        (void)tb710fu_live_log_snapshot(&live_sender, snapshot, (size_t)copied,
-                                       ++generation, state.start, state.end);
-    }
-    if (fixed_valid && ((display.DualQr && refresh) ||
-        (!display.DualQr && !(small_screen_phase++ & 1u)))) {
-        (void)tb_live_display_qr_slot(&display, fixed_pixels, 121u * 121u, 121, 0);
-        if (!display.DualQr) {
-            (void)tb_live_display_status(&display, "RAMOOPS FIXED: immutable pre-machine_startup snapshot (up to 512 bytes)");
-            goto painted;
-        }
-    }
-    if (tb710fu_live_log_next_frame(&live_sender, frame)) {
+    unsigned slot = next_slot;
+    next_slot ^= 1u;
+    if (slot == 0) snapshot_xnu();
+    else snapshot_ramoops();
+    struct tb710fu_live_log_sender *sender = slot == 0 ? &xnu_sender : &ramoops_sender;
+    if (tb710fu_live_log_next_frame(sender, frame)) {
         const uint32_t *pixels;
         if (tb_live_qr_encode(frame, sizeof(frame), &pixels))
-            (void)tb_live_display_qr_slot(&display, pixels, 121u * 121u, 121, 1);
+            (void)tb_live_display_qr_slot(&display, pixels, 121u * 121u, 121, slot);
     }
-    (void)tb710fu_live_log_get_info(&live_sender, &info);
-    status_line(&state, &info);
-painted:
+    status_line(slot);
     live_barrier();
 done:
     __atomic_store_n(&guard, 0u, __ATOMIC_RELEASE);
@@ -117,32 +167,15 @@ void tb710fu_live_log_refresh(void)
     tb710fu_live_log_poll();
 }
 
-/* A single-block immutable snapshot remains independently scannable even if
- * scheduling never starts or the live ring is later overwritten by a loop. */
+/* Preserve precisely this pre-machine_startup boundary once. A busy/empty
+ * result is exported honestly; a later post-startup tail is never called early.
+ * Freeze itself never encodes, draws, waits or depends on a worker. */
 void tb710fu_live_log_freeze(void)
 {
     if (!tb710fu_live_log_active()) return;
-    if (__atomic_exchange_n(&guard, 1u, __ATOMIC_ACQUIRE)) return;
-    if (!fixed_valid) {
-        struct tb710fu_ramoops_snapshot state = {0};
-        int copied = tb710fu_ramoops_snapshot_copy(snapshot, 512u, &state);
-        if (copied > 0 && tb710fu_live_log_snapshot(&fixed_sender, snapshot,
-            (size_t)copied, 0, state.start, state.end) == TB710FU_LIVE_LOG_READY &&
-            fixed_sender.info.block_count == 1u &&
-            tb710fu_live_log_next_frame(&fixed_sender, frame)) {
-            const uint32_t *pixels;
-            if (tb_live_qr_encode(frame, sizeof(frame), &pixels)) {
-                for (size_t i = 0; i < 121u * 121u; i++) fixed_pixels[i] = pixels[i];
-                fixed_valid = 1u;
-                (void)tb_live_display_qr_slot(&display, fixed_pixels, 121u * 121u, 121, 0);
-                struct tb710fu_live_log_info info = {0};
-                (void)tb710fu_live_log_get_info(&live_sender, &info);
-                status_line(&state, &info);
-                live_barrier();
-            }
-        }
-    }
-    __atomic_store_n(&guard, 0u, __ATOMIC_RELEASE);
+    if (__atomic_exchange_n(&early_once, 1u, __ATOMIC_ACQUIRE)) return;
+    (void)tb710fu_live_capture_copy(&xnu_capture, early_bytes, sizeof(early_bytes), &early_state);
+    __atomic_store_n(&early_frozen, 1u, __ATOMIC_RELEASE);
 }
 
 void tb710fu_live_log_init(void)
@@ -175,11 +208,10 @@ void tb710fu_live_log_init(void)
     __asm__ volatile("mrs %0, cntfrq_el0" : "=r"(frequency));
 #endif
     if (frequency < 2u) return;
-    tb710fu_live_log_sender_init(&live_sender);
-    tb710fu_live_log_sender_init(&fixed_sender);
-    (void)tb_live_display_qr_slot(&display, fixed_pixels, 121u * 121u, 121, 0);
-    if (display.DualQr)
-        (void)tb_live_display_qr_slot(&display, fixed_pixels, 121u * 121u, 121, 1);
+    tb710fu_live_log_sender_init(&xnu_sender);
+    tb710fu_live_log_sender_init(&ramoops_sender);
+    (void)tb710fu_live_log_set_source(&xnu_sender, TB710FU_LIVE_LOG_XNU);
+    next_slot = 1u; /* Draw an initial raw ramoops frame before early freeze. */
     __atomic_store_n(&enabled, 1u, __ATOMIC_RELEASE);
     tb710fu_live_log_refresh();
 }

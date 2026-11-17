@@ -12,6 +12,60 @@ static void copy_bytes(uint8_t *out, const uint8_t *source, size_t length)
     for (size_t index = 0; index < length; ++index) out[index] = source[index];
 }
 
+static int capture_try(struct tb710fu_live_capture *capture)
+{
+    uint32_t expected = 0;
+    return __atomic_compare_exchange_n(&capture->guard, &expected, 1, 1,
+        __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
+}
+
+static void capture_release(struct tb710fu_live_capture *capture)
+{
+    __atomic_store_n(&capture->guard, 0, __ATOMIC_RELEASE);
+}
+
+int tb710fu_live_capture_putc(struct tb710fu_live_capture *capture, char byte)
+{
+    if (capture == NULL) return 0;
+    if (!capture_try(capture)) {
+        (void)__atomic_fetch_add(&capture->dropped, 1, __ATOMIC_RELAXED);
+        return 0;
+    }
+    if (capture->written == UINT64_MAX) {
+        (void)__atomic_fetch_add(&capture->dropped, 1, __ATOMIC_RELAXED);
+        capture_release(capture);
+        return 0;
+    }
+    capture->bytes[capture->written % TB710FU_LIVE_CAPTURE_BYTES] = (uint8_t)byte;
+    ++capture->written;
+    capture_release(capture);
+    return 1;
+}
+
+int tb710fu_live_capture_copy(struct tb710fu_live_capture *capture,
+    uint8_t *out, size_t capacity, struct tb710fu_live_capture_info *info)
+{
+    if (info == NULL) return 0;
+    clear_bytes(info, sizeof(*info));
+    if (capture == NULL || out == NULL || capacity == 0) return 0;
+    info->dropped = __atomic_load_n(&capture->dropped, __ATOMIC_RELAXED);
+    if (!capture_try(capture)) {
+        info->state = 1;
+        return 0;
+    }
+    if (capacity > TB710FU_LIVE_LOG_MAX_BYTES) capacity = TB710FU_LIVE_LOG_MAX_BYTES;
+    uint64_t end = capture->written;
+    size_t count = end < capacity ? (size_t)end : capacity;
+    info->start = end - count;
+    info->end = end;
+    info->copied = (uint32_t)count;
+    info->state = count == 0 ? 2u : 3u;
+    for (size_t index = 0; index < count; ++index)
+        out[index] = capture->bytes[(info->start + index) % TB710FU_LIVE_CAPTURE_BYTES];
+    capture_release(capture);
+    return (int)count;
+}
+
 static uint32_t crc32(const uint8_t *bytes, size_t length)
 {
     uint32_t value = UINT32_MAX;
@@ -48,11 +102,14 @@ static size_t decimal(char *out, uint64_t value)
     return length;
 }
 
-static size_t filename(char *out, uint64_t generation, uint64_t start, uint64_t end)
+static size_t filename(char *out, enum tb710fu_live_log_source source,
+    uint64_t generation, uint64_t start, uint64_t end)
 {
-    static const char fixed_prefix[] = "TB710FU-ramoops-fixed-";
-    static const char live_prefix[] = "TB710FU-ramoops-live-";
-    const char *prefix = generation == 0 ? fixed_prefix : live_prefix;
+    static const char *const prefixes[2][2] = {
+        {"TB710FU-ramoops-fixed-", "TB710FU-ramoops-live-"},
+        {"TB710FU-xnu-fixed-", "TB710FU-xnu-live-"}
+    };
+    const char *prefix = prefixes[source][generation != 0];
     static const char suffix[] = ".log";
     size_t length = 0;
     while (prefix[length] != '\0') {
@@ -75,6 +132,22 @@ void tb710fu_live_log_sender_init(struct tb710fu_live_log_sender *sender)
     if (sender != NULL) clear_bytes(sender, sizeof(*sender));
 }
 
+static int valid_source(enum tb710fu_live_log_source source)
+{
+    return source == TB710FU_LIVE_LOG_RAMOOPS || source == TB710FU_LIVE_LOG_XNU;
+}
+
+int tb710fu_live_log_set_source(struct tb710fu_live_log_sender *sender,
+    enum tb710fu_live_log_source source)
+{
+    if (sender == NULL || !valid_source(source)) return 0;
+    if (sender->source == source) return 1;
+    if (!tb710fu_live_log_can_snapshot(sender)) return 0;
+    tb710fu_live_log_sender_init(sender);
+    sender->source = source;
+    return 1;
+}
+
 int tb710fu_live_log_can_snapshot(const struct tb710fu_live_log_sender *sender)
 {
     return sender != NULL && (!sender->valid || sender->info.rounds >= 2u);
@@ -92,9 +165,18 @@ enum tb710fu_live_log_result tb710fu_live_log_snapshot(
     struct tb710fu_live_log_sender *sender, const uint8_t *bytes, size_t length,
     uint64_t generation, uint64_t start, uint64_t end)
 {
+    if (end < start || end - start != (uint64_t)length)
+        return TB710FU_LIVE_LOG_INVALID;
+    return tb710fu_live_log_snapshot_file(sender, bytes, length, generation, start, end);
+}
+
+enum tb710fu_live_log_result tb710fu_live_log_snapshot_file(
+    struct tb710fu_live_log_sender *sender, const uint8_t *bytes, size_t length,
+    uint64_t generation, uint64_t start, uint64_t end)
+{
     static const uint8_t mime[] = "text/plain";
     if (sender == NULL || length > TB710FU_LIVE_LOG_MAX_BYTES ||
-        end < start || end - start != (uint64_t)length ||
+        !valid_source(sender->source) || end < start || end - start > (uint64_t)length ||
         (length != 0 && bytes == NULL)) return TB710FU_LIVE_LOG_INVALID;
     if (length == 0) return TB710FU_LIVE_LOG_EMPTY;
     if (!tb710fu_live_log_can_snapshot(sender)) return TB710FU_LIVE_LOG_BUSY;
@@ -105,7 +187,8 @@ enum tb710fu_live_log_result tb710fu_live_log_snapshot(
     sender->info.start = start;
     sender->info.end = end;
     sender->info.bytes = (uint32_t)length;
-    size_t name_length = filename(sender->info.filename, generation, start, end);
+    sender->info.source = sender->source;
+    size_t name_length = filename(sender->info.filename, sender->source, generation, start, end);
     size_t body_offset = 26u + name_length + sizeof(mime) - 1u;
     uint32_t body_crc = crc32(bytes, length);
     uint8_t *envelope = sender->envelope;

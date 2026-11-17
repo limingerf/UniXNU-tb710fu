@@ -42,6 +42,16 @@ PINNED_QR_FLAGS = ('-Wno-sign-compare', '-Wno-unused-parameter', '-fwrapv',
 PINNED_QR_FLAGS_REASON = (
     'Preserve the pinned Mu source bytes: signed/UINTN indices, signed-bitmask '
     'wrapping semantics for bounded counts, and DEBUG-discarded variables/parameters.')
+DUAL_SOURCE_LOG_CONTRACT = {
+    'schema_version': 1,
+    'left': {'slot': 0, 'source': 'xnu-console', 'capture_ring_bytes': 65536,
+             'current_tail_bytes_max': 3072, 'early_backup_bytes_max': 512,
+             'early_backup_separate_metadata_and_raw_section': True,
+             'export_body_bytes_max': 4096},
+    'right': {'slot': 1, 'source': 'ramoops', 'current_tail_bytes_max': 4096,
+              'provider': 'tb710fu_ramoops_snapshot_copy', 'export_body_bytes_max': 4096},
+    'frames_per_poll_max': 1, 'complete_rounds_before_replacement_min': 2,
+}
 
 
 def sha(path):
@@ -372,6 +382,7 @@ def main():
         'framework_revision': lock['unixnu']['commit'], 'xnu_revision': lock['xnu_commit'],
         'linked_into_kernel': False, 'runtime_qualified': False,
         'live_log_sources_compiled': True, 'qr_hardware_display_verified': False,
+        'dual_source_log_contract': DUAL_SOURCE_LOG_CONTRACT,
     }
     report_path = OUT / 'build-report.json'
     write_json(report_path, report)

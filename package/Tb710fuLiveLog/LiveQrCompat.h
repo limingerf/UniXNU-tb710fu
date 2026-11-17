@@ -26,6 +26,12 @@ typedef void VOID; typedef UINTN EFI_STATUS;
 #define EFI_NO_MEDIA 12
 #define EFI_ERROR(s) ((s) != EFI_SUCCESS)
 #define MAX_INTN INTPTR_MAX
+/* XNU's forced meta_features.h imports the object-like DEBUG configuration
+ * macro. Only these standalone QR objects use the EDK2 function-like service;
+ * leave native XNU objects and their compile flags unchanged. */
+#ifdef DEBUG
+#undef DEBUG
+#endif
 #define DEBUG(x) ((void)0)
 #define DEBUG_INFO 0
 #define DEBUG_ERROR 0

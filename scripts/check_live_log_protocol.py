@@ -107,6 +107,7 @@ def main():
                           hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
                   },
                   'sanitizers': 'AddressSanitizer/UndefinedBehaviorSanitizer',
+                  'capture_checks': json.loads((output / 'capture-check.json').read_bytes()),
                   'interop_result': json.loads((output / 'receiver-check.json').read_bytes()),
                   'device_operations': False, 'hardware_verified': False}
         (output / 'protocol-check.json').write_text(json.dumps(result, indent=2) + '\n')

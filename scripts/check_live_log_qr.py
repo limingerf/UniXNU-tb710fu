@@ -2,7 +2,8 @@
 """Validate the actual native QR adapter and unchanged pinned Mu encoder.
 
 The host C stage runs ASan/UBSan, repeated encoding and allocator boundaries,
-then exports fixed512 K=1 and live4096 K=6 frames plus actual BGRA bitmaps.
+then exports fixed512 K=1, live4096 K=6 and XNU-with-backup K=6 frames
+plus actual BGRA bitmaps.
 --decode-only uses an independent ZXing decoder for exact frame and complete
 file recovery, and can run in a different Python environment from compilation.
 """
@@ -35,7 +36,7 @@ def decode(output, dependency_dir):
     import zxingcpp
     from PIL import Image
     results = []
-    for stem, count in (("fixed512", 2), ("live4096", 12)):
+    for stem, count in (("fixed512", 2), ("live4096", 12), ("xnu-backup", 12)):
         blocks, sessions, checksum, envelope_size, block_count = {}, set(), None, None, None
         for index in range(count):
             name = f"{stem}-{index:02}"
@@ -71,6 +72,12 @@ def decode(output, dependency_dir):
         filename = envelope[26:26 + name_len].decode("ascii")
         if (stem == "fixed512") != (block_count == 1) or stem == "fixed512" and "fixed" not in filename:
             raise SystemExit("Fixed snapshot is not a distinct K=1 transfer")
+        if stem == "xnu-backup":
+            header, raw = body.split(b"\n\n", 1)
+            if not filename.startswith("TB710FU-xnu-live-") or len(raw) != 512 + 3072:
+                raise SystemExit("XNU export is missing its independent source identity/layout")
+            if raw[:512] != (output / (stem + ".early")).read_bytes() or b"raw_layout=early512,current3072" not in header:
+                raise SystemExit("XNU early backup bytes did not survive QR transfer")
         image.save(output / (stem + "-last.png"))
         results.append({"fixture": stem, "QR_frames_decoded": count, "block_count": block_count,
                         "file_bytes": len(body), "filename": filename, "file_sha256": hashlib.sha256(body).hexdigest(),
@@ -88,6 +95,8 @@ def main():
     parser.add_argument("--decode-only", action="store_true")
     parser.add_argument("--decode", action="store_true")
     parser.add_argument("--dependency-dir", type=Path)
+    parser.add_argument("--xnu-debug", choices=("0", "1"), default="0",
+                        help="Model XNU's object-like DEBUG macro before the QR-only compatibility header")
     args = parser.parse_args()
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -116,13 +125,16 @@ def main():
     commands, objects, symbols = [], [], {}
     for source in sources:
         obj = output / (source.stem + ".o")
-        command = compiler + common + ["-include", str(SOURCE / "LiveQrCompat.h")]
+        command = compiler + common + ["-DDEBUG=" + args.xnu_debug,
+                                       "-include", str(SOURCE / "LiveQrCompat.h")]
         if source.name.startswith("QrEncoder"):
             # The pinned 2016 source uses (-1 << Count) to construct an all-one
             # mask. Give its signed arithmetic explicit wrapping semantics;
-            # keep every source byte and all sanitizer checks unchanged.
+            # retain its legacy empty-parameter-list declaration under the
+            # host's -pedantic check. Source bytes and sanitizers are unchanged.
             command += ["-fwrapv", "-Wno-sign-compare", "-Wno-unused-parameter",
-                        "-Wno-shift-negative-value", "-Wno-unused-but-set-variable"]
+                        "-Wno-shift-negative-value", "-Wno-unused-but-set-variable",
+                        "-Wno-strict-prototypes"]
         command += ["-c", str(source), "-o", str(obj)]
         subprocess.run(command, check=True)
         symbol_text = subprocess.check_output(["nm", "-g", str(obj)], text=True)
@@ -131,7 +143,7 @@ def main():
             if len(parts) == 3 and parts[1].upper() != "U" and not parts[2].startswith("tb_live_"):
                 # ASan's generated registration symbols are compiler runtime,
                 # not QR/UEFI globals. All production definitions stay private.
-                if not parts[2].startswith(("__odr_asan.", "___asan")):
+                if not parts[2].startswith(("__odr_asan.", "__odr_asan_gen_tb_live_", "___asan")):
                     raise SystemExit("Unprefixed QR external definition: " + parts[2])
         symbols[source.name] = symbol_text
         commands.append(command)
@@ -145,13 +157,15 @@ def main():
     local = [SOURCE / name for name in ("LiveQr.c", "LiveQr.h", "LiveQrCompat.h", "LiveProtocol.c",
                                        "LiveProtocol.h", "Test/live_qr_test.c")]
     report = {"result": "PASS", "stage": "real-live-QR-and-Mu-host-test",
+              "xnu_object_like_DEBUG_before_compat": int(args.xnu_debug),
               "sanitizers": ["address", "undefined"], "QR_source": manifest,
               "source_hashes": {str(path.relative_to(ROOT)): digest(path) for path in local},
               "test_script_sha256": digest(Path(__file__)), "compile_commands": commands,
               "QR_symbols": symbols, "repeated_encodes": 64,
               "Mu_compile_semantics": "-fwrapv for its signed all-one mask; fixed Mu bytes unchanged",
               "fixtures": {"fixed512": {"bytes": 512, "blocks": 1, "frames": 2},
-                           "live4096": {"bytes": 4096, "blocks": 6, "frames": 12}},
+                           "live4096": {"bytes": 4096, "blocks": 6, "frames": 12},
+                           "xnu-backup": {"early_bytes": 512, "current_bytes": 3072, "blocks": 6, "frames": 12}},
               "independent_decode_pending": not args.decode,
               "hardware_verified": False}
     (output / "qr-host-check.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

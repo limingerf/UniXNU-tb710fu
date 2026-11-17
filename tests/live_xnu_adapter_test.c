@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: MIT
- * Run the actual adapter/protocol/display control flow with host XNU services.
- * Hardware MRS/DSB and XNU includes alone are isolated by TB_LIVE_HOST_TEST.
- * This fixture never maps a device or claims scheduler/MMU/cache validation. */
+ * Production adapter/capture/protocol/display with isolated host XNU services.
+ * Real OneSend interoperability and Mu encoding are verified separately. */
 #define TB_LIVE_HOST_TEST 1
 #define XNU_TB710FU_LIVE_LOG 1
 #include <assert.h>
@@ -13,17 +12,13 @@
 #include <string.h>
 #include <kern/tb710fu_ramoops.h>
 #include <kern/tb710fu_live_log.h>
-
 typedef uintptr_t vm_offset_t;
 typedef size_t vm_size_t;
 typedef int wait_result_t;
 typedef int kern_return_t;
 typedef void *thread_t;
 typedef void *event_t;
-typedef struct {
-    uint64_t v_baseAddr, v_depth, v_width, v_height, v_rowBytes;
-    uint64_t v_length, v_offset;
-} PE_Video;
+typedef struct { uint64_t v_baseAddr, v_depth, v_width, v_height, v_rowBytes, v_length, v_offset; } PE_Video;
 #define THREAD_NULL NULL
 #define THREAD_CONTINUE_NULL NULL
 #define THREAD_UNINT 0
@@ -34,7 +29,6 @@ typedef struct {
 #define STARTUP(subsystem, rank, function) \
     static void (*registered_startup)(void) = function; \
     enum { registered_subsystem = subsystem, registered_rank = rank }
-
 static uint64_t tb_live_host_ticks(void);
 static uint64_t tb_live_host_frequency(void);
 static int PE_parse_boot_argn(const char *, void *, int);
@@ -45,14 +39,13 @@ static void thread_deallocate(thread_t);
 static void clock_interval_to_deadline(unsigned, unsigned, uint64_t *);
 static int assert_wait_deadline(event_t, int, uint64_t);
 static void thread_block(void *);
-
 #include "package/Tb710fuLiveLog/LiveXnu.c"
 
 static PE_Video video_input;
 static unsigned arg_present, arg_value, map_fail, reenter_encoder;
 static unsigned map_calls, snapshot_calls, qr_calls, wait_calls, block_calls;
-static unsigned create_calls, deallocate_calls, deadline_calls, reentries;
-static uint64_t clock_now, clock_frequency;
+static unsigned create_calls, deallocate_calls, deadline_calls, reentries, encoded_by_source[2];
+static uint64_t clock_now, clock_frequency, xnu_written;
 static uint8_t log_bytes[8192], encoded_frame[TB710FU_LIVE_LOG_FRAME_BYTES];
 static size_t log_length, last_capacity;
 static unsigned log_state;
@@ -61,166 +54,147 @@ static uint8_t *frame_allocation;
 static size_t frame_bytes;
 static void (*created_worker)(void *, wait_result_t);
 static jmp_buf worker_escape;
-
+static uint32_t le32(const uint8_t *p)
+{ return p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
+static uint16_t le16(const uint8_t *p) { return p[0] | (uint16_t)p[1] << 8; }
+static uint8_t xnu_byte(uint64_t offset) { return (uint8_t)(offset * 17u + 3u); }
 static uint64_t tb_live_host_ticks(void) { return clock_now; }
 static uint64_t tb_live_host_frequency(void) { return clock_frequency; }
 static int PE_parse_boot_argn(const char *name, void *output, int bytes)
 {
-    assert(strcmp(name, "tb710fu-live-log") == 0);
-    assert(bytes == (int)sizeof(int));
-    *(int *)output = (int)arg_value;
-    return (int)arg_present;
+    assert(strcmp(name, "tb710fu-live-log") == 0 && bytes == (int)sizeof(int));
+    *(int *)output = (int)arg_value; return (int)arg_present;
 }
-static int PE_current_console(PE_Video *output)
-{
-    *output = video_input;
-    return 0;
-}
+static int PE_current_console(PE_Video *output) { *output = video_input; return 0; }
 static vm_offset_t ml_io_map(uint64_t physical, vm_size_t bytes)
 {
     ++map_calls;
-    assert(physical == (video_input.v_baseAddr & ~UINT64_C(3)));
-    assert(bytes <= frame_bytes);
+    assert(physical == (video_input.v_baseAddr & ~UINT64_C(3)) && bytes <= frame_bytes);
     return map_fail ? 0 : (vm_offset_t)(frame_allocation + 64);
 }
-int tb710fu_ramoops_snapshot_copy(uint8_t *output, size_t capacity,
-                                struct tb710fu_ramoops_snapshot *info)
+int tb710fu_ramoops_snapshot_copy(uint8_t *output, size_t capacity, struct tb710fu_ramoops_snapshot *info)
 {
-    ++snapshot_calls;
-    last_capacity = capacity;
+    ++snapshot_calls; last_capacity = capacity;
     assert(capacity <= TB710FU_LIVE_LOG_MAX_BYTES);
-    *info = (struct tb710fu_ramoops_snapshot){0};
-    info->state = log_state;
-    if (log_state != TB710FU_RAMOOPS_READY || log_length == 0) return 0;
+    *info = (struct tb710fu_ramoops_snapshot){0}; info->state = log_state;
+    if (log_state != TB710FU_RAMOOPS_READY || !log_length) return 0;
     size_t n = log_length < capacity ? log_length : capacity;
-    info->start = log_length - n;
-    info->end = log_length;
-    info->copied = (uint32_t)n;
-    memcpy(output, log_bytes + log_length - n, n);
-    return (int)n;
+    info->start = log_length - n; info->end = log_length; info->copied = (uint32_t)n;
+    memcpy(output, log_bytes + log_length - n, n); return (int)n;
 }
 int tb_live_qr_encode(const uint8_t *input, size_t bytes, const uint32_t **pixels)
 {
-    ++qr_calls;
-    assert(bytes == TB710FU_LIVE_LOG_FRAME_BYTES);
-    memcpy(encoded_frame, input, bytes);
+    ++qr_calls; assert(bytes == TB710FU_LIVE_LOG_FRAME_BYTES);
+    unsigned slot = next_slot ^ 1u;
+    const struct tb710fu_live_log_sender *s = slot == 0 ? &xnu_sender : &ramoops_sender;
+    assert(s->valid && le32(input + 4) == s->info.session_id && le32(input + 24) == s->info.payload_checksum);
+    assert(s->info.source == (slot == 0 ? TB710FU_LIVE_LOG_XNU : TB710FU_LIVE_LOG_RAMOOPS));
+    /* Actual emitted payload must belong to this slot's immutable source file. */
+    uint32_t sequence = le32(input + 8); assert(sequence % 5u != 4u);
+    uint32_t block = (uint32_t)(((uint64_t)(sequence / 5u) * 4u + sequence % 5u) % s->info.block_count);
+    size_t offset = (size_t)block * 720u, count = s->info.envelope_bytes - offset;
+    if (count > 720u) count = 720u;
+    assert(memcmp(input + 28, s->envelope + offset, count) == 0);
+    for (size_t i = count; i < 720u; ++i) assert(input[28u + i] == 0);
+    ++encoded_by_source[slot]; memcpy(encoded_frame, input, bytes);
     for (size_t i = 0; i < sizeof(qr_pixels) / sizeof(qr_pixels[0]); ++i)
-        qr_pixels[i] = (input[i % bytes] & 1u) ? 0xff000000u : 0xffffffffu;
+        qr_pixels[i] = slot == 0 ? 0xff112233u : 0xffaabbccu;
     *pixels = qr_pixels;
     if (reenter_encoder) {
-        unsigned before = snapshot_calls;
-        assert(guard == 1u);
-        ++reentries;
-        tb710fu_live_log_poll();
-        assert(snapshot_calls == before);
+        unsigned old_qr = qr_calls, old_snap = snapshot_calls; assert(guard == 1u); ++reentries;
+        tb710fu_live_log_poll(); assert(snapshot_calls == old_snap && qr_calls == old_qr);
     }
     return 1;
 }
-static kern_return_t kernel_thread_start(void (*function)(void *, wait_result_t),
-                                        void *argument, thread_t *thread)
-{
-    assert(argument == NULL);
-    ++create_calls;
-    created_worker = function;
-    *thread = &sleep_channel;
-    return KERN_SUCCESS;
-}
-static void thread_deallocate(thread_t thread)
-{
-    assert(thread == &sleep_channel);
-    ++deallocate_calls;
-}
+static kern_return_t kernel_thread_start(void (*fn)(void *, wait_result_t), void *arg, thread_t *thread)
+{ assert(arg == NULL); ++create_calls; created_worker = fn; *thread = &sleep_channel; return KERN_SUCCESS; }
+static void thread_deallocate(thread_t thread) { assert(thread == &sleep_channel); ++deallocate_calls; }
 static void clock_interval_to_deadline(unsigned interval, unsigned scale, uint64_t *deadline)
-{
-    ++deadline_calls;
-    assert(interval == 250 && scale == NSEC_PER_MSEC);
-    *deadline = clock_now + 250;
-}
+{ ++deadline_calls; assert(interval == 250 && scale == NSEC_PER_MSEC); *deadline = clock_now + 250; }
 static int assert_wait_deadline(event_t event, int state, uint64_t deadline)
 {
-    ++wait_calls;
-    assert(event == (event_t)&sleep_channel && state == THREAD_UNINT);
-    assert(deadline == clock_now + 250);
+    ++wait_calls; assert(event == (event_t)&sleep_channel && state == THREAD_UNINT && deadline == clock_now + 250);
     return 0;
 }
 static void thread_block(void *continuation)
-{
-    assert(continuation == THREAD_CONTINUE_NULL);
-    ++block_calls;
-    longjmp(worker_escape, 1);
-}
-
+{ assert(continuation == THREAD_CONTINUE_NULL); ++block_calls; longjmp(worker_escape, 1); }
 static void guards(void)
 {
     for (size_t i = 0; i < 64; ++i) {
-        assert(frame_allocation[i] == 0xa5);
-        assert(frame_allocation[64 + frame_bytes + i] == 0xa5);
+        assert(frame_allocation[i] == 0xa5 && frame_allocation[64 + frame_bytes + i] == 0xa5);
     }
 }
 static void reset_fixture(void)
 {
-    free(frame_allocation);
-    frame_bytes = 640u * 4u * 480u;
-    frame_allocation = malloc(frame_bytes + 128);
-    assert(frame_allocation != NULL);
-    memset(frame_allocation, 0xa5, frame_bytes + 128);
-    display = (TB_LIVE_DISPLAY){0};
-    memset(&live_sender, 0, sizeof(live_sender));
-    memset(&fixed_sender, 0, sizeof(fixed_sender));
-    memset(fixed_pixels, 0, sizeof(fixed_pixels));
-    enabled = guard = redraw = worker_started = sleep_channel = fixed_valid = 0;
-    frequency = next_frame = generation = 0;
-    small_screen_phase = 0;
-    arg_present = arg_value = 1;
-    map_fail = reenter_encoder = 0;
+    free(frame_allocation); frame_bytes = 640u * 4u * 480u;
+    frame_allocation = malloc(frame_bytes + 128); assert(frame_allocation);
+    memset(frame_allocation, 0xa5, frame_bytes + 128); display = (TB_LIVE_DISPLAY){0};
+    memset(&xnu_sender, 0, sizeof(xnu_sender)); memset(&ramoops_sender, 0, sizeof(ramoops_sender));
+    memset(&xnu_capture, 0, sizeof(xnu_capture));
+    early_state = (struct tb710fu_live_capture_info){0}; xnu_state = early_state;
+    ramoops_state = (struct tb710fu_ramoops_snapshot){0}; memset(early_bytes, 0, sizeof(early_bytes));
+    enabled = guard = redraw = worker_started = sleep_channel = early_frozen = early_once = next_slot = 0;
+    frequency = next_frame = xnu_generation = ramoops_generation = xnu_last_dropped = 0;
+    arg_present = arg_value = 1; map_fail = reenter_encoder = 0;
     map_calls = snapshot_calls = qr_calls = wait_calls = block_calls = 0;
     create_calls = deallocate_calls = deadline_calls = reentries = 0;
-    clock_now = 0;
-    clock_frequency = 1000;
-    log_state = TB710FU_RAMOOPS_READY;
-    log_length = 100;
-    last_capacity = 0;
-    created_worker = NULL;
-    for (size_t i = 0; i < sizeof(log_bytes); ++i) log_bytes[i] = (uint8_t)('!' + i % 89);
-    video_input = (PE_Video){
-        .v_baseAddr = 0xd5100000, .v_depth = 32, .v_width = 640,
-        .v_height = 480, .v_rowBytes = 640 * 4,
-        .v_length = frame_bytes, .v_offset = 0
-    };
+    encoded_by_source[0] = encoded_by_source[1] = 0; clock_now = xnu_written = 0; clock_frequency = 1000;
+    log_state = TB710FU_RAMOOPS_READY; log_length = 5000; last_capacity = 0; created_worker = NULL;
+    for (size_t i = 0; i < sizeof(log_bytes); ++i) log_bytes[i] = (uint8_t)('R' + i % 13u);
+    video_input = (PE_Video){ .v_baseAddr = 0xd5100000, .v_depth = 32, .v_width = 640,
+        .v_height = 480, .v_rowBytes = 640 * 4, .v_length = frame_bytes };
 }
-static uint32_t get_le32(const uint8_t *p)
+static void feed_xnu(size_t count)
+{ for (size_t i = 0; i < count; ++i) tb710fu_live_log_putc((char)xnu_byte(xnu_written++)); }
+static void tick(void)
 {
-    return p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
+    unsigned old_qr = qr_calls, old_wait = wait_calls; clock_now += 500; tb710fu_live_log_poll();
+    assert(qr_calls <= old_qr + 1u && wait_calls == old_wait && guard == 0); guards();
 }
-static uint16_t get_le16(const uint8_t *p) { return p[0] | (uint16_t)p[1] << 8; }
-static void assert_body(const struct tb710fu_live_log_sender *sender, size_t count)
+static const uint8_t *body(const struct tb710fu_live_log_sender *s)
+{ return s->envelope + 26u + le16(s->envelope + 6) + le16(s->envelope + 8); }
+static void assert_ramoops_body(size_t count)
 {
-    size_t offset = 26u + get_le16(sender->envelope + 6) + get_le16(sender->envelope + 8);
-    assert(sender->info.bytes == count);
-    assert(memcmp(sender->envelope + offset, log_bytes + log_length - count, count) == 0);
+    assert(ramoops_sender.info.bytes == count && ramoops_sender.info.end == log_length);
+    assert(ramoops_sender.info.start == log_length - count);
+    assert(memcmp(body(&ramoops_sender), log_bytes + log_length - count, count) == 0);
+    assert(strstr(ramoops_sender.info.filename, "TB710FU-ramoops-live-") == ramoops_sender.info.filename);
 }
-
-static void test_disabled_does_not_map(void)
+static void assert_xnu_body(size_t count, const uint8_t *backup, size_t backup_length)
 {
-    reset_fixture();
-    arg_present = 0;
-    tb710fu_live_log_init();
-    tb710fu_live_log_poll();
-    tb710fu_live_log_refresh();
-    tb710fu_live_log_freeze();
-    registered_startup();
-    assert(!tb710fu_live_log_active());
-    assert(!map_calls && !snapshot_calls && !qr_calls && !create_calls);
-    arg_present = 1;
-    arg_value = 2;
-    tb710fu_live_log_init();
-    assert(!map_calls);
-    guards();
+    const uint8_t *file = body(&xnu_sender);
+    const char *marker = strstr((const char *)file, "raw_bytes_begin\n");
+    assert(marker && (const uint8_t *)marker - file < 512);
+    size_t header_length = (size_t)((const uint8_t *)marker - file) + strlen("raw_bytes_begin\n");
+    assert(xnu_sender.info.bytes == header_length + backup_length + count);
+    assert(xnu_sender.info.bytes <= 4096 && count <= 3072);
+    assert(xnu_sender.info.start == xnu_written - count && xnu_sender.info.end == xnu_written);
+    assert(memcmp(file + header_length, backup, backup_length) == 0);
+    for (size_t i = 0; i < count; ++i)
+        assert(file[header_length + backup_length + i] == xnu_byte(xnu_written - count + i));
+    char expected[96]; snprintf(expected, sizeof(expected), "earlybackup_bytes=%u\n", (unsigned)backup_length);
+    assert(strstr((const char *)file, expected));
+    snprintf(expected, sizeof(expected), "current_bytes=%u\n", (unsigned)count);
+    assert(strstr((const char *)file, expected));
+    assert(strstr(xnu_sender.info.filename, "TB710FU-xnu-live-") == xnu_sender.info.filename);
+    assert(xnu_sender.info.source == TB710FU_LIVE_LOG_XNU);
+}
+static void test_disabled_and_preinit_capture(void)
+{
+    reset_fixture(); arg_present = 0; feed_xnu(700);
+    tb710fu_live_log_init(); tb710fu_live_log_poll(); tb710fu_live_log_refresh();
+    tb710fu_live_log_freeze(); registered_startup();
+    assert(!enabled && !map_calls && !snapshot_calls && !qr_calls && !create_calls);
+    arg_present = 1; arg_value = 2; tb710fu_live_log_init(); assert(!map_calls);
+    arg_value = 1; tb710fu_live_log_init(); assert(xnu_capture.written == 700 && qr_calls == 1);
+    assert(!xnu_sender.valid && !early_frozen); assert_ramoops_body(512);
+    tb710fu_live_log_freeze(); assert(early_state.start == 188 && early_state.end == 700);
+    tick(); assert_xnu_body(512, early_bytes, 512); assert(!wait_calls && !create_calls); guards();
 }
 static void test_invalid_video_is_bounded(void)
 {
     for (unsigned which = 0; which < 15; ++which) {
-        reset_fixture();
+        reset_fixture(); feed_xnu(20);
         switch (which) {
         case 0: video_input.v_depth = 24; break;
         case 1: video_input.v_baseAddr = 0; break;
@@ -238,125 +212,111 @@ static void test_invalid_video_is_bounded(void)
         case 13: map_fail = 1; break;
         default: clock_frequency = 1; break;
         }
-        tb710fu_live_log_init();
-        assert(!tb710fu_live_log_active());
-        tb710fu_live_log_poll();
-        assert(!snapshot_calls && !qr_calls && !create_calls);
-        guards();
+        tb710fu_live_log_init(); tb710fu_live_log_poll();
+        assert(!enabled && !snapshot_calls && !qr_calls && !create_calls && xnu_capture.written == 20); guards();
     }
 }
-static void test_poll_budget_and_no_scheduler_dependency(void)
+static void test_global_budget_and_stream_isolation(void)
 {
-    reset_fixture();
-    log_length = 5000;
-    tb710fu_live_log_init();
-    assert(tb710fu_live_log_active() && map_calls == 1);
-    assert(last_capacity == 512 && live_sender.info.bytes == 512);
-    assert(snapshot_calls == 1 && qr_calls == 1);
-    assert_body(&live_sender, 512);
-    for (unsigned i = 0; i < 100; ++i) tb710fu_live_log_poll();
-    assert(snapshot_calls == 1 && qr_calls == 1);
-    clock_now = 500;
-    tb710fu_live_log_poll();
-    assert(snapshot_calls == 2 && qr_calls == 2);
-    assert(!create_calls && !wait_calls && !block_calls && !deadline_calls);
-    assert(guard == 0);
-    guards();
+    reset_fixture(); feed_xnu(1500); tb710fu_live_log_init(); tb710fu_live_log_freeze();
+    assert(map_calls == 1 && snapshot_calls == 1 && qr_calls == 1);
+    for (unsigned i = 0; i < 100; ++i) { tb710fu_live_log_refresh(); tb710fu_live_log_poll(); }
+    assert(qr_calls == 1 && snapshot_calls == 1); /* No refresh throttle bypass. */
+    tick(); assert(qr_calls == 2 && encoded_by_source[0] == 1 && last_capacity == 512);
+    assert_xnu_body(512, early_bytes, 512); assert_ramoops_body(512);
+    assert(xnu_sender.info.session_id != ramoops_sender.info.session_id);
+    struct tb710fu_live_log_sender saved = xnu_sender;
+    feed_xnu(123); memset(log_bytes, 'Q', sizeof(log_bytes)); log_length = 6000;
+    tick(); tick();
+    assert(xnu_sender.info.generation == saved.info.generation && xnu_sender.info.rounds < 2);
+    assert(memcmp(xnu_sender.envelope, saved.envelope, sizeof(saved.envelope)) == 0);
+    for (unsigned i = 0; i < 30; ++i) tick();
+    assert_xnu_body(512, early_bytes, 512); assert_ramoops_body(512);
+    assert(xnu_sender.info.generation > saved.info.generation && encoded_by_source[0] > 2 && encoded_by_source[1] > 2);
+    assert(!create_calls && !wait_calls && !block_calls);
 }
-static void test_fixed_k1_is_immutable(void)
+static void test_backup_survives_wrap_in_every_left_file(void)
 {
-    reset_fixture();
-    log_length = 5000;
-    tb710fu_live_log_init();
-    tb710fu_live_log_freeze();
-    assert(fixed_valid && fixed_sender.info.block_count == 1);
-    assert(get_le32(encoded_frame + 12) == 1);
-    assert(fixed_sender.info.generation == 0);
-    assert(fixed_sender.info.start == log_length - 512 && fixed_sender.info.end == log_length);
-    assert_body(&fixed_sender, 512);
-    struct tb710fu_live_log_sender saved = fixed_sender;
-    uint32_t *saved_pixels = malloc(sizeof(fixed_pixels));
-    assert(saved_pixels);
-    memcpy(saved_pixels, fixed_pixels, sizeof(fixed_pixels));
-    memset(log_bytes, 'Z', sizeof(log_bytes));
-    log_length = 7000;
-    for (unsigned i = 0; i < 20; ++i) {
-        clock_now += 1000;
-        tb710fu_live_log_poll();
-        tb710fu_live_log_freeze();
-        assert(memcmp(&saved, &fixed_sender, sizeof(saved)) == 0);
-        assert(memcmp(saved_pixels, fixed_pixels, sizeof(fixed_pixels)) == 0);
+    reset_fixture(); feed_xnu(900); tb710fu_live_log_init(); tb710fu_live_log_freeze();
+    uint8_t backup[512]; memcpy(backup, early_bytes, sizeof(backup));
+    struct tb710fu_live_capture_info frozen = early_state;
+    for (unsigned pass = 0; pass < 3; ++pass) {
+        feed_xnu(70000); for (unsigned i = 0; i < 30; ++i) tick();
+        assert_xnu_body(512, backup, sizeof(backup)); assert(xnu_sender.info.start > frozen.end);
+        tb710fu_live_log_freeze(); assert(memcmp(early_bytes, backup, sizeof(backup)) == 0);
+        assert(memcmp(&early_state, &frozen, sizeof(frozen)) == 0);
     }
-    assert(live_sender.info.end == log_length);
-    assert_body(&live_sender, 512);
-    free(saved_pixels);
-    guards();
 }
-static void test_render_try_lock_reentry(void)
+static void test_capture_and_render_trylocks(void)
 {
-    reset_fixture();
-    reenter_encoder = 1;
-    tb710fu_live_log_init();
-    assert(reentries == 1 && snapshot_calls == 1 && qr_calls == 1 && !guard);
-    guard = 1;
-    tb710fu_live_log_poll();
-    tb710fu_live_log_freeze();
-    tb710fu_live_log_refresh();
-    assert(snapshot_calls == 1 && qr_calls == 1 && guard == 1);
-    guard = 0;
-    tb710fu_live_log_poll(); /* refresh remains pending; the frame is bounded. */
-    assert(snapshot_calls == 2 && qr_calls == 2 && reentries == 2 && !guard);
+    reset_fixture(); feed_xnu(600); reenter_encoder = 1;
+    tb710fu_live_log_init(); tb710fu_live_log_freeze(); tick(); assert(reentries == 2);
+    unsigned old_qr = qr_calls, old_snap = snapshot_calls;
+    guard = 1; feed_xnu(10); tb710fu_live_log_poll(); tb710fu_live_log_refresh();
+    assert(qr_calls == old_qr && snapshot_calls == old_snap && xnu_capture.written == xnu_written); guard = 0;
+    xnu_capture.guard = 1; tb710fu_live_log_putc('!');
+    assert(xnu_capture.dropped == 1 && xnu_capture.written == xnu_written);
+    tick(); tick(); assert(xnu_state.state == TB710FU_LIVE_CAPTURE_BUSY); xnu_capture.guard = 0;
     assert(!wait_calls && !block_calls && !create_calls);
-    guards();
 }
-static void test_worker_only_from_registered_early_boot(void)
+static void test_worker_requires_actual_execution(void)
 {
-    reset_fixture();
-    log_length = 5000;
-    tb710fu_live_log_init();
+    reset_fixture(); feed_xnu(6000); tb710fu_live_log_init(); tb710fu_live_log_freeze(); tick();
     assert(registered_subsystem == EARLY_BOOT && registered_rank == STARTUP_RANK_FIRST);
-    assert(!worker_started && !create_calls);
-    registered_startup();
-    assert(create_calls == 1 && deallocate_calls == 1 && created_worker != NULL);
-    assert(!worker_started); /* Creating a thread does not prove it ran. */
-    clock_now = 1000;
+    registered_startup(); assert(create_calls == 1 && deallocate_calls == 1 && created_worker && !worker_started);
+    assert_xnu_body(512, early_bytes, 512); assert_ramoops_body(512); clock_now += 500;
     if (!setjmp(worker_escape)) created_worker(NULL, 0);
-    assert(worker_started == 1 && last_capacity == 4096);
-    assert(wait_calls == 1 && block_calls == 1 && deadline_calls == 1);
-    for (unsigned i = 0; i < 3; ++i) {
-        clock_now += 1000;
-        tb710fu_live_log_poll();
-    }
-    assert(live_sender.info.bytes == 4096);
-    assert_body(&live_sender, 4096);
+    assert(worker_started && wait_calls == 1 && block_calls == 1 && deadline_calls == 1);
+    for (unsigned i = 0; i < 64; ++i) tick();
+    assert(last_capacity == 4096); assert_xnu_body(3072, early_bytes, 512); assert_ramoops_body(4096);
     assert(wait_calls == 1 && block_calls == 1 && create_calls == 1);
-    guards();
 }
-static void test_unmapped_busy_and_empty_remain_observable(void)
+static uint32_t slot_pixel(unsigned slot)
+{
+    unsigned x = slot ? display.QrSecondX : display.QrX;
+    return *(uint32_t *)(frame_allocation + 64u + (size_t)display.QrY * display.StrideBytes + x * 4u);
+}
+static void test_dual_slots_do_not_clear_each_other(void)
+{
+    reset_fixture(); feed_xnu(700); tb710fu_live_log_init(); tb710fu_live_log_freeze(); tick();
+    assert(display.DualQr && slot_pixel(0) == 0xff112233u && slot_pixel(1) == 0xffaabbccu);
+    for (unsigned i = 0; i < 8; ++i) { tick(); assert(slot_pixel(0) == 0xff112233u && slot_pixel(1) == 0xffaabbccu); }
+}
+static void test_small_screen_alternates_one_rectangle(void)
+{
+    reset_fixture(); video_input.v_width = 240; video_input.v_rowBytes = 960;
+    video_input.v_length = frame_bytes = 960u * 480u; feed_xnu(700);
+    tb710fu_live_log_init(); tb710fu_live_log_freeze();
+    assert(!display.DualQr && display.QrX == display.QrSecondX && slot_pixel(0) == 0xffaabbccu);
+    for (unsigned i = 0; i < 10; ++i) { tick(); assert(slot_pixel(0) == (i % 2u ? 0xffaabbccu : 0xff112233u)); }
+}
+static void test_freeze_busy_and_empty_are_honest(void)
+{
+    for (unsigned busy = 0; busy < 2; ++busy) {
+        reset_fixture(); tb710fu_live_log_init();
+        xnu_capture.guard = busy; guard = 1; tb710fu_live_log_freeze(); guard = 0;
+        assert(early_frozen && early_state.copied == 0);
+        assert(early_state.state == (busy ? TB710FU_LIVE_CAPTURE_BUSY : TB710FU_LIVE_CAPTURE_EMPTY));
+        xnu_capture.guard = 0; feed_xnu(1000); tb710fu_live_log_freeze();
+        assert(early_state.copied == 0); tick(); assert_xnu_body(512, early_bytes, 0);
+        assert(strstr((const char *)body(&xnu_sender), busy ? "earlybackup_state=busy\n" : "earlybackup_state=empty\n"));
+    }
+}
+static void test_ramoops_failure_does_not_replace_xnu(void)
 {
     for (unsigned state = TB710FU_RAMOOPS_UNMAPPED; state <= TB710FU_RAMOOPS_EMPTY; ++state) {
-        reset_fixture();
-        log_state = state;
-        tb710fu_live_log_init();
-        assert(tb710fu_live_log_active());
-        assert(snapshot_calls == 1 && !qr_calls && !live_sender.valid);
-        tb710fu_live_log_freeze();
-        assert(!fixed_valid && !fixed_sender.valid && !guard);
-        assert(!create_calls && !wait_calls);
-        guards();
+        reset_fixture(); log_state = state; feed_xnu(700);
+        tb710fu_live_log_init(); tb710fu_live_log_freeze(); tick();
+        assert(!ramoops_sender.valid && xnu_sender.valid && !guard);
+        assert(encoded_by_source[0] == 1 && encoded_by_source[1] == 0); assert_xnu_body(512, early_bytes, 512);
     }
 }
-
 int main(void)
 {
-    test_disabled_does_not_map();
-    test_invalid_video_is_bounded();
-    test_poll_budget_and_no_scheduler_dependency();
-    test_fixed_k1_is_immutable();
-    test_render_try_lock_reentry();
-    test_worker_only_from_registered_early_boot();
-    test_unmapped_busy_and_empty_remain_observable();
-    free(frame_allocation);
-    puts("PASS: 7 native LiveXnu adapter control-flow groups (15 invalid video cases)");
-    return 0;
+    test_disabled_and_preinit_capture(); test_invalid_video_is_bounded();
+    test_global_budget_and_stream_isolation(); test_backup_survives_wrap_in_every_left_file();
+    test_capture_and_render_trylocks(); test_worker_requires_actual_execution();
+    test_dual_slots_do_not_clear_each_other(); test_small_screen_alternates_one_rectangle();
+    test_freeze_busy_and_empty_are_honest(); test_ramoops_failure_does_not_replace_xnu();
+    free(frame_allocation); puts("PASS: 10 dual-stream LiveXnu adapter groups (15 invalid video cases)"); return 0;
 }

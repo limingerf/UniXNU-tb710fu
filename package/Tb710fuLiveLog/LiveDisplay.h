@@ -40,8 +40,9 @@ int tb_live_display_bands(TB_LIVE_DISPLAY *display);
 int tb_live_display_qr(TB_LIVE_DISPLAY *display, const uint32_t *bgra,
                        size_t pixels, uint32_t side);
 
-/* slot 0 is the fixed snapshot on the left, slot 1 the live transfer on the
- * right. When DualQr is zero both slots use the same rectangle; the caller
+/* slot 0 is the independent XNU-console live transfer on the left; slot 1 is
+ * the actual ramoops live transfer on the right. When DualQr is zero both
+ * slots use the same rectangle; the caller
  * must alternate them. The renderer does not change either transfer session.
  */
 int tb_live_display_qr_slot(TB_LIVE_DISPLAY *display, const uint32_t *bgra,

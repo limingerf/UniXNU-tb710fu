@@ -17,14 +17,21 @@ assert.equal(createHash('sha256').update(source).digest('hex'), manifest.files[0
 const protocol = await import(pathToFileURL(resolve(values.receiver)).href);
 const fixtures = JSON.parse(await readFile(resolve(values.fixtures, 'cases.json'), 'utf8'));
 const results = [];
+const sourceSessions = new Map();
+const earlyBackup = await readFile(resolve(values.fixtures, 'early-backup.expected'));
 
 for (const item of fixtures.cases) {
   const expected = await readFile(resolve(values.fixtures, `case-${item.id}.expected`));
   const envelope = await readFile(resolve(values.fixtures, `case-${item.id}.envelope`));
   const bytes = await readFile(resolve(values.fixtures, `case-${item.id}.frames`));
   assert.equal(expected.length, item.bytes);
-  assert.equal(BigInt(item.end) - BigInt(item.start), BigInt(item.bytes));
-  assert.equal(item.filename, `TB710FU-ramoops-${item.generation === '0' ? 'fixed' : 'live'}-${item.generation}-${item.start}-${item.end}.log`);
+  assert.equal(BigInt(item.end) - BigInt(item.start), BigInt(item.source_bytes));
+  assert.ok(item.source_bytes <= item.bytes);
+  assert.equal(item.filename, `TB710FU-${item.source}-${item.generation === '0' ? 'fixed' : 'live'}-${item.generation}-${item.start}-${item.end}.log`);
+  if (item.file_body) {
+    assert.deepEqual(expected.subarray(item.backup_offset, item.backup_offset + item.backup_bytes), earlyBackup);
+    assert.equal(item.bytes - item.backup_offset - item.backup_bytes, item.source_bytes);
+  } else assert.equal(item.bytes, item.source_bytes);
   const independentlyEncoded = protocol.encodeTransferFile({ name: item.filename, mimeType: 'text/plain', bytes: expected });
   assert.deepEqual(envelope, Buffer.from(independentlyEncoded));
   assert.equal(bytes.length, item.frames * 752);
@@ -32,6 +39,7 @@ for (const item of fixtures.cases) {
   const parsed = frames.map(frame => protocol.parseFrame(frame));
   assert.ok(parsed.every(Boolean));
   const header = parsed[0].header;
+  if (item.id === 0 || item.id === 4) sourceSessions.set(item.source, header.sessionId);
   assert.equal(header.blockCount, item.block_count);
   assert.equal(header.blockLength, 720);
   assert.equal(header.profileId, 0);
@@ -88,18 +96,23 @@ for (const item of fixtures.cases) {
     const event = completed.consume(frame);
     if (!event?.verified) continue;
     const file = await protocol.decodeTransferFile(event.payload);
-    assert.equal(file.name, `TB710FU-ramoops-fixed-0-${item.start}-${item.end}.log`);
+    assert.equal(file.name, `TB710FU-${item.source}-fixed-0-${item.start}-${item.end}.log`);
     assert.deepEqual(Buffer.from(file.bytes), updatedExpected);
+    if (item.file_body)
+      assert.deepEqual(updatedExpected.subarray(item.backup_offset, item.backup_offset + item.backup_bytes), earlyBackup);
     ++updatedDeliveries;
   }
   assert.equal(updatedDeliveries, 1);
-  results.push({ block_count: k, log_bytes: item.bytes, rounds: 4,
+  results.push({ block_count: k, log_bytes: item.bytes, source: item.source,
+    source_bytes: item.source_bytes, backup_bytes_retained: item.backup_bytes, rounds: 4,
     fixed_recovery_single_frame: item.generation === '0' ? k === 1 && envelope.length <= 720 : null,
     exact_reference_sender_frames: true, immutable_raw_log_and_all_crcs: true,
     ordered_unordered_duplicate_drop_late_join: 'PASS', corrupted_frame_refused: true,
     replacement_session_requires_receiver_reset: true });
 }
-assert.deepEqual(results.map(item => item.block_count), [1, 2, 6, 1]);
+assert.deepEqual(results.map(item => item.block_count), [1, 2, 6, 1, 1, 6, 2]);
+assert.equal(sourceSessions.size, 2);
+assert.notEqual(sourceSessions.get('xnu'), sourceSessions.get('ramoops'), 'source identity isolates sessions even with identical raw content/range/generation');
 const result = { result: 'PASS', receiver_source: manifest, cases: results,
   limits: 'Portable C sender and unchanged pinned browser protocol; camera acquisition, kernel scheduling and real ramoops bytes remain hardware gates.' };
 await writeFile(values.output, JSON.stringify(result, null, 2) + '\n');

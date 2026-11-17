@@ -1,4 +1,47 @@
-# Current status · 2026-11-17
+# Current status · 2026-11-18
+
+## User selects two live log sources with retained early backup · 2026-11-18
+
+The latest user choice supersedes the fixed-left display: LEFT now exports
+an independent 64 KiB XNU character capture ring, while RIGHT exports the actual
+current-boot ramoops tail. Both channels update. Before machine_startup, one
+XNU tail of at most 512 bytes is retained once; each later LEFT file includes
+that unchanged backup and its own current tail of at most 3072 bytes, with
+explicit metadata and raw-section lengths. The complete LEFT body is bounded
+by 4096 bytes. RIGHT remains raw ramoops text, at most 4096 bytes. Before the
+worker actually runs each current tail is at most 512 bytes. Freeze busy/empty
+states are explicit; later bytes are never relabelled as pre-machine_startup.
+
+Each channel keeps its file immutable for at least two rounds. A poll renders
+at most one frame and alternates channels with no checkpoint wait. Buffer
+overwrite still loses older current bytes under sustained output, but cannot
+alter the separately retained early backup. Unlike the former fixed single
+frame, a stopped multi-frame transfer cannot be assumed recoverable from one
+photo. The original CDC implementation and its unverified hardware gates remain.
+
+Run 44118339552 at `46e1cac8590c47548f1241b488186ec68dd8dad2` passed the
+header-export compilation boundary and built archives 01–06. Archive 07 first
+failed because XNU's object-like `DEBUG 0` conflicted with EDK2's function-like
+DEBUG service in LiveQrCompat.h. The earlier bootstrap undefined-provider link
+is expected, not this run's compiler root cause. Full provenance is in
+`docs/evidence/live-ramoops-ci-44118339552.json`. The QR-only compatibility
+header now explicitly undefines DEBUG before its private EDK2 macro. Native
+XNU/LiveXnu flags and pinned Mu source bytes are unchanged.
+
+Current host checks cover independent capture wrap/busy/drop, source-specific
+OneSend sessions, explicit exported backup/current sections and actual pinned
+Mu encoding with inherited DEBUG 0 and 1. Independent ZXing recovers all 26
+frames per configuration and the exact XNU backup/current file. Portable
+arm64e cross compilation passes the three QR/Mu objects in both configurations;
+this does not replace the next supported macOS native/prelink build. The
+production adapter's 10 groups plus 15 invalid-video cases and 18 extracted
+production-console capture cases pass ASan/UBSan. All 140 selected patches
+check and apply from pristine XNU; the first 139 hashes are unchanged. Package
+verification passes 11 tests including malformed contracts and inlined hook
+paths. The exact current sources and 11 passing reports are bound in
+`docs/evidence/dual-live-log-host-checks-20261118.json`. One new bounded native
+run follows this diagnosed source revision. No image or signing has yet been
+produced from the dual-live source.
 
 ## Stage 89 observed; native fixed/live ramoops QR prepared · 2026-11-17
 
@@ -46,10 +89,15 @@ artifact identity/digest and exact first failure are bound in
 `docs/evidence/live-ramoops-ci-44112832250.json`. The device-only header export
 fix adds both real headers to XNU_ONLY_EXPORTS using the official existing
 mechanism. A pristine reconstruction of all 140 selected patches passes, with
-the first 139 hashes unchanged. A new bounded run will follow this diagnosed
-fix. The old run 44088845841 does not
-compile these changes. No new image, local signing or device operation has yet
+the first 139 hashes unchanged. The old run 44088845841 does not compile
+these changes. No new image, local signing or device operation has yet
 occurred.
+
+The diagnosed fix is pushed at `46e1cac8590c47548f1241b488186ec68dd8dad2`.
+Its only new bounded kernel run is 44118339552, job 134162499711,
+`ufs-integrated`, now in progress. Native/prelink success is not yet established;
+the intended display label is `src-46e1cac8-ramoops`. Patch-application proof is
+`docs/evidence/live-log-header-export-fix-20261117.json`.
 Real scanout, scheduling, ramoops contents/retention and CDC enumeration are
 still hardware gates. A CPU halted with interrupts masked cannot animate QR;
 the already drawn fixed single-frame code remains scannable.

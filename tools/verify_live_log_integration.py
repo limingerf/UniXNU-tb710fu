@@ -23,6 +23,9 @@ SOURCES = ('LiveProtocol', 'LiveDisplay', 'LiveQr', 'LiveXnu',
 QR_OBJECTS = ('LiveQr', 'QrEncoderLib', 'QrEncoderTables')
 FINAL_SYMBOLS = (
     '_tb710fu_live_log_init', '_tb710fu_live_log_freeze',
+    '_tb710fu_live_log_putc', '_tb710fu_live_capture_putc',
+    '_tb710fu_live_capture_copy', '_tb710fu_live_log_set_source',
+    '_tb710fu_live_log_snapshot_file',
     '_tb710fu_live_log_poll', '_tb710fu_live_log_refresh',
     '_tb710fu_live_log_active', '_tb710fu_ramoops_snapshot_copy',
     '_tb710fu_live_log_sender_init', '_tb710fu_live_log_snapshot',
@@ -37,8 +40,26 @@ HOOK_OBJECTS = {
     'osfmk/DEVELOPMENT/startup.o': ('_tb710fu_live_log_poll',),
     'osfmk/DEVELOPMENT/video_console.o': ('_tb710fu_live_log_active', '_tb710fu_live_log_refresh'),
     'osfmk/DEVELOPMENT/serial_console.o': (
-        '_tb710fu_live_log_active', '_tb710fu_ramoops_putc', '_tb710fu_cdc_log_tap_putc'),
-    'pexpert/DEVELOPMENT/pe_kprintf.o': ('_tb710fu_ramoops_putc',),
+        '_tb710fu_live_log_active', '_tb710fu_live_log_putc',
+        '_tb710fu_ramoops_putc', '_tb710fu_cdc_log_tap_putc'),
+    'pexpert/DEVELOPMENT/pe_kprintf.o': ('_tb710fu_ramoops_putc', '_tb710fu_live_log_putc'),
+}
+ADAPTER_SOURCE_IMPORTS = (
+    '_tb710fu_ramoops_snapshot_copy', '_tb710fu_live_capture_putc',
+    '_tb710fu_live_capture_copy', '_tb710fu_live_log_set_source',
+    '_tb710fu_live_log_snapshot_file',
+)
+DISABLED_CAPTURE_CALLERS = {'_tb710fu_live_capture_disabled', '_console_write',
+                           '_console_write_unbuffered', '__cnputs',
+                           '_console_ring_try_empty', '_console_ring_try_empty_locked'}
+CAPTURE_SOURCE_FUNCTIONS = {
+    'osfmk/DEVELOPMENT/serial_console.o': {
+        '__cnputc': ('static inline void\n_cnputc(char c, bool poll)', 'c'),
+        '_tb710fu_live_capture_disabled': (
+            'static void\ntb710fu_live_capture_disabled(const char *text, int size)', r'text\[i\]')},
+    'pexpert/DEVELOPMENT/pe_kprintf.o': {
+        '_serial_putc': ('void\nserial_putc(char c)', 'c'),
+        '_serial_putc_crlf': ('static void\nserial_putc_crlf(char c)', 'c')},
 }
 
 
@@ -97,6 +118,36 @@ def branch_relocations(obj, symbol):
                           'caller': preceding[-1][1] if preceding else None})
     require(calls, 'Strong hook has no actual direct branch relocation: ' + symbol)
     return calls
+
+
+def capture_source_evidence(command, functions):
+    """Bind both source paths even when Clang inlines their calls together.
+
+    Direct native branch relocations separately establish that the provider
+    call was compiled. A nearest preceding symbol cannot distinguish inlined
+    normal/disabled source paths, so never require a standalone _cnputc.
+    """
+    source = Path(command['file'])
+    if not source.is_absolute():
+        source = Path(command['directory']) / source
+    text = source.read_text()
+    bodies = {}
+    for name, (signature, argument) in functions.items():
+        marker = signature + '\n{'
+        require(text.count(marker) == 1, 'Ambiguous actual console capture function: ' + name)
+        start = text.index(marker)
+        pos, depth = start + len(marker), 1
+        while depth and pos < len(text):
+            if text[pos] == '{': depth += 1
+            elif text[pos] == '}': depth -= 1
+            pos += 1
+        require(depth == 0, 'Truncated actual console capture function: ' + name)
+        body = text[start:pos]
+        require(re.search(r'\btb710fu_live_log_putc\s*\(\s*' + argument + r'\s*\)\s*;', body),
+                'Actual console path omits independent XNU capture: ' + name)
+        bodies[name] = hashlib.sha256(body.encode()).hexdigest()
+    return {'compiled_source': str(source), 'compiled_source_sha256': digest(source),
+            'provider': '_tb710fu_live_log_putc', 'function_body_sha256': bodies}
 
 
 def deployment(obj):
@@ -161,6 +212,8 @@ def verify(tree, config, native_path):
             report['xnu_revision'] == LOCK['xnu_commit'], 'Wrong live-log source revisions')
     require(report['recipe_sha256'] == digest(ROOT / 'scripts/build-tb710fu-live-log.py'),
             'Live-log archive recipe changed')
+    require(report.get('dual_source_log_contract') == builder.DUAL_SOURCE_LOG_CONTRACT,
+            'Live-log dual-source capture/export contract differs')
     expected_objects = {name + '.o' for name in SOURCES}
     require(set(report['objects_sha256']) == expected_objects and
             report['archive_members'] == [name + '.o' for name in SOURCES],
@@ -246,8 +299,17 @@ def verify(tree, config, native_path):
                             'Unprefixed QR global definition: ' + symbol['name'])
         instruction_checks[member] = check_instructions(output / member, tool)
     live_xnu = audit.MachO(members['LiveXnu.o'])
-    strong_import(live_xnu, '_tb710fu_ramoops_snapshot_copy')
-    adapter_snapshot_calls = branch_relocations(live_xnu, '_tb710fu_ramoops_snapshot_copy')
+    strong_definition(live_xnu, '_tb710fu_live_log_putc')
+    adapter_source_calls = {name: {'symbol': strong_import(live_xnu, name),
+                                  'branches': branch_relocations(live_xnu, name)}
+                            for name in ADAPTER_SOURCE_IMPORTS}
+    adapter_snapshot_calls = adapter_source_calls['_tb710fu_ramoops_snapshot_copy']['branches']
+    require(any(call['caller'] == '_tb710fu_live_log_putc' for call in
+                adapter_source_calls['_tb710fu_live_capture_putc']['branches']),
+            'XNU console provider has no actual independent-ring capture branch')
+    protocol = audit.MachO(members['LiveProtocol.o'])
+    for name in ADAPTER_SOURCE_IMPORTS[1:]:
+        strong_definition(protocol, name)
     hooks = {}
     for relative, names in HOOK_OBJECTS.items():
         path = records / relative
@@ -262,6 +324,8 @@ def verify(tree, config, native_path):
                              'branches': branch_relocations(obj, name)}
         hooks[relative] = {'object_sha256': digest(path), 'compile_record_sha256': digest(command_path),
                            'strong_hook_imports': imports}
+        if relative in CAPTURE_SOURCE_FUNCTIONS:
+            hooks[relative]['capture_source'] = capture_source_evidence(command, CAPTURE_SOURCE_FUNCTIONS[relative])
     arm_calls = hooks['osfmk/DEVELOPMENT/arm_init.o']['strong_hook_imports']
     require(all(any(call['caller'] == '_arm_init' for call in arm_calls[name]['branches'])
                 for name in ('_tb710fu_live_log_init', '_tb710fu_live_log_freeze')),
@@ -270,12 +334,16 @@ def verify(tree, config, native_path):
     # The normal _cnputc tap predates LiveLog and alone proves nothing about
     # acquisition's disableConsoleOutput branch. Require the live-active gate
     # in a real disabled-path provider or its actual inlined callers as well.
-    disabled_callers = {'_tb710fu_live_capture_disabled', '_console_write',
-                        '_console_write_unbuffered', '__cnputs',
-                        '_console_ring_try_empty', '_console_ring_try_empty_locked'}
-    require(any(call['caller'] in disabled_callers
+    require(any(call['caller'] in DISABLED_CAPTURE_CALLERS
                 for call in console_calls['_tb710fu_live_log_active']['branches']),
             'Disabled-console capture has no actual live-active branch')
+    xnu_calls = console_calls['_tb710fu_live_log_putc']['branches']
+    require(any(call['caller'] in DISABLED_CAPTURE_CALLERS | {'__cnputc'} for call in xnu_calls),
+            'XNU capture needs actual normal and disabled console branches')
+    pe_calls = hooks['pexpert/DEVELOPMENT/pe_kprintf.o']['strong_hook_imports']
+    require({'_serial_putc', '_serial_putc_crlf'} <= {
+                call['caller'] for call in pe_calls['_tb710fu_live_log_putc']['branches']},
+            'XNU capture needs both actual direct PE serial-provider branches')
     hooks['osfmk/DEVELOPMENT/serial_console.o']['disabled_capture_live_gate'] = True
     ramoops = records / 'osfmk/DEVELOPMENT/tb710fu_ramoops.o'
     ramoops_provider = strong_definition(audit.MachO(ramoops.read_bytes()), '_tb710fu_ramoops_snapshot_copy')
@@ -299,6 +367,8 @@ def verify(tree, config, native_path):
             'ramoops_snapshot_object_sha256': digest(ramoops),
             'ramoops_snapshot_provider': ramoops_provider,
             'adapter_snapshot_calls': adapter_snapshot_calls, 'native_definitions': definitions,
+            'adapter_source_calls': adapter_source_calls,
+            'dual_source_log_contract': builder.DUAL_SOURCE_LOG_CONTRACT,
             'object_instruction_checks': instruction_checks,
             'linkarchives_sha256': digest(link), 'linkarchives': link_text,
             'archive_force_load_count': 1, 'linked_into_kernel': True,

@@ -11,6 +11,13 @@ import package_source_storage as pack
 import verify_live_log_package as live
 
 
+def call_evidence(*callers):
+    return {'symbol': {'kind': 1, 'section': 0, 'desc': 0, 'value': '0x0'},
+            'branches': [{'section': '__text', 'section_offset': hex(index * 4),
+                          'instruction': '0x94000000', 'call': 'bl', 'caller': caller}
+                         for index, caller in enumerate(callers)]}
+
+
 def fixture():
     members = {name: synthetic_macho(live.OBJECT_SYMBOLS[name]) for name in live.ORDERED_OBJECTS}
     archive = synthetic_archive(members)
@@ -27,6 +34,7 @@ def fixture():
                     for p in (live.ROOT / 'package/Tb710fuLiveLog').iterdir() if p.suffix in ('.c', '.h')},
         'recipe_sha256': live.sha((live.ROOT / 'scripts/build-tb710fu-live-log.py').read_bytes()),
         'font': {'sha256': live.sha((live.ROOT / 'diagnostics/early-report/Font.h').read_bytes())},
+        'dual_source_log_contract': deepcopy(live.DUAL_SOURCE_LOG_CONTRACT),
     }
     manifest_bytes = (live.ROOT / 'diagnostics/early-report/qr-sources.json').read_bytes()
     manifest = json.loads(manifest_bytes)
@@ -46,7 +54,31 @@ def fixture():
         'archive_force_load_count': 1, 'linked_into_kernel': True,
         'live_log_sources_compiled': True, 'runtime_boot_argument': 'tb710fu-live-log=1',
         'runtime_qualified': False, 'qr_hardware_display_verified': False, 'hardware_boot_verified': False,
-        'linkarchives': link, 'linkarchives_sha256': live.sha(link.encode())}
+        'linkarchives': link, 'linkarchives_sha256': live.sha(link.encode()),
+        'dual_source_log_contract': deepcopy(live.DUAL_SOURCE_LOG_CONTRACT),
+        'adapter_source_calls': {name: call_evidence('_tb710fu_live_log_putc' if name ==
+            '_tb710fu_live_capture_putc' else '_tb710fu_live_log_poll')
+            for name in live.ADAPTER_SOURCE_IMPORTS},
+        'hook_objects': {
+            'osfmk/DEVELOPMENT/serial_console.o': {
+                'object_sha256': 'd' * 64, 'compile_record_sha256': 'e' * 64,
+                'disabled_capture_live_gate': True,
+                'strong_hook_imports': {
+                    '_tb710fu_live_log_putc': call_evidence('__cnputc', '_tb710fu_live_capture_disabled'),
+                    '_tb710fu_live_log_active': call_evidence('_tb710fu_live_capture_disabled'),
+                    '_tb710fu_ramoops_putc': call_evidence('__cnputc', '_tb710fu_live_capture_disabled')}},
+            'pexpert/DEVELOPMENT/pe_kprintf.o': {
+                'object_sha256': 'f' * 64, 'compile_record_sha256': '1' * 64,
+                'strong_hook_imports': {
+                    '_tb710fu_live_log_putc': call_evidence('_serial_putc', '_serial_putc_crlf'),
+                    '_tb710fu_ramoops_putc': call_evidence('_serial_putc', '_serial_putc_crlf')}}}}
+    integration['adapter_snapshot_calls'] = deepcopy(
+        integration['adapter_source_calls']['_tb710fu_ramoops_snapshot_copy']['branches'])
+    for relative, names in live.CAPTURE_SOURCE_FUNCTIONS.items():
+        integration['hook_objects'][relative]['capture_source'] = {
+            'compiled_source': '/ci/tree/.cache/xnu-work/' + relative.replace('DEVELOPMENT/', '').replace('.o', '.c'),
+            'compiled_source_sha256': '2' * 64, 'provider': '_tb710fu_live_log_putc',
+            'function_body_sha256': {name: '3' * 64 for name in names}}
     return {'report': report, 'integration': integration, 'archive': archive,
         'kernel': synthetic_fileset(live.SYMBOLS),
         'official': {'inputs': {'native_sha256': 'b' * 64}},
@@ -65,6 +97,90 @@ def check(value):
 class LiveLogPackaging(unittest.TestCase):
     def test_complete_fixture(self):
         self.assertEqual(check(fixture())['strong_definitions_verified'], len(live.SYMBOLS))
+
+    def test_dual_live_sources_and_early_backup_contract_are_required(self):
+        for report_name in ('report', 'integration'):
+            for mutation in ('missing', 'swapped_sources', 'shared_capture', 'lost_early_backup',
+                             'oversize_tail', 'oversize_body', 'old_fixed_left', 'multiple_frames', 'one_round'):
+                with self.subTest(report=report_name, mutation=mutation):
+                    value = fixture()
+                    contract = value[report_name]['dual_source_log_contract']
+                    if mutation == 'missing': value[report_name].pop('dual_source_log_contract')
+                    elif mutation == 'swapped_sources':
+                        contract['left']['source'], contract['right']['source'] = 'ramoops', 'xnu-console'
+                    elif mutation == 'shared_capture': contract['left']['capture_ring_bytes'] = 0
+                    elif mutation == 'lost_early_backup': contract['left']['early_backup_separate_metadata_and_raw_section'] = False
+                    elif mutation == 'oversize_tail': contract['left']['current_tail_bytes_max'] = 4096
+                    elif mutation == 'oversize_body': contract['left']['export_body_bytes_max'] = 8192
+                    elif mutation == 'old_fixed_left': contract['left']['source'] = 'fixed-ramoops'
+                    elif mutation == 'multiple_frames': contract['frames_per_poll_max'] = 2
+                    else: contract['complete_rounds_before_replacement_min'] = 1
+                    with self.assertRaisesRegex(ValueError, 'dual-source capture/export contract'):
+                        check(value)
+
+    def test_dual_source_capture_calls_must_be_real_strong_branches(self):
+        for name in live.ADAPTER_SOURCE_IMPORTS:
+            for mutation in ('missing', 'weak', 'no_branch', 'not_branch', 'wrong_call', 'unaligned', 'negative', 'data'):
+                with self.subTest(symbol=name, mutation=mutation):
+                    value = fixture()
+                    calls = value['integration']['adapter_source_calls']
+                    if mutation == 'missing': calls.pop(name)
+                    elif mutation == 'weak': calls[name]['symbol']['desc'] = 0x40
+                    elif mutation == 'no_branch': calls[name]['branches'] = []
+                    else:
+                        branch = calls[name]['branches'][0]
+                        if mutation == 'not_branch': branch['instruction'] = '0xd65f03c0'
+                        elif mutation == 'wrong_call': branch['call'] = 'b'
+                        elif mutation == 'unaligned': branch['section_offset'] = '0x1'
+                        elif mutation == 'negative': branch['section_offset'] = '-0x4'
+                        else: branch['section'] = '__data'
+                    with self.assertRaises(ValueError): check(value)
+
+    def test_each_console_path_and_both_source_providers_are_required(self):
+        for mutation in ('normal', 'disabled', 'gate', 'pe_normal', 'pe_crlf', 'capture_provider',
+                         'ramoops_alias', 'serial_ramoops', 'pe_ramoops', 'hook_identity'):
+            with self.subTest(mutation=mutation):
+                value = fixture()
+                integration = value['integration']
+                serial = integration['hook_objects']['osfmk/DEVELOPMENT/serial_console.o']
+                pe = integration['hook_objects']['pexpert/DEVELOPMENT/pe_kprintf.o']
+                calls = serial['strong_hook_imports']['_tb710fu_live_log_putc']['branches']
+                if mutation == 'normal': serial['capture_source']['function_body_sha256'].pop('__cnputc')
+                elif mutation == 'disabled': serial['capture_source']['function_body_sha256'].pop('_tb710fu_live_capture_disabled')
+                elif mutation == 'gate': serial['strong_hook_imports']['_tb710fu_live_log_active']['branches'][0]['caller'] = '__cnputc'
+                elif mutation == 'pe_normal': pe['strong_hook_imports']['_tb710fu_live_log_putc']['branches'].pop(0)
+                elif mutation == 'pe_crlf': pe['strong_hook_imports']['_tb710fu_live_log_putc']['branches'].pop(1)
+                elif mutation == 'capture_provider': integration['adapter_source_calls']['_tb710fu_live_capture_putc']['branches'][0]['caller'] = '_other_provider'
+                elif mutation == 'ramoops_alias': integration['adapter_snapshot_calls'] = []
+                elif mutation == 'serial_ramoops': serial['strong_hook_imports'].pop('_tb710fu_ramoops_putc')
+                elif mutation == 'pe_ramoops': pe['strong_hook_imports'].pop('_tb710fu_ramoops_putc')
+                else: serial['object_sha256'] = 'not a SHA-256'
+                with self.assertRaises(ValueError): check(value)
+
+    def test_normal_and_disabled_calls_may_both_be_inlined(self):
+        value = fixture()
+        imports = value['integration']['hook_objects']['osfmk/DEVELOPMENT/serial_console.o']['strong_hook_imports']
+        for call in imports['_tb710fu_live_log_putc']['branches']:
+            call['caller'] = '_console_write'
+        self.assertTrue(check(value)['independent_xnu_capture_and_actual_ramoops_calls_verified'])
+
+    def test_all_new_capture_exports_must_be_in_their_actual_objects_and_native_kernel(self):
+        for member, names in (('LiveProtocol.o', live.OBJECT_SYMBOLS['LiveProtocol.o']),
+                              ('LiveXnu.o', ('_tb710fu_live_log_putc',))):
+            for name in names:
+                for place in ('object', 'native'):
+                    with self.subTest(member=member, symbol=name, place=place):
+                        value = fixture()
+                        if place == 'object':
+                            members = {item: synthetic_macho(tuple(symbol for symbol in live.OBJECT_SYMBOLS[item]
+                                                                  if item != member or symbol != name))
+                                       for item in live.ORDERED_OBJECTS}
+                            value['archive'] = synthetic_archive(members)
+                            value['report']['objects_sha256'] = {item: live.sha(data) for item, data in members.items()}
+                            value['report']['archive_sha256'] = value['integration']['archive_sha256'] = live.sha(value['archive'])
+                        else: value['kernel'] = synthetic_fileset(tuple(symbol for symbol in live.SYMBOLS if symbol != name))
+                        with self.assertRaisesRegex(ValueError, 'strong live-log code definition'):
+                            check(value)
 
     def test_reject_false_provenance(self):
         for mutation in ('source', 'recipe', 'qr', 'native', 'force', 'qualify', 'dependency', 'archive', 'missing_code', 'weak_code'):

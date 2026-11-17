@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "audit_kind": "host source audit only",
+  "audit_created_utc": "2026-11-17T15:53:49.9598216Z",
+  "workspace": "D:\\unixnu-tb710fu-clean",
+  "source_xnu_commit": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+  "framework_commit": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+  "host_checkout_commit": "46e1cac8590c47548f1241b488186ec68dd8dad2",
+  "provenance_limit": "Authoritative source paths now bind the pristine git-archive + exact all-140-selected-patches fixture .work/fix-live-header-exports/xnu-lf. Five mapping/VM core files exactly match earlier reference bytes. arm_init and video_console differences are only expected 0014 additions; specific audited metadata and mapping logic are preserved. This remains source analysis, not a runtime allocation trace or hardware proof.",
+  "result": "A framebuffer physical address below gPhysBase is not by itself rejected by ml_io_map. The early path builds independent device PTEs; it does not use phystokv on the device PA.",
+  "sources": [
+    {
+      "path": "D:\\unixnu-tb710fu-clean\\.work\\fix-live-header-exports\\xnu-lf\\osfmk\\arm64\\machine_routines.c",
+      "sha256": "fff177ec028aac229bafc3c630d56b54288dc9e71a07dcfdf28b35b36fe03f8e",
+      "one_based_lines": [
+        "1900-1908",
+        "1920-1925"
+      ],
+      "role": "ml_io_map and ml_io_map_unmappable wrappers"
+    },
+    {
+      "path": "D:\\unixnu-tb710fu-clean\\.work\\fix-live-header-exports\\xnu-lf\\osfmk\\arm\\io_map.c",
+      "sha256": "bbc7fd5a0bb6dd26507854801f1f8bdb3e65012a7846dc4c31a09dc48d7f942e",
+      "one_based_lines": [
+        "67-122"
+      ],
+      "role": "early/post-KMEM io_map allocation and mapping"
+    },
+    {
+      "path": "D:\\unixnu-tb710fu-clean\\.work\\fix-live-header-exports\\xnu-lf\\osfmk\\arm\\pmap\\pmap.c",
+      "sha256": "a907fc74b9c2b2deeb46efa46f06f01a78098bd6a97b750c2a9a23d314c0d541",
+      "one_based_lines": [
+        "1932-2054",
+        "2260-2382"
+      ],
+      "role": "pmap_map_bd_with_options and pmap_bootstrap virtual_space_start initialization"
+    },
+    {
+      "path": "D:\\unixnu-tb710fu-clean\\.work\\fix-live-header-exports\\xnu-lf\\osfmk\\mach\\arm\\vm_param.h",
+      "sha256": "8d9cda0c968e45118a632b54636323ccb57f2b223aae8dd81280977b36ceb7e3",
+      "one_based_lines": [
+        "369"
+      ],
+      "role": "is_dram_addr unsigned-range macro"
+    },
+    {
+      "path": "D:\\unixnu-tb710fu-clean\\.work\\fix-live-header-exports\\xnu-lf\\osfmk\\arm64\\arm_vm_init.c",
+      "sha256": "d67f07e5c74568101048ff4a84b6fe5470229e69322923bdf7663c3254b00fe7",
+      "one_based_lines": [
+        "2259-2265",
+        "2582-2588",
+        "2689-2765"
+      ],
+      "role": "mem_size derivation, dynamic table initialization, early L3 PTE capacity"
+    },
+    {
+      "path": "D:\\unixnu-tb710fu-clean\\.work\\fix-live-header-exports\\xnu-lf\\osfmk\\arm\\arm_init.c",
+      "sha256": "e8c7bf720f626869a7af5cde8d400cc9451ea3fdbe09f59878a4bd75561ef50f",
+      "one_based_lines": [
+        "561-593"
+      ],
+      "role": "exact all-140-patch fixture: DRAM metadata before arm_vm_init, ramoops, then live init"
+    },
+    {
+      "path": "D:\\unixnu-tb710fu-clean\\.work\\fix-live-header-exports\\xnu-lf\\osfmk\\console\\video_console.c",
+      "sha256": "9551ccd4673187ded32c9a5336b633bf1d45a8b88153a27da53176e0346fbe0f",
+      "one_based_lines": [
+        "2850-2888"
+      ],
+      "role": "existing physical framebuffer mapping using ml_io_map_unmappable"
+    },
+    {
+      "path": "D:\\unixnu-tb710fu-clean\\package\\Tb710fuLiveLog\\LiveXnu.c",
+      "sha256": "9793833108ede61e7e7b98510ed965502690c637d2189974c677dd62316f95bc",
+      "one_based_lines": [
+        "148-173"
+      ],
+      "role": "current native provider PE_current_console validation, permanent mapping and bind"
+    },
+    {
+      "path": "D:\\unixnu-tb710fu-clean\\board.toml",
+      "sha256": "6c85013c04604003d9f454eacffbcf8fbd0972382726e0f0954a26970e2eba6f",
+      "one_based_lines": [
+        "101-103"
+      ],
+      "role": "owned_memory_size=0x80000000 configured bootstrap memory"
+    },
+    {
+      "path": "D:\\unixnu-tb710fu-clean\\docs\\ADT_STATUS.md",
+      "sha256": "90e0cf2e217bc0ee5e6860a225ccf5e68d3efa8a2e34ccec0a6137c26791bcb8",
+      "one_based_lines": [
+        "32-34"
+      ],
+      "role": "recorded ADT DRAM base/size and owned memory provenance"
+    },
+    {
+      "path": "D:\\unixnu-tb710fu-clean\\docs\\evidence\\kernel-live-qr-build.json",
+      "sha256": "5d6f535c8eb4639946a0ae6f4f96b7e8f50a2fee6afa1551c05f826ffc5e5f07",
+      "one_based_lines": [
+        "786-827"
+      ],
+      "role": "historical host framebuffer geometry evidence, not current scanout proof"
+    },
+    {
+      "path": "D:\\unixnu-tb710fu-clean\\.work\\fix-live-header-exports\\apply-check.json",
+      "sha256": "0fd1dfe8a0ef51c7cfbf49bed62e1e146a860fc759ab7c4f9acd8a54acaa392c",
+      "one_based_lines": [],
+      "role": "exact pristine git-archive all-140-patch apply provenance and current fixed 0014 hash"
+    },
+    {
+      "path": "D:\\unixnu-tb710fu-clean\\patches\\xnu\\0014-tb710fu-native-live-log.patch",
+      "sha256": "4de6721645e04e752f12ec540d0f7d2add654c153a01de5d30ee4d4e2cc64763",
+      "one_based_lines": [
+        "70-74"
+      ],
+      "role": "actual integration patch ordering"
+    }
+  ],
+  "call_chain": [
+    "arm_init: gDramBase/gDramSize from /chosen properties are assigned before arm_vm_init",
+    "arm_vm_init: pmap_bootstrap sets virtual_space_start=dynamic_memory_begin and kernel_pmap tables; later in the same function early L3 PTE pages are preallocated before returning",
+    "arm_init after arm_vm_init returns: tb710fu_ramoops_init then tb710fu_live_log_init (0014)",
+    "tb710fu_live_log_init: PE_current_console copies boot framebuffer data; validate geometry and length; ml_io_map(physical,length)",
+    "ml_io_map: io_map(physical,length,VM_WIMG_IO,VM_PROT_DEFAULT,false)",
+    "io_map before STARTUP_SUB_KMEM: reserve VA at virtual_space_start; pmap_map_bd(VA,PA,PA+alloc_size,prot)",
+    "pmap_map_bd_with_options: require DRAM metadata and uniform is_dram_addr classification across range; write cache-disabled PTEs for arbitrary aligned device PA into preexisting kernel VA PTE slots",
+    "video_console initialize_screen later uses ml_io_map_unmappable with its own independently replaceable VA mapping"
+  ],
+  "mapping_conditions": {
+    "physical_page_alignment": "io_map truncates input PA, records offset, and rounds allocation; pmap_map_bd start/end must be page aligned",
+    "dram_metadata": "gDramBase and gDramSize initialized before arm_vm_init; is_dram_addr(addr)=((uint64_t)(addr)-gDramBase)<gDramSize",
+    "range_classification": "all PA pages in one call must have the same DRAM/nonDRAM classification; PA does not have to be in managed span",
+    "virtual_tables": "pmap_pte(kernel_pmap,vaddr) must exist; pmap_map_bd panics if missing",
+    "startup_phase": "live init occurs after arm_vm_init and before KPRINTF initialization, hence early branch before STARTUP_SUB_KMEM",
+    "platform_variant": "Audited non-XNU_MONITOR path uses PTE template directly; no claim made for PPL/SPTM variants",
+    "hardware": "PA width, MMIO/scanout access, actual v_length/offset, and device behavior still need real-device verification"
+  },
+  "configured_geometry_calculation": {
+    "status": "conditional host calculation from configured 2 GiB memory and recorded 3200x2000 BGRA geometry; not a measurement of current hardware variables",
+    "framebuffer_pa": "0x00000000d5100000",
+    "framebuffer_width": 3200,
+    "framebuffer_height": 2000,
+    "framebuffer_stride_bytes": 12800,
+    "framebuffer_bytes": 25600000,
+    "framebuffer_end_exclusive": "0x00000000d696a000",
+    "gDramBase": "0x00000008c0000000",
+    "gDramSize": "0x0000000140000000",
+    "classification": "all framebuffer pages are below gDramBase and classify nonDRAM; no boundary crossing",
+    "configured_mem_size_bytes": 2147483648,
+    "mem_segments": 8,
+    "early_pte_capacity_formula": "mem_segments=(mem_size+0x0fffffff)>>28; va_end=align_up(dynamic_memory_begin + (2+mem_segments*10)*MiB + round_page(Video.height*Video.rowBytes),8MiB)",
+    "early_pte_capacity_minimum_bytes_before_end_rounding": 111583232,
+    "two_framebuffer_mappings_bytes": 51200000,
+    "ramoops_mapping_upper_bound_bytes": 262144,
+    "lower_bound_headroom_after_these_three_mappings_bytes": 60121088,
+    "calculation_limits": [
+      "mem_size may be reduced by a nonzero xmaxmem boot argument; runtime mem_size is not read here",
+      "LiveXnu maps v_length when nonzero; this calculation assumes v_length equals width*height*4 and offset=0",
+      "The allocator budget is shared with any other early IO mappings; this is not a full runtime allocation trace",
+      "End alignment adds nonnegative capacity; dynamic_memory_begin absolute alignment is not measured here"
+    ]
+  },
+  "historical_note": "Old ramoops low-PA comment is preserved as a historical explanation, not treated as a platform API fact. A missing reserve-page reservation is a distinct issue from the ability to create an IO PTE outside managed DRAM.",
+  "does_not_prove": [
+    "successful active CI build or prelink",
+    "real-device boot at live init",
+    "successful physical framebuffer writes or scanout",
+    "USB CDC enumeration",
+    "BSD or userspace progress"
+  ],
+  "exact_fixture_binding": {
+    "root": "D:\\unixnu-tb710fu-clean\\.work\\fix-live-header-exports\\xnu-lf",
+    "apply_check": "D:\\unixnu-tb710fu-clean\\.work\\fix-live-header-exports\\apply-check.json",
+    "apply_check_sha256": "0fd1dfe8a0ef51c7cfbf49bed62e1e146a860fc759ab7c4f9acd8a54acaa392c",
+    "all_140_ordered_patches_applied": true,
+    "source_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+    "prior_run_id": 44112832250,
+    "prior_device_commit": "eb1f2bc70f08d410dbcb7e182372735d38bb018a",
+    "fixed_0014_sha256": "4de6721645e04e752f12ec540d0f7d2add654c153a01de5d30ee4d4e2cc64763",
+    "current_0014_matches_fixture": true,
+    "video_mapping_block_text_equal": true,
+    "reconstructed_arm_init_text_equal": true,
+    "reference_comparisons": [
+      {
+        "relative_path": "osfmk/arm64/machine_routines.c",
+        "reference_sha256": "fff177ec028aac229bafc3c630d56b54288dc9e71a07dcfdf28b35b36fe03f8e",
+        "fixture_sha256": "fff177ec028aac229bafc3c630d56b54288dc9e71a07dcfdf28b35b36fe03f8e",
+        "full_file_equal": true,
+        "difference_assessment": "identical full file bytes"
+      },
+      {
+        "relative_path": "osfmk/arm/io_map.c",
+        "reference_sha256": "bbc7fd5a0bb6dd26507854801f1f8bdb3e65012a7846dc4c31a09dc48d7f942e",
+        "fixture_sha256": "bbc7fd5a0bb6dd26507854801f1f8bdb3e65012a7846dc4c31a09dc48d7f942e",
+        "full_file_equal": true,
+        "difference_assessment": "identical full file bytes"
+      },
+      {
+        "relative_path": "osfmk/arm/pmap/pmap.c",
+        "reference_sha256": "a907fc74b9c2b2deeb46efa46f06f01a78098bd6a97b750c2a9a23d314c0d541",
+        "fixture_sha256": "a907fc74b9c2b2deeb46efa46f06f01a78098bd6a97b750c2a9a23d314c0d541",
+        "full_file_equal": true,
+        "difference_assessment": "identical full file bytes"
+      },
+      {
+        "relative_path": "osfmk/mach/arm/vm_param.h",
+        "reference_sha256": "8d9cda0c968e45118a632b54636323ccb57f2b223aae8dd81280977b36ceb7e3",
+        "fixture_sha256": "8d9cda0c968e45118a632b54636323ccb57f2b223aae8dd81280977b36ceb7e3",
+        "full_file_equal": true,
+        "difference_assessment": "identical full file bytes"
+      },
+      {
+        "relative_path": "osfmk/arm64/arm_vm_init.c",
+        "reference_sha256": "d67f07e5c74568101048ff4a84b6fe5470229e69322923bdf7663c3254b00fe7",
+        "fixture_sha256": "d67f07e5c74568101048ff4a84b6fe5470229e69322923bdf7663c3254b00fe7",
+        "full_file_equal": true,
+        "difference_assessment": "identical full file bytes"
+      },
+      {
+        "relative_path": "osfmk/arm/arm_init.c",
+        "reference_sha256": "936c00f99ed80065526031114384f6937503a5ffd93e671231f75d97aaa99f91",
+        "fixture_sha256": "e8c7bf720f626869a7af5cde8d400cc9451ea3fdbe09f59878a4bd75561ef50f",
+        "full_file_equal": false,
+        "difference_assessment": "exact fixture adds 0014 live header, guarded init and freeze only; DRAM assignment and arm_vm_init lines unchanged; separately reconstructed 0014 arm_init is text-identical after CRLF normalization"
+      },
+      {
+        "relative_path": "osfmk/console/video_console.c",
+        "reference_sha256": "e6196daa2cb7d9c7ae080f3a75e70f5f63da5e9cea11f7d32bf3f24efb08cea5",
+        "fixture_sha256": "9551ccd4673187ded32c9a5336b633bf1d45a8b88153a27da53176e0346fbe0f",
+        "full_file_equal": false,
+        "difference_assessment": "exact fixture adds 0014 live header, active-console suppression and refresh only; framebuffer mapping block is text-identical after CRLF normalization; mapping line numbers shift by +6"
+      }
+    ]
+  },
+  "record_provenance": {
+    "local_full_audit_path": ".work\\live-log-fb-map-audit.json",
+    "local_full_audit_sha256": "64dfb5929e9bffafeb367f253854b74b8c12b3e84fa800ec51b2eefbf0d05e8f"
+  }
+}

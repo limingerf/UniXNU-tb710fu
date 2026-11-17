@@ -42,15 +42,27 @@ static void encode(void)
     }
 }
 
-static void fixture(const char *directory, const char *name, size_t length, uint64_t generation)
+static void fixture(const char *directory, const char *name, size_t length, uint64_t generation, int xnu)
 {
     struct tb710fu_live_log_info info;
     char filename[128];
     for (size_t i = 0; i < length; ++i)
         body[i] = i % 71U == 70U ? '\n' : (uint8_t)(' ' + (i * 37U + length) % 95U);
     tb710fu_live_log_sender_init(&sender);
-    assert(tb710fu_live_log_snapshot(&sender, body, length, generation,
-                                    UINT64_C(0x100000000), UINT64_C(0x100000000) + length) == TB710FU_LIVE_LOG_READY);
+    if (xnu) {
+        static const char header[] = "TB710FU XNU export fixture\nearly=[0,512) bytes=512\ncurrent=[4294967296,4294970368) bytes=3072\nraw_layout=early512,current3072\n\n";
+        size_t header_bytes = sizeof(header) - 1U;
+        length = header_bytes + 512U + 3072U;
+        for (size_t i = 0; i < length; ++i) body[i] = (uint8_t)(' ' + i % 95U);
+        memcpy(body, header, header_bytes);
+        assert(tb710fu_live_log_set_source(&sender, TB710FU_LIVE_LOG_XNU));
+        assert(tb710fu_live_log_snapshot_file(&sender, body, length, generation,
+            UINT64_C(0x100000000), UINT64_C(0x100000000) + 3072U) == TB710FU_LIVE_LOG_READY);
+        write_file(directory, name, "early", body + header_bytes, 512U);
+    } else {
+        assert(tb710fu_live_log_snapshot(&sender, body, length, generation,
+                                        UINT64_C(0x100000000), UINT64_C(0x100000000) + length) == TB710FU_LIVE_LOG_READY);
+    }
     assert(tb710fu_live_log_get_info(&sender, &info));
     if (!generation)
         assert(info.block_count == 1U);
@@ -118,8 +130,9 @@ int main(int argc, char **argv)
     /* A fresh encode resets the exhausted private arena and preserves output. */
     assert(tb_live_qr_encode(frame, sizeof(frame), &pixels));
     assert(memcmp(reference, pixels, sizeof(reference)) == 0);
-    fixture(argv[1], "fixed512", 512U, 0);
-    fixture(argv[1], "live4096", 4096U, 1);
-    puts("live QR: real pinned Mu encoder, 64 repeated frames, rejected inputs, arena exhaustion/reset and 14 transfer fixtures passed");
+    fixture(argv[1], "fixed512", 512U, 0, 0);
+    fixture(argv[1], "live4096", 4096U, 1, 0);
+    fixture(argv[1], "xnu-backup", 4096U, 2, 1);
+    puts("live QR: real pinned Mu encoder, 64 repeated frames, rejected inputs, arena exhaustion/reset and 26 transfer frames passed");
     return 0;
 }

@@ -1,0 +1,252 @@
+{
+  "schema_version": 1,
+  "run_id": 44118339552,
+  "job_id": 134162499711,
+  "device_commit": "46e1cac8590c47548f1241b488186ec68dd8dad2",
+  "conclusion": "failure",
+  "failed_step": "Build and verify the native arm64e kernel",
+  "artifact_id": 14344737048,
+  "artifact_name": "tb710fu-ufs-integrated-44118339552",
+  "artifact_bytes": 250882,
+  "artifact_zip_sha256": "6f553379f7dce9e7f0e66d381c56285b64ea523c2ed3fe97e917b4a09c751817",
+  "job_log_sha256": "43416482dc5e7afb3dadb174fc3580f86fc03a827bfae0e1a050a41dca2e766d",
+  "actual_failure": {
+    "archive_recipe": "archive-07-build-tb710fu-live-log",
+    "source": "LiveQr.c",
+    "location": "LiveQrCompat.h:29:9",
+    "diagnostic": "'DEBUG' macro redefined [-Werror,-Wmacro-redefined]",
+    "previous_definition": "./debug.h:1:9: #define DEBUG 0",
+    "archive_log_line": 3,
+    "context": [
+      "LiveQr.c compiler failed (1):",
+      "In file included from <built-in>:2:",
+      "/Users/runner/work/UniXNU-tb710fu/UniXNU-tb710fu/.work/UniXNU/out/tb710fu/macos-27.3-26C5035r/tb710fu_macos/tree/kits/tb710fu/Tb710fuLiveLog/LiveQrCompat.h:29:9: error: 'DEBUG' macro redefined [-Werror,-Wmacro-redefined]",
+      "   29 | #define DEBUG(x) ((void)0)",
+      "      |         ^",
+      "./debug.h:1:9: note: previous definition is here",
+      "    1 | #define DEBUG 0",
+      "      |         ^",
+      "1 error generated.",
+      ""
+    ],
+    "archive_log_sha256": "fbbcb401ad4e98952b5aeaa506a7824e9cd17b961511add5d38a1d4256892558",
+    "live_qr_log_sha256": "7f8850758dac1a6989ff319bd8f0aeda3ca23f0af81e9cf97315d8bc73ecd235",
+    "command_record_sha256": "af2a070c182dbe65c1b61f3603f13c5791173a07a5312404f91fdf9363d0a4a6",
+    "forced_includes": [
+      "meta_features.h",
+      "/Users/runner/work/UniXNU-tb710fu/UniXNU-tb710fu/.work/UniXNU/out/tb710fu/macos-27.3-26C5035r/tb710fu_macos/tree/kits/tb710fu/Tb710fuLiveLog/LiveQrCompat.h"
+    ]
+  },
+  "bootstrap": {
+    "sha256": "83c23b5ade57c3620708e5330e60c4ed7b481f6736d587be4f9e6553e6f6e44c",
+    "compiler_error_count": 1,
+    "note": "The only earlier compiler-reported failure is the expected bootstrap undefined-provider LD failure; subsequent archives 01 through 06 completed and archive 07 supplied the actual stopping compiler error."
+  },
+  "supported_native_link_completed": false,
+  "prelink_completed": false,
+  "device_operations": false,
+  "source_modified": false,
+  "retry_dispatched": false,
+  "run": {
+    "id": 44118339552,
+    "head_sha": "46e1cac8590c47548f1241b488186ec68dd8dad2",
+    "path": ".github/workflows/macos-kernel.yml",
+    "conclusion": "failure",
+    "status": "completed",
+    "html_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44118339552",
+    "created_at": "2026-11-17T15:47:23Z",
+    "updated_at": "2026-11-17T15:56:39Z"
+  },
+  "job": {
+    "id": 134162499711,
+    "run_id": 44118339552,
+    "conclusion": "failure",
+    "status": "completed",
+    "steps": [
+      {
+        "name": "Set up job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 1,
+        "started_at": "2026-11-17T15:47:32Z",
+        "completed_at": "2026-11-17T15:47:33Z"
+      },
+      {
+        "name": "Check out the private device project",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 2,
+        "started_at": "2026-11-17T15:47:33Z",
+        "completed_at": "2026-11-17T15:47:37Z"
+      },
+      {
+        "name": "Check out the pinned official framework",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 3,
+        "started_at": "2026-11-17T15:47:37Z",
+        "completed_at": "2026-11-17T15:47:41Z"
+      },
+      {
+        "name": "Run actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 4,
+        "started_at": "2026-11-17T15:47:41Z",
+        "completed_at": "2026-11-17T15:47:42Z"
+      },
+      {
+        "name": "Validate macOS profile and source locks",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 5,
+        "started_at": "2026-11-17T15:47:42Z",
+        "completed_at": "2026-11-17T15:47:43Z"
+      },
+      {
+        "name": "Exercise the actual CDC protocol, hardware predicates and DWC3 core",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 6,
+        "started_at": "2026-11-17T15:47:43Z",
+        "completed_at": "2026-11-17T15:47:48Z"
+      },
+      {
+        "name": "Check actual ramoops snapshots and live log display/protocol",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 7,
+        "started_at": "2026-11-17T15:47:48Z",
+        "completed_at": "2026-11-17T15:47:53Z"
+      },
+      {
+        "name": "Install the official host tools",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 8,
+        "started_at": "2026-11-17T15:47:53Z",
+        "completed_at": "2026-11-17T15:48:47Z"
+      },
+      {
+        "name": "Initialize the pinned UFS interface headers",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 9,
+        "started_at": "2026-11-17T15:48:47Z",
+        "completed_at": "2026-11-17T15:48:49Z"
+      },
+      {
+        "name": "Build and verify the native arm64e kernel",
+        "status": "completed",
+        "conclusion": "failure",
+        "number": 10,
+        "started_at": "2026-11-17T15:48:49Z",
+        "completed_at": "2026-11-17T15:56:25Z"
+      },
+      {
+        "name": "Exercise actual pinned Mu encoding and the native QR adapter",
+        "status": "completed",
+        "conclusion": "skipped",
+        "number": 11,
+        "started_at": "2026-11-17T15:56:25Z",
+        "completed_at": "2026-11-17T15:56:25Z"
+      },
+      {
+        "name": "Prelink the macOS 27 kernelcache closure",
+        "status": "completed",
+        "conclusion": "skipped",
+        "number": 12,
+        "started_at": "2026-11-17T15:56:25Z",
+        "completed_at": "2026-11-17T15:56:25Z"
+      },
+      {
+        "name": "Compile the pinned TB710FU UFS source adapter",
+        "status": "completed",
+        "conclusion": "skipped",
+        "number": 13,
+        "started_at": "2026-11-17T15:56:25Z",
+        "completed_at": "2026-11-17T15:56:25Z"
+      },
+      {
+        "name": "Verify the fileset with the production DarwinBoot parser",
+        "status": "completed",
+        "conclusion": "skipped",
+        "number": 14,
+        "started_at": "2026-11-17T15:56:25Z",
+        "completed_at": "2026-11-17T15:56:25Z"
+      },
+      {
+        "name": "Compile the complete standalone source-storage archive",
+        "status": "completed",
+        "conclusion": "skipped",
+        "number": 15,
+        "started_at": "2026-11-17T15:56:25Z",
+        "completed_at": "2026-11-17T15:56:25Z"
+      },
+      {
+        "name": "Collect the selected logs and artifacts",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 16,
+        "started_at": "2026-11-17T15:56:25Z",
+        "completed_at": "2026-11-17T15:56:25Z"
+      },
+      {
+        "name": "Upload private build artifacts",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 17,
+        "started_at": "2026-11-17T15:56:25Z",
+        "completed_at": "2026-11-17T15:56:27Z"
+      },
+      {
+        "name": "Post Run actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
+        "status": "completed",
+        "conclusion": "skipped",
+        "number": 32,
+        "started_at": "2026-11-17T15:56:27Z",
+        "completed_at": "2026-11-17T15:56:27Z"
+      },
+      {
+        "name": "Post Check out the pinned official framework",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 33,
+        "started_at": "2026-11-17T15:56:27Z",
+        "completed_at": "2026-11-17T15:56:30Z"
+      },
+      {
+        "name": "Post Check out the private device project",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 34,
+        "started_at": "2026-11-17T15:56:30Z",
+        "completed_at": "2026-11-17T15:56:31Z"
+      },
+      {
+        "name": "Complete job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 35,
+        "started_at": "2026-11-17T15:56:31Z",
+        "completed_at": "2026-11-17T15:56:37Z"
+      }
+    ]
+  },
+  "artifact": {
+    "id": 14344737048,
+    "name": "tb710fu-ufs-integrated-44118339552",
+    "size_in_bytes": 250882,
+    "digest": "sha256:6f553379f7dce9e7f0e66d381c56285b64ea523c2ed3fe97e917b4a09c751817",
+    "expired": false,
+    "workflow_run": {
+      "id": 44118339552,
+      "repository_id": 1457927017,
+      "head_repository_id": 1457927017,
+      "head_branch": "codex/ufs-transactional-handoff",
+      "head_sha": "46e1cac8590c47548f1241b488186ec68dd8dad2"
+    }
+  },
+  "download_digest_matches_github": true,
+  "failure_audit_sha256": "863a8cf5e6fdc490e30253c8289111d5599e521bbfe75a8c520a2e340f54abb9"
+}

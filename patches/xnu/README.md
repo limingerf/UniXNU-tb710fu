@@ -128,10 +128,12 @@ CDC enumeration on TB710FU.
 
 `0013-tb710fu-ramoops-snapshot.patch` adds a bounded, consistent read of this
 boot's text; `0014-tb710fu-native-live-log.patch` connects the separate real
-LiveLog archive to native startup and console reacquisition. The fixed
-pre-machine_startup single-frame snapshot and independent live transfer replace
-the old checkpoint waits. Graphics-disabled console paths retain the memory
-taps. See `docs/LIVE_RAMOOPS.md` for the byte limits and scheduling boundary.
+LiveLog archive to native startup and console reacquisition. Two live sources
+replace the old checkpoint waits: independent XNU capture on the left and
+actual current-boot ramoops on the right. Every left file retains the same
+pre-machine_startup backup with explicit raw-section lengths. Normal and
+graphics-disabled console paths preserve their memory taps. See
+`docs/LIVE_RAMOOPS.md` for byte limits and scheduling boundaries.
 
 The first native attempt, run 44112832250 at `eb1f2bc7`, exposed a missing
 internal-header export in `pe_kprintf.c`. The device patch now adds its two real
