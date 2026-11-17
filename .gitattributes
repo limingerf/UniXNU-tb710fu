@@ -1,5 +1,6 @@
 * text=auto eol=lf
 *.patch text eol=lf
+patches/xnu/0010-tb710fu-cdc-kernel-log-tap.patch whitespace=-space-before-tab,-blank-at-eol,-blank-at-eof
 *.sh text eol=lf
 *.py text eol=lf
 *.toml text eol=lf

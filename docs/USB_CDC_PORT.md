@@ -13,11 +13,13 @@ unless a caller supplies a verified device role, clocks/PHY, unique identity
 SMMU route, and a contiguous, aligned DMA range.
 
 `CdcKernelTap` provides a statically allocated 64 KiB RAM queue for XNU console
-bytes. Patch `0010` adds nonblocking writes from `_cnputc` and the direct
-`PE_kputc` UART paths, so the queue can retain text before a future USB worker
-starts. It only captures bytes; no DWC3 endpoint, CDC enumeration or queue
-drain over USB is connected yet. The target kernel build must validate the
-archive and XNU patch together.
+bytes. Patch `0010` taps `_cnputc` after newline normalization and the direct
+`PE_kputc` serial path, so the queue can retain text before a future USB worker
+starts. It deliberately does not tap `serial_putc_options`, which is called
+under `_cnputc` for serial output and would record each byte twice. The tap
+filters carriage returns to retain one newline per line. It only captures
+bytes; no DWC3 endpoint, CDC enumeration or queue drain over USB is connected
+yet. The target kernel build must validate the archive and XNU patch together.
 
 Run `python scripts/check_usb_cdc_protocol.py` to compile the host fixture with
 warnings-as-errors and AddressSanitizer/UndefinedBehaviorSanitizer, then run the

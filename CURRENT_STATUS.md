@@ -2,22 +2,30 @@
 
 ## USB/UFS adapter build prepared · 2026-11-17
 
-The USB debug path now has a device-owned 64 KiB RAM tap. XNU `_cnputc` and
-the direct `PE_kputc` UART paths append characters without touching MMIO; a
-later worker can drain them. The XNU patch and arm64e archive recipe are wired
-into the native kernel build, and host tests cover the tap. This is not yet a
-USB transport or host-visible COM port: DWC3 endpoint/TRB handling, SID `0x40`
-DMA ownership, startup and enumeration remain unimplemented. The official
+The USB debug path now has a device-owned 64 KiB RAM tap. XNU `_cnputc` records
+the console after newline normalization, and the direct `PE_kputc` serial
+paths append without touching MMIO. The XNU serial callback under `_cnputc`
+is not tapped separately, avoiding duplicate characters. A later worker can
+drain the ring. Host tests cover the tap, but this is not a USB transport or
+host-visible COM port: DWC3 endpoint/TRB handling, SID `0x40` DMA ownership,
+startup and enumeration remain unimplemented. The official
 `QcomDwc3` component is Apple XDCI/XHCI stack integration, not CDC-ACM, and its
 PHY headers have a separate GPL-2.0-only license.
 
-The optional `ufs-source` workflow has been corrected to run the device-owned
-builder after the minimal native kernel, using that build's XNU records and the
-pinned framework interfaces. It compiles a standalone `NativeUfs` archive with
-the TB710FU compatible patch; the workflow has not yet run with this correction,
-and the archive will remain unlinked. The full source-storage route is still
-not connected: the board disables `CONFIG_XNU_SOURCE_STORAGE`, and the clean
-device repository lacks the `SourceStorage.cpp`, `SourceRootPolicies.cpp`, and
+The optional `ufs-source` workflow runs the device-owned builder after the
+minimal native kernel, using that build's XNU records and pinned framework
+interfaces. Run [44027734178](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44027734178)
+stopped before native compilation because XNU patch 0010 used stale hunk
+context after device patches 0001-0009; it is a patch-application failure, not
+a compiler failure. The corrected patch was checked and applied against the
+saved post-0009 XNU snapshots, and CDC/UFS host tests pass. A retry remains
+pending. The prior run's artifact upload was also denied because GitHub
+Actions storage is full: 39 active repository artifacts total 14.5 GB, with
+the user-provided userdata run 43724852936 accounting for 14.1 GB. Its local
+ZIP copy is retained; no remote artifact was deleted. Once built, the archive
+will remain unlinked. The full source-storage route is still not connected:
+the board disables `CONFIG_XNU_SOURCE_STORAGE`, and the clean device repository
+lacks the `SourceStorage.cpp`, `SourceRootPolicies.cpp`, and
 `SourceRootBinding.cpp` bridge files required by that recipe.
 
 ## Owner policies and userdata `.vroot` rebuilt · 2026-11-17

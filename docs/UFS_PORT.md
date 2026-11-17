@@ -71,7 +71,11 @@ is not linked into the kernel and does not consume the new policy bundle.
 ## Verification status
 
 The host-only `UfsReadProbe` state-machine tests pass, but that code has no XNU
-MMIO, SMMU, DMA or queue callbacks. The optional source archive has not yet
-completed on the supported macOS runner. There is no linked TB710FU XNU UFS
-driver or hardware read. The full source-storage bridge and controller
-ownership checks must pass before enabling it in the kernel configuration.
+MMIO, SMMU, DMA or queue callbacks. The first optional source build,
+[run 44027734178](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44027734178),
+failed while applying XNU patch 0010, before native compilation or UFS archive
+compilation. Its context has since been corrected against the saved XNU source
+after device patches 0001-0009; the corrected patch applies locally and the
+host-only tests pass. There is no linked TB710FU XNU UFS driver or hardware
+read. The full source-storage bridge and controller ownership checks must pass
+before enabling it in the kernel configuration.

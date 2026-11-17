@@ -1,30 +1,39 @@
 diff --git a/osfmk/console/serial_console.c b/osfmk/console/serial_console.c
 --- a/osfmk/console/serial_console.c
 +++ b/osfmk/console/serial_console.c
-@@ -252,3 +252,5 @@
- static inline void
- _cnputc(char c, bool poll)
- {
+@@ -262,6 +262,7 @@ _cnputc(char c, bool poll)
+ 	if (c != '\r') {
+ 		tb710fu_ramoops_putc(c);
+ 	}
 +	extern void tb710fu_cdc_log_tap_putc(char);
+-	if (boot_progress_active()) { boot_progress_putc(c); return; }
++	if (boot_progress_active()) { tb710fu_cdc_log_tap_putc(c); boot_progress_putc(c); return; }
+ 	bool in_debugger = (kernel_debugger_entry_count > 0);
+ 	const uint32_t idx = get_cons_ops_index();
+@@ -275,4 +276,5 @@ _cnputc(char c, bool poll)
 +	tb710fu_cdc_log_tap_putc(c);
+ 	cons_ops[idx].putc(c, poll);
+ 	if (console_mirror) {
+ 		cons_ops[idx == SERIAL_CONS_OPS ? VC_CONS_OPS : SERIAL_CONS_OPS].putc(c, poll);
+ 	}
 diff --git a/pexpert/arm/pe_kprintf.c b/pexpert/arm/pe_kprintf.c
 --- a/pexpert/arm/pe_kprintf.c
 +++ b/pexpert/arm/pe_kprintf.c
-@@ -163,3 +163,5 @@
+@@ -162,6 +162,8 @@ kprintf(const char *fmt, ...)
  static void
  serial_putc_crlf(char c)
  {
 +	extern void tb710fu_cdc_log_tap_putc(char);
 +	tb710fu_cdc_log_tap_putc(c);
-@@ -172,3 +174,5 @@
- void
- serial_putc_options(char c, bool poll)
- {
-+	extern void tb710fu_cdc_log_tap_putc(char);
-+	tb710fu_cdc_log_tap_putc(c);
-@@ -179,3 +183,5 @@
+ 	if (c == '\n') {
+ 		uart_putc('\r');
+ 	}
+@@ -178,5 +180,7 @@ serial_putc_options(char c, bool poll)
  void
  serial_putc(char c)
  {
 +	extern void tb710fu_cdc_log_tap_putc(char);
 +	tb710fu_cdc_log_tap_putc(c);
+ 	uart_putc(c);
+ }
+ 
