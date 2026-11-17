@@ -37,9 +37,19 @@ mutation rejection and AArch64 instruction models. Host evidence is
 
 Source commit `eb1f2bc70f08d410dbcb7e182372735d38bb018a` is pushed. The only
 new bounded kernel target, run 44112832250 (`ufs-integrated`, job
-134142786467), was submitted and is awaiting its native/prelink result.
-The old run 44088845841 does not compile these changes. No new image, local
-signing or device operation has yet occurred.
+134142786467), ended during bootstrap compilation. The first actual error is
+`pexpert/arm/pe_kprintf.c:3:10`: `kern/tb710fu_ramoops.h` was not found, because
+the new private header was not added to `osfmk/kern/Makefile` XNU_ONLY_EXPORTS.
+The later missing link.filelist message is secondary; corecrypto itself reports
+529 C sources and zero failures. Prelink did not start. The complete logs,
+artifact identity/digest and exact first failure are bound in
+`docs/evidence/live-ramoops-ci-44112832250.json`. The device-only header export
+fix adds both real headers to XNU_ONLY_EXPORTS using the official existing
+mechanism. A pristine reconstruction of all 140 selected patches passes, with
+the first 139 hashes unchanged. A new bounded run will follow this diagnosed
+fix. The old run 44088845841 does not
+compile these changes. No new image, local signing or device operation has yet
+occurred.
 Real scanout, scheduling, ramoops contents/retention and CDC enumeration are
 still hardware gates. A CPU halted with interrupts masked cannot animate QR;
 the already drawn fixed single-frame code remains scannable.

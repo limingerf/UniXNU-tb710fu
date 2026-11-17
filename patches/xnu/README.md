@@ -123,3 +123,19 @@ This startup placement can retain earlier buffered console output if boot
 reaches BSD initialization; it cannot capture USB output before then or promise
 the last panic bytes after scheduling stops. Source/build checks do not establish
 CDC enumeration on TB710FU.
+
+## Native current-boot ramoops export
+
+`0013-tb710fu-ramoops-snapshot.patch` adds a bounded, consistent read of this
+boot's text; `0014-tb710fu-native-live-log.patch` connects the separate real
+LiveLog archive to native startup and console reacquisition. The fixed
+pre-machine_startup single-frame snapshot and independent live transfer replace
+the old checkpoint waits. Graphics-disabled console paths retain the memory
+taps. See `docs/LIVE_RAMOOPS.md` for the byte limits and scheduling boundary.
+
+The first native attempt, run 44112832250 at `eb1f2bc7`, exposed a missing
+internal-header export in `pe_kprintf.c`. The device patch now adds its two real
+headers to `osfmk/kern/Makefile` XNU_ONLY_EXPORTS, using the same official
+mechanism as `boot_progress.h`; no fetched source or official script is edited.
+The first compiler error and later missing-filelist consequence are recorded
+separately in `docs/evidence/live-ramoops-ci-44112832250.json`.

@@ -8,6 +8,7 @@ order to an independent relevant-file fixture. UniXNU is pinned at
 pre-change source SHA-256 values are:
   osfmk/arm/arm_init.c: 936c00f99ed80065526031114384f6937503a5ffd93e671231f75d97aaa99f91
   osfmk/kern/startup.c: c4f226c70e0ae819609e56837298f071c979a22fe8d71986c4c06f8de11bdcc2
+  osfmk/kern/Makefile: fb49c1aebe945bf729d1290de5208bcb5a6c7527e9c5dc82c3ad178b8bbe1e6b
   osfmk/console/video_console.c: e6196daa2cb7d9c7ae080f3a75e70f5f63da5e9cea11f7d32bf3f24efb08cea5
   osfmk/console/serial_console.c: 79dc60755a8cdfaa128aaa701679b7dbe6b34e7a5919595a57e5c75c269c62cd
   pexpert/arm/pe_kprintf.c: 747898eb01cd46bf7df6c6c91f4d7f156d86976dace72c19796787297f0e6595
@@ -33,8 +34,25 @@ Every new call is guarded
 by XNU_TB710FU_LIVE_LOG, and no missing-provider stub is added. No hardware,
 reset, storage, security or root acceptance policy changes are made.
 
+Native run 44112832250, job 134142786467, at device commit
+eb1f2bc70f08d410dbcb7e182372735d38bb018a failed first in
+pexpert/arm/pe_kprintf.c:3:10: kern/tb710fu_ramoops.h was not found.
+The exact bootstrap log SHA-256 is
+374313355bc425ddd80816cdd0fd35306bf6ca01c5757506536ffaf81539eacd
+(line 5859), retained in artifact 14342089034. Its ZIP SHA-256 is
+048e5fd75d02a477b729e92c3badf158adec63c02bf80e9d99f9537b7583bb27.
+The later corecrypto "No XNU symbol names" is a consequence of the incomplete
+bootstrap, not a crypto compiler failure. Export both real device headers via
+osfmk/kern/Makefile XNU_ONLY_EXPORTS, beside the official boot_progress.h.
+This is the same pinned cross-subproject header mechanism; no declaration
+stub, extra include path or official script replacement is introduced.
+
 Verification: all source patches were checked and actually applied in order
-in the isolated fixture. This is a source integration/patch-application check;
+in the isolated fixture, reconstructed from pristine XNU at the source commit
+above using all 140 selected patches and the failed run's exact ordered input
+manifest (the first 139 input hashes are unchanged). The repaired final patch
+passes git apply --check and applies, and both real headers occur once in the
+XNU_ONLY_EXPORTS list. This is a source integration/patch-application check;
 the actual enabled native objects, strong imports, final archive definitions
 and strict prelink require the separate supported-macOS CI build. Framebuffer,
 ramoops persistence and hardware startup require device evidence.
@@ -267,3 +285,15 @@ diff --git a/osfmk/console/serial_console.c b/osfmk/console/serial_console.c
  		return;
  	}
  
+diff --git a/osfmk/kern/Makefile b/osfmk/kern/Makefile
+--- a/osfmk/kern/Makefile
++++ b/osfmk/kern/Makefile
+@@ -138,6 +138,8 @@
+ 
+ 
+ XNU_ONLY_EXPORTS = \
+ 	boot_progress.h \
++	tb710fu_ramoops.h \
++	tb710fu_live_log.h \
+ 	arcade.h \
+ 	btlog.h \

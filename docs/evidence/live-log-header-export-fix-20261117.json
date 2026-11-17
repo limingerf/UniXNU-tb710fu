@@ -1,0 +1,59 @@
+{
+  "result": "PASS",
+  "source_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+  "run_id": 44112832250,
+  "run_device_commit": "eb1f2bc70f08d410dbcb7e182372735d38bb018a",
+  "run_xnu_inputs_sha256": "eaa4632969456a0f290e5ed1da74bdb95c2a708df9623b27b29c4ca028245008",
+  "fixed_patch": "patches\\xnu\\0014-tb710fu-native-live-log.patch",
+  "fixed_patch_sha256": "4de6721645e04e752f12ec540d0f7d2add654c153a01de5d30ee4d4e2cc64763",
+  "fixed_patch_commands": [
+    {
+      "arguments": [
+        "git",
+        "apply",
+        "--check",
+        "D:\\unixnu-tb710fu-clean\\patches\\xnu\\0014-tb710fu-native-live-log.patch"
+      ],
+      "directory": "D:\\unixnu-tb710fu-clean\\.work\\fix-live-header-exports\\xnu-lf",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "arguments": [
+        "git",
+        "apply",
+        "D:\\unixnu-tb710fu-clean\\patches\\xnu\\0014-tb710fu-native-live-log.patch"
+      ],
+      "directory": "D:\\unixnu-tb710fu-clean\\.work\\fix-live-header-exports\\xnu-lf",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "makefile_preimage_sha256": "fb49c1aebe945bf729d1290de5208bcb5a6c7527e9c5dc82c3ad178b8bbe1e6b",
+  "makefile_postimage_sha256": "1b0c1071d482cc7146bdd0d99259c6e2337edf95c6864819d1603142c83e2d01",
+  "header_sha256": {
+    "tb710fu_ramoops.h": "3421611b8dda2500ec5f57f05c713ae05525f61e62e9bcafcfa9d63974b12e5f",
+    "tb710fu_live_log.h": "0d7350cb22e726458f58d8d20c55709311f94eeefe76b74101bb5e00a5b90475"
+  },
+  "checks": {
+    "actual_check_and_apply_passed": true,
+    "all_140_ordered_patches_applied": true,
+    "first_139_input_hashes_match_failed_run": true,
+    "existing_0014_function_hunks_unchanged": true,
+    "makefile_changes_only_two_real_header_exports": true,
+    "each_header_exported_once": true,
+    "official_export_mi_list_mechanism_preserved": true,
+    "lf_preimage_and_postimage_exact": true
+  },
+  "hardware_boot_verified": false,
+  "supported_native_compile_completed": false,
+  "limits": "Ordered pristine-source patch application and real header export mechanism only. The next supported macOS build must validate enabled native compilation and final link.",
+  "full_command_record": {
+    "path": ".work/fix-live-header-exports/apply-check.json",
+    "sha256": "0fd1dfe8a0ef51c7cfbf49bed62e1e146a860fc759ab7c4f9acd8a54acaa392c"
+  },
+  "prior_patches_checked_and_applied": 139,
+  "source_cache_modified": false
+}
