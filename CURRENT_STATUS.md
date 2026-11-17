@@ -12,39 +12,36 @@ startup and enumeration remain unimplemented. The official
 `QcomDwc3` component is Apple XDCI/XHCI stack integration, not CDC-ACM, and its
 PHY headers have a separate GPL-2.0-only license.
 
-The optional `ufs-source` workflow runs the device-owned builder after the
-minimal native kernel, using that build's XNU records and pinned framework
-interfaces. Run [44027734178](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44027734178)
-stopped before native compilation because XNU patch 0010 used stale hunk
-context after device patches 0001-0009; this was a patch-application failure,
-not a compiler failure. The corrected patch was checked and applied against
-the saved post-0009 XNU snapshots, and CDC/UFS host tests pass.
+The `ufs-source` workflow runs the device-owned builder after the minimal
+native kernel, using that build's XNU records and pinned framework interfaces.
+Run [44027734178](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44027734178)
+exposed stale XNU patch 0010 context after patches 0001-0009. The patch was
+corrected and locally applied against the saved post-0009 snapshots in commit
+`fa7b62f`.
 
-Run [44036380775](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44036380775)
-then applied the patch and completed the native build and UFS adapter compile.
-It produced a native-only kernel of 25,171,504 bytes with SHA-256
-`d568a98348cb0d0bb46562abd8e335985cb72cc60666a2efb48214a6050b8f59`; this is
-not prelinked or hardware-tested. An earlier bootstrap linker pass reported
-unresolved symbols, but the wrapper continued and emitted the final
-native-only record. The UFS builder printed `TB710FU NativeUfs compile passed`
-and produced `libTb710fuNativeUfs.a`; the Actions artifact upload then failed
-because storage quota is full, so the archive and build report were not
-retained remotely and have no independently checked archive hash yet.
+After the user made the repository public, run
+[44041029817](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44041029817)
+completed and uploaded artifact `tb710fu-ufs-source-44041029817` (8,620,413
+bytes, SHA-256
+`61bb0852cc4d14a679ee2fd3bf88626376db2d16eeac535007b568a4990ab575`). The
+artifact was downloaded to `.work/ufs-source-44041029817/`; the ZIP digest,
+kernel record, and UFS archive digest all match their reported hashes.
 
-The repository had 39 active artifacts totaling 14.5 GB. The user-provided
-userdata artifact `tb710fu-macos-userdata-43724852936` accounts for 14.1 GB;
-its local ZIP copy has the same 14,135,017,096-byte size and SHA-256
-`b661a8ddbe4ad0911bbb141baa4b88a40401543bb73328fcd0d18ec02ccd8fb0` as the
-remote artifact. After explicit user authorization, remote artifact ID
-14165689492 was deleted; the local ZIP remains. Active artifact storage fell
-to 400,658,300 bytes. Dispatch run 44038743847 and its retry (attempt 2) both
-failed within five seconds before runner assignment; neither had any execution
-steps or logs. Repository Actions are enabled with all actions allowed, and
-GitHub Status reported all systems operational. The current API credential
-does not expose the check-run failure detail, so an account-side hosted-runner
-or billing restriction remains possible but unconfirmed. No further run is
-pending. The archive remains unlinked. The full source-storage route is still
-not connected:
+The native-only kernel is 25,171,504 bytes with SHA-256
+`0bb0d07e118ea4261613536b185a4dd80aaf90b97df75653c634c2e9bc54f948`.
+Prelink was skipped and hardware boot was not verified. The standalone
+`libTb710fuNativeUfs.a` is 541,448 bytes with SHA-256
+`56a28627693c848f450614f293f3661f1632112ca1801cf2bdc004f341768c3c`; it uses
+ShengUfs revision `99d8bcd3e43dd24fc3c8437c67b5d4cc71ab94d0` and XNU compile
+record SHA-256 `5b0cb4d43b31292ed6db2e73ea0cc8ea0c99a5dc9bc064f16b60797ee2e29d64`.
+Its report marks `linked_into_kernel=false`, `root_policy_ready=false`, and
+`runtime_qualified=false`. This is a successful source build, not a linked or
+hardware-tested UFS driver.
+
+The 14.1 GB userdata artifact was deleted after explicit authorization; its
+byte-identical local ZIP remains. Runs 44038743847 and its second attempt had
+failed before runner assignment. The current repository is public. The full
+source-storage route is still not connected:
 the board disables `CONFIG_XNU_SOURCE_STORAGE`, and the clean device repository
 lacks the `SourceStorage.cpp`, `SourceRootPolicies.cpp`, and
 `SourceRootBinding.cpp` bridge files required by that recipe.

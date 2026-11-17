@@ -71,22 +71,23 @@ is not linked into the kernel and does not consume the new policy bundle.
 ## Verification status
 
 The host-only `UfsReadProbe` state-machine tests pass, but that code has no XNU
-MMIO, SMMU, DMA or queue callbacks. The first optional source build,
+MMIO, SMMU, DMA or queue callbacks. The first source build,
 [run 44027734178](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44027734178),
-failed while applying XNU patch 0010, before native compilation or UFS archive
-compilation. After correcting its context against the saved XNU source following
-device patches 0001-0009, [run 44036380775](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44036380775)
-completed the native-only kernel build and printed a successful UFS compile
-message. The native kernel SHA-256 is
-`d568a98348cb0d0bb46562abd8e335985cb72cc60666a2efb48214a6050b8f59`; it was not
-prelinked. Artifact upload failed because the Actions storage quota was full,
-so the archive and build report were not retained for independent hash review.
-After user authorization the matching 14.1 GB userdata artifact was deleted;
-the byte-identical local ZIP was retained. Dispatch run 44038743847 and its
-second attempt both failed before a runner was assigned, with no build steps or
-logs. The repository has Actions enabled, and GitHub Status reported no active
-incident; the exact runner-start failure is unavailable through the current
-API credential.
-There is no linked TB710FU XNU UFS driver or hardware read. The full
+failed while applying patch 0010. After correcting its context against the
+saved XNU source following patches 0001-0009,
+[run 44041029817](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44041029817)
+completed successfully and uploaded a verifiable artifact.
+
+The native-only kernel is 25,171,504 bytes, SHA-256
+`0bb0d07e118ea4261613536b185a4dd80aaf90b97df75653c634c2e9bc54f948`; it was
+not prelinked or hardware-tested. The standalone archive
+`libTb710fuNativeUfs.a` is 541,448 bytes, SHA-256
+`56a28627693c848f450614f293f3661f1632112ca1801cf2bdc004f341768c3c`. Its
+build report confirms the pinned upstream revision and XNU compile record, and
+marks `linked_into_kernel=false`, `root_policy_ready=false`, and
+`runtime_qualified=false`. The downloaded artifact's SHA-256 matches GitHub's
+digest. Local outputs are under `.work/ufs-source-44041029817/`.
+
+There is still no linked TB710FU XNU UFS driver or hardware read. The full
 source-storage bridge and controller ownership checks must pass before enabling
 it in the kernel configuration.

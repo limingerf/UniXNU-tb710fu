@@ -19,7 +19,10 @@ starts. It deliberately does not tap `serial_putc_options`, which is called
 under `_cnputc` for serial output and would record each byte twice. The tap
 filters carriage returns to retain one newline per line. It only captures
 bytes; no DWC3 endpoint, CDC enumeration or queue drain over USB is connected
-yet. The target kernel build must validate the archive and XNU patch together.
+yet. Native-only kernel build run
+[44041029817](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44041029817)
+compiled the XNU tap patch and CDC archive together. This validates compilation
+only; it does not provide a host-visible port or hardware USB result.
 
 Run `python scripts/check_usb_cdc_protocol.py` to compile the host fixture with
 warnings-as-errors and AddressSanitizer/UndefinedBehaviorSanitizer, then run the
