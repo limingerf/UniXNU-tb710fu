@@ -35,9 +35,11 @@ The separate standard-band-only transform passes six-span reconstruction,
 mutation rejection and AArch64 instruction models. Host evidence is
 `docs/evidence/live-log-host-checks-20261117.json`.
 
-This entry records source/host preparation only. A fresh supported macOS
-native/prelink run is required; the old run 44088845841 does not compile these
-changes. No new image, local signing or device operation has yet occurred.
+Source commit `eb1f2bc70f08d410dbcb7e182372735d38bb018a` is pushed. The only
+new bounded kernel target, run 44112832250 (`ufs-integrated`, job
+134142786467), was submitted and is awaiting its native/prelink result.
+The old run 44088845841 does not compile these changes. No new image, local
+signing or device operation has yet occurred.
 Real scanout, scheduling, ramoops contents/retention and CDC enumeration are
 still hardware gates. A CPU halted with interrupts masked cannot animate QR;
 the already drawn fixed single-frame code remains scannable.
