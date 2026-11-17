@@ -264,6 +264,29 @@ refuse takeover. The worker requires scheduling, and active-DMA reconnect/reset
 recovery is unsupported. No signing, private-key read or device operation was
 performed. Hardware storage and root boot remain separate acceptance gates.
 
+## Extended platform diagnostic candidate
+
+Following the user-reported stage 56/no-port observation, tool revision
+`608c701ab5690f32bc3a36a571a7cba6fc1984c1` adds a bounded pre-scheduler trace.
+It preserves the original 15 inputs and pairs the new diagnostic kernel/report,
+manifest SHA-256 `5b91185df389ebec90751bcb24b698a903277ba2999dee8e4d5b63d411dce537`.
+The original CI prelink remains 503599a0; the separately recorded derivative is
+`23331f1d379f52c155dd4e479f72cf6786342d8d4ae1f87313f2b665a04aef19`.
+The validator checks actual caller ranges and direct BL occurrence as well as
+all reported prefix changes; 45 trace sites/52 spans preserve all 13 protected
+CDC/storage definitions and 7,656 code bytes. The actual derivative passes the
+production parser, compression and four FAT readbacks before output.
+
+The 37,859,328-byte unsigned image SHA-256 is
+`24132230a6771770d78b6065f0b157992f8f3937d51854ea9c22a571f4761aae`.
+The existing separately authorized signer produces a matching vendor_boot/vbmeta
+set with independent RSA/hash/payload verification, bundled with the unchanged
+loader in `out/tb710fu-usb-cdc-platform-44088845841-signed.zip`.
+See [image evidence](evidence/usb-cdc-platform-image-44088845841.json) and
+[signed evidence](evidence/usb-cdc-platform-signed-44088845841.json).
+No native rebuild, firmware rebuild, device operation or hardware qualification
+is added by this diagnostic packaging step.
+
 ## Separately authorized local signing
 
 The user subsequently requested a signed CDC candidate for hardware testing.

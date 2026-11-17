@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "stage": "read-only-stage56-cdc-adoption-audit",
+  "device_source_commit": "fda7f7dec8d8200501f63a08e7a1baefed12064f",
+  "xnu_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+  "run_id": 44088845841,
+  "kernel": {
+    "path": ".work/usb-cdc-44088845841/extracted/kernel/kernel.macho",
+    "bytes": 142802944,
+    "sha256": "503599a026ee362e9523aba1808f8af01601ae1323c7404fe7ecd1ed9a5690e2"
+  },
+  "signed_vendor": {
+    "path": "out/usb-cdc-qr-44088845841-signed/vendor_boot.img",
+    "bytes": 100663296,
+    "sha256": "a69c64ce476c6c5dc44b8fde29c9569e5ed5468584ee5a86d21c2832787d5680"
+  },
+  "actual_packaged_adt": {
+    "file": "EFI/UniXNU/Payloads/kernel.macho.adt",
+    "bytes": 14264,
+    "sha256": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+    "defaults_nodes": [
+      {
+        "path": "/device-tree/defaults",
+        "property_names": [
+          "name"
+        ]
+      }
+    ],
+    "selected_property_paths": {
+      "serial-device": [],
+      "consistent-debug-root": [],
+      "soc-base": []
+    },
+    "identity_values_exported": false
+  },
+  "actual_compile_command": {
+    "path": ".work/usb-cdc-44088845841/extracted/usb-cdc/CdcXnu.command.json",
+    "bytes": 12235,
+    "sha256": "e5b03c490a54969dba3131ac6e9eecf16a585350fc5365ae5ca037975caefce5",
+    "hash_matches_retained_build_report": true,
+    "boot_progress_macro": "XNU_BOOT_PROGRESS=0"
+  },
+  "compile_report": {
+    "path": ".work/usb-cdc-44088845841/extracted/usb-cdc/build-report.json",
+    "bytes": 4291,
+    "sha256": "13706189ec8240be5de0fc25e129af15122a6cfe0b48b9d4440e12045555cf96"
+  },
+  "selected_actual_native_symbols": {
+    "_cdc_worker": "0xfffffff00c24da24",
+    "_gKernelLog": "0xfffffff00c8ad598",
+    "_gKernelLogBytes": "0xfffffff00c9e0080",
+    "_gCdc": "0xfffffff00c9f0088",
+    "_PE_consistent_debug_inherit": "0xfffffff00c1ea7fc",
+    "_serial_init": "0xfffffff00c1ec5e8",
+    "_tb710fu_cdc_start": "0xfffffff00c24d974"
+  },
+  "boot_progress_function_symbols_present": false,
+  "sources": [
+    {
+      "path": ".work/xnu-patch-lf-clean/pexpert/arm/pe_serial.c",
+      "bytes": 40694,
+      "sha256": "e603267e9b6948f8eedd59afb199d38a33621e44e91ba7a39f7aa42986cbd6b2",
+      "upstream_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+      "upstream_path": "pexpert/arm/pe_serial.c",
+      "identical_to_pinned_git_blob": true
+    },
+    {
+      "path": ".work/xnu-patch-lf-clean/pexpert/arm/pe_consistent_debug.c",
+      "bytes": 3600,
+      "sha256": "5dd7f64aff7e8e42dc99876ce484bcaf72a232c2b0a460d55753d692c2bfd2ba",
+      "upstream_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+      "upstream_path": "pexpert/arm/pe_consistent_debug.c",
+      "identical_to_pinned_git_blob": true
+    },
+    {
+      "path": "package/Tb710fuUsbCdc/CdcXnu.c",
+      "bytes": 13740,
+      "sha256": "35a4557f92686cb828bbfc164b283238b6fa27ee55c6102667db2d622b39c9ea"
+    },
+    {
+      "path": "package/Tb710fuUsbCdc/CdcHardware.h",
+      "bytes": 5089,
+      "sha256": "fe6c49dd0ea89c4f945d730dc00d492261a0e0f6805bd1d9565e1788ab88ae36"
+    },
+    {
+      "path": "package/Tb710fuUsbCdc/CdcLogRing.c",
+      "bytes": 3542,
+      "sha256": "6582ba8fbca593fc11febcca387c651eca9c8ead538c51f05214243dc634f449"
+    },
+    {
+      "path": "package/Tb710fuUsbCdc/CdcKernelTap.c",
+      "bytes": 990,
+      "sha256": "6041d87e9bfd3ed4d824acf63e5a2417eba561f967d1da41d51a8e8a4edfc912"
+    },
+    {
+      "path": "patches/xnu/0012-tb710fu-cdc-start.patch",
+      "bytes": 1142,
+      "sha256": "34b8d3b323c7a24f3be4d2ad2b732e74ec8309f65e252397e23aa94ac81f42f7"
+    },
+    {
+      "path": "diagnostics/early-report/Entry.S",
+      "bytes": 5321,
+      "sha256": "4f10198cd7b21a425e8e7e926fe2a7a6673b110fa80745a8903fd3da0aec9cec"
+    }
+  ],
+  "findings": [
+    "Stage 56 records ramoops return within arm_init; it does not prove BSD or a CDC worker was reached.",
+    "The actual native file has no boot_progress functions, and the retained target compile record disables XNU_BOOT_PROGRESS; boot_progress_stage expands to a no-op.",
+    "The actual packaged ADT contains a defaults node but no serial-device and no consistent-debug-root property. The known boot arguments contain neither serial-device nor serial-device-name.",
+    "Pinned PE_consistent_debug_inherit returns -1 without consistent-debug-root. Pinned serial_init returns 0 when no serial device is selected, before driver setup. No current evidence identifies either call as a blocking cause.",
+    "The CDC entry occurs in bsd_init after IOKitInitializeTime; the worker uses scheduling and timer deadlines and must not be moved into arm_init unchanged.",
+    "All live clock/PHY/role/SMMU refusals are printf-only. Current device feedback contains none of those register values, so no guard failure is established.",
+    "The current reporter uses global stack, mutable tables and temporary TTBR0/TCR mappings. Do not call it from a scheduled CDC worker or concurrently from CPUs.",
+    "A future read-only ring-tail snapshot can use verified static symbol bounds, stable index/lock checks and bounded sanitized bytes; it must report dropped_bytes, because this ring drops new bytes when full. Pre-scheduler snapshots cannot contain future CDC worker outcomes."
+  ],
+  "candidate_boot_arguments": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1",
+  "hardware_registers_sampled": false,
+  "cdc_enumeration_verified": false,
+  "device_partition_readback_verified": false,
+  "device_operations_performed": false,
+  "files_written": [
+    ".work/stage56-cdc-adoption-audit.json"
+  ]
+}

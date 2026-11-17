@@ -1,5 +1,38 @@
 # TB710FU USB CDC port · 2026-11-17
 
+## Stage-56 hardware feedback and extended platform trace
+
+The user now reports a working QR labelled `src-503599a0-cdc-qr`, stage 56,
+ramoops initialization returned, and no port. This is the last instrumented
+checkpoint in that candidate; it does not locate a stall there or establish
+that BSD/CDC executed. ARG1 is not an established error code. See the
+[verbatim observation](evidence/usb-cdc-stage56-device-20261117.json),
+[actual startup path](evidence/usb-cdc-stage56-path-audit.json) and
+[packaged-ADT/CDC audit](evidence/usb-cdc-stage56-adoption-audit.json).
+
+The next signed bundle is `out/tb710fu-usb-cdc-platform-44088845841-signed.zip`,
+label `src-503599a0-plat-qr`, SHA-256
+`5bbd067261f417a44826b43077404f6db92642147a439e9e21771993cbcba9e7`.
+It adds 17 verified original BL wrappers, bringing the total to 45. Stages 57–88
+bracket the remaining arm_init platform calls, and 89 only enters the no-return
+machine_startup. All stay before scheduled bootstrap-thread creation/switching;
+the shared-stack/temporary-GOP reporter is not used from the CDC worker.
+The new checkpoints add up to 66 seconds of continuing QR replay. Save the final
+label, stage and full decoded report after the screen settles. Stage 89 still
+does not prove BSD or worker execution.
+
+The original CDC/storage code and native/prelink reports remain unchanged.
+Sixteen mutation tests, 45 actual wrapper instruction models, full host QR/CRC
+coverage and AArch64 rendering at stages 61/89 pass. Production parsing,
+17-input packaging, local signing and independent RSA/payload readback pass.
+See [transform proof](evidence/usb-cdc-platform-transform-44088845841.json),
+[image record](evidence/usb-cdc-platform-image-44088845841.json) and
+[signed record](evidence/usb-cdc-platform-signed-44088845841.json).
+No USB enumeration, guard rejection reason or captured bytes are established;
+this extends localization without claiming the no-port issue is fixed.
+
+Entries below preserve the results known when each earlier candidate was made.
+
 ## QR restoration after the white-band report
 
 The first signed CDC delivery omitted the separate post-link reporter, so its

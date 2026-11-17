@@ -1,5 +1,63 @@
 # Current status · 2026-11-17
 
+## User reaches stage 56, no CDC port; extended signed platform trace · 2026-11-17
+
+The user supplied a `src-503599a0-cdc-qr` live report at stage `0x38` (56),
+`tb710fu_ramoops_init` returned, and reported no port. This confirms QR recovery
+and reaching that early checkpoint. It is the old reporter's last observation,
+not a fault PC or proof that execution stopped there. ARG1 is not an established
+error code. No partition hash readback binds exact device bytes. BSD/CDC startup,
+hardware guard results and USB bytes remain unobserved. The verbatim report is
+`docs/evidence/usb-cdc-stage56-device-20261117.json`.
+
+Read-only source/actual-machine-code and packaged-ADT audits are recorded in
+`docs/evidence/usb-cdc-stage56-{path,adoption}-audit.json`. The real CDC BL is
+later in `bsd_init`, after IOKitInitializeTime and before vfsinit. The current
+ADT selects no serial UART; boot_progress is disabled. Neither finding identifies
+the no-port cause. The trace extension stays in arm_init before scheduled
+bootstrap-thread creation/switching; actual fiq_context_init asserts masked
+DAIF. The built-in empty pe_init_fiq does not establish a missing GIC provider,
+because the separate official ArmCpu archive is linked.
+
+Tool commit `608c701ab5690f32bc3a36a571a7cba6fc1984c1` adds 17 original-call
+wrappers, stages 57–88 for entry/return and 89 for machine_startup entry only.
+It does not call the shared-stack/GOP reporter from BSD or a scheduled worker.
+The validator independently checks actual parent bounds and BL occurrence,
+all 52 prefix spans, 45 trace sites, three compact checkpoints and appended
+RX/RW-NX segments. All 13 CDC/storage functions and 7,656 code bytes remain
+unchanged. Sixteen mutation tests, all 45 instruction-model wrappers, host QR
+frames for all new stages and actual AArch64 live rendering at 61/89 pass.
+Packaging tests pass 14 cases with one historical fixture skipped.
+
+The original native/prelink run remains 44088845841 at device c0154c9d5e7048f7896614e1ca8d65be7d4d0e10;
+no new native build or CI run occurred. The separate 143,687,680-byte derivative
+SHA-256 is `23331f1d379f52c155dd4e479f72cf6786342d8d4ae1f87313f2b665a04aef19`,
+label `src-503599a0-plat-qr`. The 17-input manifest SHA-256 is
+`5b91185df389ebec90751bcb24b698a903277ba2999dee8e4d5b63d411dce537`.
+The final derivative passes the production DarwinBoot parser and FAT/LZMA
+readback. Unsigned vendor SHA-256 is
+`24132230a6771770d78b6065f0b157992f8f3937d51854ea9c22a571f4761aae`.
+
+Under the continuing explicit local-signing authorization, the new signed set
+is `out/usb-cdc-platform-44088845841-signed/`. The matching vendor_boot SHA-256 is
+`42f769f62a333449a2ef03ed39597a75564a0e3d6ce166cb5a38f4f729e2d92f`;
+vbmeta is `5e7dd99c69a62ce6ce7e73aeb80d060ae996792a41b51301b1e8af8b4fcec87f`.
+The existing boot image is unchanged, SHA-256
+`a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`.
+Independent RSA, salted hashes, unchanged payload, four FAT files, complete
+kernel and 22 unrelated descriptors/header/key/rollback checks pass. The ZIP
+`out/tb710fu-usb-cdc-platform-44088845841-signed.zip` is 35,559,274 bytes,
+SHA-256 `5bbd067261f417a44826b43077404f6db92642147a439e9e21771993cbcba9e7`.
+Exact proof/image/signing records are `docs/evidence/usb-cdc-platform-{transform,image,signed}-44088845841.json`.
+
+Normal execution continues after each two-second replay; the new stages add
+up to 66 seconds. No hardware guard was bypassed, no device command was run,
+and no device flash/reboot/storage operation occurred. This candidate extends
+localization, without establishing a no-port fix, actual enumeration/log bytes,
+hardware root mount or macOS userspace. The next hardware result must retain
+the new label and final complete QR text. Stage 89 alone still does not prove
+BSD/CDC worker execution. Earlier entries preserve their historical scope.
+
 ## Missing QR reporter restored on the CDC kernel; signed replacement · 2026-11-17
 
 The user reports a white boot band and disappearance of the earlier QR after

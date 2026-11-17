@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-17",
+  "stage": "user-reported-hardware-checkpoint-no-cdc-port",
+  "source": "User-supplied decoded live QR/checkpoint text and accompanying no-port report; no independent device command or readback was performed.",
+  "user_report_verbatim": "XNU LIVE CHECKPOINT (continues)\nbuild src-503599a0-cdc-qr\nXNU returned: tb710fu_ramoops_init\nSTAGE=0000000000000038\nARG0=fffffff0bd200000\nARG1=000000000000000c\nKERNEL_SP=fffffff00f823f30\nBOOTARGS_PA=00000008c890c000\nFB_PA=00000000d5100000\nSCTLR=00000000fc54799d\nTCR=00080022a51a251a\nOLD_TTBR0=00000008c8918000\nOLD_TTBR1=00000008c8919000\nlast observed stage, not a fault PC or full console log\nramoops initialization returned",
+  "user_port_observation_verbatim": "没有端口",
+  "display_build_label": "src-503599a0-cdc-qr",
+  "last_observed_checkpoint": {
+    "stage_hex": "0x38",
+    "stage_decimal": 56,
+    "message": "XNU returned: tb710fu_ramoops_init",
+    "meaning": "The reporter observed tb710fu_ramoops_init returning on the arm_init path.",
+    "fault_pc": false,
+    "full_console_log": false,
+    "arg1_is_error_code": false,
+    "arg1_interpretation": "ARG1 is the register snapshot after the call; 0xc is not established as a return status or error code.",
+    "last_instrumented_checkpoint_in_this_candidate": true
+  },
+  "attribution": {
+    "basis": "User-supplied display build label and checkpoint text match the delivered restored-QR candidate.",
+    "device_partition_hash_readback": false,
+    "exact_device_storage_bytes_verified": false,
+    "recorded_candidate_kernel_sha256": "2410ec0545996500af0e8c051f4ce33f9941685a6cc73c63b082a51222da0b7f",
+    "recorded_candidate_signed_vendor_sha256": "a69c64ce476c6c5dc44b8fde29c9569e5ed5468584ee5a86d21c2832787d5680",
+    "recorded_candidate_signed_vbmeta_sha256": "f0dfcae10f915977fc768f9fa59de4187299429ff6124fe7dd00ef2be52dbbcd",
+    "recorded_candidate_zip_sha256": "0a73220da6fa8327029d47048521a7f686e7661ccc101114ef905f2f18768d82"
+  },
+  "observations": {
+    "qr_restored_on_hardware_user_reported": true,
+    "ramoops_init_returned_user_reported": true,
+    "cdc_port_present_user_reported": false,
+    "bsd_init_reached_established": false,
+    "cdc_start_called_established": false,
+    "cdc_worker_ran_established": false,
+    "cdc_hardware_guard_result_established": false,
+    "cdc_enumeration_verified": false,
+    "usb_log_bytes_captured": false,
+    "ramoops_content_or_retention_verified": false,
+    "hardware_root_boot_verified": false,
+    "macos_userspace_verified": false,
+    "cause_of_stall_or_no_port_established": false
+  },
+  "source_interpretation": "The existing CDC hook is later in bsd_init, after IOKitInitializeTime and before vfsinit. Stage 56 is earlier in arm_init and is the final checkpoint instrumented in this candidate; this screen cannot establish a stall immediately after ramoops or execution of the BSD/CDC path.",
+  "related_evidence": [
+    "docs/evidence/usb-cdc-qr-signed-44088845841.json",
+    "docs/evidence/usb-cdc-qr-transform-44088845841.json",
+    "docs/evidence/usb-cdc-qr-image-44088845841.json",
+    "docs/evidence/usb-cdc-integrated-44088845841.json"
+  ],
+  "native_kernel_run_id": 44088845841,
+  "native_kernel_device_commit": "c0154c9d5e7048f7896614e1ca8d65be7d4d0e10",
+  "observation_record_base_commit": "fda7f7dec8d8200501f63a08e7a1baefed12064f",
+  "device_operations": false
+}

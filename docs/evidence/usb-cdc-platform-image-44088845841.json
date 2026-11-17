@@ -1,0 +1,363 @@
+{
+  "schema_version": 1,
+  "stage": "unsigned-source-storage-vendor-boot",
+  "profile": "macos-27.3-26C5035r",
+  "manifest_sha256": "5b91185df389ebec90751bcb24b698a903277ba2999dee8e4d5b63d411dce537",
+  "inputs": {
+    "source_vendor": {
+      "path": "out/kernel-log-region/vendor_boot.img",
+      "sha256": "15846226236b56bd3abb104ae57f45e23307f3ea52321fd03ed153fd2e4e0718",
+      "bytes": 100663296
+    },
+    "source_vbmeta": {
+      "path": "out/kernel-log-region/vbmeta.img",
+      "sha256": "e4cffaf3414a2c22d6c129ed62ac382424f67da8a0dd62aa9ae0ccb73fec63de",
+      "bytes": 8000
+    },
+    "kernel": {
+      "path": ".work/usb-cdc-44088845841/extracted/kernel/kernel.macho",
+      "sha256": "503599a026ee362e9523aba1808f8af01601ae1323c7404fe7ecd1ed9a5690e2",
+      "bytes": 142802944
+    },
+    "kernel_report": {
+      "path": ".work/usb-cdc-44088845841/extracted/kernel/kernel.json",
+      "sha256": "b383535d265910cc23a7b009f0fdb33dc5e25bd2ecc0ee48afa3e43b70bcdcbd",
+      "bytes": 8741
+    },
+    "kernel_map": {
+      "path": ".work/usb-cdc-44088845841/extracted/kernel/kernel.map.json",
+      "sha256": "43fd204318202f3815764b30f5e875740e698017d6a144eda3e33c14c92973f7",
+      "bytes": 666342
+    },
+    "build_report": {
+      "path": ".work/usb-cdc-44088845841/extracted/build-result.json",
+      "sha256": "35642f5f68fdc5bb29636b98586bf0c8119a2c5a13b6f6f9b574a1348be4ea8f",
+      "bytes": 630
+    },
+    "integration_report": {
+      "path": ".work/usb-cdc-44088845841/extracted/source-storage-integration.json",
+      "sha256": "a2f801afd1c16bd4dc3225770bfe8df2697310add7989fea5b256dc764bdd7f6",
+      "bytes": 2680
+    },
+    "source_storage_archive": {
+      "path": ".work/usb-cdc-44088845841/extracted/source-storage/libTb710fuSourceStorage.a",
+      "sha256": "a87e8b55568242ccba39013ab8a1d0b439f5d4dc4580e2a61f1820ecabd628e5",
+      "bytes": 1444104
+    },
+    "source_storage_report": {
+      "path": ".work/usb-cdc-44088845841/extracted/source-storage/build-report.json",
+      "sha256": "2957c41b442398c80f07ed8aa6adbb8361c536af791e956a8add66ed5451c95a",
+      "bytes": 132186
+    },
+    "root_policies": {
+      "path": ".work/usb-cdc-44088845841/extracted/source-storage/root-policies.bin",
+      "sha256": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+      "bytes": 1712
+    },
+    "loader_boot": {
+      "path": "out/handoff-stages/boot.img",
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83",
+      "bytes": 100663296
+    },
+    "loader_artifact": {
+      "path": ".local/handoff-stages-43729209898.zip",
+      "sha256": "a76530c6d0a27fb9b428f7902817e551fa5927cfe935c0c80a821dc4ae49abfa",
+      "bytes": 771783
+    },
+    "usb_cdc_integration_report": {
+      "path": ".work/usb-cdc-44088845841/extracted/usb-cdc-integration.json",
+      "sha256": "76fb88883b0b065062e49ee1e63d9b5b9d7bbd0c06ad02406bcec0d1b6d31829",
+      "bytes": 2504
+    },
+    "usb_cdc_archive": {
+      "path": ".work/usb-cdc-44088845841/extracted/usb-cdc/libTb710fuCdcLog.a",
+      "sha256": "97e3ff396c881f4aae0c3f6c33edc7ee69776d52c861fc1a937c50780ffce8df",
+      "bytes": 192872
+    },
+    "usb_cdc_report": {
+      "path": ".work/usb-cdc-44088845841/extracted/usb-cdc/build-report.json",
+      "sha256": "13706189ec8240be5de0fc25e129af15122a6cfe0b48b9d4440e12045555cf96",
+      "bytes": 4291
+    },
+    "diagnostic_kernel": {
+      "path": ".work/usb-cdc-platform-44088845841-v2/kernel-early-report.macho",
+      "sha256": "23331f1d379f52c155dd4e479f72cf6786342d8d4ae1f87313f2b665a04aef19",
+      "bytes": 143687680
+    },
+    "diagnostic_report": {
+      "path": ".work/usb-cdc-platform-44088845841-v2/build-report.json",
+      "sha256": "665ff200345d1ecea0e92f8e06a88cf6be0d8566dce432ce1c134904f501a11b",
+      "bytes": 48046
+    }
+  },
+  "fixed_source_sha256": {
+    "scripts/unixnu/devicetree.py": "dd72d2e5dfa8183c9ea320a52017d424c1dee70b057972b1ad91225686c49606",
+    "scripts/unixnu/util.py": "1f6efa81051d67f7225783958f1f8e86a38a7d4e538299ce6aa639b3cb4a759d",
+    "profiles/os/macos-27.3-26C5035r/profile.toml": "944e77e4b207151ab4b6a20fb174f8d537178eada54884378ace39bc01da2225",
+    "DarwinBoot/DarwinBootPkg/Driver/DarwinBoot.c": "1d19ca1091962bd48b4154e3aae3d0ad80699f6c892a5a407dd3de0d62907fd9",
+    "DarwinBoot/Test/test-kernel-parser.py": "92be15ff6060ee1cd98e7feb8a021f1ebed477189375140dfc3ac8371f9b48d7"
+  },
+  "integrated_native": {
+    "device_commit": "c0154c9d5e7048f7896614e1ca8d65be7d4d0e10",
+    "native_kernel_sha256": "3daf19507bdf3d7ca5943f165cde4611e710b58131e4dcb956fef8f635628215",
+    "archive_sha256": "a87e8b55568242ccba39013ab8a1d0b439f5d4dc4580e2a61f1820ecabd628e5",
+    "archive_objects_verified": 8,
+    "startup_symbol": "_native_source_storage_start",
+    "strong_startup_and_late_metaclasses": true
+  },
+  "prelink": {
+    "stage": "prelinked",
+    "mach_o_filetype": 12,
+    "cpu_subtype": "0xc0000002",
+    "bytes": 142802944,
+    "sha256": "503599a026ee362e9523aba1808f8af01601ae1323c7404fe7ecd1ed9a5690e2",
+    "fileset_entries": 79,
+    "mapping_complete": true,
+    "hardware_boot_verified": false,
+    "runtime_qualified": false
+  },
+  "root_policies": {
+    "bytes": 1712,
+    "sha256": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+    "policies": {
+      "OS": {
+        "header_sha256": "608f879a700200af03c54f13835d7a168be9ebd39d96396bf4a6d10ad15b8ef9",
+        "verification_sha256": "ee922f865f6e7682ffd380d0f672b45d71c03a4b28ecdf6f6f503811bea2c662",
+        "image_sha256": "40d8282eb8650da9b4d7437a981764c48d47ee4bdc5b8b362248f25ecbce0e70",
+        "volume_uuid": "84581E99-85BE-4957-AC53-2947E887B3E4",
+        "image_bytes": 14493417472,
+        "block_count": 3538432,
+        "generation": 1
+      },
+      "SystemOS": {
+        "header_sha256": "32580811fa185c85ea745442d35ed0609912bd297abd344574d5b0e059d2cb44",
+        "verification_sha256": "d1fae6df548e24d8f95cd2eb58d7754aea296d313609c3f8ecfedffaa00cd24e",
+        "image_sha256": "14330ed990fe7022114b10718f4defe3049d49b6e5d52fd3ac71a487541cd1f3",
+        "volume_uuid": "6678E466-2F88-4C56-9408-DC7361BAA0BA",
+        "image_bytes": 2917138432,
+        "block_count": 712192,
+        "generation": 1
+      },
+      "App": {
+        "header_sha256": "6513afbe50f847033db5a3bf5efe8ddf99aea32f4de10a88d668c1a721cd15b0",
+        "verification_sha256": "e399985617884640ad857d2f317a5349229c99b980eec2647b220495aa14f733",
+        "image_sha256": "797bb1e07e354e80e75d3be2658d8f586b343dbdc05cb93cb880e772ab0d23d1",
+        "volume_uuid": "F2AEA010-C8EB-4AF8-92A9-4B90781CD668",
+        "image_bytes": 54525952,
+        "block_count": 13312,
+        "generation": 1
+      }
+    },
+    "public_key": {
+      "format": "VROOTKEY",
+      "bytes": 395,
+      "modulus_bits": 3072,
+      "exponent": 65537,
+      "sha256": "c2d8d462d0a790056bef2dddc30ae60ce210dbf0ee1cd4350a21e864db3a7d7e"
+    },
+    "openssl_signature_verification": "PASS",
+    "runtime_authentication_required": true,
+    "current_full_root_image_bytes_rechecked": false,
+    "private_key_read": false
+  },
+  "loader": {
+    "run_id": 43729209898,
+    "artifact_id": 14167867119,
+    "device_commit": "0ea7095d5d99a8d66b4ff8b77bbdf9268e6cfd52",
+    "boot_sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83",
+    "fd_sha256": "5722252b40e37d6c94e252c8daeddd9f3499b5483bca44f0cba93c795fb78a71",
+    "pe_sha256": "258fc45fcc1e1cd0bb982015e1e59cd0a48ec9cc9ac82c3b90dec78ae2d84079",
+    "darwinboot_revision": "5243c68ec332a227fe3680cd5da6d5a0e127035c",
+    "lzma_kernel_supported": true,
+    "source_and_build_lineage_verified": true,
+    "independently_reproduced": false,
+    "runtime_root_policy_handoff_tested": false,
+    "cloud_per_module_source_attestation": false
+  },
+  "boot_args": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1",
+  "adt": {
+    "before_sha256": "f4161ff940b78e777ca2a6f4cb02191ff00f5046cc4dc3302d8fc4ce00f9c1a0",
+    "sha256": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+    "bytes": 14264,
+    "only_change": "append zero16 /chosen/memory-map/RootPolicies",
+    "all_original_properties_and_random_seed_preserved": true
+  },
+  "kernel_lzma": {
+    "bytes": 24101789,
+    "sha256": "a67c4d12bd8a0502a49df185d378865e6f70e72eb32e95d16a55b584a4e24dc4",
+    "raw_roundtrip": "PASS"
+  },
+  "payload": {
+    "bytes": 34603008,
+    "sha256": "42acf6342a96dd4483122c3c21d4bec513e6523889cb83ce0ea08db958b07f1e",
+    "geometry": {
+      "bytes_per_sector": 512,
+      "sectors_per_cluster": 1,
+      "reserved": 32,
+      "fats": 2,
+      "root_entries": 0,
+      "total_sectors": 67584,
+      "fat_size": 520,
+      "root_dir_sectors": 0,
+      "data_sectors": 66512,
+      "clusters": 66512,
+      "kind": "FAT32",
+      "root_cluster": 2,
+      "label": "FAT32",
+      "mountable": true,
+      "reason": "FAT32 with 66512 clusters >= 65525 floor",
+      "cluster_bytes": 512
+    },
+    "file_readback_sha256": {
+      "Payloads/kernel.macho": "a67c4d12bd8a0502a49df185d378865e6f70e72eb32e95d16a55b584a4e24dc4",
+      "Payloads/kernel.macho.adt": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+      "Payloads/kernel.macho.vroot": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+      "unixnu.toml": "34fcfb36eb15b231ffb14db5ebd4eaf96ed4f184e22935e00769cf4acfe37d9a"
+    }
+  },
+  "production_loader_parser": {
+    "result": "PASS",
+    "stdout": "PASS: actual kernel /mnt/d/unixnu-tb710fu-clean/.work/usb-cdc-platform-44088845841-v2/kernel-early-report.macho\nPASS: arm64/arm64e capability bits, malformed ranges, fileset membership and entry"
+  },
+  "unsigned_bytes": 37859328,
+  "unsigned_sha256": "24132230a6771770d78b6065f0b157992f8f3937d51854ea9c22a571f4761aae",
+  "outer_vendor_fields_preserved": true,
+  "signing_performed": false,
+  "private_key_read": false,
+  "device_operations": false,
+  "hardware_boot_verified": false,
+  "runtime_qualified": false,
+  "packaged_kernel": {
+    "sha256": "23331f1d379f52c155dd4e479f72cf6786342d8d4ae1f87313f2b665a04aef19",
+    "bytes": 143687680,
+    "stage": "reporter-derivative",
+    "original_prelink_sha256": "503599a026ee362e9523aba1808f8af01601ae1323c7404fe7ecd1ed9a5690e2"
+  },
+  "diagnostics": {
+    "stage": "verified-postlink-early-qr-transform",
+    "original_prelink_sha256": "503599a026ee362e9523aba1808f8af01601ae1323c7404fe7ecd1ed9a5690e2",
+    "diagnostic_kernel_sha256": "23331f1d379f52c155dd4e479f72cf6786342d8d4ae1f87313f2b665a04aef19",
+    "diagnostic_kernel_bytes": 143687680,
+    "patch_spans_verified": 52,
+    "trace_sites_verified": 45,
+    "compact_checkpoints_verified": 3,
+    "prefix_changes_bounded": true,
+    "reporter_payload_sha256": "3f712a0cd1cf214999d2d6d6ccc7fc15260a11b776b57632f101cbfcf7ffc0f3",
+    "normal_kernel_execution_preserved": true,
+    "hardware_verified": false,
+    "strong_runtime_definitions_verified": 13,
+    "preserved_runtime_code_bytes": 7656,
+    "runtime_definitions": [
+      {
+        "name": "_tb710fu_cdc_log_tap_putc",
+        "address": "0xfffffff00c24a6f0",
+        "bytes": 60,
+        "sha256": "a1c551280b36d83795e833177aaa64d4d570330699d6c286b661c7facb841af6"
+      },
+      {
+        "name": "_tb710fu_cdc_log_tap_copy",
+        "address": "0xfffffff00c24a72c",
+        "bytes": 24,
+        "sha256": "4e634dd3d6e127faf0db8bb41489f0b2f8f7d9caf11a3f9849102117ab9ecb0d"
+      },
+      {
+        "name": "_tb710fu_cdc_log_tap_consume",
+        "address": "0xfffffff00c24a744",
+        "bytes": 20,
+        "sha256": "131968ae86e63155ea40de7fa6e061f20866764ab9b10a3468a0edd1fcf7c81c"
+      },
+      {
+        "name": "_tb710fu_cdc_log_ring_append",
+        "address": "0xfffffff00c24a79c",
+        "bytes": 172,
+        "sha256": "4fc4501a094336c7785696278ee0e13a4e257f7ce6af5cffa9cd1fc667b88718"
+      },
+      {
+        "name": "_tb710fu_cdc_log_ring_copy",
+        "address": "0xfffffff00c24a848",
+        "bytes": 132,
+        "sha256": "83239a463e76915dba67389879602036642ca04127332c9af90f007e51a9b5b1"
+      },
+      {
+        "name": "_tb710fu_cdc_log_ring_consume",
+        "address": "0xfffffff00c24a8cc",
+        "bytes": 100,
+        "sha256": "0889a64b922b21893ccb63240e3beafb9f60dd95973cab3980833b8414f08bfc"
+      },
+      {
+        "name": "_tb710fu_cdc_classify_setup",
+        "address": "0xfffffff00c24ac18",
+        "bytes": 684,
+        "sha256": "d4f135c5529d0d96922641e4cf4ba5b0ba8eb2aee5be1e1965b467cd0d3b5dad"
+      },
+      {
+        "name": "_tb710fu_cdc_preflight",
+        "address": "0xfffffff00c24aec4",
+        "bytes": 312,
+        "sha256": "52752bfc8aeb68ff8a056a084ca1e7737fd564f83879769a2a34d636d27f6414"
+      },
+      {
+        "name": "_tb710fu_dwc3_start",
+        "address": "0xfffffff00c24c194",
+        "bytes": 1412,
+        "sha256": "651c02a8baeac510e3d4683627544fc1fb8feecdfa1ab7bc3a388bb4abb2590d"
+      },
+      {
+        "name": "_tb710fu_dwc3_poll",
+        "address": "0xfffffff00c24b0c8",
+        "bytes": 3656,
+        "sha256": "6621cb0ac0236d75f0748d0070ebeac8fc46b8ee89928798458167e000257e0b"
+      },
+      {
+        "name": "_tb710fu_dwc3_stop",
+        "address": "0xfffffff00c24affc",
+        "bytes": 204,
+        "sha256": "1dfd5b6f701557706a8bc6ecb7983ef2042fdfbba560cb85785b9666500b09f6"
+      },
+      {
+        "name": "_tb710fu_cdc_start",
+        "address": "0xfffffff00c24d974",
+        "bytes": 176,
+        "sha256": "2a39ef733d6b8e45a92a3d7fff0f5ab74c0f29001bf3a30f7d349ff0aed51f0d"
+      },
+      {
+        "name": "_native_source_storage_start",
+        "address": "0xfffffff00c25b478",
+        "bytes": 704,
+        "sha256": "398945bc61047c16c621d2010b5c336ece69f670143413d6728ef223f7d809e2"
+      }
+    ],
+    "reporter_tool_sha256": "9da5f865251c7e40f52678ce27555b40dccc803376675e6612d0569ce3d9f4dc",
+    "diagnostic_report_sha256": "665ff200345d1ecea0e92f8e06a88cf6be0d8566dce432ce1c134904f501a11b",
+    "display_build_label": "src-503599a0-plat-qr"
+  },
+  "usb_cdc_transport": {
+    "device_commit": "c0154c9d5e7048f7896614e1ca8d65be7d4d0e10",
+    "native_kernel_sha256": "3daf19507bdf3d7ca5943f165cde4611e710b58131e4dcb956fef8f635628215",
+    "archive_sha256": "97e3ff396c881f4aae0c3f6c33edc7ee69776d52c861fc1a937c50780ffce8df",
+    "archive_objects_verified": 6,
+    "integration_report_sha256": "76fb88883b0b065062e49ee1e63d9b5b9d7bbd0c06ad02406bcec0d1b6d31829",
+    "archive_compile_report_sha256": "13706189ec8240be5de0fc25e129af15122a6cfe0b48b9d4440e12045555cf96",
+    "strong_transport_definitions_verified": 12,
+    "runtime_boot_argument": "tb710fu-cdc=1",
+    "cdc_enumeration_verified": false,
+    "runtime_qualified": false,
+    "hardware_boot_verified": false
+  },
+  "kernel_run_id": 44088845841,
+  "tool_revision": "608c701ab5690f32bc3a36a571a7cba6fc1984c1",
+  "tool_sources_sha256": {
+    "tools/prepare_early_report.py": "9da5f865251c7e40f52678ce27555b40dccc803376675e6612d0569ce3d9f4dc",
+    "tools/verify_reporter_transform.py": "faef0b702fb4885d4d02dc6928ba4b4da98f6564bcd905fbc4a5c78bea37c8d8",
+    "tools/test_reporter_transform.py": "b060dbc6cc07cbf589103db401f834c25e7162cd0e08caa5a3cd191306565373",
+    "tools/check_early_report.py": "edd98b96afb7bdb60a4146579fc6501b38a4e07647abf9f8686d94c229728d8c",
+    "tools/check_live_status.py": "2401e9609f4b3c6b545cb08fcfd696bef5d41955f811a46fdc60fa8eff4d6e90",
+    "tools/package_source_storage.py": "589d31b2bbd27daf0b73faebf2ebd1fdbf731fe49c0e288005bae5cfeff07cd7",
+    "diagnostics/early-report/Report.c": "36df4c49d1e9788f58583580fd1ccd0ae6de1c5efaf8311522fca20ae3379103",
+    "diagnostics/early-report/Test/host_report.py": "368e7ff72e874ddbc09a87d788a2eb063600b84725207ede72a37d1c4bc83bd6"
+  },
+  "unsigned_image_path": "out/usb-cdc-platform-44088845841/vendor_boot.unsigned.img",
+  "packaging_report_sha256": "9240be0b42c822323800f01476b6f3ee5487ca8d7a4b49745ea93ac62b430d55",
+  "transform_evidence": "docs/evidence/usb-cdc-platform-transform-44088845841.json",
+  "cause_of_no_port_established": false
+}
