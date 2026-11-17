@@ -121,6 +121,37 @@ def real_bundle():
 
 
 class PackagingBoundaries(unittest.TestCase):
+    def test_reporter_manifest_preserves_original_and_requires_both_derivative_inputs(self):
+        with tempfile.TemporaryDirectory(prefix='tb710fu-reporter-manifest-') as temporary:
+            root = Path(temporary)
+            files = {}
+            for name in pack.INPUTS | pack.CDC_INPUTS | pack.DIAGNOSTIC_INPUTS:
+                path = root / name
+                path.write_bytes(name.encode())
+                files[name] = {'path': path.name, 'sha256': pack.sha(path.read_bytes())}
+            manifest = {'schema_version': 1, 'profile': pack.LOCK['os_profile'], 'framework': str(root),
+                        'boot_args': 'native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1',
+                        'files': {name: files[name] for name in pack.INPUTS | pack.CDC_INPUTS}}
+            path = root / 'inputs.json'
+
+            def check():
+                path.write_bytes(json.dumps(manifest).encode())
+                return pack.checked_inputs(path, pack.sha(path.read_bytes()))
+
+            with patch.object(pack, 'BASELINE', files['source_vendor']['sha256']), \
+                    patch.object(pack, 'BASE_VBMETA', files['source_vbmeta']['sha256']):
+                self.assertEqual(len(check()[1]), 15)
+                manifest['files']['diagnostic_kernel'] = files['diagnostic_kernel']
+                with self.assertRaisesRegex(ValueError, 'Manifest must name'):
+                    check()
+                manifest['files']['diagnostic_report'] = files['diagnostic_report']
+                checked = check()[1]
+                self.assertEqual(len(checked), 17)
+                self.assertNotEqual(checked['kernel'], checked['diagnostic_kernel'])
+                manifest['boot_args'] = 'native-source-storage=1 native-ufs-root=1'
+                with self.assertRaisesRegex(ValueError, 'requires tb710fu-cdc'):
+                    check()
+
     def test_cdc_manifest_requires_complete_transport_evidence(self):
         with tempfile.TemporaryDirectory(prefix='tb710fu-cdc-manifest-test-') as temporary:
             root = Path(temporary)

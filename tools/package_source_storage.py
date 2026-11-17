@@ -29,6 +29,7 @@ from check_adt_identity import inspect as inspect_adt, name_of, read_nodes
 from check_payload_fat import geometry
 from verify_kernel import verify_image
 from verify_storage_integration import force_load_count, hook_symbol, load_audit
+from verify_reporter_transform import verify_reporter_transform
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = json.loads((ROOT / 'upstream.lock.json').read_text())
@@ -49,6 +50,7 @@ INPUTS = {'source_vendor', 'source_vbmeta', 'kernel', 'kernel_report', 'kernel_m
           'build_report', 'integration_report', 'source_storage_archive',
           'source_storage_report', 'root_policies', 'loader_boot', 'loader_artifact'}
 CDC_INPUTS = {'usb_cdc_integration_report', 'usb_cdc_archive', 'usb_cdc_report'}
+DIAGNOSTIC_INPUTS = {'diagnostic_kernel', 'diagnostic_report'}
 CDC_SYMBOLS = {
     'CdcKernelTap': ('_tb710fu_cdc_log_tap_putc', '_tb710fu_cdc_log_tap_copy',
                      '_tb710fu_cdc_log_tap_consume'),
@@ -590,6 +592,9 @@ def checked_inputs(manifest_path, expected):
     arguments = validate_args(manifest.get('boot_args'))
     supplied = set(manifest.get('files', {}))
     expected_inputs = INPUTS | CDC_INPUTS if 'tb710fu-cdc' in arguments or supplied & CDC_INPUTS else INPUTS
+    if supplied & DIAGNOSTIC_INPUTS:
+        expected_inputs |= DIAGNOSTIC_INPUTS | CDC_INPUTS
+        require('tb710fu-cdc' in arguments, 'Reporter derivative requires tb710fu-cdc=1')
     require(supplied == expected_inputs,
             'Manifest must name exactly these files' +
             (' for CDC transport' if expected_inputs != INPUTS else '') + ': ' + ', '.join(sorted(expected_inputs)))
@@ -632,6 +637,27 @@ def package(manifest_path, manifest_sha, output):
                              paths['usb_cdc_report'].read_bytes(), paths['usb_cdc_archive'].read_bytes(),
                              kernel, official, build, integration)
     loader = verify_loader(paths['loader_boot'].read_bytes(), paths['loader_artifact'])
+    diagnostic = None
+    final_kernel_path = paths['kernel']
+    if DIAGNOSTIC_INPUTS <= set(paths):
+        require(cdc is not None and 'tb710fu-cdc=1' in manifest['boot_args'].split(),
+                'Reporter derivative requires the complete CDC-enabled integration evidence')
+        diagnostic_report = json_bytes(paths['diagnostic_report'].read_bytes())
+        require(diagnostic_report.get('reporter_tool_sha256') == sha((ROOT / 'tools/prepare_early_report.py').read_bytes()),
+                'Reporter tool source differs from the bound build report')
+        reporter_sources = {str(p.relative_to(ROOT)).replace('\\', '/'): sha(p.read_bytes())
+                            for p in sorted((ROOT / 'diagnostics/early-report').rglob('*'))
+                            if p.is_file() and '__pycache__' not in p.parts}
+        require(diagnostic_report.get('reporter_sources') == reporter_sources and
+                diagnostic_report.get('qr_source') == json_bytes((ROOT / 'diagnostics/early-report/qr-sources.json').read_bytes()),
+                'Reporter or QR source provenance differs')
+        candidate = paths['diagnostic_kernel'].read_bytes()
+        diagnostic = verify_reporter_transform(kernel, candidate, diagnostic_report)
+        diagnostic['reporter_tool_sha256'] = diagnostic_report['reporter_tool_sha256']
+        diagnostic['diagnostic_report_sha256'] = inputs['diagnostic_report']['sha256']
+        diagnostic['display_build_label'] = diagnostic_report['display_build_label']
+        kernel = candidate
+        final_kernel_path = paths['diagnostic_kernel']
     require(not output.exists(), 'Output directory exists; preserve earlier evidence')
     original = paths['source_vendor'].read_bytes()
     require(original[:8] == b'VNDRBOOT' and original[-64:-60] == b'AVBf', 'Unexpected signed vendor_boot container')
@@ -641,7 +667,7 @@ def package(manifest_path, manifest_sha, output):
     with tempfile.TemporaryDirectory(prefix='tb710fu-source-storage-') as temporary:
         work = Path(temporary)
         policy_report = verify_policies(policies, profile, archive_report, work)
-        run = subprocess.run([sys.executable, str(parser), str(paths['kernel'])], capture_output=True, text=True)
+        run = subprocess.run([sys.executable, str(parser), str(final_kernel_path)], capture_output=True, text=True)
         require(run.returncode == 0, 'Pinned production DarwinBoot parser rejected this exact prelinked kernel: ' + run.stderr[-2000:])
         payload = work / 'payload.img'
         payload.write_bytes(original[page:page + length])
@@ -696,6 +722,11 @@ def package(manifest_path, manifest_sha, output):
                   'unsigned_bytes': len(image), 'unsigned_sha256': sha(image), 'outer_vendor_fields_preserved': True,
                   'signing_performed': False, 'private_key_read': False, 'device_operations': False,
                   'hardware_boot_verified': False, 'runtime_qualified': False}
+        report['packaged_kernel'] = {'sha256': sha(kernel), 'bytes': len(kernel),
+                                     'stage': 'reporter-derivative' if diagnostic is not None else 'prelinked',
+                                     'original_prelink_sha256': verified['sha256']}
+        if diagnostic is not None:
+            report['diagnostics'] = diagnostic
         if cdc is not None:
             report['usb_cdc_transport'] = cdc
         # Validation, actual parser and readback all finish before any output

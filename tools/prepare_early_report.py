@@ -78,10 +78,15 @@ def main():
         '045bfc7cfad9ed2539a586043dd43211263099734f4978abd8092c213b7d7d95',
         # Fileset-aware diagnostic-segment lookup (run 43917723572)
         'eff36305a28a6bf89c453734a07a9fe0e878e9041773864aeb205fc88483c3e3',
+        # Six-source CDC and source-storage integration (run 44088845841).
+        # Its 0006/0009 hashes match the fileset-aware guard11 input.
+        '503599a026ee362e9523aba1808f8af01601ae1323c7404fe7ecd1ed9a5690e2',
     }
     digest = sha(original)
     if digest not in allowed:
         raise SystemExit(f'Require a recorded fileset, got {digest}')
+    if digest == '503599a026ee362e9523aba1808f8af01601ae1323c7404fe7ecd1ed9a5690e2' and not args.expect_kernel_sha256:
+        raise SystemExit('The CDC reporter derivative requires its explicit expected input SHA-256')
     if args.expect_kernel_sha256 and digest != args.expect_kernel_sha256:
         raise SystemExit(f'Kernel is {digest}, not the requested {args.expect_kernel_sha256}')
     if not re.fullmatch(r'[a-z0-9-]{1,16}', args.build_suffix):
@@ -331,7 +336,16 @@ def main():
                                 data_file_size, 3, 3, 0, 0)
     data[command_at:command_at + 144] = code_segment + state_segment
     struct.pack_into('<II', data, 16, ncmds + 2, sizeofcmds + 144)
-    struct.pack_into('<I', data, tool.file_offset(arm), tool.branch(arm, table['diag_init']))
+    patch_spans = []
+
+    def patch_bytes(at, replacement, kind):
+        if at < 0 or at + len(replacement) > len(original):
+            raise SystemExit('Diagnostic instruction patch is outside the original input')
+        patch_spans.append({'offset': at, 'before_hex': original[at:at + len(replacement)].hex(),
+                            'after_hex': replacement.hex(), 'kind': kind})
+        data[at:at + len(replacement)] = replacement
+
+    patch_bytes(tool.file_offset(arm), struct.pack('<I', tool.branch(arm, table['diag_init'])), 'arm_init')
     # Synchronous EL1 faults enter our own VBAR table installed at arm_init.
     panic = names['_panic']
     panic_word = struct.unpack_from('<I', original, tool.file_offset(panic))[0]
@@ -339,12 +353,13 @@ def main():
     # Pre-handoff synchronous exceptions still use diag_vectors.
     # No default BRK: exception/panic reports must describe the real kernel.
     if args.checkpoint_before_vm:
-        struct.pack_into('<I', data, tool.file_offset(call), 0xd4200000 | (0xb713 << 5))
+        patch_bytes(tool.file_offset(call), struct.pack('<I', 0xd4200000 | (0xb713 << 5)), 'explicit_checkpoint')
     for item in traced:
         site = int(item['site'], 16)
-        struct.pack_into('<I', data, tool.file_offset(site), tool.branch(site, table[item['label']]))
+        patch_bytes(tool.file_offset(site), struct.pack('<I', tool.branch(site, table[item['label']])), 'call_trace')
     # Reuse three already instruction-tested compact entry/MMU checkpoints.
     compact = src
+    compact_checkpoints = []
     for stage, site, target, cave in [(1, tool.ENTRY_VA, tool.START_FIRST_CPU, tool.ENTRY_VA + 0x80),
                                      (2, tool.MMU_ENABLE_VA, tool.MMU_ENABLE_VA + 4, tool.ENTRY_VA + 0x200),
                                      (3, tool.AFTER_MMU_VA, tool.AFTER_MMU_VA + 4, tool.ENTRY_VA + 0x380)]:
@@ -353,8 +368,13 @@ def main():
         at = tool.file_offset(cave)
         if any(original[at:at + 0x180]) or len(code) > 0x180:
             raise SystemExit('Compact checkpoint padding guard failed')
-        data[at:at + len(code)] = code
-        struct.pack_into('<I', data, tool.file_offset(site), tool.branch(site, cave))
+        expected_word = {1: tool.branch(site, target), 2: 0xd5181000, 3: 0xd2a00600}[stage]
+        if struct.unpack_from('<I', original, tool.file_offset(site))[0] != expected_word:
+            raise SystemExit('Compact checkpoint original-instruction guard failed')
+        patch_bytes(at, code, 'compact_code')
+        patch_bytes(tool.file_offset(site), struct.pack('<I', tool.branch(site, cave)), 'compact_branch')
+        compact_checkpoints.append({'stage': stage, 'site': hex(site), 'target': hex(target),
+                                    'cave': hex(cave), 'code_bytes': len(code), 'code_sha256': sha(code)})
     candidate.write_bytes(data)
     print('Reporter linked with original QrEncodeData; compressing', flush=True)
     filters = [{'id': lzma.FILTER_LZMA1, 'dict_size': 8 << 20, 'lc': 3, 'lp': 0, 'pb': 2, 'preset': 6}]
@@ -372,6 +392,9 @@ def main():
               'kernel_sha256': sha(data), 'kernel_bytes': len(data), 'lzma_sha256': sha(encoded),
               'lzma_bytes': len(encoded), 'segment_va': hex(base), 'segment_fileoff': fileoff,
               'segment_bytes': total_size, 'payload_bytes': len(payload),
+              'payload_sha256': sha(payload), 'patch_spans': patch_spans,
+              'compact_checkpoints': compact_checkpoints,
+              'reporter_tool_sha256': sha(Path(__file__).read_bytes()),
               'code_segment': {'name': '__KDIAG', 'va': hex(base), 'bytes': code_size,
                                'fileoff': fileoff, 'filesize': code_size, 'protection': 'RX'},
               'state_segment': {'name': '__KDATRW', 'va': hex(base + code_size),
