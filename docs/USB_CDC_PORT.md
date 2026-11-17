@@ -32,6 +32,11 @@ refused. PHY control bits do not prove analog readiness or powered rails.
 Development enumeration uses shared test VID:PID `1209:0001` and synthetic
 serial `TB710FUCDC001`; these are not production identifiers or the device's
 private serial. The `1209:710f` values in protocol tests remain fixtures only.
+The controller API bounds serial text to 30 ASCII characters, so the selected
+control replies cannot require an aligned short DATA/ZLP chain. Empty-length
+descriptor requests stall and rearm SETUP instead of stopping the session.
+Before replacing firmware event addresses, the bounded halt loop acknowledges
+old event counts; those counts can otherwise prevent `DEVCTLHLT`.
 
 Run the three `scripts/check_usb_cdc_{protocol,hardware,transport}.py` checks.
 The last executes the production core with modeled MMIO/DMA rather than a

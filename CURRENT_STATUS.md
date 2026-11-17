@@ -15,6 +15,12 @@ Source/hash provenance is in `docs/evidence/usb-cdc-sources.json`.
 The device recipe now selects all six real sources. A separate CI gate will
 check actual BSD compile/import, final strong definitions and force-load input.
 The supported macOS native/prelink target has not yet validated these new inputs.
+Run 44084514457 at `fbdd30ab98d16115c16ac7319b861e05af456623` passed the
+macOS host tests but stopped at patch 0012 application, before any compiler
+invocation. Its leading context was wrong. The corrected patch is actually
+applied in an independent Git fixture with verified changed bytes and startup
+order; see `docs/evidence/usb-cdc-startup-patch-check.json`. The initial nested
+fixture had silently skipped patch paths, so its exit code was insufficient.
 No actual TB710FU CDC enumeration or captured USB log is established. Unsupported
 active-DMA reset/disconnect stops the session and retains DMA. The scheduled
 worker does not promise final panic text after scheduling stops. No signing or

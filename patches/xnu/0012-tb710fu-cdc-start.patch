@@ -14,7 +14,7 @@ diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 --- a/bsd/kern/bsd_init.c
 +++ b/bsd/kern/bsd_init.c
 @@ -792,6 +792,10 @@
- #endif
+ 	IOKitInitializeTime();
  
  	/* Initialize the file systems. */
 +#if defined(XNU_TB710FU_CDC) && XNU_TB710FU_CDC

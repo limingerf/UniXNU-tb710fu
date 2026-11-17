@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "fixture_is_independent_git_root": true,
+  "base_file_sha256": "d204162174eb22df967aef18177a13d92fdd0fa1b3f9b2bc0acdb142c70cadbe",
+  "patches": [
+    {
+      "patch": "0011-tb710fu-source-storage-start.patch",
+      "sha256": "40c788f84b456883f461331ffff98ad02e478effb1a4c5600933d347b2dcc318",
+      "actual_apply_and_call_count": "PASS"
+    },
+    {
+      "patch": "0012-tb710fu-cdc-start.patch",
+      "sha256": "34b8d3b323c7a24f3be4d2ad2b732e74ec8309f65e252397e23aa94ac81f42f7",
+      "actual_apply_and_call_count": "PASS"
+    }
+  ],
+  "startup_order_verified": [
+    "tb710fu_cdc_start",
+    "vfsinit",
+    "native_source_storage_start"
+  ],
+  "patched_file_sha256": "1c9bd97c9f81dc8c89682dc3f81933ed7ec8d2a93de5a8e5f3f9c8fbd65ffbf7",
+  "failed_run": 44084514457,
+  "failed_run_device_commit": "fbdd30ab98d16115c16ac7319b861e05af456623",
+  "failed_stage": "XNU patch application, before compilation",
+  "failure": "0012 leading context incorrectly used endif immediately before file-system comment; replaced with actual IOKitInitializeTime call",
+  "initial_local_check_limitation": "Nested non-Git fixture caused git apply to silently skip paths; corrected fixture has an independent Git root and verifies changed bytes and exact call counts."
+}

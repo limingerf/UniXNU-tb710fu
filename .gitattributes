@@ -3,6 +3,7 @@
 patches/ufs/0002-transactional-handoff.patch whitespace=-blank-at-eol
 patches/xnu/0010-tb710fu-cdc-kernel-log-tap.patch whitespace=-space-before-tab,-blank-at-eol,-blank-at-eof
 patches/xnu/0011-tb710fu-source-storage-start.patch whitespace=-space-before-tab
+patches/xnu/0012-tb710fu-cdc-start.patch whitespace=-space-before-tab,-blank-at-eol
 *.sh text eol=lf
 *.py text eol=lf
 *.toml text eol=lf

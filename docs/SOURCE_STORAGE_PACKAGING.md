@@ -58,6 +58,21 @@ An existing output directory is refused. All input, parser, signature and FAT
 readback checks finish before the directory is created. A failed validation
 does not produce a candidate image.
 
+When `boot_args` includes `tb710fu-cdc=1`, add these three exact inputs to
+`files` (15 total), each with its actual `path` and `sha256`:
+
+- `usb_cdc_integration_report`: `usb-cdc-integration.json` from the same build;
+- `usb_cdc_archive`: `usb-cdc/libTb710fuCdcLog.a`;
+- `usb_cdc_report`: `usb-cdc/build-report.json`.
+
+Partial CDC inputs are refused. The original 12-input form remains valid for
+images without the CDC argument. For a CDC-enabled image the tool binds the
+prelinked build result to the exact CDC report, then to the archive/report and
+the same native input/device revision as storage. It checks all six real
+arm64e archive members and actual strong transport code definitions in the
+retained `com.apple.kernel` fileset entry. Boolean report claims alone are
+insufficient. Runtime, enumeration and hardware-boot fields remain false.
+
 ## Kernel and integration proof
 
 The standard official `kernel.json`, symbol map and device `build-result.json`
@@ -100,7 +115,8 @@ ADT UUID matching and supplies neither `rd=md0` nor a board-specific root-device
 number. The tool never invents such a number.
 
 The currently reviewed optional argument set is deliberately small: `-v`,
-`serial=3`, `ramoops_size=0x40000`, `ramoops_ecc=0` or `16`,
+`serial=3`, `tb710fu-cdc=1` with the evidence above,
+`ramoops_size=0x40000`, `ramoops_ecc=0` or `16`,
 `ramoops_panic_delay` from 0 to 300, and `ramoops_reset_after=0`. Omitting the
 reset argument uses the reviewed patch's default zero. Duplicate arguments,
 `rd`/`rootdev`/other root overrides, physical `ramoops` addresses, nonzero
