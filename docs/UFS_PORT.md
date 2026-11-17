@@ -81,6 +81,12 @@ message. The native kernel SHA-256 is
 `d568a98348cb0d0bb46562abd8e335985cb72cc60666a2efb48214a6050b8f59`; it was not
 prelinked. Artifact upload failed because the Actions storage quota was full,
 so the archive and build report were not retained for independent hash review.
+After user authorization the matching 14.1 GB userdata artifact was deleted;
+the byte-identical local ZIP was retained. Dispatch run 44038743847 and its
+second attempt both failed before a runner was assigned, with no build steps or
+logs. The repository has Actions enabled, and GitHub Status reported no active
+incident; the exact runner-start failure is unavailable through the current
+API credential.
 There is no linked TB710FU XNU UFS driver or hardware read. The full
 source-storage bridge and controller ownership checks must pass before enabling
 it in the kernel configuration.

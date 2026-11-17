@@ -35,8 +35,16 @@ The repository had 39 active artifacts totaling 14.5 GB. The user-provided
 userdata artifact `tb710fu-macos-userdata-43724852936` accounts for 14.1 GB;
 its local ZIP copy has the same 14,135,017,096-byte size and SHA-256
 `b661a8ddbe4ad0911bbb141baa4b88a40401543bb73328fcd0d18ec02ccd8fb0` as the
-remote artifact. No remote artifact was deleted. The archive will remain
-unlinked. The full source-storage route is still not connected:
+remote artifact. After explicit user authorization, remote artifact ID
+14165689492 was deleted; the local ZIP remains. Active artifact storage fell
+to 400,658,300 bytes. Dispatch run 44038743847 and its retry (attempt 2) both
+failed within five seconds before runner assignment; neither had any execution
+steps or logs. Repository Actions are enabled with all actions allowed, and
+GitHub Status reported all systems operational. The current API credential
+does not expose the check-run failure detail, so an account-side hosted-runner
+or billing restriction remains possible but unconfirmed. No further run is
+pending. The archive remains unlinked. The full source-storage route is still
+not connected:
 the board disables `CONFIG_XNU_SOURCE_STORAGE`, and the clean device repository
 lacks the `SourceStorage.cpp`, `SourceRootPolicies.cpp`, and
 `SourceRootBinding.cpp` bridge files required by that recipe.
