@@ -49,7 +49,7 @@ DUAL_SOURCE_LOG_CONTRACT = {
 ADAPTER_SOURCE_IMPORTS = (
     '_tb710fu_ramoops_snapshot_copy', '_tb710fu_live_capture_putc',
     '_tb710fu_live_capture_copy', '_tb710fu_live_log_set_source',
-    '_tb710fu_live_log_snapshot_file',
+    '_tb710fu_live_log_snapshot_file', '_tb710fu_live_log_snapshot_single_file',
 )
 DISABLED_CAPTURE_CALLERS = {'_tb710fu_live_capture_disabled', '_console_write',
                            '_console_write_unbuffered', '__cnputs',
