@@ -47,6 +47,24 @@
       "runner_steps_executed": 0,
       "reason": "Queued task cancelled after a real local Darwin archive check exposed the new integration verifier counting __.SYMDEF SORTED as an object. Fixed before requesting another run.",
       "compiler_failure": false
+    },
+    {
+      "run_id": 44088845841,
+      "url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44088845841",
+      "device_commit": "c0154c9d5e7048f7896614e1ca8d65be7d4d0e10",
+      "conclusion": "success",
+      "job_id": 134058374678,
+      "artifact_id": 14330634249,
+      "artifact_bytes": 38483204,
+      "artifact_sha256": "346ec4a926a72bf6bc52768aaa50546858f966c629db20a820859ea8deef8369",
+      "job_log_sha256": "e59683ced74636882d889f4eef81fe7280ee5a82bbe62b52f8c2e5f558e5f46c",
+      "cdc_host_tests": "PASS",
+      "native_link_verified": true,
+      "prelink_verified": true,
+      "production_loader_parser": "PASS",
+      "unsigned_packaging_verified": true,
+      "integrated_record": "docs/evidence/usb-cdc-integrated-44088845841.json",
+      "image_record": "docs/evidence/usb-cdc-image-44088845841.json"
     }
   ],
   "runtime_qualified": false,

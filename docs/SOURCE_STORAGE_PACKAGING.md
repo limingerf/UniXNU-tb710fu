@@ -217,6 +217,30 @@ and raw ADT/seed values remain local and ignored by Git.
 
 The positive host result establishes unsigned assembly only. No new AVB
 signature, signed image pair, device operation, USB CDC enumeration or hardware
-root boot is included. The next implementation work is the missing DWC3
-transport/DMA/drain path; storage handoff, known reads and root mount retain
-their separate hardware acceptance gates.
+root boot is included. At this historical packaging point the DWC3 transport
+was still absent. Storage handoff, known reads and root mount retain their
+separate hardware acceptance gates.
+
+## CDC-enabled positive packaging
+
+Run [44088845841](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44088845841)
+at `c0154c9d5e7048f7896614e1ca8d65be7d4d0e10` subsequently passed the full
+six-source CDC target compile, actual integration, strict prelink and parser.
+The packager at that same commit passed its positive path with all 15 inputs.
+Manifest SHA-256 is
+`f32068c96c0a635c11ffc088cd77df6463249ffebe54b4fd5bf2242cf64c98b2`.
+The selected arguments are
+`-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1`.
+
+The result is `out/usb-cdc-44088845841/vendor_boot.unsigned.img`, 37,859,328 B,
+SHA-256 `49b216089db0cec46772cbba068178fb82e12d86af3ba0c5e925cf0a26ed416c`.
+All six actual CDC archive members and 12 strong transport code definitions
+passed, alongside the existing signature/parser/loader/LZMA/ADT/FAT gates.
+The file was independently rehashed after packaging. Exact hashes and scope
+are in [the image record](evidence/usb-cdc-image-44088845841.json).
+
+This is unsigned assembly with the existing recorded loader. Actual TB710FU
+CDC enumeration and captured logs remain unverified; live adoption checks may
+refuse takeover. The worker requires scheduling, and active-DMA reconnect/reset
+recovery is unsupported. No signing, private-key read or device operation was
+performed. Hardware storage and root boot remain separate acceptance gates.

@@ -1,5 +1,29 @@
 # TB710FU USB CDC port · 2026-11-17
 
+## Target build and unsigned candidate
+
+Run [44088845841](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44088845841)
+at `c0154c9d5e7048f7896614e1ca8d65be7d4d0e10` passed all three sanitized
+host checks, compilation of all six actual sources, the BSD/native integration
+verifier, strict prelink and production DarwinBoot parser. The 192,872-byte
+CDC archive SHA-256 is
+`97e3ff396c881f4aae0c3f6c33edc7ee69776d52c861fc1a937c50780ffce8df`;
+the 142,802,944-byte prelinked fileset SHA-256 is
+`503599a026ee362e9523aba1808f8af01601ae1323c7404fe7ecd1ed9a5690e2`.
+Local source/header hashes match exact Git objects at that commit; all six
+compile commands, dependency records and archive members match their reports.
+See [the integrated record](evidence/usb-cdc-integrated-44088845841.json).
+
+The 15-input positive packaging path then verified the actual six CDC objects
+and 12 strong code definitions in the final fileset, producing
+`out/usb-cdc-44088845841/vendor_boot.unsigned.img`, 37,859,328 B, SHA-256
+`49b216089db0cec46772cbba068178fb82e12d86af3ba0c5e925cf0a26ed416c`.
+It selects `-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1`.
+See [the image record](evidence/usb-cdc-image-44088845841.json).
+This is an unsigned candidate paired with the recorded existing loader.
+No signing, private-key read, device operation or actual COM enumeration was
+performed. The implementation and build result do not prove live USB bytes.
+
 ## Native transport integration
 
 The current device sources add an independent USB 2 CDC log transport in

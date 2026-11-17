@@ -1,5 +1,63 @@
 # Current status · 2026-11-17
 
+## Native USB CDC linked, prelinked and unsigned image verified · 2026-11-17
+
+Run [44088845841](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44088845841)
+at device `c0154c9d5e7048f7896614e1ca8d65be7d4d0e10`, job
+`134058374678`, passed the supported macOS arm64e build, actual CDC/storage
+integration checks, strict prelink and production DarwinBoot parser. All three
+CDC host checks passed under ASan/UBSan on the runner. Artifact `14330634249`
+is 38,483,204 B; its independently verified ZIP SHA-256 is
+`346ec4a926a72bf6bc52768aaa50546858f966c629db20a820859ea8deef8369`.
+
+The native kernel SHA-256 is
+`3daf19507bdf3d7ca5943f165cde4611e710b58131e4dcb956fef8f635628215`.
+The prelinked fileset is 142,802,944 B, SHA-256
+`503599a026ee362e9523aba1808f8af01601ae1323c7404fe7ecd1ed9a5690e2`, with
+79 executable entries, 86 closure components, no missing references or stubs.
+The six-object CDC archive is 192,872 B, SHA-256
+`97e3ff396c881f4aae0c3f6c33edc7ee69776d52c861fc1a937c50780ffce8df`.
+Its bound integration report proves the actual BSD strong reference, final
+transport definitions and force-load input. Archive-creation reports precede
+the final link and must not be mistaken for its outcome. Local verification
+matched all 12 source/header hashes against the exact Git objects, all six
+command/dependency records and every archive member. The actual BSD object and
+compile record are hashed by CI but not retained as separate artifact members.
+See `docs/evidence/usb-cdc-integrated-44088845841.json` and
+`docs/evidence/usb-cdc-local-verification-44088845841.json`.
+
+The new storage archive SHA-256 is
+`a87e8b55568242ccba39013ab8a1d0b439f5d4dc4580e2a61f1820ecabd628e5`.
+Its repeated static ABI audit against the unchanged exact-profile historical
+reference passes 326 PAC slots, 26 named methods, class size `0x90` and four
+binary consumer dispatch sites. See `docs/evidence/storage-abi-44088845841.json`
+and its separate provenance file; this is static evidence, not executed UFS.
+
+The packager at the same device commit verified all 15 inputs and produced
+`out/usb-cdc-44088845841/vendor_boot.unsigned.img`, 37,859,328 B, SHA-256
+`49b216089db0cec46772cbba068178fb82e12d86af3ba0c5e925cf0a26ed416c`.
+Manifest SHA-256 is
+`f32068c96c0a635c11ffc088cd77df6463249ffebe54b4fd5bf2242cf64c98b2`.
+The actual six CDC objects and 12 strong transport code definitions, three
+existing RSA policy signatures, ADT pairing, recorded loader lineage,
+production parser, LZMA roundtrip, four FAT readbacks and unchanged outer
+vendor bytes all passed. Boot arguments are explicitly
+`-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1`.
+See `docs/evidence/usb-cdc-image-44088845841.json`.
+
+This stage is implemented, target-compiled, prelinked and unsigned-packaged.
+No TB710FU COM enumeration or captured USB bytes are established. Live
+firmware role/clock/PHY/SMMU/DMA checks may refuse takeover; the worker requires
+BSD startup and scheduling, so earlier output and final panic text are not
+guaranteed. Active-DMA reset/disconnect/reconfiguration recovery is unsupported.
+The fileset's `loadable=false` and runtime fields remain unqualified. Hardware
+boot, UFS reads, policy handoff, root mount and macOS userspace remain separate
+gates. No private key was read, no signing or device operation occurred, and
+no firmware was rebuilt. The user's working-port condition for a signed image
+is not yet met.
+
+Entries below retain the stage and limitations known at their historical time.
+
 ## Native USB CDC transport implemented; target validation pending · 2026-11-17
 
 The independent DWC3 core and XNU polling adapter are now implemented. Patch

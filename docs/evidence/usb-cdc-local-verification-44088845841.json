@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "device_commit": "c0154c9d5e7048f7896614e1ca8d65be7d4d0e10",
+  "artifact_sha256": "346ec4a926a72bf6bc52768aaa50546858f966c629db20a820859ea8deef8369",
+  "git_object_source_and_header_hashes": {
+    "package/Tb710fuUsbCdc/CdcKernelTap.c": "6041d87e9bfd3ed4d824acf63e5a2417eba561f967d1da41d51a8e8a4edfc912",
+    "package/Tb710fuUsbCdc/CdcLogRing.c": "6582ba8fbca593fc11febcca387c651eca9c8ead538c51f05214243dc634f449",
+    "package/Tb710fuUsbCdc/CdcAcmProtocol.c": "efce0b1d2a7a3d713c97b465e38e8067f397d21ca29faa90aa5d3ecbc95d51ac",
+    "package/Tb710fuUsbCdc/CdcTransportGuard.c": "24f78a76d0400ace2397b1f895eb694e4aaa998fc3f315ae8f7d212c5442c2dc",
+    "package/Tb710fuUsbCdc/CdcDwc3.c": "31332e2ed53169eeba7126e37944009c8571ff989c2c47b6d4e031d64d28ae5b",
+    "package/Tb710fuUsbCdc/CdcXnu.c": "35a4557f92686cb828bbfc164b283238b6fa27ee55c6102667db2d622b39c9ea",
+    "package/Tb710fuUsbCdc/CdcAcmProtocol.h": "7c7f8a55a54c87beb33c0e77b0e1bd709458fcf121b11a99f295753422af774d",
+    "package/Tb710fuUsbCdc/CdcDwc3.h": "a491eede4c0c38640fd8c18a56faf412fdf6e3a38d118a3317dd77ec265fd347",
+    "package/Tb710fuUsbCdc/CdcHardware.h": "fe6c49dd0ea89c4f945d730dc00d492261a0e0f6805bd1d9565e1788ab88ae36",
+    "package/Tb710fuUsbCdc/CdcKernelTap.h": "7796ab153df60169e171c4d466abc94c59ea64a1a8da9b3d8fe18ec8a94fc9aa",
+    "package/Tb710fuUsbCdc/CdcLogRing.h": "0703073636096a806b9c7918824299a7e1276b2f7bb6fd8396093d6dfb9973c8",
+    "package/Tb710fuUsbCdc/CdcTransportGuard.h": "471318fd6114332b2f196ac12461546b945df4418891f99e8f7fcafa941ebe12"
+  },
+  "compile_commands_sha256": {
+    "CdcKernelTap.c": "6cb3f8aac8a9584864afb8a556a3e9923527a7ee706a3873f273d2100836dda8",
+    "CdcLogRing.c": "b7b15eeedd98accd3368864d7f07b9c24acf0507de52989340885890e71c92f1",
+    "CdcAcmProtocol.c": "e3b8cf5f2f108a9b007cca75035c129740bd5f85eed28d461b3662870207f357",
+    "CdcTransportGuard.c": "736da7b46f8a53e4b39a8ac82613272a20017612052dc76360d9ef12632c3419",
+    "CdcDwc3.c": "dba4785659ec869ace0c29cff7def6d81b01316b33caeff7b8b3e3ff69fea0a4",
+    "CdcXnu.c": "e5b03c490a54969dba3131ac6e9eecf16a585350fc5365ae5ca037975caefce5"
+  },
+  "dependency_records_sha256": {
+    "CdcKernelTap.c": "9fc3a5a20d6e0fbcd54d02a150313230bd3b248a88b20f4356c1064600c2a9b3",
+    "CdcLogRing.c": "5415b821212cfc8a8bd218254e1a7834c580269a70106973990d94c64abb8d3e",
+    "CdcAcmProtocol.c": "2f9cfb4992ef07c7d31d2c5e3d2aa23113e7ee65f54e596cb68737d2902cb50e",
+    "CdcTransportGuard.c": "4c65a7c3e970b37656cf3e01f78c391f2b397725ae9df7aebdcc9f99ba831ff2",
+    "CdcDwc3.c": "3a78f0b1aad918d9ce55509afd6df3639e0a099655aa127d659d348816d92c7d",
+    "CdcXnu.c": "bbe42dc2460915cc745099ac2f5548748a71b8b884eda1ab5833a99a729152f4"
+  },
+  "archive_members_sha256": {
+    "CdcKernelTap.o": "8b5f7068e936bcf8b4686799d273ec992af2dc9b96d11782c6fe5b0ee0903c4b",
+    "CdcLogRing.o": "659ba3d21e4b2c58b115d7cd798011a1a7c7a02939d03611ed13f417980447fd",
+    "CdcAcmProtocol.o": "d4067bf5e04cfab111caa1f04bc5b2b7eb742bd8dab4fb3b084e312b8411d9ff",
+    "CdcTransportGuard.o": "6041b342993fb22c456f34c7706f0fdfc3d3f207857ab33eeefafc790ab47319",
+    "CdcDwc3.o": "9f8d0161c61da3da6327bf5cad1e78f746b6df7f67c99ec7449aab64ed76ba4c",
+    "CdcXnu.o": "ec9f03df1ec2aee45658527284a962895359cb32b1a63168234a8b9f58a243a8"
+  },
+  "recipe_sha256": "2577c8273df43aad5dd2857233d940deac950df5a87b78765a691d33e2acad57",
+  "archive_report_link_input_bound": true,
+  "compiler_logs_empty": true,
+  "unsigned_image_bytes": 37859328,
+  "unsigned_image_sha256": "49b216089db0cec46772cbba068178fb82e12d86af3ba0c5e925cf0a26ed416c",
+  "cdc_objects_and_12_strong_definitions_checked_by_positive_packager": true,
+  "cdc_enumeration_verified": false,
+  "runtime_qualified": false
+}
