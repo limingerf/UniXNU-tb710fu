@@ -1,5 +1,41 @@
 # Current status · 2026-11-17
 
+## CDC test bundle locally signed and independently verified · 2026-11-17
+
+The user explicitly requested local signing for hardware testing after the
+unsigned delivery. This authorization supersedes the earlier working-port
+condition for this signing step; it does not authorize device commands.
+The existing signer and avbtool were used unchanged with the existing local
+key. No key material is published or committed.
+
+The signed set is `out/usb-cdc-44088845841-signed/`:
+
+| File | Bytes | SHA-256 |
+|---|---:|---|
+| `boot.img` | 100,663,296 | `a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83` |
+| `vendor_boot.img` | 100,663,296 | `80fd313b2c349bb89fa3790dc6caf4fd577ad09f0767ec79c2de7c71f796b279` |
+| `vbmeta.img` | 8,000 | `e8a4d1da9db5d60dedeade8ab3d12ae12f45d84be8b7bb036bcba101d2865323` |
+
+Independent public-key RSA-4096/PKCS#1/SHA-256 recomputation passes for all
+three AVB structures. Salted boot/vendor hashes, unchanged unsigned payload,
+all four FAT files and decompressed kernel match. The top-level vbmeta changes
+only the vendor_boot hash descriptor: its other 22 raw descriptors, complete
+header, public key and rollback/flags remain unchanged. The boot chain key
+matches the included existing signed handoff/LZMA loader; no firmware was rebuilt.
+
+The delivery ZIP `out/tb710fu-usb-cdc-44088845841-signed.zip` is 35,549,927 B,
+SHA-256 `a392526ed17436a02b1043f278cbf697d19a9c82da35ac966dd072db86b43df5`.
+All ZIP members were read back and hashed; a Chinese README, SHA256SUMS and
+signing/verification reports are included. Public evidence is
+`docs/evidence/usb-cdc-signed-44088845841.json`.
+
+This completes local signing for testing. No flash, reboot, partition or device
+filesystem operation occurred. Actual TB710FU CDC enumeration and USB log
+capture remain unverified, as do hardware UFS/root mount and macOS userspace.
+The firmware-adoption, BSD/scheduler and active-DMA reset limits below remain.
+
+Entries below retain their original stage and signing scope.
+
 ## Native USB CDC linked, prelinked and unsigned image verified · 2026-11-17
 
 Run [44088845841](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44088845841)

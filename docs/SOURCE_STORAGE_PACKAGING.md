@@ -244,3 +244,22 @@ CDC enumeration and captured logs remain unverified; live adoption checks may
 refuse takeover. The worker requires scheduling, and active-DMA reconnect/reset
 recovery is unsupported. No signing, private-key read or device operation was
 performed. Hardware storage and root boot remain separate acceptance gates.
+
+## Separately authorized local signing
+
+The user subsequently requested a signed CDC candidate for hardware testing.
+The unsigned packager remains unchanged and performs no signing. The existing
+`tools/sign_kernel_probe_pair.py` then signed the exact verified unsigned
+payload using the existing local key and unchanged avbtool. It generated a
+matching vendor_boot/vbmeta pair, with the recorded signed handoff/LZMA boot
+image copied into `out/usb-cdc-44088845841-signed/`.
+
+Independent RSA and salted image-hash checks pass; the unsigned bytes, four FAT
+files, decompressed kernel, all 22 unrelated vbmeta descriptors, complete
+header, public key and rollback/flags are preserved. The existing boot's
+embedded key matches the top-level boot chain descriptor. The exact delivery
+and verification hashes are in
+[the signed record](evidence/usb-cdc-signed-44088845841.json).
+The signed ZIP includes the three images, checksums and Chinese test notes.
+No firmware was rebuilt and no device operation occurred. Signing does not
+establish CDC enumeration, USB output, hardware root boot or userspace.

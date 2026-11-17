@@ -1,5 +1,22 @@
 # TB710FU USB CDC port · 2026-11-17
 
+## Signed test delivery
+
+After an explicit user request for local signing, the same verified candidate
+was AVB-signed using the existing local key and unchanged tools. The delivery
+is `out/tb710fu-usb-cdc-44088845841-signed.zip`, SHA-256
+`a392526ed17436a02b1043f278cbf697d19a9c82da35ac966dd072db86b43df5`.
+It contains the matching `boot.img`, `vendor_boot.img`, `vbmeta.img`, checksums,
+reports and a Chinese test README. The loader is the existing recorded signed
+handoff/LZMA image, not a new firmware build.
+
+Independent RSA recomputation, salted image hashes, unchanged payload, four
+FAT readbacks, decompressed kernel and the boot chain key all pass. Only the
+top-level vendor_boot descriptor changed; the other 22 raw descriptors,
+header, key and rollback fields are preserved. See
+[the signed record](evidence/usb-cdc-signed-44088845841.json).
+No device commands were run; actual enumeration/log capture remains unverified.
+
 ## Target build and unsigned candidate
 
 Run [44088845841](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44088845841)

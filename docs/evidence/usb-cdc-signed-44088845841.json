@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "stage": "signed-cdc-source-storage-bundle-independently-verified",
+  "kernel_run_id": 44088845841,
+  "kernel_source_commit": "c0154c9d5e7048f7896614e1ca8d65be7d4d0e10",
+  "explicit_user_authorization": "Local image signing for hardware testing; no device commands authorized or run.",
+  "files": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "80fd313b2c349bb89fa3790dc6caf4fd577ad09f0767ec79c2de7c71f796b279"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "e8a4d1da9db5d60dedeade8ab3d12ae12f45d84be8b7bb036bcba101d2865323"
+    }
+  },
+  "unsigned_vendor_sha256": "49b216089db0cec46772cbba068178fb82e12d86af3ba0c5e925cf0a26ed416c",
+  "unsigned_payload_byte_for_byte_preserved": true,
+  "rsa4096_pkcs1_sha256_independent_checks": {
+    "vendor_boot_footer": "PASS",
+    "vbmeta": "PASS",
+    "boot_footer": "PASS"
+  },
+  "salted_image_hash_checks": {
+    "vendor_boot": "PASS",
+    "boot": "PASS"
+  },
+  "unchanged_other_raw_descriptors": 22,
+  "identical_vbmeta_header": true,
+  "public_key_unchanged": true,
+  "boot_chain_public_key_matches": true,
+  "boot_chain_rollback_index_location": 3,
+  "boot_rollback_index": 1736035200,
+  "vbmeta_rollback_index": 0,
+  "vbmeta_rollback_index_location": 0,
+  "vbmeta_flags": 1,
+  "public_avb_key_sha256": "7728e30f50bfa5cea165f473175a08803f6a8346642b5aa10913e9d9e6defef6",
+  "boot_original_bytes": 659456,
+  "vendor_boot_original_bytes": 37859328,
+  "prelinked_kernel_sha256": "503599a026ee362e9523aba1808f8af01601ae1323c7404fe7ecd1ed9a5690e2",
+  "prelinked_kernel_bytes": 142802944,
+  "fat_clusters": 66512,
+  "payload_sha256": "0c3e3fe62a6d2f84202f67e2e6d84c958c524f403a063de5fa3abdc25c18128d",
+  "file_readback_sha256": {
+    "Payloads/kernel.macho": "9da9a2033b168d1ce6b55dab0ba1f3238f85eb9e0da8bb7fb0e727bc961e0305",
+    "Payloads/kernel.macho.adt": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+    "Payloads/kernel.macho.vroot": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+    "unixnu.toml": "34fcfb36eb15b231ffb14db5ebd4eaf96ed4f184e22935e00769cf4acfe37d9a"
+  },
+  "boot_args": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1",
+  "signer_path": "tools/sign_kernel_probe_pair.py",
+  "signer_sha256": "03b357881a34734743befa1eadbf060f98479378f0a2196b0bf300deb3590290",
+  "avbtool_sha256": "f647dc4efc190f192d1522ca06d058de6a99ed3b44f95c8cb385f20dfb8a7da7",
+  "independent_verifier_sha256": "fb00e2944521f65a44b576a96ca702977eafe08703e0a60b6c7cc643fa1f4461",
+  "packaging_report_sha256": "65e7c75ca4a2cfa1845f0fb23fca048c5f82e2bc06ad0af487906e52bb628ffd",
+  "signing_report_sha256": "f3ccd8fd47e472bf915f9e8363619fe2a2f2092622591dd2d45b87ceca85fddc",
+  "private_key_used_locally": true,
+  "signing_performed": true,
+  "new_firmware_built": false,
+  "device_operations": false,
+  "hardware_boot_verified": false,
+  "cdc_enumeration_verified": false,
+  "usb_log_bytes_captured": false,
+  "limits": [
+    "Only local signing and host verification were performed; no device reboot, flash, partition or filesystem operation.",
+    "CDC live adoption can refuse unknown firmware ownership or DMA state. Worker needs BSD startup and scheduling; active-DMA reset/reconnect recovery remains unsupported.",
+    "Actual CDC enumeration, log-byte capture, hardware UFS/root mount and macOS userspace remain unverified."
+  ],
+  "date": "2026-11-17",
+  "signed_directory": "out/usb-cdc-44088845841-signed",
+  "signing_tool_commit": "ebeff37f24c6a6eedf2f91210bda772a32bef099",
+  "packaging_evidence": "docs/evidence/usb-cdc-image-44088845841.json",
+  "kernel_evidence": "docs/evidence/usb-cdc-integrated-44088845841.json",
+  "signing_report": {
+    "path": "out/usb-cdc-44088845841-signed/signing-report.json",
+    "sha256": "f3ccd8fd47e472bf915f9e8363619fe2a2f2092622591dd2d45b87ceca85fddc"
+  },
+  "verification_report": {
+    "path": "out/usb-cdc-44088845841-signed/verification-report.json",
+    "sha256": "02970aba0f5018ef83dff8267ac17c64b8d39dd1dee47f32940d0b0cdfc94e60"
+  },
+  "zip": {
+    "path": "out/tb710fu-usb-cdc-44088845841-signed.zip",
+    "bytes": 35549927,
+    "sha256": "a392526ed17436a02b1043f278cbf697d19a9c82da35ac966dd072db86b43df5",
+    "members_verified": true
+  },
+  "private_key_material_published": false
+}
