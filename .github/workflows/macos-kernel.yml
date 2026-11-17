@@ -81,6 +81,7 @@ jobs:
           cp "$adapter/libTb710fuNativeUfs.a" .work/artifacts/
           cp "$adapter/compile.log" .work/artifacts/ufs-adapter-compile.log
           cp "$adapter/compile-command.json" .work/artifacts/ufs-adapter-compile-command.json
+          cp "$adapter/host-tests.json" .work/artifacts/ufs-adapter-host-tests.json
           cat "$adapter/build-report.json" >> "$GITHUB_STEP_SUMMARY"
       - name: Verify the fileset with the production DarwinBoot parser
         if: inputs.stage == 'prelink'

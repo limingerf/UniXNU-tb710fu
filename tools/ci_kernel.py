@@ -127,6 +127,13 @@ def main():
                 shutil.copy2(ROOT / name, output / name)
         if (work / 'kernel').is_dir():
             shutil.copytree(work / 'kernel', output / 'kernel', dirs_exist_ok=True)
+        adapter = work / 'tree/build/tb710fu-ufs-adapter'
+        if adapter.is_dir():
+            destination = output / 'ufs-adapter'
+            destination.mkdir(exist_ok=True)
+            for path in adapter.iterdir():
+                if path.is_file() and path.suffix in ('.json', '.log', '.a'):
+                    shutil.copy2(path, destination / path.name)
         return
     actual = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     if actual != LOCK['unixnu']['commit']:

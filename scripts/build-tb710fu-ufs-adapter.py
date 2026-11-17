@@ -3,22 +3,65 @@
 import argparse
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import shlex
-import shutil
 import subprocess
+import tarfile
 import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
 PIN = '99d8bcd3e43dd24fc3c8437c67b5d4cc71ab94d0'
-PATCH = ROOT / 'patches/ufs/0001-sm8650-compatible.patch'
+PATCHES = (
+    ROOT / 'patches/ufs/0001-sm8650-compatible.patch',
+    ROOT / 'patches/ufs/0002-transactional-handoff.patch',
+)
 
 
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def stage_source(upstream_source, stage):
+    # Export the pinned commit, so host checks and kernel compilation cannot
+    # accidentally include local cache edits, untracked files or CRLF checkout differences.
+    archive = subprocess.check_output(['git', '-C', str(upstream_source), 'archive', PIN])
+    with tarfile.open(fileobj=io.BytesIO(archive)) as source_archive:
+        source_archive.extractall(stage, filter='data')
+    for patch in PATCHES:
+        subprocess.run(['git', 'apply', '--check', str(patch)], cwd=stage, check=True)
+        subprocess.run(['git', 'apply', str(patch)], cwd=stage, check=True)
+
+
+def run_host_tests(stage, output_dir):
+    compiler = shlex.split(os.environ.get('CXX', 'c++'))
+    version = subprocess.check_output([*compiler, '--version'], text=True).strip()
+    report = {'compiler': version, 'upstream_revision': PIN, 'tests': [],
+              'board_patches': [{'path': str(p.relative_to(ROOT)), 'sha256': sha(p)} for p in PATCHES]}
+    for name in ('SmmuTakeover', 'RootCommands'):
+        source = stage / 'tests' / f'{name}.cpp'
+        executable = stage / f'{name}-host-test'
+        command = [*compiler, '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror',
+                   '-Wno-unused-parameter', str(source), '-o', str(executable)]
+        compiled = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        (output_dir / f'{name}-host-compile.log').write_text(compiled.stdout)
+        if compiled.returncode:
+            raise SystemExit(compiled.stdout[-6000:])
+        tested = subprocess.run([str(executable)], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        (output_dir / f'{name}-host-test.log').write_text(tested.stdout)
+        if tested.returncode:
+            raise SystemExit(f'{name} host test failed ({tested.returncode}):\n{tested.stdout[-6000:]}')
+        print(tested.stdout, end='')
+        report['tests'].append({'source': f'tests/{name}.cpp', 'command': command, 'passed': True})
+    report['inputs_sha256'] = {
+        str(path.relative_to(stage)): sha(path)
+        for path in sorted(stage.rglob('*')) if path.suffix in ('.cpp', '.h')
+    }
+    (output_dir / 'host-tests.json').write_text(json.dumps(report, indent=2) + '\n')
+    return report
 
 
 def compile_command(record, source, output, include_dirs, flags):
@@ -59,6 +102,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--tree', type=Path, help='resolved framework tree from the native kernel build')
     parser.add_argument('--framework', type=Path, help='pinned UniXNU checkout supplying unselected interface headers')
+    parser.add_argument('--source', type=Path, help='explicit pinned ShengUfs checkout for host-only checks')
+    parser.add_argument('--host-tests-only', action='store_true', help='apply device patches and run host tests without a kernel build')
     args = parser.parse_args()
     if args.tree:
         tree = args.tree.resolve()
@@ -67,7 +112,7 @@ def main():
         if not resolved.is_file():
             parser.error('--tree is required unless .work/resolved-work.txt exists')
         tree = Path(resolved.read_text().strip()).resolve() / 'tree'
-    upstream_source = tree / 'refer/ShengUfsPort'
+    upstream_source = (args.source or tree / 'refer/ShengUfsPort').resolve()
     framework = (args.framework or ROOT / '.work/UniXNU').resolve()
     output_dir = tree / 'build/tb710fu-ufs-adapter'
     object_record = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/iokit/DEVELOPMENT/IOPlatformExpert.cpo.json'
@@ -77,6 +122,13 @@ def main():
     revision = subprocess.check_output(['git', '-C', str(upstream_source), 'rev-parse', 'HEAD'], text=True).strip()
     if revision != PIN:
         raise SystemExit(f'ShengUfs revision mismatch: expected {PIN}, found {revision}')
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if args.host_tests_only:
+        with tempfile.TemporaryDirectory(prefix='tb710fu-ufs-host-') as temporary:
+            stage = Path(temporary) / 'ShengUfs'
+            stage_source(upstream_source, stage)
+            run_host_tests(stage, output_dir)
+        return
     for path in (object_record, c_record_path):
         if not path.is_file():
             raise SystemExit(f'{path} missing; build the native macOS 27 kernel first')
@@ -84,7 +136,6 @@ def main():
         raise SystemExit('official IOStorageFamily headers are missing from the native kernel build')
     verified_root = tree / 'kits/VerifiedRoot' if (tree / 'kits/VerifiedRoot').is_dir() else framework / 'kits/VerifiedRoot'
     virtio_block = tree / 'drivers/VirtioMmioBlock' if (tree / 'drivers/VirtioMmioBlock').is_dir() else framework / 'drivers/VirtioMmioBlock'
-    output_dir.mkdir(parents=True, exist_ok=True)
     include_dirs = [output_dir, tree / 'build/storage-abi/include', verified_root / 'include',
                     virtio_block, tree / '.cache/xnu-work/osfmk']
     missing = [path for path in include_dirs if not path.is_dir()]
@@ -93,9 +144,8 @@ def main():
     cpp_record = json.loads(object_record.read_text().strip().rstrip(','))
     with tempfile.TemporaryDirectory(prefix='tb710fu-ufs-') as temporary:
         stage = Path(temporary) / 'ShengUfs'
-        shutil.copytree(upstream_source, stage, ignore=shutil.ignore_patterns('.git'))
-        subprocess.run(['git', 'apply', '--check', str(PATCH)], cwd=stage, check=True)
-        subprocess.run(['git', 'apply', str(PATCH)], cwd=stage, check=True)
+        stage_source(upstream_source, stage)
+        host_tests = run_host_tests(stage, output_dir)
         source_file = stage / 'NativeUfs.cpp'
         output = output_dir / 'NativeUfs.o'
         flags = ['-DNATIVE_UFS_SOURCE_API=1', '-DNATIVE_VERIFIED_BLOCK=1',
@@ -132,9 +182,13 @@ def main():
         subprocess.run(['xcrun', 'ar', 'rcs', archive, output], check=True)
         report = {
             'upstream_revision': revision,
-            'upstream_source_sha256': sha(upstream_source / 'NativeUfs.cpp'),
-            'board_patch': str(PATCH.relative_to(ROOT)),
-            'board_patch_sha256': sha(PATCH),
+            'upstream_source_sha256': hashlib.sha256(subprocess.check_output(
+                ['git', '-C', str(upstream_source), 'show', f'{PIN}:NativeUfs.cpp'])).hexdigest(),
+            'board_patches': [
+                {'path': str(patch.relative_to(ROOT)), 'sha256': sha(patch)}
+                for patch in PATCHES
+            ],
+            'host_tests': host_tests,
             'included_inputs_sha256': dependencies,
             'object_sha256': sha(output),
             'archive': str(archive),

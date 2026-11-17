@@ -1,5 +1,89 @@
 # Current status · 2026-11-17
 
+## UFS integration and image gate audit · 2026-11-17
+
+The first board-specific UFS transaction patch is now in
+`patches/ufs/0002-transactional-handoff.patch`, based on pinned
+`ShengUfs@99d8bcd3e43dd24fc3c8437c67b5d4cc71ab94d0`. It plans and snapshots
+the apps-SMMU and firmware queue before writes, stops the idle request queue,
+configures the stream transactionally, then installs and starts the new request
+list. Failed configuration restores the saved SMMU state and original queue;
+failed replacement startup first proves DMA is stopped before rollback. W1C
+interrupt status is cleared only after the replacement queue is ready. An
+unverifiable rollback panics while retaining DMA ownership. The patch also
+checks firmware UFS power/clock state and refuses Sheng-only Wi-Fi/DPU SMMU
+boot arguments on this board. It also refuses the legacy firmware-list
+adoption probes, which zeroed the firmware UTRL before proving it idle.
+
+Both device patches apply in order to a clean worktree at the pinned source
+revision. The SMMU and production queue/command fault-injection tests pass with
+WSL Debian `g++ 14.2.0` and `clang++ 19.1.7`
+(`-Wall -Wextra -Werror`). Queue snapshot validation includes HCE/HCS ready
+bits, interrupt mask, RUN_STOP and the original UTRL base. SMMUv2 sCR0 bit 0 is
+CLIENTPD and must be clear; bit 1 is global fault reporting, not an enable bit.
+The adapter requires IDR0.SMS and refuses EXIDENABLE because this path uses
+SMR.VALID rather than extended-ID S2CR validity. A stale SMMU plan after queue
+stop forbids resuming firmware DMA. Rollback rechecks the whole plan, including
+stream aliases and context-bank ownership. This is host-only validation; the patched kernel object has not yet
+been compiled on the pinned macOS runner or exercised on TB710FU hardware.
+
+The official pinned arm64e `ShengUfs` recipe routes to
+`build-sheng-source-storage.py`, which also requires device-owned
+`SourceStorage.cpp`, `SourceRootPolicies.cpp`, and `SourceRootBinding.cpp`,
+plus a separate macOS 27 IOStorageFamily/APFS ABI audit. The fixed DarwinBoot
+payload path can carry the signed `RootPolicies` envelope and make its physical
+range available under `/chosen/memory-map`; the target profile notes that this
+handoff itself has not yet been exercised. The bridge inputs remain absent
+from the clean device repository. The existing adapter workflow only compiles
+one `NativeUfs.o` archive and explicitly reports
+`linked_into_kernel=false`, `root_policy_ready=false`, and
+`runtime_qualified=false`; the board keeps both storage config switches off.
+
+No integrated kernel has been built or prelinked, so there is no new UFS kernel
+payload to package. The existing generic kernel packager accepts older
+`vendor_boot` baselines, not the current ADT-correct baseline, and does not
+provide a UFS root-argument input. The existing signed UEFI-UFS boot image is a
+different artifact and does not contain the NativeUfs XNU driver. No new image
+was packaged or signed. Next: run the bounded `ufs-source` workflow for the
+macOS 27 object compile. Then implement the real source-storage bridges and
+audit the IOStorageFamily/APFS binary ABI against the target macOS 27 kernel
+before enabling the component, building a fresh integrated kernel and prelink,
+or preparing a matching signed image pair.
+
+The device adapter exports the exact pinned commit, applies both patches in a
+temporary tree and runs the host tests there before the object compile. This
+avoids using non-existent test paths in the device repository and ignores local
+source-cache edits and line-ending differences. CI collects the host logs and
+reports even if the adapter step fails.
+
+## Official record and pinned UFS source review · 2026-11-17
+
+Updated the existing root `porting.toml` storage area while preserving its
+other device records. Storage remains `planned`; its findings and evidence now
+record the standalone source archive without implying kernel integration or
+hardware qualification. The pinned validator passed for all 15 areas:
+`python3 .work/UniXNU/scripts/porting-record.py check --device .`.
+
+Reviewed `ShengUfs@99d8bcd3e43dd24fc3c8437c67b5d4cc71ab94d0`, the exact source
+revision used by successful run
+[44041029817](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44041029817).
+The build report's upstream `NativeUfs.cpp` SHA-256 is
+`8e99199aa87dc2ccebfe3366a0f6896fc8937d57670117af66c10ee52b1b28cd`; the
+SM8650 compatible patch SHA-256 is
+`8697b355a151c3cdb4aae8b595c58c05f760b4c3ddd6ce458ac5c8a1571b7993`. The
+controller, GCC, and UFS clock register addresses align with the current board
+inventory. The driver still assumes firmware initialized the controller/link,
+requires an idle request queue, maps contiguous DMA through SID `0x60`, and does
+not implement qualified reset, clock, or PHY initialization. The pinned
+same-device Linux source at `4d04410798b538fbe4b50664e3a66d9500a2ed31` supplies
+the static declarations: IRQ SPI 265, active-low reset GPIO 210, storage/PHY
+rails, clock/GDSC/reset topology, SID `0x60`, two lanes, and the SM8650 QMP PHY
+table. Linux cold-start resets and calibrates the PHY before selecting UniPro;
+ShengUfs currently adopts the firmware-running link. Firmware's live clock,
+reset, supply, link, queue, and SMMU states remain unknown. No kernel run was
+dispatched because this source crosswalk changes no kernel inputs. The separate
+takeover-order and integration audit is recorded above.
+
 ## USB/UFS adapter build prepared · 2026-11-17
 
 The USB debug path now has a device-owned 64 KiB RAM tap. XNU `_cnputc` records

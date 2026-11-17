@@ -1,0 +1,616 @@
+diff --git a/NativeUfs.cpp b/NativeUfs.cpp
+index af2f933..bd4c84b 100644
+--- a/NativeUfs.cpp
++++ b/NativeUfs.cpp
+@@ -923,6 +923,10 @@ struct UfsHost {
+   bool ready;
+   bool poisoned = false;
+   uintptr_t smmu = 0, cb = 0;
++  uint32_t originalHostEnable = 0, originalHostStatus = 0;
++  uint32_t originalInterruptEnable = 0, originalRunStop = 0;
++  uint32_t originalListLow = 0, originalListHigh = 0, originalInterruptStatus = 0;
++  bool queueSnapshotValid = false, queueStopped = false, queueRecoveryFailed = false;
+ };
+ UfsHost gHost = { OSSharedPtr<IOMemoryMap> (), OSSharedPtr<IOMemoryMap> (), 0, nullptr, nullptr, 0, nullptr, false };
+ 
+@@ -998,6 +1002,20 @@ static bool hostBringUp (const char **why)
+   if (gHost.ready) {
+     return true;
+   }
++  OSSharedPtr<IOMemoryMap> gccMap;
++  uintptr_t gcc = mapPhys (GCC_BASE + 0x77000, 0x1000, gccMap);
++  if (!gcc) {
++    *why = "GCC map";
++    return false;
++  }
++  const uint32_t gdsc = read32 (gcc, GCC_UFS_PHY_GDSCR - 0x77000);
++  const uint32_t axi = read32 (gcc, GCC_UFS_PHY_AXI_ENABLE - 0x77000);
++  const uint32_t ahb = read32 (gcc, GCC_UFS_PHY_AHB_ENABLE - 0x77000);
++  if (!(gdsc & 0x80000000U) || (axi & 0x80000000U) || !(axi & GCC_UFS_BRANCH_ENABLE_BIT) ||
++      !(ahb & GCC_UFS_BRANCH_ENABLE_BIT)) {
++    *why = "firmware UFS power/clock state";
++    return false;
++  }
+   gRootDiagnostic.stage = "controller map";
+   gHost.hc = mapPhys (UFS_HC_BASE, UFS_HC_SIZE, gHost.hcMap);
+   if (!gHost.hc) {
+@@ -1032,11 +1050,50 @@ static bool hostBringUp (const char **why)
+   }
+   bzero (gHost.virt, kDmaBytes);
+   cacheCivac (gHost.virt, kDmaBytes);
++  gHost.smmu = mapPhys (0x15000000ULL, 0xd0000, gHost.smmuMap);
++  if (!gHost.smmu) {
++    *why = "apps SMMU map";
++    return false;
++  }
++  if (!hostSnapshotOriginalQueue (why)) return false;
++  UfsSmmuPlan smmuPlan = planUfsSmmu (0x60, gHost.phys, kDmaBytes,
++    [smmu = gHost.smmu](unsigned offset) { return read32 (smmu, offset); });
++  gRootDiagnostic.smmuId1 = read32 (gHost.smmu, 0x24);
++  gRootDiagnostic.smmuId2 = read32 (gHost.smmu, 0x28);
++  gRootDiagnostic.smmuSlot = smmuPlan.slot;
++  if (smmuPlan.error) {
++    *why = smmuPlan.error;
++    return false;
++  }
+   uint32_t report[3] = { 0, 0, 0 };
+   gRootDiagnostic.stage = "SMMU and request list";
+   if (!hostStopQueue (why)) return false;
+-  smmuBypassStream (0x60, gHost.smmuMap, report, gHost.phys, kDmaBytes);
+-  gHost.smmu = gHost.smmuMap->getVirtualAddress ();
++  bool rollbackVerified = false;
++  const char *smmuFailure = configureUfsSmmuTransactional (smmuPlan,
++    [smmu = gHost.smmu](unsigned offset) { return read32 (smmu, offset); },
++    [smmu = gHost.smmu](unsigned offset, uint32_t value) {
++      write32 (smmu, offset, value);
++      __asm__ volatile ("dsb sy" ::: "memory");
++    }, &rollbackVerified);
++  if (smmuFailure) {
++    if (!rollbackVerified) panic ("NATIVE_UFS smmu rollback failed after: %s", smmuFailure);
++    const char *restoreWhy = "";
++    if (!hostResumeOriginalQueue (&restoreWhy))
++      panic ("NATIVE_UFS queue resume failed after SMMU refusal: %s", restoreWhy);
++    *why = smmuFailure;
++    return false;
++  }
++  const unsigned smmuBank = smmuPlan.bank;
++  const unsigned smmuSlot = smmuPlan.slot;
++  gHost.cb = gHost.smmu + (smmuPlan.pages + smmuBank) * 4096;
++  gRootDiagnostic.smr = read32 (gHost.smmu, 0x800 + 4 * smmuSlot);
++  gRootDiagnostic.s2cr = read32 (gHost.smmu, 0xc00 + 4 * smmuSlot);
++  gRootDiagnostic.cbar = read32 (gHost.smmu, 0x1000 + 4 * smmuBank);
++  gRootDiagnostic.cba2r = read32 (gHost.smmu, 0x1800 + 4 * smmuBank);
++  gRootDiagnostic.sctlr = read32 (gHost.cb, 0x0);
++  report[0] = smmuSlot | (smmuBank << 16);
++  report[1] = gRootDiagnostic.cbar;
++  report[2] = gRootDiagnostic.sctlr;
+   // The board's WiFi endpoint (sheng-wifi=2 or more) needs a pass-through stream of its own, set up here with the same code and at the same moment as the
+   // storage stream: the registers of the stream matching group are not safe to touch from another thread later (a read of the first one never returned).
+   uint32_t wifi = 0;
+@@ -1169,7 +1226,21 @@ static bool hostBringUp (const char **why)
+     gRootDiagnostic.smmuId2 = read32 (gHost.smmu, 0x28);
+     gRootDiagnostic.cba2r = read32 (gHost.smmu, 0x1800 + 4 * (report[0] >> 16));
+   }
+-  if (!hostStartQueue (why)) return false;
++  if (!hostStartQueue (why)) {
++    const char *recoveryWhy = "";
++    if (!hostStopTakenQueue (&recoveryWhy))
++      panic ("NATIVE_UFS replacement queue rollback cannot stop DMA: %s", recoveryWhy);
++    if (!restoreUfsSmmu (smmuPlan,
++        [smmu = gHost.smmu](unsigned offset) { return read32 (smmu, offset); },
++        [smmu = gHost.smmu](unsigned offset, uint32_t value) {
++          write32 (smmu, offset, value);
++          __asm__ volatile ("dsb sy" ::: "memory");
++        }))
++      panic ("NATIVE_UFS replacement queue rollback could not restore SMMU");
++    if (!hostResumeOriginalQueue (&recoveryWhy))
++      panic ("NATIVE_UFS replacement queue rollback could not resume firmware: %s", recoveryWhy);
++    return false;
++  }
+   gRootDiagnostic.stage = "NOP OUT";
+   // NOP OUT proves the transport before touching the SCSI layer.
+   if (hostNop () != kIOReturnSuccess) {
+@@ -2146,6 +2217,20 @@ bool NativeUfs::start (IOService *provider)
+   if ((!probe && !rootMode) || !OSDynamicCast (IOPlatformExpertDevice, provider)) {
+     return false;
+   }
++  if ((probe >= 3 && probe <= 5) || probe == 9) {
++    IOLog ("NativeUfs: legacy firmware-list adoption probes are disabled on TB710FU\n");
++    return false;
++  }
++  if (probe || rootMode) {
++    uint32_t wifi = 0, dpu = 0, scanout = 0;
++    PE_parse_boot_argn ("sheng-wifi", &wifi, sizeof (wifi));
++    PE_parse_boot_argn ("sheng-dpu", &dpu, sizeof (dpu));
++    PE_parse_boot_argn ("sheng-dpu-scanout", &scanout, sizeof (scanout));
++    if (wifi >= 2 || dpu >= 2 || scanout) {
++      IOLog ("NativeUfs: refusing Sheng-only Wi-Fi/DPU SMMU options during TB710FU takeover\n");
++      return false;
++    }
++  }
+   unsigned diagnostic = 0;
+   PE_parse_boot_argn ("native-ufs-diagnostics", &diagnostic, sizeof (diagnostic));
+   gRootDiagnosticEnabled = diagnostic == 1;
+diff --git a/RootQueue.h b/RootQueue.h
+index 989b956..d99e6c1 100644
+--- a/RootQueue.h
++++ b/RootQueue.h
+@@ -11,10 +11,8 @@ static bool hostWaitRegister (unsigned offset, uint32_t mask, uint32_t value)
+   return false;
+ }
+ 
+-static bool hostStopQueue (const char **why)
++static bool hostReadyIdle (const char **why)
+ {
+-  // Confirm the firmware has no active transfer/task before changing its
+-  // request list or the storage stream's SMMU routing.
+   if (!(read32 (gHost.hc, 0x34) & 1) || (read32 (gHost.hc, 0x30) & 0x0f) != 0x0f) {
+     recordTransport (kIOReturnNotReady, 15);
+     *why = "controller not ready for takeover";
+@@ -30,13 +28,130 @@ static bool hostStopQueue (const char **why)
+     *why = "firmware controller error";
+     return false;
+   }
++  return true;
++}
++
++static bool hostSnapshotOriginalQueue (const char **why)
++{
++  if (!hostReadyIdle (why)) {
++    gHost.queueSnapshotValid = false;
++    return false;
++  }
++  gHost.originalHostEnable = read32 (gHost.hc, 0x34) & 1;
++  gHost.originalHostStatus = read32 (gHost.hc, 0x30) & 0x0f;
++  gHost.originalInterruptEnable = read32 (gHost.hc, 0x24);
++  gHost.originalRunStop = read32 (gHost.hc, 0x60) & 1;
++  gHost.originalListLow = read32 (gHost.hc, 0x50);
++  gHost.originalListHigh = read32 (gHost.hc, 0x54);
++  gHost.originalInterruptStatus = read32 (gHost.hc, 0x20); // W1C; diagnostic only, never restored.
++  gHost.queueSnapshotValid = true;
++  gHost.queueRecoveryFailed = false;
++  return true;
++}
++
++static bool hostResumeOriginalQueue (const char **why)
++{
++  if (!gHost.queueSnapshotValid) {
++    *why = "missing firmware queue snapshot";
++    return false;
++  }
++  if (read32 (gHost.hc, 0x58) || read32 (gHost.hc, 0x78)) {
++    *why = "cannot restore queue with outstanding request";
++    return false;
++  }
++  uint32_t runStop = read32 (gHost.hc, 0x60) & 1;
++  bool listChanged = read32 (gHost.hc, 0x50) != gHost.originalListLow ||
++                     read32 (gHost.hc, 0x54) != gHost.originalListHigh;
++  if (runStop && (listChanged || !gHost.originalRunStop)) {
++    hostWrite (0x60, 0);
++    if (!hostWaitRegister (0x60, 1, 0)) {
++      *why = "cannot stop replacement request list";
++      return false;
++    }
++    runStop = 0;
++  }
++  if (runStop && listChanged) {
++    *why = "firmware request list changed while running";
++    return false;
++  }
++  if (listChanged) {
++    hostWrite (0x50, gHost.originalListLow);
++    hostWrite (0x54, gHost.originalListHigh);
++  }
++  if (read32 (gHost.hc, 0x50) != gHost.originalListLow ||
++      read32 (gHost.hc, 0x54) != gHost.originalListHigh) {
++    *why = "firmware request list address restore";
++    return false;
++  }
++  if (gHost.originalRunStop &&
++      (!(read32 (gHost.hc, 0x34) & 1) || (read32 (gHost.hc, 0x30) & 0x0f) != 0x0f)) {
++    *why = "controller no longer ready to resume firmware queue";
++    return false;
++  }
++  hostWrite (0x60, gHost.originalRunStop);
++  if (!hostWaitRegister (0x60, 1, gHost.originalRunStop) ||
++      (gHost.originalRunStop && !hostWaitRegister (0x30, 3, 3))) {
++    *why = "firmware request list resume";
++    return false;
++  }
++  hostWrite (0x24, gHost.originalInterruptEnable);
++  if (read32 (gHost.hc, 0x24) != gHost.originalInterruptEnable) {
++    *why = "firmware interrupt mask restore";
++    return false;
++  }
++  gHost.queueSnapshotValid = false;
++  gHost.queueStopped = false;
++  return true;
++}
++
++static bool hostStopQueue (const char **why)
++{
++  // Capture state before writes and recheck that it stayed unchanged during SMMU planning.
++  if (!gHost.queueSnapshotValid && !hostSnapshotOriginalQueue (why)) return false;
++  if (!hostReadyIdle (why)) {
++    gHost.queueSnapshotValid = false;
++    return false;
++  }
++  if (read32 (gHost.hc, 0x24) != gHost.originalInterruptEnable ||
++      (read32 (gHost.hc, 0x34) & 1) != gHost.originalHostEnable ||
++      (read32 (gHost.hc, 0x30) & 0x0f) != gHost.originalHostStatus ||
++      (read32 (gHost.hc, 0x60) & 1) != gHost.originalRunStop ||
++      read32 (gHost.hc, 0x50) != gHost.originalListLow ||
++      read32 (gHost.hc, 0x54) != gHost.originalListHigh) {
++    *why = "firmware queue state changed after preflight";
++    gHost.queueSnapshotValid = false;
++    return false;
++  }
+   hostWrite (0x24, 0);
+   hostWrite (0x60, 0);
+-  if (!hostWaitRegister (0x60, 1, 0)) {
++  if (read32 (gHost.hc, 0x24) != 0 || !hostWaitRegister (0x60, 1, 0) ||
++      read32 (gHost.hc, 0x58) || read32 (gHost.hc, 0x78)) {
+     recordTransport (kIOReturnTimeout, 15);
+     *why = "request list stop";
++    const char *restoreWhy = "";
++    if (!hostResumeOriginalQueue (&restoreWhy)) {
++      gHost.queueRecoveryFailed = true;
++      panic ("NATIVE_UFS queue stop rollback failed: %s", restoreWhy);
++    }
+     return false;
+   }
++  gHost.queueStopped = true;
++  return true;
++}
++
++static bool hostStopTakenQueue (const char **why)
++{
++  hostWrite (0x24, 0);
++  if (read32 (gHost.hc, 0x58) || read32 (gHost.hc, 0x78)) {
++    *why = "replacement queue has outstanding request";
++    return false;
++  }
++  hostWrite (0x60, 0);
++  if (!hostWaitRegister (0x60, 1, 0) || read32 (gHost.hc, 0x58) || read32 (gHost.hc, 0x78)) {
++    *why = "replacement request list did not quiesce";
++    return false;
++  }
++  gHost.queueStopped = true;
+   return true;
+ }
+ 
+@@ -51,12 +166,16 @@ static bool hostStartQueue (const char **why)
+     return false;
+   }
+   gRootDiagnostic.isBefore = read32 (gHost.hc, 0x20);
+-  hostWrite (0x20, gRootDiagnostic.isBefore);
+   hostWrite (0x60, 1);
+   if (!hostWaitRegister (0x60, 1, 1) || !hostWaitRegister (0x30, 3, 3)) {
+     recordTransport (kIOReturnTimeout, 15);
+     *why = "request list ready";
+     return false;
+   }
++  // Interrupt status is W1C and cannot be rolled back; clear the captured bits only
++  // after the replacement queue is ready and the takeover can be committed.
++  hostWrite (0x20, gRootDiagnostic.isBefore);
++  gHost.queueSnapshotValid = false;
++  gHost.queueStopped = false;
+   return true;
+ }
+diff --git a/SmmuTakeover.h b/SmmuTakeover.h
+index c30f5a9..dd9e925 100644
+--- a/SmmuTakeover.h
++++ b/SmmuTakeover.h
+@@ -3,6 +3,9 @@
+ struct UfsSmmuPlan {
+   unsigned slot = 0xffffffffU, bank = 0, pages = 0;
+   uint32_t smr = 0, s2cr = 0;
++  uint16_t stream = 0;
++  uint64_t dma = 0, bytes = 0;
++  uint32_t savedCr0 = 0, savedSmr = 0, savedS2cr = 0, savedCbar = 0, savedCba2r = 0, savedSctlr = 0;
+   bool reuse = false;
+   const char *error = nullptr;
+ };
+@@ -22,8 +25,21 @@ template <class Read>
+ static UfsSmmuPlan planUfsSmmuBank(uint16_t stream, uint64_t dma, uint64_t bytes, Read read, unsigned bankFromTop)
+ {
+   UfsSmmuPlan p;
++  p.stream = stream;
++  p.dma = dma;
++  p.bytes = bytes;
++  p.savedCr0 = read(0x0);
++  // SMMUv2 sCR0 bit 0 is CLIENTPD (clear means clients enabled), not
++  // SMMUv3's SMMUEN. This adapter uses SMR.VALID, not extended-ID S2CR.EXIDVALID.
++  if (p.savedCr0 & 9U) {
++    p.error = "SMMU clients disabled or extended stream IDs enabled";
++    return p;
++  }
+   uint32_t idr0 = read(0x20), idr2 = read(0x28);
+   unsigned count = idr0 & 255;
++  if (!(idr0 & (1U << 27))) {
++    p.error = "SMMU stream matching unsupported"; return p;
++  }
+   if (!(idr0 & (1U << 30)) || !(idr2 & (1U << 12))) {
+     p.error = "SMMU AArch64 stage 1 unsupported"; return p;
+   }
+@@ -72,6 +88,13 @@ static UfsSmmuPlan planUfsSmmuBank(uint16_t stream, uint64_t dma, uint64_t bytes
+     p.error = "reserved context bank not bypass"; return p;
+   }
+   if (p.slot == 0xffffffffU) p.error = "no free stream-match group";
++  if (!p.error) {
++    p.savedSmr = read(0x800 + 4 * p.slot);
++    p.savedS2cr = read(0xc00 + 4 * p.slot);
++    p.savedCbar = read(0x1000 + 4 * p.bank);
++    p.savedCba2r = read(0x1800 + 4 * p.bank);
++    p.savedSctlr = sctlr;
++  }
+   return p;
+ }
+ 
+@@ -125,3 +148,60 @@ static const char *configureUfsSmmu(const UfsSmmuPlan &p, uint16_t stream, Read
+     return "SMMU stream mapping readback";
+   return nullptr;
+ }
++
++template <class Read>
++static bool ufsSmmuPlanUnchanged(const UfsSmmuPlan &p, Read read)
++{
++  UfsSmmuPlan current = planUfsSmmu(p.stream, p.dma, p.bytes, read);
++  return !current.error && current.slot == p.slot && current.bank == p.bank && current.pages == p.pages && current.reuse == p.reuse &&
++         current.savedSmr == p.savedSmr && current.savedS2cr == p.savedS2cr &&
++         current.savedCr0 == p.savedCr0 && current.savedCbar == p.savedCbar && current.savedCba2r == p.savedCba2r &&
++         current.savedSctlr == p.savedSctlr;
++}
++
++// Undo only the registers changed by configureUfsSmmu. A newly published stream
++// is hidden before its context is restored; the original SMR is restored last.
++template <class Read, class Write>
++static bool restoreUfsSmmu(const UfsSmmuPlan &p, Read read, Write write)
++{
++  if (p.error || p.slot == 0xffffffffU) return false;
++  const unsigned smr = 0x800 + 4 * p.slot;
++  const unsigned s2cr = 0xc00 + 4 * p.slot;
++  const unsigned cbar = 0x1000 + 4 * p.bank;
++  const unsigned cba2r = 0x1800 + 4 * p.bank;
++  const unsigned cb = (p.pages + p.bank) * 4096;
++  if (p.reuse) {
++    if (read(cba2r) != p.savedCba2r) write(cba2r, p.savedCba2r);
++    return ufsSmmuPlanUnchanged(p, read);
++  }
++  write(smr, p.savedSmr & ~0x80000000U);
++  if (read(smr) != (p.savedSmr & ~0x80000000U)) return false;
++  write(cb, 0);
++  if (read(cb) != 0) return false;
++  write(cba2r, p.savedCba2r);
++  write(cbar, p.savedCbar);
++  write(s2cr, p.savedS2cr);
++  write(cb, p.savedSctlr);
++  if (read(cba2r) != p.savedCba2r || read(cbar) != p.savedCbar ||
++      read(s2cr) != p.savedS2cr || read(cb) != p.savedSctlr) return false;
++  write(smr, p.savedSmr);
++  return ufsSmmuPlanUnchanged(p, read);
++}
++
++template <class Read, class Write>
++static const char *configureUfsSmmuTransactional(const UfsSmmuPlan &p, Read read, Write write,
++                                                  bool *rollbackVerified)
++{
++  *rollbackVerified = true;
++  if (p.error) return p.error;
++  // The caller has already stopped the host. A stale route cannot be called
++  // restored merely because this helper has not written it: do not resume DMA.
++  if (!ufsSmmuPlanUnchanged(p, read)) {
++    *rollbackVerified = false;
++    return "SMMU changed after preflight";
++  }
++  const char *failure = configureUfsSmmu(p, p.stream, read, write);
++  if (!failure) return nullptr;
++  *rollbackVerified = restoreUfsSmmu(p, read, write);
++  return failure;
++}
+diff --git a/tests/RootCommands.cpp b/tests/RootCommands.cpp
+index b5c0a7d..e742038 100644
+--- a/tests/RootCommands.cpp
++++ b/tests/RootCommands.cpp
+@@ -4,23 +4,28 @@
+ #include <array>
+ #include <algorithm>
+ #include <string>
++#include <utility>
+ enum class Fault { None, Empty, Type, Tag, Lun, Query, Residual, Underflow,
+-  Oversize, SenseLength, CheckCondition, Timeout, Fatal, Stop, Start, HighBase };
++  Oversize, SenseLength, CheckCondition, Timeout, Fatal, Stop, Start, HighBase, MaskRestore };
+ static Fault fault;
+ static std::array<uint8_t,kDmaBytes> device;
+ static std::array<uint32_t,64> registers;
+ static uint64_t now;
+ static unsigned writes, releases;
+ static bool released;
++static bool startDropped;
+ 
+ static uint64_t io(unsigned op,uint64_t address,uint64_t value,void *bytes)
+ {
+   if (op==0) return registers.at(address/4);
+   if (op==1) {
+     ++writes;
++    if (address==0x50 || address==0x54) assert(!(registers[0x60/4]&1));
+     if (address==0x20) registers[address/4]&=~uint32_t(value);
+-    else if (!(address==0x60 && ((fault==Fault::Stop && !value) || (fault==Fault::Start && value))) &&
+-             !(address==0x54 && fault==Fault::HighBase)) registers.at(address/4)=uint32_t(value);
++    else if (!(address==0x60 && ((fault==Fault::Stop && !value) ||
++                                 (fault==Fault::Start && value && !std::exchange(startDropped,true)))) &&
++             !(address==0x54 && fault==Fault::HighBase) &&
++             !(address==0x24 && value==0x25 && fault==Fault::MaskRestore)) registers.at(address/4)=uint32_t(value);
+     if (address==0x58) {
+       assert(released); released=false;
+       if (fault==Fault::Fatal) { registers[0x20/4]=0x20000; return 0; }
+@@ -60,8 +65,9 @@ static uint64_t io(unsigned op,uint64_t address,uint64_t value,void *bytes)
+ }
+ static void reset(Fault f=Fault::None)
+ {
+-  fault=f; device.fill(0); registers.fill(0); now=0; writes=releases=0; released=false;
++  fault=f; device.fill(0); registers.fill(0); now=0; writes=releases=0; released=false; startDropped=false;
+   registers[0x34/4]=1; registers[0x30/4]=15; registers[0x60/4]=1;
++  registers[0x24/4]=0x25; registers[0x50/4]=0x12345000; registers[0x54/4]=2;
+   ufs_test_reset(io,0x8cb5e9000);
+ }
+ static void assertQuarantined()
+@@ -116,8 +122,32 @@ int main()
+   assert(!ufs_test_stop_queue() && writes==0);
+   assert(ufs_test_nop()!=0 && writes==0 && releases==0); assertQuarantined();
+   reset(Fault::Stop); assert(!ufs_test_stop_queue() && now>=100000);
+-  reset(Fault::Start); assert(ufs_test_stop_queue()); assert(!ufs_test_start_queue());
++  assert(!ufs_test_snapshot_valid());
++  reset(); assert(ufs_test_snapshot_queue()); registers[0x24/4]^=1;
++  assert(!ufs_test_stop_queue() && writes==0);
++  reset(Fault::MaskRestore); assert(ufs_test_stop_queue());
++  assert(!ufs_test_resume_queue() && ufs_test_snapshot_valid());
++  fault=Fault::None; assert(ufs_test_resume_queue());
++  reset();
++  assert(ufs_test_stop_queue());
++  assert(registers[0x24/4]==0 && registers[0x60/4]==0 && ufs_test_snapshot_valid());
++  assert(ufs_test_resume_queue());
++  assert(registers[0x24/4]==0x25 && registers[0x60/4]==1 &&
++         registers[0x50/4]==0x12345000 && registers[0x54/4]==2 && !ufs_test_snapshot_valid());
++  reset(Fault::Start); registers[0x20/4]=1;
++  assert(ufs_test_stop_queue()); assert(!ufs_test_start_queue());
++  assert(registers[0x20/4]==1); // Failed startup must not clear W1C firmware status.
++  assert(ufs_test_stop_taken_queue() && ufs_test_resume_queue());
++  assert(registers[0x24/4]==0x25 && registers[0x60/4]==1 && registers[0x50/4]==0x12345000);
+   reset(Fault::HighBase); assert(ufs_test_stop_queue()); assert(!ufs_test_start_queue());
++  assert(ufs_test_stop_taken_queue() && ufs_test_resume_queue());
++  assert(registers[0x60/4]==1 && registers[0x50/4]==0x12345000 && registers[0x54/4]==2);
++  reset(Fault::Start); assert(ufs_test_stop_queue() && !ufs_test_start_queue());
++  registers[0x60/4]=1; fault=Fault::Stop;
++  assert(!ufs_test_stop_taken_queue() && ufs_test_snapshot_valid());
++  reset(Fault::Start); assert(ufs_test_stop_queue() && !ufs_test_start_queue());
++  registers[0x58/4]=1;
++  assert(!ufs_test_stop_taken_queue() && ufs_test_snapshot_valid());
+   reset(); assert(ufs_test_stop_queue() && ufs_test_start_queue());
+   assert(registers[0x50/4]==0xcb5e9000 && registers[0x54/4]==8);
+   puts("PASS: actual command/queue path; malformed DMA responses, bounds, short reads, sense, quarantine, queue refusal and full-width DMA");
+diff --git a/tests/RootCommandsBridge.cpp b/tests/RootCommandsBridge.cpp
+index abfa239..9921929 100644
+--- a/tests/RootCommandsBridge.cpp
++++ b/tests/RootCommandsBridge.cpp
+@@ -5,6 +5,7 @@
+ #include <cstdio>
+ #include <cstring>
+ #include <cassert>
++#include <cstdlib>
+ #include "../RootDiagnostics.h"
+ #include "../TransferPoll.h"
+ using IOReturn = uint32_t;
+@@ -15,7 +16,12 @@ constexpr IOReturn kIOReturnSuccess=0, kIOReturnError=0xe00002bc,
+ constexpr unsigned kMicrosecondScale=1;
+ constexpr unsigned kMillisecondScale=1000;
+ static UfsRootDiagnostics gRootDiagnostic;
+-struct Host { uint8_t *virt; uint64_t phys; bool ready, poisoned; uintptr_t hc; void *lock; };
++struct Host {
++  uint8_t *virt; uint64_t phys; bool ready, poisoned; uintptr_t hc; void *lock;
++  uint32_t originalHostEnable, originalHostStatus;
++  uint32_t originalInterruptEnable, originalRunStop, originalListLow, originalListHigh, originalInterruptStatus;
++  bool queueSnapshotValid, queueStopped, queueRecoveryFailed;
++};
+ static Host gHost;
+ alignas(4096) static uint8_t memory[kDmaBytes];
+ using Callback = uint64_t (*)(unsigned operation, uint64_t address, uint64_t value, void *bytes);
+@@ -37,6 +43,8 @@ static uint64_t mach_absolute_time() { return callback(4,0,0,nullptr); }
+ static void IODelay(uint32_t us) { callback(5,0,us,nullptr); }
+ static void IOLockLock(void *) {}
+ static void IOLockUnlock(void *) {}
++static bool IOLockTryLock(void *) { return true; }
++[[noreturn]] static void panic (const char *, ...) { std::abort (); }
+ static IOReturn recordTransport(IOReturn result,uint32_t ocs) {
+   gRootDiagnostic.result=result; gRootDiagnostic.ocs=ocs; return result;
+ }
+@@ -45,13 +53,18 @@ static IOReturn recordTransport(IOReturn result,uint32_t ocs) {
+ extern "C" {
+ void ufs_test_reset(Callback cb, uint64_t physical) {
+   callback=cb; memset(memory,0,sizeof(memory));
+-  gHost={memory,physical,true,false,0,nullptr}; gRootDiagnostic=UfsRootDiagnostics{};
++  gHost=Host{}; gHost.virt=memory; gHost.phys=physical; gHost.ready=true;
++  gRootDiagnostic=UfsRootDiagnostics{};
+   gStoreOpen=gLogOpen=false; gStoreFirst=gStoreBlocks=gLogFirst=gLogBlocks=0;
+ }
+ uint8_t *ufs_test_memory() { return memory; }
+ bool ufs_test_poisoned() { return gHost.poisoned; }
++bool ufs_test_snapshot_queue() { const char *why=nullptr; return hostSnapshotOriginalQueue(&why); }
+ bool ufs_test_stop_queue() { const char *why=nullptr; return hostStopQueue(&why); }
++bool ufs_test_resume_queue() { const char *why=nullptr; return hostResumeOriginalQueue(&why); }
++bool ufs_test_snapshot_valid() { return gHost.queueSnapshotValid; }
+ bool ufs_test_start_queue() { const char *why=nullptr; return hostStartQueue(&why); }
++bool ufs_test_stop_taken_queue() { const char *why=nullptr; return hostStopTakenQueue(&why); }
+ uint32_t ufs_test_query(uint8_t op,uint8_t idn,uint32_t *value) { return hostQueryRead(op,idn,value); }
+ uint32_t ufs_test_scsi(uint8_t lun,const uint8_t *cdb,unsigned length,bool read,uint32_t bytes,uint32_t *scsi) {
+   return hostScsi(lun,cdb,length,read,bytes,200000,scsi);
+diff --git a/tests/SmmuTakeover.cpp b/tests/SmmuTakeover.cpp
+index bc94443..6821fca 100644
+--- a/tests/SmmuTakeover.cpp
++++ b/tests/SmmuTakeover.cpp
+@@ -9,7 +9,7 @@
+ int main()
+ {
+   std::array<uint32_t,0xd0000/4> r{};
+-  auto reset=[&] {r.fill(0); r[0x20/4]=0x40000080; r[0x24/4]=0x60000046; r[0x28/4]=0x5111;};
++  auto reset=[&] {r.fill(0); r[0]=6; r[0x20/4]=0x48000080; r[0x24/4]=0x60000046; r[0x28/4]=0x5111;};
+   auto plan=[&] {return planUfsSmmu(0x60,0x8cb5e9000ULL,0x22000,[&](unsigned at){return r.at(at/4);});};
+   reset(); auto p=plan(); assert(!p.error && !p.reuse && p.slot==127 && p.bank==69);
+   r[(0x800+4*110)/4]=0x80000060; r[(0xc00+4*110)/4]=69;
+@@ -82,9 +82,55 @@ int main()
+   assert(!planUfsSmmu(0x60,0xfffffffffULL,1,read).error);
+   r[0x28/4]&=~(1U<<12); assert(plan().error);
+   reset(); r[0x20/4]&=~(1U<<30); assert(plan().error);
++  for (uint32_t cr0 : {0U, 2U, 4U, 6U}) { reset(); r[0]=cr0; assert(!plan().error); }
++  for (uint32_t cr0 : {1U, 3U, 5U, 7U, 8U, 14U}) { reset(); r[0]=cr0; assert(plan().error); }
++  reset(); r[0x20/4]&=~(1U<<27); assert(plan().error);
+   // Reused context with an unexpected VMID/attribute must not be repaired.
+   reset(); p=plan(); drop=0xffffffffU; assert(!configure());
+   r[(0x1800+4*p.bank)/4]=0x10001; p=plan(); assert(p.error);
+   writes.clear(); assert(configure() && writes.empty());
+-  puts("PASS: SMMU geometry/conflicts, VA64 high-DMA regression, full-range width limits, ordered configuration, reuse/repair and blocked-write refusal");
++  // A stale read-only plan must not begin writes after another owner changes the selected context.
++  reset(); p=plan(); writes.clear(); r[(0x1000+4*p.bank)/4]=0x40;
++  bool rollbackVerified=false;
++  assert(configureUfsSmmuTransactional(p,read,write,&rollbackVerified));
++  assert(!rollbackVerified && writes.empty());
++  // A one-shot ignored write is rolled back to the exact preflight snapshot.
++  for(unsigned offset : {0x1800+4*69, 0x1000+4*69, 0xc00+4*127, 0x800+4*127}) {
++    reset(); p=plan(); auto before=r; bool ignored=false;
++    auto failOnce=[&](unsigned at,uint32_t value) {
++      writes.emplace_back(at,value);
++      if(at==offset && !ignored) {ignored=true; return;}
++      r.at(at/4)=value;
++    };
++    rollbackVerified=false;
++    assert(configureUfsSmmuTransactional(p,read,failOnce,&rollbackVerified));
++    assert(ignored && rollbackVerified && r==before);
++  }
++  // If restoration itself cannot be read back, the caller must treat the SMMU state as unknown.
++  reset(); p=plan(); unsigned s2crWrites=0; bool streamRejected=false;
++  auto persistentFailure=[&](unsigned at,uint32_t value) {
++    if(at==0xc00+4*127) {
++      if(++s2crWrites==1) r.at(at/4)=value;
++    } else if(at==0x800+4*127) {
++      streamRejected=true;
++    } else {
++      r.at(at/4)=value;
++    }
++  };
++  rollbackVerified=true;
++  assert(configureUfsSmmuTransactional(p,read,persistentFailure,&rollbackVerified));
++  assert(streamRejected && !rollbackVerified);
++  // A reused route may repair only CBA2R. Failure can resume the old queue
++  // only when the entire saved route/context and its exclusivity still match.
++  reset(); p=plan(); drop=0xffffffffU; assert(!configure());
++  r[(0x1800+4*p.bank)/4]=0; p=plan(); assert(p.reuse);
++  auto repairRefused=[&](unsigned, uint32_t) {};
++  assert(configureUfsSmmuTransactional(p,read,repairRefused,&rollbackVerified));
++  assert(rollbackVerified);
++  auto newAlias=[&](unsigned, uint32_t) {
++    r[0x800/4]=0x80000061; r[0xc00/4]=p.bank;
++  };
++  assert(configureUfsSmmuTransactional(p,read,newAlias,&rollbackVerified));
++  assert(!rollbackVerified);
++  puts("PASS: SMMU geometry/conflicts, VA64 high-DMA regression, full-range width limits, ordered configuration and verified rollback");
+ }
