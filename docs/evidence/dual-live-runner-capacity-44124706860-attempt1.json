@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "stage": "hosted-runner-capacity-failure-before-any-build",
+  "device_commit": "7f409ffbc282c918e9ec2a5996c6e413b7a9682a",
+  "run": {
+    "id": 44124706860,
+    "head_sha": "7f409ffbc282c918e9ec2a5996c6e413b7a9682a",
+    "status": "completed",
+    "conclusion": "failure",
+    "created_at": "2026-11-17T16:20:50Z",
+    "updated_at": "2026-11-17T16:35:57Z",
+    "run_attempt": 1
+  },
+  "job": {
+    "id": 134185221494,
+    "run_id": 44124706860,
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "cancelled",
+    "created_at": "2026-11-17T16:20:53Z",
+    "completed_at": "2026-11-17T16:35:55Z",
+    "steps": [],
+    "labels": [
+      "macos-26"
+    ],
+    "runner_id": 0,
+    "runner_name": ""
+  },
+  "annotations": [
+    {
+      "path": ".github",
+      "blob_href": "https://github.com/limingerf/UniXNU-tb710fu/blob/7f409ffbc282c918e9ec2a5996c6e413b7a9682a/.github",
+      "start_line": 1,
+      "start_column": null,
+      "end_line": 1,
+      "end_column": null,
+      "annotation_level": "failure",
+      "title": "",
+      "message": "The job was not acquired by Runner of type hosted even after multiple attempts",
+      "raw_details": ""
+    },
+    {
+      "path": ".github",
+      "blob_href": "https://github.com/limingerf/UniXNU-tb710fu/blob/7f409ffbc282c918e9ec2a5996c6e413b7a9682a/.github",
+      "start_line": 1,
+      "start_column": null,
+      "end_line": 1,
+      "end_column": null,
+      "annotation_level": "notice",
+      "title": "",
+      "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+      "raw_details": ""
+    },
+    {
+      "path": ".github",
+      "blob_href": "https://github.com/limingerf/UniXNU-tb710fu/blob/7f409ffbc282c918e9ec2a5996c6e413b7a9682a/.github",
+      "start_line": 1,
+      "start_column": null,
+      "end_line": 1,
+      "end_column": null,
+      "annotation_level": "notice",
+      "title": "",
+      "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+      "raw_details": ""
+    },
+    {
+      "path": ".github",
+      "blob_href": "https://github.com/limingerf/UniXNU-tb710fu/blob/7f409ffbc282c918e9ec2a5996c6e413b7a9682a/.github",
+      "start_line": 1,
+      "start_column": null,
+      "end_line": 1,
+      "end_column": null,
+      "annotation_level": "notice",
+      "title": "",
+      "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+      "raw_details": ""
+    }
+  ],
+  "host_native_prelink_steps_executed": false,
+  "artifacts": [],
+  "compiler_failure": false,
+  "diagnosis": "Hosted macOS arm64 runner was not acquired after multiple attempts; GitHub annotations explicitly identify capacity constraints. No evidence identifies a user cancellation, billing or approval cause.",
+  "investigation_record_sha256": "d42d3db255a065a0b5976e156c2f1b4fce53e05031c24f03b8d45081399b22b9",
+  "hardware_verified": false,
+  "device_operations": false
+}

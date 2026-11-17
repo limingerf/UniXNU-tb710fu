@@ -29,6 +29,12 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def private_definition(symbol, macho_prefix):
+    name = symbol[1:] if macho_prefix and symbol.startswith("_") else symbol
+    return name == "___asan_globals_registered" or name.startswith(
+        ("tb_live_", "__odr_asan.tb_live_", "__odr_asan_gen_tb_live_"))
+
+
 def decode(output, dependency_dir):
     if dependency_dir:
         import sys
@@ -138,13 +144,18 @@ def main():
         command += ["-c", str(source), "-o", str(obj)]
         subprocess.run(command, check=True)
         symbol_text = subprocess.check_output(["nm", "-g", str(obj)], text=True)
+        # Darwin nm prints the Mach-O ABI's leading underscore. Apply the same
+        # private-name contract to C names on ELF and Mach-O; ASan's own C
+        # registration names also gain that one ABI underscore on macOS.
+        macho_prefix = obj.read_bytes()[:4] == b"\xcf\xfa\xed\xfe"
         for line in symbol_text.splitlines():
             parts = line.split()
-            if len(parts) == 3 and parts[1].upper() != "U" and not parts[2].startswith("tb_live_"):
-                # ASan's generated registration symbols are compiler runtime,
-                # not QR/UEFI globals. All production definitions stay private.
-                if not parts[2].startswith(("__odr_asan.", "__odr_asan_gen_tb_live_", "___asan")):
-                    raise SystemExit("Unprefixed QR external definition: " + parts[2])
+            if len(parts) != 3 or parts[1].upper() == "U":
+                continue
+            # ASan's generated registration symbols are compiler runtime;
+            # all production QR/UEFI definitions retain their private names.
+            if not private_definition(parts[2], macho_prefix):
+                raise SystemExit("Unprefixed QR external definition: " + parts[2])
         symbols[source.name] = symbol_text
         commands.append(command)
         objects.append(obj)

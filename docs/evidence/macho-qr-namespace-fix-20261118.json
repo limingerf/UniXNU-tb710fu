@@ -1,0 +1,486 @@
+{
+  "result": "PASS",
+  "cause": "Darwin nm adds one Mach-O ABI underscore to both C private definitions and compiler ASan metadata. Old host-only name test treated them as unprefixed.",
+  "fix": "Normalize one ABI underscore only for an actual thin64 Mach-O header; accept only exact ASan globals registration and private-prefixed ODR metadata.",
+  "script_sha256": "8ba4e0de6032836c73bb683b2394bd766b3cdf1c7158416c74c7e5f4482b66d2",
+  "actual_apple_clang_host_object_sha256": "1f9cd9aa1d8f483c82f6da317978e14b79fad250353b1a40eae3b95c536edb96",
+  "actual_definitions_checked": [
+    {
+      "kind": "C",
+      "name": "____asan_globals_registered"
+    },
+    {
+      "kind": "T",
+      "name": "_tb_live_qr_AllocateCopyPool"
+    },
+    {
+      "kind": "T",
+      "name": "_tb_live_qr_AllocatePool"
+    },
+    {
+      "kind": "T",
+      "name": "_tb_live_qr_AllocateZeroPool"
+    },
+    {
+      "kind": "T",
+      "name": "_tb_live_qr_CopyMem"
+    },
+    {
+      "kind": "T",
+      "name": "_tb_live_qr_FreePool"
+    },
+    {
+      "kind": "T",
+      "name": "_tb_live_qr_SetMem32"
+    },
+    {
+      "kind": "T",
+      "name": "_tb_live_qr_encode"
+    },
+    {
+      "kind": "T",
+      "name": "_tb_live_qr_memcpy"
+    },
+    {
+      "kind": "T",
+      "name": "_tb_live_qr_memset"
+    }
+  ],
+  "all_actual_definitions_accepted": true,
+  "checks": {
+    ".work/macho-asan-namespace/verification.json": {
+      "sha256": "c0d752c1d13f3a1afbff42d7458d5f0608bfdd74f8dd57211674182e553fd83c",
+      "report": {
+        "result": "PASS",
+        "source_script_sha256": "8ba4e0de6032836c73bb683b2394bd766b3cdf1c7158416c74c7e5f4482b66d2",
+        "objects": [
+          {
+            "command": [
+              "clang",
+              "--target=arm64-apple-macos14.0",
+              "-O1",
+              "-g",
+              "-Wall",
+              "-Wextra",
+              "-Werror",
+              "-ffreestanding",
+              "-fno-builtin",
+              "-fsanitize=address",
+              "-DDEBUG=0",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/include",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+              "-include",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+              "-c",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQr.c",
+              "-o",
+              "/mnt/d/unixnu-tb710fu-clean/.work/macho-asan-namespace/LiveQr.o"
+            ],
+            "object_sha256": "2afcc5a0c405cadd1021023626d2ec6c8b26d9ae83b99e5f5e5fe6b8a8618da0",
+            "defined_symbols": [
+              "____asan_globals_registered",
+              "_tb_live_qr_AllocateCopyPool",
+              "_tb_live_qr_AllocatePool",
+              "_tb_live_qr_AllocateZeroPool",
+              "_tb_live_qr_CopyMem",
+              "_tb_live_qr_FreePool",
+              "_tb_live_qr_SetMem32",
+              "_tb_live_qr_encode",
+              "_tb_live_qr_memcpy",
+              "_tb_live_qr_memset"
+            ]
+          },
+          {
+            "command": [
+              "clang",
+              "--target=arm64-apple-macos14.0",
+              "-O1",
+              "-g",
+              "-Wall",
+              "-Wextra",
+              "-Werror",
+              "-ffreestanding",
+              "-fno-builtin",
+              "-fsanitize=address",
+              "-DDEBUG=0",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/include",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+              "-include",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+              "-fwrapv",
+              "-Wno-sign-compare",
+              "-Wno-unused-parameter",
+              "-Wno-shift-negative-value",
+              "-Wno-unused-but-set-variable",
+              "-c",
+              "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c",
+              "-o",
+              "/mnt/d/unixnu-tb710fu-clean/.work/macho-asan-namespace/QrEncoderLib.o"
+            ],
+            "object_sha256": "6e710aa3c581a745f53698ded10777928e66e0439aaf46a661c7f641c3e22791",
+            "defined_symbols": [
+              "____asan_globals_registered",
+              "___odr_asan_gen_tb_live_qr_gBitStream",
+              "___odr_asan_gen_tb_live_qr_gBitStreamCount",
+              "___odr_asan_gen_tb_live_qr_gBltBuffer",
+              "___odr_asan_gen_tb_live_qr_gCodeWordCount",
+              "___odr_asan_gen_tb_live_qr_gCodeWords",
+              "___odr_asan_gen_tb_live_qr_gECWordCount",
+              "___odr_asan_gen_tb_live_qr_gECWords",
+              "___odr_asan_gen_tb_live_qr_gFlags",
+              "___odr_asan_gen_tb_live_qr_gQrBitmap",
+              "___odr_asan_gen_tb_live_qr_gQrBitmapLen",
+              "___odr_asan_gen_tb_live_qr_gQrLevel",
+              "___odr_asan_gen_tb_live_qr_gQrMask",
+              "___odr_asan_gen_tb_live_qr_gQrMode",
+              "___odr_asan_gen_tb_live_qr_gQrSize",
+              "___odr_asan_gen_tb_live_qr_gQrT",
+              "___odr_asan_gen_tb_live_qr_gQrVersion",
+              "_tb_live_qr_CheckQrVersion",
+              "_tb_live_qr_QrEncodeData",
+              "_tb_live_qr_gBitStream",
+              "_tb_live_qr_gBitStreamCount",
+              "_tb_live_qr_gBltBuffer",
+              "_tb_live_qr_gCodeWordCount",
+              "_tb_live_qr_gCodeWords",
+              "_tb_live_qr_gECWordCount",
+              "_tb_live_qr_gECWords",
+              "_tb_live_qr_gFlags",
+              "_tb_live_qr_gQrBitmap",
+              "_tb_live_qr_gQrBitmapLen",
+              "_tb_live_qr_gQrLevel",
+              "_tb_live_qr_gQrMask",
+              "_tb_live_qr_gQrMode",
+              "_tb_live_qr_gQrSize",
+              "_tb_live_qr_gQrT",
+              "_tb_live_qr_gQrVersion"
+            ]
+          },
+          {
+            "command": [
+              "clang",
+              "--target=arm64-apple-macos14.0",
+              "-O1",
+              "-g",
+              "-Wall",
+              "-Wextra",
+              "-Werror",
+              "-ffreestanding",
+              "-fno-builtin",
+              "-fsanitize=address",
+              "-DDEBUG=0",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.work/live-qr-dual-debug0/include",
+              "-I",
+              "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+              "-include",
+              "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+              "-fwrapv",
+              "-Wno-sign-compare",
+              "-Wno-unused-parameter",
+              "-Wno-shift-negative-value",
+              "-Wno-unused-but-set-variable",
+              "-c",
+              "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c",
+              "-o",
+              "/mnt/d/unixnu-tb710fu-clean/.work/macho-asan-namespace/QrEncoderTables.o"
+            ],
+            "object_sha256": "af166fa949c35e4221ab801f24b1cb0273f64489510972bcb3106f0714b405d5",
+            "defined_symbols": [
+              "____asan_globals_registered",
+              "___odr_asan_gen_tb_live_qr_Code10",
+              "___odr_asan_gen_tb_live_qr_Code13",
+              "___odr_asan_gen_tb_live_qr_Code15",
+              "___odr_asan_gen_tb_live_qr_Code16",
+              "___odr_asan_gen_tb_live_qr_Code17",
+              "___odr_asan_gen_tb_live_qr_Code18",
+              "___odr_asan_gen_tb_live_qr_Code20",
+              "___odr_asan_gen_tb_live_qr_Code22",
+              "___odr_asan_gen_tb_live_qr_Code24",
+              "___odr_asan_gen_tb_live_qr_Code26",
+              "___odr_asan_gen_tb_live_qr_Code28",
+              "___odr_asan_gen_tb_live_qr_Code30",
+              "___odr_asan_gen_tb_live_qr_Code7",
+              "___odr_asan_gen_tb_live_qr_QR_modulo",
+              "___odr_asan_gen_tb_live_qr_alogTable",
+              "___odr_asan_gen_tb_live_qr_gAlignmentLocations",
+              "___odr_asan_gen_tb_live_qr_gAlphaNumerics",
+              "___odr_asan_gen_tb_live_qr_gFormatInfo",
+              "___odr_asan_gen_tb_live_qr_gGeneratorPolynomials",
+              "___odr_asan_gen_tb_live_qr_gLengthBits",
+              "___odr_asan_gen_tb_live_qr_gQrTable",
+              "___odr_asan_gen_tb_live_qr_gVersionInfo",
+              "___odr_asan_gen_tb_live_qr_logTable",
+              "_tb_live_qr_Code10",
+              "_tb_live_qr_Code13",
+              "_tb_live_qr_Code15",
+              "_tb_live_qr_Code16",
+              "_tb_live_qr_Code17",
+              "_tb_live_qr_Code18",
+              "_tb_live_qr_Code20",
+              "_tb_live_qr_Code22",
+              "_tb_live_qr_Code24",
+              "_tb_live_qr_Code26",
+              "_tb_live_qr_Code28",
+              "_tb_live_qr_Code30",
+              "_tb_live_qr_Code7",
+              "_tb_live_qr_InitializeLogTables",
+              "_tb_live_qr_QR_modulo",
+              "_tb_live_qr_alogTable",
+              "_tb_live_qr_gAlignmentLocations",
+              "_tb_live_qr_gAlphaNumerics",
+              "_tb_live_qr_gFormatInfo",
+              "_tb_live_qr_gGeneratorPolynomials",
+              "_tb_live_qr_gLengthBits",
+              "_tb_live_qr_gQrTable",
+              "_tb_live_qr_gVersionInfo",
+              "_tb_live_qr_logTable"
+            ]
+          }
+        ],
+        "unprefixed_or_fake_asan_cases_rejected": 8,
+        "limits": "Actual Mach-O ASan object generation with local Clang19; no native XNU or macOS host execution claim."
+      }
+    },
+    ".work/qr-namespace-fixed/qr-host-check.json": {
+      "sha256": "0d0a3beb7fdf28f1c6e8edfdf9b71ccd2f8d9c0de61db73b4a6583c6d7f52732",
+      "report": {
+        "result": "PASS",
+        "stage": "real-live-QR-and-Mu-host-test",
+        "xnu_object_like_DEBUG_before_compat": 0,
+        "sanitizers": [
+          "address",
+          "undefined"
+        ],
+        "QR_source": {
+          "repository": "microsoft/mu_plus",
+          "commit": "b8d46c71610318e36a661819e1e3c0b8bdda413a",
+          "files": [
+            {
+              "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.inf",
+              "sha256": "79c46eb751f2fd53bd6c8521df99af1f2be0e9590cfc8af665e6f7f0bb151bd4"
+            },
+            {
+              "path": "MsGraphicsPkg/Include/Library/QrEncoderLib.h",
+              "sha256": "96b2e3c1a0b5271e2cf97bc48f33839a9a6b9535d9d37700bce2b4c7d3ee56f5"
+            },
+            {
+              "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c",
+              "sha256": "055d446e6a75f9ea687cf3561ae933d266a6e48acda9c905edf2b62dea1f2d2a"
+            },
+            {
+              "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c",
+              "sha256": "125f1bda27f84d2b4a71a4b86d9364daff47b6aa7b0f2dfdc1bc0a309cc6c15a"
+            },
+            {
+              "path": "MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.h",
+              "sha256": "2ad084b975448abaadd3ce4e6037c83201677a447c6a3845346503d7041c6bdf"
+            }
+          ]
+        },
+        "source_hashes": {
+          "package/Tb710fuLiveLog/LiveQr.c": "9c4a88505810891b62b703b7066372a8503b5abac650da1ea00ca40030532794",
+          "package/Tb710fuLiveLog/LiveQr.h": "c865c7c0a747737348eb0ea10ae5b8af02a2c4cbb9bf6248a082ec7b281750dd",
+          "package/Tb710fuLiveLog/LiveQrCompat.h": "75c75a7ce2cc79fe548ed43ff5a6f871c95f9ed9064611f2d595de4759423965",
+          "package/Tb710fuLiveLog/LiveProtocol.c": "693aab42c163b053844ee1a1dfa1082fc8b4547f1a68c308304ad0a892b9286d",
+          "package/Tb710fuLiveLog/LiveProtocol.h": "70e76df948e17c468401f1e9ce771f042c9497d9e563adea155b03c5a640d8d2",
+          "package/Tb710fuLiveLog/Test/live_qr_test.c": "73d49846baf31d0cd2de6c4ad8a0aa8b34592a89f2f7efd0b90d1aa14a4614d5"
+        },
+        "test_script_sha256": "8ba4e0de6032836c73bb683b2394bd766b3cdf1c7158416c74c7e5f4482b66d2",
+        "compile_commands": [
+          [
+            "gcc",
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-pedantic",
+            "-fno-builtin",
+            "-fno-omit-frame-pointer",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.work/qr-namespace-fixed/include",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+            "-DDEBUG=0",
+            "-include",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+            "-c",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQr.c",
+            "-o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/qr-namespace-fixed/LiveQr.o"
+          ],
+          [
+            "gcc",
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-pedantic",
+            "-fno-builtin",
+            "-fno-omit-frame-pointer",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.work/qr-namespace-fixed/include",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+            "-DDEBUG=0",
+            "-include",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+            "-fwrapv",
+            "-Wno-sign-compare",
+            "-Wno-unused-parameter",
+            "-Wno-shift-negative-value",
+            "-Wno-unused-but-set-variable",
+            "-Wno-strict-prototypes",
+            "-c",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.c",
+            "-o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/qr-namespace-fixed/QrEncoderLib.o"
+          ],
+          [
+            "gcc",
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-pedantic",
+            "-fno-builtin",
+            "-fno-omit-frame-pointer",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.work/qr-namespace-fixed/include",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+            "-DDEBUG=0",
+            "-include",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveQrCompat.h",
+            "-fwrapv",
+            "-Wno-sign-compare",
+            "-Wno-unused-parameter",
+            "-Wno-shift-negative-value",
+            "-Wno-unused-but-set-variable",
+            "-Wno-strict-prototypes",
+            "-c",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Library/QrEncoderLib/QrEncoderTables.c",
+            "-o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/qr-namespace-fixed/QrEncoderTables.o"
+          ],
+          [
+            "gcc",
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-pedantic",
+            "-fno-builtin",
+            "-fno-omit-frame-pointer",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.work/qr-namespace-fixed/include",
+            "-I",
+            "/mnt/d/unixnu-tb710fu-clean/.local/early-fault-qr/upstream/MsGraphicsPkg/Include",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/Test/live_qr_test.c",
+            "/mnt/d/unixnu-tb710fu-clean/package/Tb710fuLiveLog/LiveProtocol.c",
+            "/mnt/d/unixnu-tb710fu-clean/.work/qr-namespace-fixed/LiveQr.o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/qr-namespace-fixed/QrEncoderLib.o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/qr-namespace-fixed/QrEncoderTables.o",
+            "-o",
+            "/mnt/d/unixnu-tb710fu-clean/.work/qr-namespace-fixed/live-qr-test"
+          ]
+        ],
+        "QR_symbols": {
+          "LiveQr.c": "                 U __asan_init\n                 U __asan_option_detect_stack_use_after_return\n                 U __asan_register_globals\n                 U __asan_report_load1\n                 U __asan_report_load8\n                 U __asan_report_store1\n                 U __asan_report_store4\n                 U __asan_report_store8\n                 U __asan_stack_malloc_0\n                 U __asan_unregister_globals\n                 U __asan_version_mismatch_check_v8\n0000000000000459 T tb_live_qr_AllocateCopyPool\n0000000000000366 T tb_live_qr_AllocatePool\n000000000000041b T tb_live_qr_AllocateZeroPool\n000000000000024d T tb_live_qr_CopyMem\n00000000000004a8 T tb_live_qr_encode\n000000000000049d T tb_live_qr_FreePool\n0000000000000000 T tb_live_qr_memcpy\n0000000000000174 T tb_live_qr_memset\n                 U tb_live_qr_QrEncodeData\n000000000000027a T tb_live_qr_SetMem32\n                 U __ubsan_handle_pointer_overflow_abort\n                 U __ubsan_handle_type_mismatch_v1_abort\n",
+          "QrEncoderLib.c": "                 U __asan_handle_no_return\n                 U __asan_init\n                 U __asan_option_detect_stack_use_after_return\n                 U __asan_register_globals\n                 U __asan_report_load1\n                 U __asan_report_load2\n                 U __asan_report_load4\n                 U __asan_report_load8\n                 U __asan_report_store1\n                 U __asan_report_store8\n                 U __asan_report_store_n\n                 U __asan_stack_malloc_1\n                 U __asan_stack_malloc_2\n                 U __asan_unregister_globals\n                 U __asan_version_mismatch_check_v8\n00000000000005c4 B __odr_asan.tb_live_qr_gBitStream\n00000000000005c3 B __odr_asan.tb_live_qr_gBitStreamCount\n00000000000005c0 B __odr_asan.tb_live_qr_gBltBuffer\n00000000000005c7 B __odr_asan.tb_live_qr_gCodeWordCount\n00000000000005c8 B __odr_asan.tb_live_qr_gCodeWords\n00000000000005c5 B __odr_asan.tb_live_qr_gECWordCount\n00000000000005c6 B __odr_asan.tb_live_qr_gECWords\n00000000000005c1 B __odr_asan.tb_live_qr_gFlags\n00000000000005ca B __odr_asan.tb_live_qr_gQrBitmap\n00000000000005c9 B __odr_asan.tb_live_qr_gQrBitmapLen\n00000000000005cd B __odr_asan.tb_live_qr_gQrLevel\n00000000000005cb B __odr_asan.tb_live_qr_gQrMask\n00000000000005cc B __odr_asan.tb_live_qr_gQrMode\n00000000000005ce B __odr_asan.tb_live_qr_gQrSize\n00000000000005c2 B __odr_asan.tb_live_qr_gQrT\n00000000000005cf B __odr_asan.tb_live_qr_gQrVersion\n                 U tb_live_qr_AllocateCopyPool\n                 U tb_live_qr_AllocatePool\n                 U tb_live_qr_AllocateZeroPool\n                 U tb_live_qr_alogTable\n0000000000000350 T tb_live_qr_CheckQrVersion\n                 U tb_live_qr_CopyMem\n                 U tb_live_qr_FreePool\n                 U tb_live_qr_gAlignmentLocations\n                 U tb_live_qr_gAlphaNumerics\n00000000000002c0 B tb_live_qr_gBitStream\n0000000000000300 B tb_live_qr_gBitStreamCount\n00000000000003c0 B tb_live_qr_gBltBuffer\n0000000000000200 B tb_live_qr_gCodeWordCount\n00000000000001c0 B tb_live_qr_gCodeWords\n0000000000000280 B tb_live_qr_gECWordCount\n0000000000000240 B tb_live_qr_gECWords\n0000000000000380 B tb_live_qr_gFlags\n                 U tb_live_qr_gFormatInfo\n                 U tb_live_qr_gGeneratorPolynomials\n                 U tb_live_qr_gLengthBits\n0000000000000140 B tb_live_qr_gQrBitmap\n0000000000000180 B tb_live_qr_gQrBitmapLen\n0000000000000080 B tb_live_qr_gQrLevel\n0000000000000100 B tb_live_qr_gQrMask\n00000000000000c0 B tb_live_qr_gQrMode\n0000000000000040 B tb_live_qr_gQrSize\n0000000000000340 B tb_live_qr_gQrT\n                 U tb_live_qr_gQrTable\n0000000000000000 B tb_live_qr_gQrVersion\n                 U tb_live_qr_gVersionInfo\n                 U tb_live_qr_InitializeLogTables\n                 U tb_live_qr_logTable\n0000000000009382 T tb_live_qr_QrEncodeData\n                 U tb_live_qr_SetMem32\n                 U __ubsan_handle_divrem_overflow_abort\n                 U __ubsan_handle_out_of_bounds_abort\n                 U __ubsan_handle_pointer_overflow_abort\n                 U __ubsan_handle_shift_out_of_bounds_abort\n                 U __ubsan_handle_type_mismatch_v1_abort\n",
+          "QrEncoderTables.c": "                 U __asan_init\n                 U __asan_register_globals\n                 U __asan_report_store1\n                 U __asan_unregister_globals\n                 U __asan_version_mismatch_check_v8\n0000000000000241 B __odr_asan.tb_live_qr_alogTable\n000000000000024f B __odr_asan.tb_live_qr_Code10\n000000000000024e B __odr_asan.tb_live_qr_Code13\n000000000000024d B __odr_asan.tb_live_qr_Code15\n000000000000024c B __odr_asan.tb_live_qr_Code16\n000000000000024b B __odr_asan.tb_live_qr_Code17\n000000000000024a B __odr_asan.tb_live_qr_Code18\n0000000000000249 B __odr_asan.tb_live_qr_Code20\n0000000000000248 B __odr_asan.tb_live_qr_Code22\n0000000000000247 B __odr_asan.tb_live_qr_Code24\n0000000000000246 B __odr_asan.tb_live_qr_Code26\n0000000000000245 B __odr_asan.tb_live_qr_Code28\n0000000000000244 B __odr_asan.tb_live_qr_Code30\n0000000000000250 B __odr_asan.tb_live_qr_Code7\n0000000000000251 B __odr_asan.tb_live_qr_gAlignmentLocations\n0000000000000255 B __odr_asan.tb_live_qr_gAlphaNumerics\n0000000000000253 B __odr_asan.tb_live_qr_gFormatInfo\n0000000000000243 B __odr_asan.tb_live_qr_gGeneratorPolynomials\n0000000000000254 B __odr_asan.tb_live_qr_gLengthBits\n0000000000000256 B __odr_asan.tb_live_qr_gQrTable\n0000000000000252 B __odr_asan.tb_live_qr_gVersionInfo\n0000000000000242 B __odr_asan.tb_live_qr_logTable\n0000000000000240 B __odr_asan.tb_live_qr_QR_modulo\n0000000000000120 B tb_live_qr_alogTable\n0000000000001120 R tb_live_qr_Code10\n0000000000001160 R tb_live_qr_Code13\n00000000000011a0 R tb_live_qr_Code15\n00000000000011e0 R tb_live_qr_Code16\n0000000000001220 R tb_live_qr_Code17\n0000000000001260 R tb_live_qr_Code18\n00000000000012a0 R tb_live_qr_Code20\n00000000000012e0 R tb_live_qr_Code22\n0000000000001320 R tb_live_qr_Code24\n0000000000001360 R tb_live_qr_Code26\n00000000000013a0 R tb_live_qr_Code28\n00000000000013e0 R tb_live_qr_Code30\n00000000000010e0 R tb_live_qr_Code7\n0000000000000fa0 R tb_live_qr_gAlignmentLocations\n0000000000000de0 R tb_live_qr_gAlphaNumerics\n0000000000000e80 R tb_live_qr_gFormatInfo\n0000000000000000 D tb_live_qr_gGeneratorPolynomials\n0000000000000e40 R tb_live_qr_gLengthBits\n0000000000000000 R tb_live_qr_gQrTable\n0000000000000ee0 R tb_live_qr_gVersionInfo\n0000000000000000 T tb_live_qr_InitializeLogTables\n0000000000000000 B tb_live_qr_logTable\n0000000000001420 R tb_live_qr_QR_modulo\n                 U __ubsan_handle_out_of_bounds_abort\n                 U __ubsan_handle_pointer_overflow_abort\n                 U __ubsan_handle_type_mismatch_v1_abort\n"
+        },
+        "repeated_encodes": 64,
+        "Mu_compile_semantics": "-fwrapv for its signed all-one mask; fixed Mu bytes unchanged",
+        "fixtures": {
+          "fixed512": {
+            "bytes": 512,
+            "blocks": 1,
+            "frames": 2
+          },
+          "live4096": {
+            "bytes": 4096,
+            "blocks": 6,
+            "frames": 12
+          },
+          "xnu-backup": {
+            "early_bytes": 512,
+            "current_bytes": 3072,
+            "blocks": 6,
+            "frames": 12
+          }
+        },
+        "independent_decode_pending": true,
+        "hardware_verified": false
+      }
+    },
+    ".work/qr-namespace-fixed/qr-independent-decode.json": {
+      "sha256": "44a2ec8412698165a6c8ab4f64b78046420bfd389b698c5c4dcb7ee7be439afa",
+      "report": {
+        "result": "PASS",
+        "decoder": "independent ZXing-C++",
+        "cases": [
+          {
+            "fixture": "fixed512",
+            "QR_frames_decoded": 2,
+            "block_count": 1,
+            "file_bytes": 512,
+            "filename": "TB710FU-ramoops-fixed-0-4294967296-4294967808.log",
+            "file_sha256": "702af9b45f0b6d9d825184534c261926c531cf79e7aa6da0731acc59454f65c6",
+            "all_decoded_frame_bytes_exact": true,
+            "recovered_file_bytes_exact": true
+          },
+          {
+            "fixture": "live4096",
+            "QR_frames_decoded": 12,
+            "block_count": 6,
+            "file_bytes": 4096,
+            "filename": "TB710FU-ramoops-live-1-4294967296-4294971392.log",
+            "file_sha256": "bc972b49e49e6a5c094bcf9b47ad2f262e7f2f2812c60f87ce7879c6134748a0",
+            "all_decoded_frame_bytes_exact": true,
+            "recovered_file_bytes_exact": true
+          },
+          {
+            "fixture": "xnu-backup",
+            "QR_frames_decoded": 12,
+            "block_count": 6,
+            "file_bytes": 3711,
+            "filename": "TB710FU-xnu-live-2-4294967296-4294970368.log",
+            "file_sha256": "b9c7da672389d983fcccaa32cb3e4fd614b03f734f961b7697d586cf0372601c",
+            "all_decoded_frame_bytes_exact": true,
+            "recovered_file_bytes_exact": true
+          }
+        ],
+        "hardware_verified": false
+      }
+    }
+  },
+  "native_source_or_flags_changed": false,
+  "hardware_verified": false
+}

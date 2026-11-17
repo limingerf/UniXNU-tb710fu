@@ -1,5 +1,31 @@
 # Current status · 2026-11-18
 
+## Dual-live native build passes; host Mach-O name check corrected · 2026-11-18
+
+Run 44124706860 attempt 2, job 134197243714, at exact device source
+`7f409ffbc282c918e9ec2a5996c6e413b7a9682a` passed actual macOS arm64e
+native compilation, final link and all CDC/storage/LiveLog integration gates.
+The native kernel is 25,406,216 bytes, SHA-256
+`da18f5aac95b488b838cf6fd71ce4a58432d4f2da023ea433a9e744a1ada08b0`.
+The exact six-object LiveLog archive SHA-256 is
+`9fd004e41c234b87f030064d5059eca67c96b081bba00eb7dc23520215ad973f`.
+
+The next host Mu check stopped at `____asan_globals_registered`: its namespace
+checker omitted Darwin's one ABI-leading underscore. This is a host-checker
+false rejection, not a failed native link. The actual Apple Clang object has
+one ASan common registration variable and nine private `_tb_live_qr_*` code
+definitions. Prelink was skipped. The artifact digest and exact staged result
+are bound in `docs/evidence/dual-live-native-44124706860-attempt2.json`.
+
+The host checker now normalizes that one underscore only for actual thin64
+Mach-O objects, and permits only the observed ASan registration and private
+ODR metadata names. Ordinary globals and fake ASan names remain rejected.
+All three real Mach-O ASan QR/Mu objects, the actual Apple Clang object,
+GCC ASan/UBSan repeated encoding and independent ZXing recovery pass. See
+`docs/evidence/macho-qr-namespace-fix-20261118.json`. Native sources, pinned
+Mu bytes and target compile flags are unchanged by this fix. One new bounded
+source build follows; no dual-live prelinked image or signing is established.
+
 ## User selects two live log sources with retained early backup · 2026-11-18
 
 The latest user choice supersedes the fixed-left display: LEFT now exports
@@ -42,6 +68,16 @@ paths. The exact current sources and 11 passing reports are bound in
 `docs/evidence/dual-live-log-host-checks-20261118.json`. One new bounded native
 run follows this diagnosed source revision. No image or signing has yet been
 produced from the dual-live source.
+
+Dual-live source is pushed at `7f409ffbc282c918e9ec2a5996c6e413b7a9682a`.
+The only next bounded target is run 44124706860, `ufs-integrated`. Attempt 1,
+job 134185221494, never obtained a hosted macOS arm64 runner: steps and
+artifacts were empty, and GitHub explicitly reported capacity constraints.
+This is not a compiler result. The exact record is
+`docs/evidence/dual-live-runner-capacity-44124706860-attempt1.json`.
+After diagnosing that infrastructure failure, one rerun of the same source
+started attempt 2, job 134197243714. Native/prelink success remains pending.
+The intended display label is `src-7f409ffb-ramoops`.
 
 ## Stage 89 observed; native fixed/live ramoops QR prepared · 2026-11-17
 
