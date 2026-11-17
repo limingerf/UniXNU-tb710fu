@@ -52,8 +52,9 @@ static void surface(uint32_t width, uint32_t height, uint32_t stride)
     frame = memory + GUARD;
     assert(tb_live_display_bind(&d, frame, bytes + EXTRA, width, height, stride));
     assert(d.BandBytes == ((bytes >> 4) & ~(size_t)7U));
-    assert((size_t)d.StatusY * stride >= d.BandBytes * 3U);
-    assert((size_t)d.QrY * stride > d.BandBytes * 3U);
+    assert((size_t)d.QrY * stride >= d.BandBytes * 3U);
+    assert((size_t)d.StatusY * stride >=
+           ((size_t)d.QrY + TB_LIVE_QR_SIDE * d.QrScale) * stride);
     assert(d.QrX + TB_LIVE_QR_SIDE * d.QrScale <= width);
     assert(d.QrSecondX + TB_LIVE_QR_SIDE * d.QrScale <= width);
     if (d.DualQr)
@@ -127,7 +128,7 @@ static void surface(uint32_t width, uint32_t height, uint32_t stride)
     }
     guards(memory, bytes);
 
-    /* Clear the old status line before a shorter message; never clear bands or QR. */
+    /* The high-contrast status line stays below both QR slots. */
     assert(tb_live_display_status(&d, ""));
     for (y = 0; y < 19U * d.TextScale; ++y)
         for (x = 0; x < width; ++x)

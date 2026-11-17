@@ -16,6 +16,7 @@ enum tb710fu_live_capture_state {
 #define TB710FU_LIVE_LOG_NAME_BYTES 96u
 #define TB710FU_LIVE_LOG_BLOCK_BYTES 720u
 #define TB710FU_LIVE_LOG_FRAME_BYTES 752u
+#define TB710FU_LIVE_LOG_MIN_ROUNDS 16u
 #define TB710FU_LIVE_LOG_ENVELOPE_BYTES \
     (26u + TB710FU_LIVE_LOG_NAME_BYTES + 10u + TB710FU_LIVE_LOG_MAX_BYTES)
 
@@ -85,8 +86,9 @@ struct tb710fu_live_log_info {
  * snapshot copies the exact log bytes into an immutable LMS1 file envelope.
  * start/end are absolute byte offsets; end - start must equal length.
  * An empty log is reported as EMPTY and does not replace a valid transfer.
- * Once accepted, at least two complete source-block rounds must be emitted
- * before another snapshot may replace it. More rounds may be sent indefinitely.
+ * Once accepted, at least TB710FU_LIVE_LOG_MIN_ROUNDS complete source-block
+ * rounds must be emitted before another snapshot may replace it. More rounds
+ * may be sent indefinitely.
  * Each next_frame call emits one profile-0 systematic OneSend frame, skipping
  * repair sequence numbers. The native adapter owns timing and snapshot policy.
  * A receiver must finish/reset (or retain a receiver per session) when the
@@ -103,7 +105,7 @@ struct tb710fu_live_log_sender {
 
 void tb710fu_live_log_sender_init(struct tb710fu_live_log_sender *sender);
 /* Init defaults to RAMOOPS for existing raw users. Same-source selection is a
- * no-op. Changing source requires the old two-round gate and clears the old
+ * no-op. Changing source requires the minimum-round gate and clears the old
  * transfer, so an old envelope cannot be presented as the newly selected log.
  * Invalid enum or a busy transfer returns 0 and leaves all state unchanged.
  */
@@ -116,7 +118,7 @@ enum tb710fu_live_log_result tb710fu_live_log_snapshot(
  * the current source tail. The caller supplies that complete file unchanged.
  * Require nonempty body <=4096 and 0 <= end-start <= body length; start/end
  * still name only the actual current source range. An empty current range is
- * permitted for a metadata/backup-only file. The same two-round gate applies.
+ * permitted for a metadata/backup-only file. The same minimum-round gate applies.
  * Neither snapshot API allows bytes to alias the sender's internal storage.
  */
 enum tb710fu_live_log_result tb710fu_live_log_snapshot_file(

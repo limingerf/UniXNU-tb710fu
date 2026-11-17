@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "stage": "dual-live-session-and-visible-status-host-fix",
+  "result": "PASS",
+  "user_observation": {
+    "display_label": "src-7f409ffb-ramoops",
+    "reported": [
+      "Purple-looking band",
+      "Two QR streams did not appear to rotate",
+      "XNU transfer stopped near 50 percent",
+      "Ramoops transfer was empty",
+      "Only a truncated status row was visible"
+    ],
+    "status_row_values_after_showing_not_observed": true
+  },
+  "source_analysis": {
+    "upstream_standard_third_band_bgra": "0xffff00ff",
+    "interpretation": "The third pinned standard band is magenta. Actual panel pixel format and scanout remain unverified.",
+    "old_sender_minimum_rounds": 2,
+    "old_frames_per_stream_per_second": 1,
+    "old_xnu_block_count": 6,
+    "old_session_change_after_seconds": 12,
+    "receiver_requires_explicit_reset_on_new_session": true,
+    "likely_explanation_for_partial_transfer": "A new live snapshot creates a different session which the pinned receiver does not join automatically.",
+    "ramoops_successful_init_always_writes_banner": true,
+    "ramoops_empty_observation_proves_init_or_mapping_failure": false
+  },
+  "changes": {
+    "global_poll_interval_ms": 250,
+    "frames_per_stream_per_second": 2,
+    "minimum_complete_rounds_before_replacement": 16,
+    "maximum_size_six_block_session_stable_seconds_when_worker_runs": 48,
+    "status_row_position": "Below both QR codes",
+    "status_fields": [
+      "worker started",
+      "poll counter",
+      "currently rendered stream",
+      "XNU state, bytes, rounds, blocks",
+      "ramoops state, bytes, rounds, blocks",
+      "early snapshot state",
+      "build label"
+    ],
+    "standard_bands_changed": false,
+    "receiver_source_changed": false
+  },
+  "checks": {
+    "live_display_asan_ubsan": "PASS",
+    "live_adapter_asan_ubsan_groups": 10,
+    "live_adapter_invalid_video_cases": 15,
+    "live_protocol_sender_and_pinned_receiver_asan_ubsan": "PASS",
+    "live_protocol_replacement_round_gate": 16,
+    "ramoops_production_snapshot_asan_ubsan_cases": 10,
+    "actual_mu_qr_debug_0_and_1": "PASS",
+    "independent_zxing_recovery_debug_0_and_1": "PASS",
+    "package_verifier_tests": 11,
+    "native_arm64e_build": "PENDING",
+    "hardware_display_and_log_receipt": "UNVERIFIED"
+  },
+  "runtime_limits": [
+    "The unchanged pinned OneSend receiver must be reset before a new session; the 16-round window gives the camera more collection time but does not implement receiver auto-reset.",
+    "The status row can reveal worker or ramoops state if the framebuffer continues to update; it cannot report live progress after execution stops.",
+    "A READY ramoops snapshot and host framebuffer test do not qualify physical mapping, panel format or hardware scanout."
+  ],
+  "device_operations": false,
+  "hardware_verified": false
+}

@@ -1,5 +1,41 @@
 # Current status · 2026-11-18
 
+## Dual-live field report: session timeout and hidden status · 2026-11-18
+
+The user tested the signed `src-7f409ffb-ramoops` bundle. They report a
+purple-looking band, no apparent rotation, the XNU receiver stopping near 50%,
+an empty ramoops transfer, and only part of the on-screen status row visible.
+The row did not reveal `showing`, `R=` state or rounds, so the hardware cause is
+not established. The third pinned upstream band is explicitly magenta
+(`0xffff00ff`); its physical panel color interpretation remains a hardware gate.
+
+The sender kept each six-block live session for two rounds. At one frame per
+stream per second this allowed a replacement after about 12 seconds. The pinned
+OneSend receiver requires an explicit reset at a session change and rejects
+frames from a new session in the old receive state. This is a strong explanation
+for a transfer freezing part way through, though it does not explain a visibly
+static framebuffer. On successful ramoops initialization the native code writes
+a boot banner before snapshots, so a genuinely empty file points to failed
+initialization/mapping, a stopped worker, stale display content or session
+handling. The old status row that would separate these states was obscured.
+
+The source fix now gives each channel 16 rounds before replacing a session and
+polls one frame every 250ms, advancing each stream at about two frames/second.
+A maximum six-block session remains stable for about 48 seconds once the worker
+runs. It moves the status row below both QR images and reports worker state, poll
+count, active stream, per-stream state/bytes/rounds/block count, early-backup
+state and build label. The original standard color bands are unchanged.
+
+Host checks pass: display and adapter ASan/UBSan, 10 adapter groups and 15 bad
+video cases, 16-round protocol replacement, the pinned OneSend receiver,
+10 ramoops snapshot cases, both DEBUG configurations of the real Mu encoder,
+independent ZXing recovery, and all 11 package verifier tests. Evidence is
+`docs/evidence/dual-live-runtime-fix-host-20261118.json`. New native macOS
+compilation/link, strict WSL prelink, signed image and hardware retest are
+pending. The pinned receiver still needs a reset between each stream/session;
+this change gives the camera longer to collect a file but does not add automatic
+receiver session switching.
+
 ## Dual-live WSL continuation completed; signed test bundle ready · 2026-11-18
 
 The requested dual-live candidate is complete at the host/image stage. Exact

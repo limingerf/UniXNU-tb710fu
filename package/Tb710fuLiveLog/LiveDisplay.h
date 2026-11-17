@@ -49,7 +49,7 @@ int tb_live_display_qr_slot(TB_LIVE_DISPLAY *display, const uint32_t *bgra,
                             size_t pixels, uint32_t side, unsigned slot);
 
 /* One bounded ASCII line, truncated at the right edge. Unsupported bytes use ?.
- * It is painted above the QR and below the three color bands.
+ * It is painted below the QR, separate from the upstream color bands.
  */
 int tb_live_display_status(TB_LIVE_DISPLAY *display, const char *text);
 

@@ -31,6 +31,7 @@ typedef struct { uint64_t v_baseAddr, v_depth, v_width, v_height, v_rowBytes, v_
     enum { registered_subsystem = subsystem, registered_rank = rank }
 static uint64_t tb_live_host_ticks(void);
 static uint64_t tb_live_host_frequency(void);
+static void tb_live_host_status(const char *);
 static int PE_parse_boot_argn(const char *, void *, int);
 static int PE_current_console(PE_Video *);
 static vm_offset_t ml_io_map(uint64_t, vm_size_t);
@@ -46,6 +47,7 @@ static unsigned arg_present, arg_value, map_fail, reenter_encoder;
 static unsigned map_calls, snapshot_calls, qr_calls, wait_calls, block_calls;
 static unsigned create_calls, deallocate_calls, deadline_calls, reentries, encoded_by_source[2];
 static uint64_t clock_now, clock_frequency, xnu_written;
+static char last_status[256];
 static uint8_t log_bytes[8192], encoded_frame[TB710FU_LIVE_LOG_FRAME_BYTES];
 static size_t log_length, last_capacity;
 static unsigned log_state;
@@ -60,6 +62,8 @@ static uint16_t le16(const uint8_t *p) { return p[0] | (uint16_t)p[1] << 8; }
 static uint8_t xnu_byte(uint64_t offset) { return (uint8_t)(offset * 17u + 3u); }
 static uint64_t tb_live_host_ticks(void) { return clock_now; }
 static uint64_t tb_live_host_frequency(void) { return clock_frequency; }
+static void tb_live_host_status(const char *text)
+{ snprintf(last_status, sizeof(last_status), "%s", text); }
 static int PE_parse_boot_argn(const char *name, void *output, int bytes)
 {
     assert(strcmp(name, "tb710fu-live-log") == 0 && bytes == (int)sizeof(int));
@@ -139,6 +143,7 @@ static void reset_fixture(void)
     map_calls = snapshot_calls = qr_calls = wait_calls = block_calls = 0;
     create_calls = deallocate_calls = deadline_calls = reentries = 0;
     encoded_by_source[0] = encoded_by_source[1] = 0; clock_now = xnu_written = 0; clock_frequency = 1000;
+    last_status[0] = '\0';
     log_state = TB710FU_RAMOOPS_READY; log_length = 5000; last_capacity = 0; created_worker = NULL;
     for (size_t i = 0; i < sizeof(log_bytes); ++i) log_bytes[i] = (uint8_t)('R' + i % 13u);
     video_input = (PE_Video){ .v_baseAddr = 0xd5100000, .v_depth = 32, .v_width = 640,
@@ -148,7 +153,7 @@ static void feed_xnu(size_t count)
 { for (size_t i = 0; i < count; ++i) tb710fu_live_log_putc((char)xnu_byte(xnu_written++)); }
 static void tick(void)
 {
-    unsigned old_qr = qr_calls, old_wait = wait_calls; clock_now += 500; tb710fu_live_log_poll();
+    unsigned old_qr = qr_calls, old_wait = wait_calls; clock_now += 250; tb710fu_live_log_poll();
     assert(qr_calls <= old_qr + 1u && wait_calls == old_wait && guard == 0); guards();
 }
 static const uint8_t *body(const struct tb710fu_live_log_sender *s)
@@ -230,7 +235,7 @@ static void test_global_budget_and_stream_isolation(void)
     tick(); tick();
     assert(xnu_sender.info.generation == saved.info.generation && xnu_sender.info.rounds < 2);
     assert(memcmp(xnu_sender.envelope, saved.envelope, sizeof(saved.envelope)) == 0);
-    for (unsigned i = 0; i < 30; ++i) tick();
+    for (unsigned i = 0; i < 200; ++i) tick();
     assert_xnu_body(512, early_bytes, 512); assert_ramoops_body(512);
     assert(xnu_sender.info.generation > saved.info.generation && encoded_by_source[0] > 2 && encoded_by_source[1] > 2);
     assert(!create_calls && !wait_calls && !block_calls);
@@ -241,7 +246,7 @@ static void test_backup_survives_wrap_in_every_left_file(void)
     uint8_t backup[512]; memcpy(backup, early_bytes, sizeof(backup));
     struct tb710fu_live_capture_info frozen = early_state;
     for (unsigned pass = 0; pass < 3; ++pass) {
-        feed_xnu(70000); for (unsigned i = 0; i < 30; ++i) tick();
+        feed_xnu(70000); for (unsigned i = 0; i < 200; ++i) tick();
         assert_xnu_body(512, backup, sizeof(backup)); assert(xnu_sender.info.start > frozen.end);
         tb710fu_live_log_freeze(); assert(memcmp(early_bytes, backup, sizeof(backup)) == 0);
         assert(memcmp(&early_state, &frozen, sizeof(frozen)) == 0);
@@ -267,8 +272,10 @@ static void test_worker_requires_actual_execution(void)
     assert_xnu_body(512, early_bytes, 512); assert_ramoops_body(512); clock_now += 500;
     if (!setjmp(worker_escape)) created_worker(NULL, 0);
     assert(worker_started && wait_calls == 1 && block_calls == 1 && deadline_calls == 1);
-    for (unsigned i = 0; i < 64; ++i) tick();
+    for (unsigned i = 0; i < 220; ++i) tick();
     assert(last_capacity == 4096); assert_xnu_body(3072, early_bytes, 512); assert_ramoops_body(4096);
+    assert(strstr(last_status, "W=1") && strstr(last_status, "P="));
+    assert(strstr(last_status, "R=ready:4096B 16/6"));
     assert(wait_calls == 1 && block_calls == 1 && create_calls == 1);
 }
 static uint32_t slot_pixel(unsigned slot)

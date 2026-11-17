@@ -60,7 +60,7 @@ def main():
                     for path in sources},
         "geometry": [[3200, 2000, 12800], [640, 480, 2560], [641, 481, 2576],
                      [153, 240, 616], [289, 480, 1160], [290, 480, 1160], [1600, 900, 6412]],
-        "dual_QR": "independent fixed-left and live-right rectangles; small surfaces share one caller-alternated slot",
+        "dual_QR": "independent fixed-left and live-right rectangles; status row is below both codes; small surfaces share one caller-alternated slot",
         "hardware_verified": False,
         "limits": "Host memory rendering only; no actual panel, cache, timing, mapping or concurrency proof.",
     }

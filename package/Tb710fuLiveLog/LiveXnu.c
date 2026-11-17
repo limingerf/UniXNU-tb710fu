@@ -31,7 +31,7 @@ static uint8_t snapshot[TB710FU_LIVE_LOG_MAX_BYTES];
 static uint8_t xnu_file[TB710FU_LIVE_LOG_MAX_BYTES], early_bytes[512], frame[752];
 static unsigned enabled, guard, redraw, worker_started, sleep_channel, early_frozen, early_once;
 static unsigned next_slot;
-static uint64_t frequency, next_frame, xnu_generation, ramoops_generation, xnu_last_dropped;
+static uint64_t frequency, next_frame, poll_count, xnu_generation, ramoops_generation, xnu_last_dropped;
 
 /* This strong writer is capture only: no framebuffer, encoding, allocation,
  * polling or logging. A contending writer records a drop and returns. */
@@ -74,11 +74,21 @@ static const char *state_name(unsigned state)
 static void status_line(unsigned slot)
 {
     char text[256];
+    struct tb710fu_live_log_info xnu = {0}, ramoops = {0};
+    (void)tb710fu_live_log_get_info(&xnu_sender, &xnu);
+    (void)tb710fu_live_log_get_info(&ramoops_sender, &ramoops);
     (void)snprintf(text, sizeof(text),
-        "LEFT XNU | RIGHT RAMOOPS | earlybackup=%s | showing=%s | X=%s R=%s | %.64s",
+        "W=%u P=%llu S=%s | X=%s:%uB %u/%u R=%s:%uB %u/%u | E=%s | %.24s",
+        __atomic_load_n(&worker_started, __ATOMIC_ACQUIRE),
+        (unsigned long long)poll_count, slot == 0 ? "XNU" : "RAMOOPS",
+        state_name(xnu_state.state), xnu_state.copied, xnu.rounds, xnu.block_count,
+        state_name(ramoops_state.state), ramoops_state.copied,
+        ramoops.rounds, ramoops.block_count,
         __atomic_load_n(&early_frozen, __ATOMIC_ACQUIRE) ? state_name(early_state.state) : "pending",
-        slot == 0 ? "XNU" : "RAMOOPS", state_name(xnu_state.state),
-        state_name(ramoops_state.state), TB_LIVE_BUILD_LABEL);
+        TB_LIVE_BUILD_LABEL);
+#ifdef TB_LIVE_HOST_TEST
+    tb_live_host_status(text);
+#endif
     (void)tb_live_display_status(&display, text);
 }
 
@@ -133,7 +143,7 @@ static void snapshot_ramoops(void)
     }
 }
 
-/* Each global 500 ms tick handles at most one stream/frame. Slots alternate;
+/* Each global 250 ms tick handles at most one stream/frame. Slots alternate;
  * drawing one dual-screen slot never clears the other stream's last frame. */
 void tb710fu_live_log_poll(void)
 {
@@ -142,7 +152,8 @@ void tb710fu_live_log_poll(void)
     uint64_t now = live_ticks();
     if (now < next_frame) goto done;
     unsigned refresh = __atomic_exchange_n(&redraw, 0u, __ATOMIC_ACQ_REL);
-    next_frame = now + frequency / 2u;
+    next_frame = now + frequency / 4u;
+    ++poll_count;
     if (refresh) (void)tb_live_display_bands(&display);
     unsigned slot = next_slot;
     next_slot ^= 1u;
@@ -207,7 +218,7 @@ void tb710fu_live_log_init(void)
 #else
     __asm__ volatile("mrs %0, cntfrq_el0" : "=r"(frequency));
 #endif
-    if (frequency < 2u) return;
+    if (frequency < 4u) return;
     tb710fu_live_log_sender_init(&xnu_sender);
     tb710fu_live_log_sender_init(&ramoops_sender);
     (void)tb710fu_live_log_set_source(&xnu_sender, TB710FU_LIVE_LOG_XNU);

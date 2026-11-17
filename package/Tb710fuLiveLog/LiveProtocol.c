@@ -150,7 +150,8 @@ int tb710fu_live_log_set_source(struct tb710fu_live_log_sender *sender,
 
 int tb710fu_live_log_can_snapshot(const struct tb710fu_live_log_sender *sender)
 {
-    return sender != NULL && (!sender->valid || sender->info.rounds >= 2u);
+    return sender != NULL && (!sender->valid ||
+        sender->info.rounds >= TB710FU_LIVE_LOG_MIN_ROUNDS);
 }
 
 int tb710fu_live_log_get_info(const struct tb710fu_live_log_sender *sender,

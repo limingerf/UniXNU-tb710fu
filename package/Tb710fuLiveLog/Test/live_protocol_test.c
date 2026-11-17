@@ -96,9 +96,10 @@ static void test_file_bounds(void)
     assert(!tb710fu_live_log_set_source(&sender, TB710FU_LIVE_LOG_RAMOOPS));
     assert(tb710fu_live_log_snapshot_file(&sender, bytes, 1, 2, 900, 900) == TB710FU_LIVE_LOG_BUSY);
     assert(memcmp(&sender, &saved, sizeof(sender)) == 0);
-    for (unsigned round = 0; round < 2; ++round) {
+    for (unsigned round = 0; round < TB710FU_LIVE_LOG_MIN_ROUNDS; ++round) {
         assert(tb710fu_live_log_next_frame(&sender, frame));
-        if (round == 0) assert(!tb710fu_live_log_set_source(&sender, TB710FU_LIVE_LOG_RAMOOPS));
+        if (round + 1u < TB710FU_LIVE_LOG_MIN_ROUNDS)
+            assert(!tb710fu_live_log_set_source(&sender, TB710FU_LIVE_LOG_RAMOOPS));
     }
     assert(tb710fu_live_log_set_source(&sender, TB710FU_LIVE_LOG_RAMOOPS));
     assert(!sender.valid && sender.source == TB710FU_LIVE_LOG_RAMOOPS && !tb710fu_live_log_get_info(&sender, &info));
@@ -148,7 +149,7 @@ int main(int argc, char **argv)
         "\"zero_init_empty\":true,\"two_wraps_and_boundary_tail\":true,"
         "\"busy_writer_drops_without_wait\":true,\"busy_reader_preserves_output\":true,"
         "\"absolute_position_saturates\":true,\"invalid_outputs_preserved\":true,"
-        "\"source_enum_and_two_round_gate\":true,\"file_body_range_bounds\":true}\n", capture_report) >= 0);
+        "\"source_enum_and_16_round_gate\":true,\"file_body_range_bounds\":true}\n", capture_report) >= 0);
     assert(fclose(capture_report) == 0);
     uint8_t frame[TB710FU_LIVE_LOG_FRAME_BYTES];
     struct tb710fu_live_log_info info;
@@ -218,9 +219,11 @@ int main(int argc, char **argv)
         count = snprintf(name, sizeof(name), "case-%u.frames", test);
         assert(count > 0 && (size_t)count < sizeof(name));
         FILE *frames = output(directory, name);
-        for (uint32_t index = 0; index < info.block_count * 4u; ++index) {
+        uint32_t receiver_frames = info.block_count * 4u;
+        uint32_t stable_frames = info.block_count * TB710FU_LIVE_LOG_MIN_ROUNDS;
+        for (uint32_t index = 0; index < stable_frames; ++index) {
             saved = sender;
-            if (index < info.block_count * 2u) {
+            if (index + 1u < stable_frames) {
                 assert(snapshot_case(test, bytes, length, generation + 1u, start, end) == TB710FU_LIVE_LOG_BUSY);
                 assert(memcmp(&sender, &saved, sizeof(sender)) == 0);
             }
@@ -232,10 +235,11 @@ int main(int argc, char **argv)
             assert(read32(frame + 12) == info.block_count);
             assert(read32(frame + 20) == info.envelope_bytes);
             assert(read32(frame + 24) == info.payload_checksum);
-            assert(fwrite(frame, 1, sizeof(frame), frames) == sizeof(frame));
+            if (index < receiver_frames)
+                assert(fwrite(frame, 1, sizeof(frame), frames) == sizeof(frame));
             assert(tb710fu_live_log_get_info(&sender, &info));
             assert(info.rounds == (index + 1u) / info.block_count);
-            assert(tb710fu_live_log_can_snapshot(&sender) == (index + 1u >= info.block_count * 2u));
+            assert(tb710fu_live_log_can_snapshot(&sender) == (index + 1u >= stable_frames));
         }
         assert(fclose(frames) == 0);
         assert(fprintf(manifest,

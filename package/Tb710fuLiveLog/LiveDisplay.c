@@ -17,7 +17,7 @@ typedef uint8_t UINT8;
 
 static int valid(const TB_LIVE_DISPLAY *d)
 {
-    size_t frame, band, first_row;
+    size_t frame, band, first_row, status_y;
     uint32_t dual, horizontal;
     if (!d || !d->Base || ((uintptr_t)d->Base & 3U) ||
         d->Width < TB_LIVE_QR_SIDE + DISPLAY_MARGIN * 2U ||
@@ -35,14 +35,17 @@ static int valid(const TB_LIVE_DISPLAY *d)
     if (frame > d->Bytes || (uintptr_t)d->Base > UINTPTR_MAX - frame ||
         d->FrameBytes != frame || d->BandBytes != band ||
         d->TextScale != (d->Width >= 1600U ? 2U : 1U) ||
-        d->StatusY != first_row + 8U || d->QrX != DISPLAY_MARGIN ||
-        d->QrY != d->StatusY + GLYPH_HEIGHT * d->TextScale + 8U ||
+        d->QrX != DISPLAY_MARGIN || d->QrY != first_row + 8U ||
         d->DualQr != dual ||
         d->QrSecondX != (dual ? d->Width - DISPLAY_MARGIN - TB_LIVE_QR_SIDE * d->QrScale : d->QrX) ||
         !d->QrScale || d->QrScale > 8U ||
         d->QrY >= d->Height ||
         d->QrScale > (d->Height - d->QrY - 1U) / TB_LIVE_QR_SIDE ||
         d->QrScale > horizontal)
+        return 0;
+    status_y = (size_t)d->QrY + TB_LIVE_QR_SIDE * d->QrScale + 8U;
+    if (d->StatusY != status_y ||
+        status_y + GLYPH_HEIGHT * d->TextScale > d->Height)
         return 0;
     return 1;
 }
@@ -71,14 +74,18 @@ int tb_live_display_bind(TB_LIVE_DISPLAY *d, void *base, size_t bytes,
     d->BandBytes = (d->FrameBytes >> 4) & ~(size_t)7U;
     first_row = (d->BandBytes * 3U + stride_bytes - 1U) / stride_bytes;
     d->TextScale = width >= 1600U ? 2U : 1U;
-    d->StatusY = (uint32_t)first_row + 8U;
     d->QrX = DISPLAY_MARGIN;
-    d->QrY = d->StatusY + GLYPH_HEIGHT * d->TextScale + 8U;
+    d->QrY = (uint32_t)first_row + 8U;
     if (d->QrY >= height) {
         *d = empty;
         return 0;
     }
-    d->QrScale = (height - d->QrY - 1U) / TB_LIVE_QR_SIDE;
+    size_t bottom_ui = GLYPH_HEIGHT * d->TextScale + 8U;
+    if (height - d->QrY <= bottom_ui) {
+        *d = empty;
+        return 0;
+    }
+    d->QrScale = (height - d->QrY - bottom_ui) / TB_LIVE_QR_SIDE;
     d->DualQr = width >= TB_LIVE_QR_SIDE * 2U + DISPLAY_MARGIN * 3U;
     horizontal = d->DualQr ? (width - DISPLAY_MARGIN * 3U) / (TB_LIVE_QR_SIDE * 2U) :
                             (width - DISPLAY_MARGIN * 2U) / TB_LIVE_QR_SIDE;
@@ -87,6 +94,7 @@ int tb_live_display_bind(TB_LIVE_DISPLAY *d, void *base, size_t bytes,
     if (d->QrScale > 8U)
         d->QrScale = 8U;
     d->QrSecondX = d->DualQr ? width - DISPLAY_MARGIN - TB_LIVE_QR_SIDE * d->QrScale : d->QrX;
+    d->StatusY = d->QrY + TB_LIVE_QR_SIDE * d->QrScale + 8U;
     if (!valid(d)) {
         *d = empty;
         return 0;

@@ -50,7 +50,8 @@ DUAL_SOURCE_LOG_CONTRACT = {
              'export_body_bytes_max': 4096},
     'right': {'slot': 1, 'source': 'ramoops', 'current_tail_bytes_max': 4096,
               'provider': 'tb710fu_ramoops_snapshot_copy', 'export_body_bytes_max': 4096},
-    'frames_per_poll_max': 1, 'complete_rounds_before_replacement_min': 2,
+    'frames_per_poll_max': 1, 'poll_interval_ms': 250,
+    'complete_rounds_before_replacement_min': 16,
 }
 
 
