@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "stage": "signed-cdc-qr-source-storage-bundle-independently-verified",
+  "kernel_run_id": 44088845841,
+  "kernel_source_commit": "c0154c9d5e7048f7896614e1ca8d65be7d4d0e10",
+  "explicit_user_authorization": "Local image signing for hardware testing; no device commands authorized or run.",
+  "files": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "a69c64ce476c6c5dc44b8fde29c9569e5ed5468584ee5a86d21c2832787d5680"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "f0dfcae10f915977fc768f9fa59de4187299429ff6124fe7dd00ef2be52dbbcd"
+    }
+  },
+  "unsigned_vendor_sha256": "6e6a79c3a481ed091cab56f7952c021eecabcf10a9f787cf9b070c55dd56bcd4",
+  "unsigned_payload_byte_for_byte_preserved": true,
+  "rsa4096_pkcs1_sha256_independent_checks": {
+    "vendor_boot_footer": "PASS",
+    "vbmeta": "PASS",
+    "boot_footer": "PASS"
+  },
+  "salted_image_hash_checks": {
+    "vendor_boot": "PASS",
+    "boot": "PASS"
+  },
+  "unchanged_other_raw_descriptors": 22,
+  "identical_vbmeta_header": true,
+  "public_key_unchanged": true,
+  "boot_chain_public_key_matches": true,
+  "boot_chain_rollback_index_location": 3,
+  "boot_rollback_index": 1736035200,
+  "vbmeta_rollback_index": 0,
+  "vbmeta_rollback_index_location": 0,
+  "vbmeta_flags": 1,
+  "public_avb_key_sha256": "7728e30f50bfa5cea165f473175a08803f6a8346642b5aa10913e9d9e6defef6",
+  "boot_original_bytes": 659456,
+  "vendor_boot_original_bytes": 37859328,
+  "packaged_kernel_sha256": "2410ec0545996500af0e8c051f4ce33f9941685a6cc73c63b082a51222da0b7f",
+  "packaged_kernel_bytes": 143687680,
+  "original_prelink_sha256": "503599a026ee362e9523aba1808f8af01601ae1323c7404fe7ecd1ed9a5690e2",
+  "diagnostics": {
+    "stage": "verified-postlink-early-qr-transform",
+    "original_prelink_sha256": "503599a026ee362e9523aba1808f8af01601ae1323c7404fe7ecd1ed9a5690e2",
+    "diagnostic_kernel_sha256": "2410ec0545996500af0e8c051f4ce33f9941685a6cc73c63b082a51222da0b7f",
+    "diagnostic_kernel_bytes": 143687680,
+    "patch_spans_verified": 35,
+    "trace_sites_verified": 28,
+    "compact_checkpoints_verified": 3,
+    "prefix_changes_bounded": true,
+    "reporter_payload_sha256": "af7d25169bfff85da586efcb372cf076c49c1df64b069f0a7739b4a2cc014e9d",
+    "normal_kernel_execution_preserved": true,
+    "hardware_verified": false,
+    "strong_runtime_definitions_verified": 13,
+    "preserved_runtime_code_bytes": 7656,
+    "runtime_definitions": [
+      {
+        "name": "_tb710fu_cdc_log_tap_putc",
+        "address": "0xfffffff00c24a6f0",
+        "bytes": 60,
+        "sha256": "a1c551280b36d83795e833177aaa64d4d570330699d6c286b661c7facb841af6"
+      },
+      {
+        "name": "_tb710fu_cdc_log_tap_copy",
+        "address": "0xfffffff00c24a72c",
+        "bytes": 24,
+        "sha256": "4e634dd3d6e127faf0db8bb41489f0b2f8f7d9caf11a3f9849102117ab9ecb0d"
+      },
+      {
+        "name": "_tb710fu_cdc_log_tap_consume",
+        "address": "0xfffffff00c24a744",
+        "bytes": 20,
+        "sha256": "131968ae86e63155ea40de7fa6e061f20866764ab9b10a3468a0edd1fcf7c81c"
+      },
+      {
+        "name": "_tb710fu_cdc_log_ring_append",
+        "address": "0xfffffff00c24a79c",
+        "bytes": 172,
+        "sha256": "4fc4501a094336c7785696278ee0e13a4e257f7ce6af5cffa9cd1fc667b88718"
+      },
+      {
+        "name": "_tb710fu_cdc_log_ring_copy",
+        "address": "0xfffffff00c24a848",
+        "bytes": 132,
+        "sha256": "83239a463e76915dba67389879602036642ca04127332c9af90f007e51a9b5b1"
+      },
+      {
+        "name": "_tb710fu_cdc_log_ring_consume",
+        "address": "0xfffffff00c24a8cc",
+        "bytes": 100,
+        "sha256": "0889a64b922b21893ccb63240e3beafb9f60dd95973cab3980833b8414f08bfc"
+      },
+      {
+        "name": "_tb710fu_cdc_classify_setup",
+        "address": "0xfffffff00c24ac18",
+        "bytes": 684,
+        "sha256": "d4f135c5529d0d96922641e4cf4ba5b0ba8eb2aee5be1e1965b467cd0d3b5dad"
+      },
+      {
+        "name": "_tb710fu_cdc_preflight",
+        "address": "0xfffffff00c24aec4",
+        "bytes": 312,
+        "sha256": "52752bfc8aeb68ff8a056a084ca1e7737fd564f83879769a2a34d636d27f6414"
+      },
+      {
+        "name": "_tb710fu_dwc3_start",
+        "address": "0xfffffff00c24c194",
+        "bytes": 1412,
+        "sha256": "651c02a8baeac510e3d4683627544fc1fb8feecdfa1ab7bc3a388bb4abb2590d"
+      },
+      {
+        "name": "_tb710fu_dwc3_poll",
+        "address": "0xfffffff00c24b0c8",
+        "bytes": 3656,
+        "sha256": "6621cb0ac0236d75f0748d0070ebeac8fc46b8ee89928798458167e000257e0b"
+      },
+      {
+        "name": "_tb710fu_dwc3_stop",
+        "address": "0xfffffff00c24affc",
+        "bytes": 204,
+        "sha256": "1dfd5b6f701557706a8bc6ecb7983ef2042fdfbba560cb85785b9666500b09f6"
+      },
+      {
+        "name": "_tb710fu_cdc_start",
+        "address": "0xfffffff00c24d974",
+        "bytes": 176,
+        "sha256": "2a39ef733d6b8e45a92a3d7fff0f5ab74c0f29001bf3a30f7d349ff0aed51f0d"
+      },
+      {
+        "name": "_native_source_storage_start",
+        "address": "0xfffffff00c25b478",
+        "bytes": 704,
+        "sha256": "398945bc61047c16c621d2010b5c336ece69f670143413d6728ef223f7d809e2"
+      }
+    ],
+    "reporter_tool_sha256": "73af7f048c5b7a6499cf09972e55bc5abeddbaa4c345439c7d6c7a2773916624",
+    "diagnostic_report_sha256": "374a97cee73014056d8e01c81c31b505fd5d00dbcfe67896ab3dfad78b0cd128",
+    "display_build_label": "src-503599a0-cdc-qr"
+  },
+  "fat_clusters": 66512,
+  "payload_sha256": "457e766594c2941e75620f18abb706d75423bd1dbde5d197c134d28fd4bd1ace",
+  "file_readback_sha256": {
+    "Payloads/kernel.macho": "613995e69eab79899f50b29716c00844d9d949183689a29e73a8db9dc35cf692",
+    "Payloads/kernel.macho.adt": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+    "Payloads/kernel.macho.vroot": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+    "unixnu.toml": "34fcfb36eb15b231ffb14db5ebd4eaf96ed4f184e22935e00769cf4acfe37d9a"
+  },
+  "boot_args": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1",
+  "signer_path": "tools/sign_kernel_probe_pair.py",
+  "signer_sha256": "03b357881a34734743befa1eadbf060f98479378f0a2196b0bf300deb3590290",
+  "avbtool_sha256": "f647dc4efc190f192d1522ca06d058de6a99ed3b44f95c8cb385f20dfb8a7da7",
+  "independent_verifier_sha256": "026435ed2fe21934adafdfac8da5f1db6fa3b19b4c5ee6e5a7e2d39e7154e208",
+  "packaging_report_sha256": "5b628a9b3130f3616f8c6a764a7b1b01caed26076de76180d9b0116ef9ac7479",
+  "signing_report_sha256": "fe02277097c6d492aa9114c0413ea0d3a76d16bd01035f19827fdcd63a8d8d98",
+  "private_key_used_locally": true,
+  "signing_performed": true,
+  "new_firmware_built": false,
+  "device_operations": false,
+  "hardware_boot_verified": false,
+  "cdc_enumeration_verified": false,
+  "usb_log_bytes_captured": false,
+  "limits": [
+    "Only local signing and host verification were performed; no device reboot, flash, partition or filesystem operation.",
+    "CDC live adoption can refuse unknown firmware ownership or DMA state. Worker needs BSD startup and scheduling; active-DMA reset/reconnect recovery remains unsupported.",
+    "Actual CDC enumeration, log-byte capture, hardware UFS/root mount and macOS userspace remain unverified."
+  ],
+  "date": "2026-11-17",
+  "signed_directory": "out/usb-cdc-qr-44088845841-signed",
+  "signing_authorization": "Prior explicit local-signing request continues for the corrected test candidate.",
+  "packaging_evidence": "docs/evidence/usb-cdc-qr-image-44088845841.json",
+  "transform_evidence": "docs/evidence/usb-cdc-qr-transform-44088845841.json",
+  "tool_source_sha256": {
+    "tools/prepare_early_report.py": "73af7f048c5b7a6499cf09972e55bc5abeddbaa4c345439c7d6c7a2773916624",
+    "tools/verify_reporter_transform.py": "1b549fa904376a3730d8f927c4ba3771052813823b0a13ffb4409ab83f67c04f",
+    "tools/package_source_storage.py": "589d31b2bbd27daf0b73faebf2ebd1fdbf731fe49c0e288005bae5cfeff07cd7",
+    "tools/test_reporter_transform.py": "7ee644ea1913520e091e9120319dcd7179a7489b7a2a5b05d9aad47c8f1fe726",
+    "tools/test_package_source_storage.py": "4d7fdc3bbc1583a9ac2d94e247c7ae20b362894d837febffef5bcf509d3257d4"
+  },
+  "verification_report": {
+    "path": "out/usb-cdc-qr-44088845841-signed/verification-report.json",
+    "sha256": "66fb7d5792896667983a2139e03c5a73f7fa41956e638c20f0eb4d8dfc2d67d3"
+  },
+  "signing_report": {
+    "path": "out/usb-cdc-qr-44088845841-signed/signing-report.json",
+    "sha256": "fe02277097c6d492aa9114c0413ea0d3a76d16bd01035f19827fdcd63a8d8d98"
+  },
+  "zip": {
+    "path": "out/tb710fu-usb-cdc-qr-44088845841-signed.zip",
+    "bytes": 35557611,
+    "sha256": "0a73220da6fa8327029d47048521a7f686e7661ccc101114ef905f2f18768d82",
+    "members_verified": true
+  },
+  "expected_display_build_label": "src-503599a0-cdc-qr",
+  "cause_of_hardware_white_band_established": false,
+  "tool_source_commit": "4e31ed1d82032124609f1230478fb9ed6f2a1e42",
+  "local_tool_base_commit": "38328a4395865276c50c183f16e28266960aa7ed"
+}

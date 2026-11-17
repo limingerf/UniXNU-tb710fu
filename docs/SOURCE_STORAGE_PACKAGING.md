@@ -73,6 +73,25 @@ arm64e archive members and actual strong transport code definitions in the
 retained `com.apple.kernel` fileset entry. Boolean report claims alone are
 insufficient. Runtime, enumeration and hardware-boot fields remain false.
 
+For the CDC candidate with the early QR reporter, add both `diagnostic_kernel`
+and `diagnostic_report` (17 inputs total). `kernel` remains the original cloud
+prelink. The two new fields name `prepare_early_report.py`'s actual derivative
+and build report; each has an explicit SHA-256. Partial diagnostics inputs,
+missing CDC evidence and a missing `tb710fu-cdc=1` argument are refused.
+The original 12/15-input formats continue to describe kernels without this
+post-link reporter; they must not be presented as carrying its QR or markers.
+
+The original prelink/integration gates run unchanged. Then the independent
+`verify_reporter_transform.py` checks exact source/report hashes, two new
+segment commands, RX/RW-NX geometry, appended payload and a complete bounded
+prefix delta. All original bytes outside the exact header/instruction/cave
+allowlist remain unchanged. Original BL targets and branch resumes are
+validated, and all 13 CDC/storage runtime functions retain their original
+strong definitions and full code. The actual final derivative is parsed,
+compressed and read back from FAT. `prelink` still records the original CI
+input; `packaged_kernel` and `diagnostics` record the actual derivative.
+No original CI report is edited to claim that a post-link hash was compiled.
+
 ## Kernel and integration proof
 
 The standard official `kernel.json`, symbol map and device `build-result.json`

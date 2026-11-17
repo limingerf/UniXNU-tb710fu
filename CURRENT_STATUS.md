@@ -1,5 +1,55 @@
 # Current status · 2026-11-17
 
+## Missing QR reporter restored on the CDC kernel; signed replacement · 2026-11-17
+
+The user reports a white boot band and disappearance of the earlier QR after
+testing the CDC signed candidate. No device partition readback binds that
+observation to exact bytes, and it does not establish the cause of the stall.
+The referenced `codex/diag-fileset-header-fix` ref was rechecked through GitHub:
+`c87876e96c69a616bc6be54175d70c0290f2fc2c` is already an ancestor. Its
+0006–0009 patches are byte-identical to this branch and the actual run
+44088845841 XNU input hashes. The missing QR is a packaging regression:
+the original signed CDC kernel has no `__KDIAG`/`__KDATRW`, because its
+independent reporter post-link step was omitted. The header-mapping fix alone
+cannot create those segments. See `docs/evidence/usb-cdc-qr-regression-44088845841.json`.
+
+The existing reporter now explicitly accepts the exact CDC prelink input
+`503599a026ee362e9523aba1808f8af01601ae1323c7404fe7ecd1ed9a5690e2`.
+It produces a separate 143,687,680-byte derivative, SHA-256
+`2410ec0545996500af0e8c051f4ce33f9941685a6cc73c63b082a51222da0b7f`,
+labelled `src-503599a0-cdc-qr`. Independent delta validation reconstructs all
+35 instruction/cave spans, 28 original call wrappers, three compact entry/MMU
+checkpoints and the two appended RX/RW-NX segments. All 13 CDC/storage runtime
+function definitions and 7,656 bytes of their complete code remain unchanged.
+The default path preserves original execution and adds no stopping checkpoint.
+Twelve mutation tests pass; four extra real-input mutations are rejected.
+
+The packager retains the original 15 prelink/integration inputs and optionally
+requires both diagnostic inputs, for 17 total. Original CI reports/hashes are
+never rewritten. The actual derivative passes the production DarwinBoot parser,
+LZMA roundtrip and all four FAT readbacks. Packaging tests pass 14 cases with
+one historical fixture omitted. Exact transform and unsigned-image evidence is
+in `docs/evidence/usb-cdc-qr-{transform,image}-44088845841.json`.
+
+Under the existing explicit local-signing authorization, the corrected set is
+`out/usb-cdc-qr-44088845841-signed/`. It retains the same recorded `boot.img`
+SHA-256 `a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`.
+The new 100,663,296-byte `vendor_boot.img` SHA-256 is
+`a69c64ce476c6c5dc44b8fde29c9569e5ed5468584ee5a86d21c2832787d5680`;
+the 8,000-byte `vbmeta.img` SHA-256 is
+`f0dfcae10f915977fc768f9fa59de4187299429ff6124fe7dd00ef2be52dbbcd`.
+Independent RSA, salted hashes, boot chain key, preserved unsigned payload and
+22 unrelated descriptors/header/key/rollback checks pass. The signed ZIP is
+`out/tb710fu-usb-cdc-qr-44088845841-signed.zip`, 35,557,611 B, SHA-256
+`0a73220da6fa8327029d47048521a7f686e7661ccc101114ef905f2f18768d82`.
+See `docs/evidence/usb-cdc-qr-signed-44088845841.json`.
+
+No new native build was needed; this is an audited diagnostic derivative of
+the successful CDC/UFS input. No device command, reboot, flash or storage
+operation occurred. Actual QR display, CDC enumeration/log bytes and hardware
+root boot remain unverified. Restoring diagnostics does not establish a fix
+for the reported white-band stall. Earlier candidates remain evidence only.
+
 ## CDC test bundle locally signed and independently verified · 2026-11-17
 
 The user explicitly requested local signing for hardware testing after the

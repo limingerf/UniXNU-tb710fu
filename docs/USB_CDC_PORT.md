@@ -1,5 +1,25 @@
 # TB710FU USB CDC port · 2026-11-17
 
+## QR restoration after the white-band report
+
+The first signed CDC delivery omitted the separate post-link reporter, so its
+actual kernel contained no diagnostic segments or compact entry markers.
+The linked fileset-header-fix branch was already merged: its 0006–0009 hashes
+match the actual CDC build inputs. This explains missing QR; it does not
+identify the cause of the hardware stall. The user observation has no device
+partition hash readback. See [the regression record](evidence/usb-cdc-qr-regression-44088845841.json).
+
+The replacement `out/tb710fu-usb-cdc-qr-44088845841-signed.zip` includes the
+restored reporter, label `src-503599a0-cdc-qr`, plus the matching signed images.
+It preserves the original CDC/UFS code and explicit enabling boot argument.
+The 17-input packaging path proves original prelink/integration first, then
+checks the bounded diagnostic derivative and runs the parser on that actual
+final kernel. It adds no default stopping checkpoint. See
+[transform proof](evidence/usb-cdc-qr-transform-44088845841.json) and
+[signed replacement](evidence/usb-cdc-qr-signed-44088845841.json).
+Screen reporting remains useful before BSD startup; actual QR display and
+CDC log output still need a hardware result for this exact replacement.
+
 ## Signed test delivery
 
 After an explicit user request for local signing, the same verified candidate

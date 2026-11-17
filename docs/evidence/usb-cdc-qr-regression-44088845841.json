@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "user_observation": "The user reports a white boot band and disappearance of the earlier QR on the signed CDC candidate.",
+  "device_partition_hash_readback": false,
+  "linked_branch": "refs/heads/codex/diag-fileset-header-fix",
+  "linked_branch_commit": "c87876e96c69a616bc6be54175d70c0290f2fc2c",
+  "authenticated_github_ref_rechecked": true,
+  "branch_is_ancestor_of_current_commit": true,
+  "audit_commit": "38328a4395865276c50c183f16e28266960aa7ed",
+  "actual_kernel_run_id": 44088845841,
+  "patches": [
+    {
+      "path": "patches/xnu/0006-tb710fu-diag-segment-rx.patch",
+      "sha256": "7be986c3744b7d9c9ca77f0d6b09e8e20b9ba74e587e527ac26281f9717a1a6c",
+      "same_as_diagnostic_branch_and_actual_ci_input": true
+    },
+    {
+      "path": "patches/xnu/0007-tb710fu-switch-markers.patch",
+      "sha256": "fbba12c2cd295e607adfe0d91e7dc1d254b36622f8ffaf4efa845c424329b659",
+      "same_as_diagnostic_branch_and_actual_ci_input": true
+    },
+    {
+      "path": "patches/xnu/0008-tb710fu-ramoops-in-window.patch",
+      "sha256": "533ff244b8dae7884874050e77e14eebe3bfd301e11541224f5ce3fd69c9c905",
+      "same_as_diagnostic_branch_and_actual_ci_input": true
+    },
+    {
+      "path": "patches/xnu/0009-tb710fu-switch-helper-noinline.patch",
+      "sha256": "428930eac4be4354579051d746fcbee2e71be458c31dc460af818aef289ec42a",
+      "same_as_diagnostic_branch_and_actual_ci_input": true
+    }
+  ],
+  "delivered_original_kernel_sha256": "503599a026ee362e9523aba1808f8af01601ae1323c7404fe7ecd1ed9a5690e2",
+  "actual_original_signed_vendor_sha256": "80fd313b2c349bb89fa3790dc6caf4fd577ad09f0767ec79c2de7c71f796b279",
+  "original_diagnostic_segments": [],
+  "guard11_kernel_sha256": "5d860a638dde58911cc35d66181f049689535f416c329bcbc27d93987ca8e09c",
+  "guard11_diagnostic_segments": [
+    "__KDIAG",
+    "__KDATRW"
+  ],
+  "cause_of_missing_qr": "The packaging pipeline did not run the independent post-link reporter step. The fileset-aware mapping patch was already present, but has no diagnostic segments to map.",
+  "cause_of_boot_stall_established": false,
+  "diagnostic_input_original_prelink_sha256": "503599a026ee362e9523aba1808f8af01601ae1323c7404fe7ecd1ed9a5690e2",
+  "restored_reporter_kernel_sha256": "2410ec0545996500af0e8c051f4ce33f9941685a6cc73c63b082a51222da0b7f",
+  "runtime_verified": false,
+  "device_operations": false
+}
