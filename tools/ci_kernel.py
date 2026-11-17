@@ -148,6 +148,13 @@ def main():
             for path in cdc.iterdir():
                 if path.is_file() and path.suffix in ('.json', '.log', '.a', '.d'):
                     shutil.copy2(path, destination / path.name)
+        live = work / 'tree/build/tb710fu-live-log'
+        if live.is_dir():
+            destination = output / 'live-log'
+            destination.mkdir(exist_ok=True)
+            for path in live.iterdir():
+                if path.is_file() and path.suffix in ('.json', '.log', '.a', '.d'):
+                    shutil.copy2(path, destination / path.name)
         return
     actual = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     if actual != LOCK['unixnu']['commit']:
@@ -202,6 +209,12 @@ def main():
     record['usb_cdc_transport_linked'] = True
     record['usb_cdc_integration_report_sha256'] = hashlib.sha256(
         (output / 'usb-cdc-integration.json').read_bytes()).hexdigest()
+    from verify_live_log_integration import verify as verify_live
+    integrated_live = verify_live(ctx.tree, ctx.need_config(), ctx.tree / ctx.board['kernel']['prelink']['kernel'])
+    (output / 'live-log-integration.json').write_text(json.dumps(integrated_live, indent=2) + '\n')
+    record['live_log_linked'] = True
+    record['live_log_integration_report_sha256'] = hashlib.sha256(
+        (output / 'live-log-integration.json').read_bytes()).hexdigest()
     if ctx.need_config().get('XNU_SOURCE_STORAGE'):
         from verify_storage_integration import verify as verify_storage
         integrated = verify_storage(ctx.tree, ctx.need_config(), ctx.tree / ctx.board['kernel']['prelink']['kernel'])

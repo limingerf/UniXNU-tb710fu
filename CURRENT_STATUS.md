@@ -1,5 +1,47 @@
 # Current status · 2026-11-17
 
+## Stage 89 observed; native fixed/live ramoops QR prepared · 2026-11-17
+
+The user supplied `src-503599a0-plat-qr` at `0x59`, machine_startup entry,
+and reports that display stays there. This is the final old instrumented point,
+not a fault PC or proof of a stall inside machine_startup. Actual BSD/CDC
+execution remains unobserved. The verbatim evidence is
+`docs/evidence/usb-cdc-stage89-device-20261117.json`.
+
+The requested replacement is now source-implemented: independent native
+LiveLog archive, current-boot-only consistent ramoops snapshots, a fixed
+single-block pre-machine_startup tail of at most 512 bytes and a separate
+live tail of at most 4096 bytes. Each live file remains immutable for at least
+two complete transmission rounds. The fixed file/bitmap never follows ring
+overwrites. No checkpoint replay waits are retained in this mode. Native
+startup polls one bounded frame; an EARLY_BOOT worker continues after it
+actually runs. The framebuffer is independently mapped permanently, with no
+shared old reporter stack or translation-control writes. The standard upstream
+green/blue/magenta three 1/16-byte bands are restored and preserved.
+
+Patches 0013 and 0014 separate snapshot semantics from XNU integration. The
+graphical console's disableConsoleOutput early-return paths now retain the
+memory taps; otherwise later BSD/kprintf text would be lost before _cnputc.
+Ten actual extracted production-function capture cases pass with ASan/UBSan.
+The actual pinned Mu encoder and OneSend receiver remain unchanged. Sources,
+target commands, dependencies, font, fixed upstream bytes, actual strong hook
+branches and final force-load are independently bound by the new recipe and
+integration/package verifiers. See `docs/LIVE_RAMOOPS.md` for limits and usage.
+
+Production ramoops, real sender/receiver, display bounds and production-adapter
+control-flow host checks pass with ASan/UBSan. Actual Mu repeated encoding and
+independent ZXing recover all 14 test frames and the fixed512/live4096 bytes.
+The separate standard-band-only transform passes six-span reconstruction,
+mutation rejection and AArch64 instruction models. Host evidence is
+`docs/evidence/live-log-host-checks-20261117.json`.
+
+This entry records source/host preparation only. A fresh supported macOS
+native/prelink run is required; the old run 44088845841 does not compile these
+changes. No new image, local signing or device operation has yet occurred.
+Real scanout, scheduling, ramoops contents/retention and CDC enumeration are
+still hardware gates. A CPU halted with interrupts masked cannot animate QR;
+the already drawn fixed single-frame code remains scannable.
+
 ## User reaches stage 56, no CDC port; extended signed platform trace · 2026-11-17
 
 The user supplied a `src-503599a0-cdc-qr` live report at stage `0x38` (56),

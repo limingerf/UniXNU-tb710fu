@@ -28,6 +28,7 @@ archives = [
   "component:ArmCpu",
   "build-libpthread-kernel.py",
   "build-tb710fu-cdc-log.py",
+  "build-tb710fu-live-log.py",
   "build-tb710fu-source-storage-archive.py",
 ]
 

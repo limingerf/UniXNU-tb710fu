@@ -10,3 +10,5 @@
 0010-tb710fu-cdc-kernel-log-tap.patch
 0011-tb710fu-source-storage-start.patch
 0012-tb710fu-cdc-start.patch
+0013-tb710fu-ramoops-snapshot.patch
+0014-tb710fu-native-live-log.patch

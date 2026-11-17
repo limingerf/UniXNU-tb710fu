@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-17",
+  "stage": "user-reported-final-platform-checkpoint",
+  "source": "User-supplied decoded QR text and report that the display remains here; no independent device command or readback was performed.",
+  "user_report_verbatim": "XNU LIVE CHECKPOINT (continues)\nbuild src-503599a0-plat-qr\nXNU enter: machine_startup\nSTAGE=0000000000000059\nARG0=fffffff007dd9378\nARG1=0000000000000000\nKERNEL_SP=fffffff00f823f30\nBOOTARGS_PA=00000008c890c000\nFB_PA=00000000d5100000\nSCTLR=00000000fc54799d\nTCR=00080022a51a251a\nOLD_TTBR0=00000008c8918000\nOLD_TTBR1=00000008c8919000\nlast observed stage, not a fault PC or full console log\nhanding control to machine_startup; BSD/CDC not yet observed",
+  "user_display_observation_verbatim": "停在了这里",
+  "user_requested_change_verbatim": "还有我觉得可以改进一下，检查点太多了刷二维码浪费时间，现在不是已经过了ramoops 阶段吗？ 二维码直接实时轮播导出ramoops日志就行了，然后界面保持在有色条的那个界面，色条用会上游标准",
+  "display_build_label": "src-503599a0-plat-qr",
+  "last_observed_checkpoint": {
+    "stage_hex": "0x59",
+    "stage_decimal": 89,
+    "message": "XNU enter: machine_startup",
+    "meaning": "The reporter reached the wrapper immediately before the original machine_startup call in arm_init. This is the final instrumented checkpoint in the delivered candidate.",
+    "fault_pc": false,
+    "full_console_log": false,
+    "last_instrumented_checkpoint_in_this_candidate": true,
+    "machine_startup_return_expected": false,
+    "arg0_is_fault_address": false,
+    "arg1_is_error_code": false
+  },
+  "attribution": {
+    "basis": "User-supplied display label matches the delivered platform-trace candidate.",
+    "device_partition_hash_readback": false,
+    "exact_device_storage_bytes_verified": false,
+    "recorded_candidate_kernel_sha256": "23331f1d379f52c155dd4e479f72cf6786342d8d4ae1f87313f2b665a04aef19",
+    "recorded_candidate_signed_vendor_sha256": "42f769f62a333449a2ef03ed39597a75564a0e3d6ce166cb5a38f4f729e2d92f",
+    "recorded_candidate_signed_vbmeta_sha256": "5e7dd99c69a62ce6ce7e73aeb80d060ae996792a41b51301b1e8af8b4fcec87f",
+    "recorded_candidate_zip_sha256": "5bbd067261f417a44826b43077404f6db92642147a439e9e21771993cbcba9e7"
+  },
+  "observations": {
+    "platform_checkpoint_qr_visible_user_reported": true,
+    "machine_startup_call_boundary_reached_user_reported": true,
+    "display_stays_at_final_checkpoint_user_reported": true,
+    "stall_inside_machine_startup_established": false,
+    "kernel_bootstrap_reached_established": false,
+    "scheduled_bootstrap_thread_reached_established": false,
+    "armcpu_driver_started_established": false,
+    "bsd_init_reached_established": false,
+    "cdc_worker_ran_established": false,
+    "cdc_enumeration_verified": false,
+    "usb_log_bytes_captured": false,
+    "ramoops_zone_active_established": false,
+    "ramoops_log_content_or_retention_verified": false,
+    "hardware_root_boot_verified": false,
+    "macos_userspace_verified": false,
+    "cause_of_stall_or_no_port_established": false
+  },
+  "source_interpretation": [
+    "A stationary final checkpoint is compatible with later uninstrumented execution as well as a later stall; it does not locate a fault.",
+    "The original machine_startup calls machine_conf and then tail-transfers to kernel_bootstrap; it does not return normally.",
+    "The ramoops initialization function may return with an inactive zone on validation failure, so an earlier returned checkpoint alone does not establish active log storage.",
+    "Pinned XNU already supports startup_debug=1. It enables actual kprintf startup-stage and initializer-address messages after KPRINTF startup, which can feed the existing ramoops console path without added checkpoint replay delays.",
+    "The exact CDC startup remains later in bsd_init after IOKitInitializeTime and before vfsinit. No current report establishes that execution reached this call."
+  ],
+  "related_evidence": [
+    "docs/evidence/usb-cdc-platform-signed-44088845841.json",
+    "docs/evidence/usb-cdc-platform-transform-44088845841.json",
+    "docs/evidence/usb-cdc-stage56-path-audit.json",
+    "docs/evidence/usb-cdc-stage56-adoption-audit.json",
+    "docs/evidence/usb-cdc-stage56-device-20261117.json"
+  ],
+  "native_kernel_run_id": 44088845841,
+  "native_kernel_device_commit": "c0154c9d5e7048f7896614e1ca8d65be7d4d0e10",
+  "observation_record_base_commit": "b73a1e4ffab7a7cc2a924342f4e82e93f01af26b",
+  "device_operations": false
+}

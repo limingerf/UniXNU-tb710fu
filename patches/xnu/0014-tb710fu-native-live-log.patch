@@ -1,0 +1,269 @@
+From: TB710FU clean board
+Subject: [PATCH] Integrate native ramoops LiveLog without checkpoint replay
+
+Source: pristine XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f, with every selected
+pinned arm64e, device pre-OS, macOS 27.3 and device 0001..0013 patch applied in
+order to an independent relevant-file fixture. UniXNU is pinned at
+0c1bac3d51a3009dca1708b15a5198f4b43d057a; fetched caches are read-only. The exact
+pre-change source SHA-256 values are:
+  osfmk/arm/arm_init.c: 936c00f99ed80065526031114384f6937503a5ffd93e671231f75d97aaa99f91
+  osfmk/kern/startup.c: c4f226c70e0ae819609e56837298f071c979a22fe8d71986c4c06f8de11bdcc2
+  osfmk/console/video_console.c: e6196daa2cb7d9c7ae080f3a75e70f5f63da5e9cea11f7d32bf3f24efb08cea5
+  osfmk/console/serial_console.c: 79dc60755a8cdfaa128aaa701679b7dbe6b34e7a5919595a57e5c75c269c62cd
+  pexpert/arm/pe_kprintf.c: 747898eb01cd46bf7df6c6c91f4d7f156d86976dace72c19796787297f0e6595
+
+Reason: export real current-boot ramoops text and retain the native display while
+normal XNU execution continues. The strong LiveLog archive initializes after
+ramoops/VM setup, polls one bounded frame after startup messages and before
+original startup callbacks, and refreshes after console acquisition/rebinding.
+Calls occur after kprintf returns, never under its lock. The archive owns its
+rendering/worker lifetime and must not use a shared diagnostic stack or alter
+TTBR state. The pre-machine_startup freeze keeps one named bounded snapshot;
+there is no delay, terminal checkpoint or replacement of the original call.
+
+Direct PE_kputc serial_putc_crlf/serial_putc output now reaches ramoops. The
+serial_putc_options callback remains untapped: _cnputc already mirrors that
+path, so adding another tap would duplicate every console character. Only VC
+text is suppressed while the actual native LiveLog provider is active; the
+ramoops/CDC taps and serial delivery remain intact. When graphics acquisition
+sets disableConsoleOutput, _cnputs, console_write and console_write_unbuffered
+now retain the same character taps before their existing early return; enabled
+paths are unchanged and no UART call is added in the disabled path.
+Every new call is guarded
+by XNU_TB710FU_LIVE_LOG, and no missing-provider stub is added. No hardware,
+reset, storage, security or root acceptance policy changes are made.
+
+Verification: all source patches were checked and actually applied in order
+in the isolated fixture. This is a source integration/patch-application check;
+the actual enabled native objects, strong imports, final archive definitions
+and strict prelink require the separate supported-macOS CI build. Framebuffer,
+ramoops persistence and hardware startup require device evidence.
+
+diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -1,4 +1,5 @@
+ #include <kern/tb710fu_ramoops.h>
++#include <kern/tb710fu_live_log.h>
+ #include <kern/boot_progress.h>
+ /*
+  * Copyright (c) 2007-2024 Apple Inc. All rights reserved.
+@@ -586,6 +587,9 @@
+ 	arm_vm_init(xmaxmem, args);
+ 	/* TB710FU: the zone is map-able once the kernel VM is up. */
+ 	tb710fu_ramoops_init();
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	tb710fu_live_log_init();
++#endif
+ 	boot_progress_stage("arm_vm_init returned");
+ 
+ 	if (debug_boot_arg) {
+@@ -704,6 +708,10 @@
+ 	 * against string vulnerabilities
+ 	 */
+ 	__stack_chk_guard &= ~(0xFFULL << 8);
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	/* Freeze a bounded current-boot file without pausing normal startup. */
++	tb710fu_live_log_freeze();
++#endif
+ 	machine_startup(args);
+ }
+ 
+diff --git a/osfmk/kern/startup.c b/osfmk/kern/startup.c
+--- a/osfmk/kern/startup.c
++++ b/osfmk/kern/startup.c
+@@ -1,4 +1,5 @@
+ #include <kern/boot_progress.h>
++#include <kern/tb710fu_live_log.h>
+ /*
+  * Copyright (c) 2000-2020 Apple Inc. All rights reserved.
+  *
+@@ -229,6 +230,10 @@
+ 		kprintf("kernel_bootstrap: %s\n", message);
+ 	}
+ 	kernel_debug_string_early(message);
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	/* kprintf has already released its console lock. */
++	tb710fu_live_log_poll();
++#endif
+ }
+ 
+ static inline void
+@@ -240,6 +245,10 @@
+ 		kprintf("kernel_bootstrap_thread: %s\n", message);
+ 	}
+ 	kernel_debug_string_early(message);
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	/* kprintf has already released its console lock. */
++	tb710fu_live_log_poll();
++#endif
+ }
+ 
+ extern void
+@@ -472,6 +481,10 @@
+ 			kprintf("%s[%d, rank %d]: %p(%p)\n", __func__,
+ 			    cur->subsystem, cur->rank, cur->func, cur->arg);
+ 		}
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++		/* One bounded frame, after logging and before the original callback. */
++		tb710fu_live_log_poll();
++#endif
+ #ifdef __BUILDING_XNU_LIB_UNITTEST__
+ 		if (fki_is_skipped_func_name(cur->subsystem, cur->func_name)) {
+ 			startup_entry_cur = ++cur;
+@@ -490,6 +503,9 @@
+ 		kprintf("%s: reached phase %d\n", __func__, upto);
+ 	}
+ 	startup_phase = upto;
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	tb710fu_live_log_poll();
++#endif
+ }
+ 
+ #ifdef __BUILDING_XNU_LIB_UNITTEST__
+diff --git a/osfmk/console/video_console.c b/osfmk/console/video_console.c
+--- a/osfmk/console/video_console.c
++++ b/osfmk/console/video_console.c
+@@ -1,4 +1,5 @@
+ #include <kern/boot_progress.h>
++#include <kern/tb710fu_live_log.h>
+ /*
+  * Copyright (c) 2000-2020 Apple Inc. All rights reserved.
+  *
+@@ -1231,6 +1232,11 @@
+ void
+ vcputc_options(char c, __unused bool poll)
+ {
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	/* _cnputc has already mirrored the byte to ramoops and CDC. Keep the
++	 * LiveLog display stable without changing serial console delivery. */
++	if (tb710fu_live_log_active()) { return; }
++#endif
+ 	if (boot_progress_active()) { boot_progress_putc(c); return; }
+ 	if (gc_initialized && gc_enabled) {
+ 		VCPUTC_LOCK_LOCK();
+@@ -3057,6 +3063,9 @@
+ 	/* Console initialization/acquisition may clear the existing mapping. */
+ 	boot_progress_bind(vinfo.v_baseaddr, vinfo.v_width, vinfo.v_height,
+ 	    vinfo.v_rowbytes, vinfo.v_depth);
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	tb710fu_live_log_refresh();
++#endif
+ }
+ 
+ void vcattach(void); /* XXX gcc 4 warning cleanup */
+diff --git a/pexpert/arm/pe_kprintf.c b/pexpert/arm/pe_kprintf.c
+--- a/pexpert/arm/pe_kprintf.c
++++ b/pexpert/arm/pe_kprintf.c
+@@ -1,4 +1,7 @@
+ #include <kern/boot_progress.h>
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++#include <kern/tb710fu_ramoops.h>
++#endif
+ /*
+  * Copyright (c) 2000-2019 Apple Inc. All rights reserved.
+  */
+@@ -164,6 +167,10 @@
+ {
+ 	extern void tb710fu_cdc_log_tap_putc(char);
+ 	tb710fu_cdc_log_tap_putc(c);
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	/* Direct PE_kputc output bypasses _cnputc's existing ramoops tap. */
++	if (c != '\r') { tb710fu_ramoops_putc(c); }
++#endif
+ 	if (c == '\n') {
+ 		uart_putc('\r');
+ 	}
+@@ -181,6 +188,10 @@
+ {
+ 	extern void tb710fu_cdc_log_tap_putc(char);
+ 	tb710fu_cdc_log_tap_putc(c);
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	/* Direct PE_kputc output bypasses _cnputc's existing ramoops tap. */
++	if (c != '\r') { tb710fu_ramoops_putc(c); }
++#endif
+ 	uart_putc(c);
+ }
+ 
+diff --git a/osfmk/kern/tb710fu_live_log.h b/osfmk/kern/tb710fu_live_log.h
+new file mode 100644
+--- /dev/null
++++ b/osfmk/kern/tb710fu_live_log.h
+@@ -0,0 +1,13 @@
++// SPDX-License-Identifier: MIT
++#ifndef KERN_TB710FU_LIVE_LOG_H
++#define KERN_TB710FU_LIVE_LOG_H
++/* Strong device archive providers, selected together by the native recipe.
++ * No weak or empty provider is supplied when this component is disabled. */
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++void tb710fu_live_log_init(void);
++void tb710fu_live_log_poll(void);
++void tb710fu_live_log_refresh(void);
++void tb710fu_live_log_freeze(void);
++int tb710fu_live_log_active(void);
++#endif
++#endif
+diff --git a/osfmk/console/serial_console.c b/osfmk/console/serial_console.c
+--- a/osfmk/console/serial_console.c
++++ b/osfmk/console/serial_console.c
+@@ -1,5 +1,6 @@
+ #include <kern/tb710fu_ramoops.h>
+ #include <kern/boot_progress.h>
++#include <kern/tb710fu_live_log.h>
+ /*
+  * Copyright (c) 2000-2020 Apple, Inc. All rights reserved.
+  *
+@@ -292,10 +293,33 @@
+  *             waiting for an interrupt when the hardware device isn't ready
+  * @param size The number of characters to print to the console.
+  */
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++/* Video acquisition disables console output before the usual _cnputc tap.
++ * Preserve the actual byte stream in that case without drawing or touching
++ * UART, and without duplicating the normal enabled-console path. */
++static void
++tb710fu_live_capture_disabled(const char *text, int size)
++{
++	if (!tb710fu_live_log_active() || text == NULL) {
++		return;
++	}
++	extern void tb710fu_cdc_log_tap_putc(char);
++	for (int i = 0; i < size; i++) {
++		if (text[i] != '\r') {
++			tb710fu_ramoops_putc(text[i]);
++		}
++		tb710fu_cdc_log_tap_putc(text[i]);
++	}
++}
++#endif
++
+ static inline void
+ _cnputs(char *c, int size, bool poll)
+ {
+ 	if (disableConsoleOutput) {
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++		tb710fu_live_capture_disabled(c, size);
++#endif
+ 		return;
+ 	}
+ 
+@@ -541,6 +565,9 @@
+ console_write(char *str, int size)
+ {
+ 	if (disableConsoleOutput) {
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++		tb710fu_live_capture_disabled(str, size);
++#endif
+ 		return;
+ 	}
+ 
+@@ -626,6 +653,9 @@
+ console_write_unbuffered(char c)
+ {
+ 	if (disableConsoleOutput) {
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++		tb710fu_live_capture_disabled(&c, 1);
++#endif
+ 		return;
+ 	}
+ 

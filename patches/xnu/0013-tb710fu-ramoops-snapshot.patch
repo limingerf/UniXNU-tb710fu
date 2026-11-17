@@ -1,0 +1,344 @@
+From: TB710FU clean board
+Subject: [PATCH] Add bounded current-boot ramoops snapshots for LiveLog
+
+Source: the actual new files in 0004-tb710fu-ramoops-console.patch after applying
+0008-tb710fu-ramoops-in-window.patch in an independent scratch tree. No fetched
+source cache is edited. Later device patches through 0012 do not touch these
+files. The source SHA-256 values before this patch are:
+  osfmk/kern/tb710fu_ramoops.c: a873a4e3816f8fff8a590a232791391320bc62a8dac9e7a8926d21eb3e68fcb9
+  osfmk/kern/tb710fu_ramoops.h: 266729126c1acb1f05143a157398cc426e6c70be112bbb2831ccebc12d3466d9
+
+Reason: the live reporter must export actual text without Linux headers, ECC
+parity or historical boot bytes, including an unflushed partial line. Current
+boot sequence counters distinguish retained bytes from the old persistent
+ring. Snapshots copy at most 4096 bytes under the same non-spinning atomic guard
+as the console writer. Reentrant/contending writes are counted, not waited on;
+encoding/rendering runs outside this path. Native init is boot-CPU exclusive.
+
+The region and ECC bounds are validated before any mapping/read or subtraction.
+The existing panic/timer reset policy is not changed; panic flushing itself
+uses a non-spinning try guard. No new reset, device I/O or automatic operation
+is introduced. Snapshot calls never flush or alter the persistent header/ring.
+
+Verification: scripts/check_ramoops_snapshot.py reconstructs the real 0004 files,
+applies 0008 and this patch in an isolated tree, then compiles the production
+implementation with tests/ramoops_snapshot_test.c under ASan and UBSan. Tests
+cover wrap, ECC exclusion, old zone, early/partial text, bounds, read-only copy,
+and busy/drop accounting. Native target compilation is a separate CI gate.
+
+diff --git a/osfmk/kern/tb710fu_ramoops.c b/osfmk/kern/tb710fu_ramoops.c
+--- a/osfmk/kern/tb710fu_ramoops.c
++++ b/osfmk/kern/tb710fu_ramoops.c
+@@ -17,6 +17,7 @@
+  */
+ #include <stdint.h>
+ #include <stddef.h>
++#include <kern/tb710fu_ramoops.h>
+ 
+ #ifndef TB710FU_RAMOOPS_HOSTTEST
+ #include <kern/tb710fu_ramoops.h>
+@@ -35,6 +36,8 @@
+ #define RS_NN           255
+ #define RS_BLOCK        128
+ #define RS_MAX_ROOTS    64
++#define RAMOOPS_MAX_SIZE 0x40000U
++#define RAMOOPS_SNAPSHOT_MAX 4096U
+ 
+ /* --- Reed-Solomon (Phil Karn's formulation, as used by Linux encode_rs8) ---------- */
+ 
+@@ -125,6 +128,36 @@
+ static uint32_t wpos, wsize;           /* mirrors header start/size */
+ static uint32_t cur_block = UINT32_MAX; /* block holding unencoded text */
+ 
++/* No scheduler/lock initialization is required. Never spin on a console lock:
++ * an IRQ or synchronous fault may reenter while its interrupted writer owns it.
++ * A lost character is counted instead. The renderer never runs under this lock.
++ */
++static uint32_t snapshot_lock;
++static uint64_t boot_written, snapshot_dropped;
++static int current_boot;
++static char early[4096];
++static uint32_t early_len;
++
++static int
++ramoops_try_lock(void)
++{
++	uint32_t expected = 0;
++	return __atomic_compare_exchange_n(&snapshot_lock, &expected, 1, 0,
++	    __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
++}
++
++static void
++ramoops_unlock(void)
++{
++	__atomic_store_n(&snapshot_lock, 0, __ATOMIC_RELEASE);
++}
++
++static void
++ramoops_drop(void)
++{
++	__atomic_fetch_add(&snapshot_dropped, 1, __ATOMIC_RELAXED);
++}
++
+ #define HDR_BYTES 12
+ 
+ static inline volatile uint8_t *zone_data(void) { return zone + HDR_BYTES; }
+@@ -172,11 +205,17 @@
+ RAMOOPS_STATIC int
+ ramoops_zone_open(volatile uint8_t *base, uint32_t size, uint32_t ecc)
+ {
+-	uint32_t buf = size - HDR_BYTES;
+-
+-	if (size <= HDR_BYTES + 2 * RS_BLOCK) {
++	uint32_t buf;
++
++	/* Native initialization is exclusive on the boot CPU. Fail closed before
++	 * reading a mapping or computing ECC geometry from untrusted boot args. */
++	zone = NULL;
++	current_boot = 0;
++	if (base == NULL || size <= HDR_BYTES + 2 * RS_BLOCK ||
++	    size > RAMOOPS_MAX_SIZE || ecc > RS_MAX_ROOTS) {
+ 		return -1;
+ 	}
++	buf = size - HDR_BYTES;
+ 	ecc_size = ecc;
+ 	ecc_blocks = 0;
+ 	data_size = buf;
+@@ -195,6 +234,11 @@
+ 		put32(zone, RAMOOPS_SIG);
+ 		wpos = wsize = 0;
+ 	}
++	/* A historical full ring may encode its end as data_size. Normalize it
++	 * before the first byte write, without indexing beyond the text ring. */
++	if (wpos == data_size) {
++		wpos = 0;
++	}
+ 	cur_block = UINT32_MAX;
+ 	encode_header();
+ 	return 0;
+@@ -221,6 +265,9 @@
+ 	}
+ 	zone_data()[wpos] = (uint8_t)c;
+ 	wpos = (wpos + 1 == data_size) ? 0 : wpos + 1;
++	if (current_boot) {
++		boot_written++;
++	}
+ 	if (wsize < data_size) {
+ 		wsize++;
+ 	}
+@@ -229,11 +276,116 @@
+ 	}
+ }
+ 
++/* This read-only snapshot is the text ring, never the Linux/ECC envelope.
++ * Positions count successful writes in this boot only. The boot CPU initializes
++ * before secondary CPUs and before publishing the framebuffer consumer. */
++static void
++ramoops_begin_current_boot(void)
++{
++	boot_written = 0;
++	current_boot = 1;
++}
++
++int
++tb710fu_ramoops_snapshot_copy(uint8_t *out, size_t capacity,
++    struct tb710fu_ramoops_snapshot *info)
++{
++	uint64_t count;
++	uint32_t at;
++
++	if (info == NULL) {
++		return 0;
++	}
++	*info = (struct tb710fu_ramoops_snapshot){ 0 };
++	info->dropped = __atomic_load_n(&snapshot_dropped, __ATOMIC_RELAXED);
++	/* Invalid/no-output requests return no snapshot, never READY with zero
++	 * bytes. An uninitialized consumer may safely make this query. */
++	if (out == NULL || capacity == 0) {
++		return 0;
++	}
++	if (!ramoops_try_lock()) {
++		info->state = TB710FU_RAMOOPS_BUSY;
++		return 0;
++	}
++	if (zone == NULL || !current_boot) {
++		ramoops_unlock();
++		return 0;
++	}
++	if (capacity > RAMOOPS_SNAPSHOT_MAX) {
++		capacity = RAMOOPS_SNAPSHOT_MAX;
++	}
++	info->end = boot_written;
++	info->dropped = __atomic_load_n(&snapshot_dropped, __ATOMIC_RELAXED);
++	count = boot_written;
++	if (count > data_size) {
++		count = data_size;
++	}
++	if (count > capacity) {
++		count = capacity;
++	}
++	info->start = info->end - count;
++	info->copied = (uint32_t)count;
++	info->state = count ? TB710FU_RAMOOPS_READY : TB710FU_RAMOOPS_EMPTY;
++	at = (wpos + data_size - (uint32_t)count) % data_size;
++	for (uint32_t i = 0; i < (uint32_t)count; i++) {
++		out[i] = zone_data()[at];
++		at = (at + 1 == data_size) ? 0 : at + 1;
++	}
++	ramoops_unlock();
++	return (int)count;
++}
++
++void
++tb710fu_ramoops_putc(char c)
++{
++	if (!ramoops_try_lock()) {
++		ramoops_drop();
++		return;
++	}
++	if (zone != NULL) {
++		ramoops_zone_putc(c);
++	} else if (early_len < sizeof(early)) {
++		early[early_len++] = c;
++	} else {
++		ramoops_drop();
++	}
++	ramoops_unlock();
++}
++
++/* Used in native panic/timer paths as well: a nested panic must never spin. */
++static int
++ramoops_flush_try(void)
++{
++	if (!ramoops_try_lock()) {
++		return 0;
++	}
++	ramoops_zone_flush();
++	ramoops_unlock();
++	return 1;
++}
++
++/* Same implementation in the host fixture and native init. Reused old zone
++ * bytes remain in RAM for pstore, but are never part of this boot's snapshot. */
++RAMOOPS_STATIC int
++ramoops_start_boot(volatile uint8_t *base, uint32_t size, uint32_t ecc)
++{
++	if (ramoops_zone_open(base, size, ecc)) {
++		return -1;
++	}
++	ramoops_begin_current_boot();
++	static const char banner[] = "\n=== TB710FU XNU boot (UniXNU ramoops) ===\n";
++	for (const char *s = banner; *s; s++) {
++		ramoops_zone_putc(*s);
++	}
++	for (uint32_t i = 0; i < early_len; i++) {
++		ramoops_zone_putc(early[i]);
++	}
++	ramoops_zone_flush();
++	return 0;
++}
++
+ #ifndef TB710FU_RAMOOPS_HOSTTEST
+ 
+-/* Console output before the zone is mapped (arm_vm_init) is replayed into it. */
+-static char early[4096];
+-static uint32_t early_len;
+ static uint32_t panic_delay = 15, reset_after, reset_warm, selftest;
+ 
+ /*
+@@ -259,16 +411,6 @@
+ 	__asm__ volatile ("dsb sy; smc #0" : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3) : : "memory");
+ 	for (;;) {
+ 		__asm__ volatile ("wfe");
+-	}
+-}
+-
+-void
+-tb710fu_ramoops_putc(char c)
+-{
+-	if (zone != NULL) {
+-		ramoops_zone_putc(c);
+-	} else if (early_len < sizeof(early)) {
+-		early[early_len++] = c;
+ 	}
+ }
+ 
+@@ -305,18 +447,16 @@
+ 	PE_parse_boot_argn("ramoops_reset_after", &reset_after, sizeof(reset_after));
+ 	PE_parse_boot_argn("ramoops_reset_warm", &reset_warm, sizeof(reset_warm));
+ 	PE_parse_boot_argn("ramoops_selftest", &selftest, sizeof(selftest));
+-	if (ramoops_zone_open((volatile uint8_t *)ml_io_map((vm_offset_t)pa, size), size, ecc)) {
++	/* Recheck the final parsed size before mapping, including its span. */
++	if (size <= HDR_BYTES + 2 * RS_BLOCK || size > RAMOOPS_MAX_SIZE ||
++	    ecc > RS_MAX_ROOTS || pa < TB710FU_SPAN_BASE ||
++	    pa > TB710FU_SPAN_END - size) {
+ 		zone = NULL;
+ 		return;
+ 	}
+-	static const char banner[] = "\n=== TB710FU XNU boot (UniXNU ramoops) ===\n";
+-	for (const char *s = banner; *s; s++) {
+-		ramoops_zone_putc(*s);
+-	}
+-	for (uint32_t i = 0; i < early_len; i++) {
+-		ramoops_zone_putc(early[i]);
+-	}
+-	ramoops_zone_flush();
++	if (ramoops_start_boot((volatile uint8_t *)ml_io_map((vm_offset_t)pa, size), size, ecc)) {
++		return;
++	}
+ 	if (selftest) {
+ 		/* ramoops_selftest=1: prove the zone survives this reset type, then reboot at once. */
+ 		static const char line[] = "ramoops selftest: PSCI reset now, warm=";
+@@ -337,7 +477,7 @@
+ 	if (zone == NULL) {
+ 		return;
+ 	}
+-	ramoops_zone_flush();
++	(void)ramoops_flush_try();
+ 	nanoseconds_to_absolutetime((uint64_t)panic_delay * NSEC_PER_SEC, &deadline);
+ 	deadline += mach_absolute_time();
+ 	while (mach_absolute_time() < deadline) {
+@@ -350,9 +490,9 @@
+ {
+ 	static const char msg[] = "\n=== ramoops_reset_after expired: resetting ===\n";
+ 	for (const char *s = msg; *s; s++) {
+-		ramoops_zone_putc(*s);
+-	}
+-	ramoops_zone_flush();
++		tb710fu_ramoops_putc(*s);
++	}
++	(void)ramoops_flush_try();
+ 	psci_system_reset();
+ }
+ 
+diff --git a/osfmk/kern/tb710fu_ramoops.h b/osfmk/kern/tb710fu_ramoops.h
+--- a/osfmk/kern/tb710fu_ramoops.h
++++ b/osfmk/kern/tb710fu_ramoops.h
+@@ -1,8 +1,27 @@
+ // SPDX-License-Identifier: MIT
+ #ifndef KERN_TB710FU_RAMOOPS_H
+ #define KERN_TB710FU_RAMOOPS_H
++#include <stdint.h>
++#include <stddef.h>
+ /* Console mirror into the Linux ramoops console zone (boot-arg ramoops=<PA>). */
+ void tb710fu_ramoops_init(void);          /* after arm_vm_init */
+ void tb710fu_ramoops_putc(char c);        /* every console character */
+ void tb710fu_ramoops_panic_reset(void);   /* flush, wait, PSCI SYSTEM_RESET */
++/* Snapshot states are part of the device-owned LiveLog ABI. */
++enum {
++    TB710FU_RAMOOPS_UNMAPPED = 0,
++    TB710FU_RAMOOPS_BUSY = 1,
++    TB710FU_RAMOOPS_EMPTY = 2,
++    TB710FU_RAMOOPS_READY = 3
++};
++struct tb710fu_ramoops_snapshot {
++    uint64_t boot_start, start, end, dropped;
++    uint32_t copied, state;
++};
++/* Returns 0..4096 copied bytes. boot_start is zero in each boot; start/end
++ * count successful current-boot text bytes, excluding old RAM and parity.
++ * NULL output, zero capacity or NULL info returns 0 (UNMAPPED if info exists).
++ * BUSY never waits; no snapshot request changes the persistent zone. */
++int tb710fu_ramoops_snapshot_copy(uint8_t *out, size_t capacity,
++    struct tb710fu_ramoops_snapshot *info);
+ #endif

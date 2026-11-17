@@ -51,6 +51,8 @@ INPUTS = {'source_vendor', 'source_vbmeta', 'kernel', 'kernel_report', 'kernel_m
           'source_storage_report', 'root_policies', 'loader_boot', 'loader_artifact'}
 CDC_INPUTS = {'usb_cdc_integration_report', 'usb_cdc_archive', 'usb_cdc_report'}
 DIAGNOSTIC_INPUTS = {'diagnostic_kernel', 'diagnostic_report'}
+LIVE_INPUTS = {'live_log_integration_report', 'live_log_archive', 'live_log_report'}
+STANDARD_INPUTS = {'standard_kernel', 'standard_report'}
 CDC_SYMBOLS = {
     'CdcKernelTap': ('_tb710fu_cdc_log_tap_putc', '_tb710fu_cdc_log_tap_copy',
                      '_tb710fu_cdc_log_tap_consume'),
@@ -100,12 +102,20 @@ def validate_args(text):
     # This is deliberately a minimal reviewed set. No Sheng hardware/probe
     # parameters, root-device overrides, memory disk or old physical ramoops PA.
     allowed = {'-v', 'serial', 'native-source-storage', 'native-ufs-root',
-               'tb710fu-cdc',
+               'tb710fu-cdc', 'tb710fu-live-log', 'debug', '-enable_kprintf_spam', 'startup_debug',
                'ramoops_size', 'ramoops_ecc', 'ramoops_panic_delay', 'ramoops_reset_after'}
     require(set(values) <= allowed, 'Unsupported boot arguments: ' + ', '.join(sorted(set(values) - allowed)))
     require('-v' not in values or values['-v'] is None, '-v takes no value')
     if 'tb710fu-cdc' in values:
         require(values['tb710fu-cdc'] == '1', 'tb710fu-cdc must be exactly 1 when supplied')
+    if 'tb710fu-live-log' in values:
+        require(values['tb710fu-live-log'] == '1' and values.get('debug') == '0x8' and
+                values.get('startup_debug') == '1' and '-enable_kprintf_spam' in values and
+                values['-enable_kprintf_spam'] is None,
+                'Live log requires exact non-halting kprintf/startup verbosity arguments')
+    else:
+        require(not {'debug', '-enable_kprintf_spam', 'startup_debug'} & set(values),
+                'Verbose live-log arguments require the native live-log integration')
     for key, expected in (('serial', 3), ('ramoops_size', 0x40000), ('ramoops_reset_after', 0)):
         if key in values:
             require(values[key] is not None and int(values[key], 0) == expected,
@@ -592,6 +602,11 @@ def checked_inputs(manifest_path, expected):
     arguments = validate_args(manifest.get('boot_args'))
     supplied = set(manifest.get('files', {}))
     expected_inputs = INPUTS | CDC_INPUTS if 'tb710fu-cdc' in arguments or supplied & CDC_INPUTS else INPUTS
+    if 'tb710fu-live-log' in arguments or supplied & (LIVE_INPUTS | STANDARD_INPUTS):
+        expected_inputs |= LIVE_INPUTS | CDC_INPUTS | STANDARD_INPUTS
+        require(arguments.get('tb710fu-live-log') == '1' and arguments.get('tb710fu-cdc') == '1' and
+                not supplied & DIAGNOSTIC_INPUTS,
+                'Native live log requires complete CDC evidence and only the standard-band transform')
     if supplied & DIAGNOSTIC_INPUTS:
         expected_inputs |= DIAGNOSTIC_INPUTS | CDC_INPUTS
         require('tb710fu-cdc' in arguments, 'Reporter derivative requires tb710fu-cdc=1')
@@ -637,8 +652,20 @@ def package(manifest_path, manifest_sha, output):
                              paths['usb_cdc_report'].read_bytes(), paths['usb_cdc_archive'].read_bytes(),
                              kernel, official, build, integration)
     loader = verify_loader(paths['loader_boot'].read_bytes(), paths['loader_artifact'])
+    live_log = None
+    if LIVE_INPUTS <= set(paths):
+        from verify_live_log_package import verify as verify_live_package
+        live_log = verify_live_package(paths['live_log_integration_report'].read_bytes(),
+            paths['live_log_report'].read_bytes(), paths['live_log_archive'].read_bytes(),
+            kernel, official, build, integration)
     diagnostic = None
     final_kernel_path = paths['kernel']
+    if STANDARD_INPUTS <= set(paths):
+        from verify_standard_bands import verify as verify_bands
+        candidate = paths['standard_kernel'].read_bytes()
+        diagnostic = verify_bands(kernel, candidate, json_bytes(paths['standard_report'].read_bytes()))
+        kernel = candidate
+        final_kernel_path = paths['standard_kernel']
     if DIAGNOSTIC_INPUTS <= set(paths):
         require(cdc is not None and 'tb710fu-cdc=1' in manifest['boot_args'].split(),
                 'Reporter derivative requires the complete CDC-enabled integration evidence')
@@ -729,6 +756,9 @@ def package(manifest_path, manifest_sha, output):
             report['diagnostics'] = diagnostic
         if cdc is not None:
             report['usb_cdc_transport'] = cdc
+        if live_log is not None:
+            report['live_log'] = live_log
+            report['packaged_kernel']['stage'] = 'native-live-log-standard-bands'
         # Validation, actual parser and readback all finish before any output
         # directory exists. Intermediates stay in the disposable local directory.
         output.mkdir(parents=True, exist_ok=False)

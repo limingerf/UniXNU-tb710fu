@@ -47,6 +47,13 @@ jobs:
           python3 scripts/check_usb_cdc_protocol.py
           python3 scripts/check_usb_cdc_hardware.py
           python3 scripts/check_usb_cdc_transport.py
+      - name: Check actual ramoops snapshots and live log display/protocol
+        run: |
+          set -euo pipefail
+          python3 scripts/check_ramoops_snapshot.py --output-dir .work/artifacts/ramoops-snapshot-check
+          python3 scripts/check_live_log_display.py --report .work/artifacts/live-display-check.json
+          python3 scripts/check_live_log_protocol.py --output-dir .work/artifacts/live-protocol-check
+          python3 scripts/check_live_xnu_adapter.py --cc clang --output-dir .work/artifacts/live-adapter-check
       - name: Install the official host tools
         run: |
           set -euo pipefail
@@ -66,6 +73,12 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           JOBS: '3'
         run: python3 tools/ci_kernel.py native
+      - name: Exercise actual pinned Mu encoding and the native QR adapter
+        run: |
+          set -euo pipefail
+          work=$(cat .work/resolved-work.txt)
+          python3 scripts/check_live_log_qr.py --qr-source "$work/tree/build/tb710fu-live-log/upstream" --output-dir .work/artifacts/live-qr-check
+          python3 scripts/check_live_console_capture.py --cc clang --xnu "$work/tree/.cache/xnu-work" --framework .work/UniXNU --output-dir .work/artifacts/live-console-check
       - name: Prelink the macOS 27 kernelcache closure
         if: inputs.stage == 'prelink' || inputs.stage == 'ufs-integrated'
         env:
