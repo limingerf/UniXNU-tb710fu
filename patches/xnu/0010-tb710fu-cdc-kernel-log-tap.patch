@@ -17,7 +17,7 @@ diff --git a/pexpert/arm/pe_kprintf.c b/pexpert/arm/pe_kprintf.c
 @@ -1,1 +1,2 @@
  #include <kern/boot_progress.h>
 +extern void tb710fu_cdc_log_tap_putc(char);
-@@ -163,4 +164,7 @@ serial_putc_crlf(char c)
+@@ -163,6 +164,9 @@ serial_putc_crlf(char c)
  {
 +	if (c != '\r') {
 +		tb710fu_cdc_log_tap_putc(c);
@@ -27,12 +27,12 @@ diff --git a/pexpert/arm/pe_kprintf.c b/pexpert/arm/pe_kprintf.c
  	}
  	uart_putc(c);
  }
-@@ -172,4 +176,5 @@ serial_putc_options(char c, bool poll)
+@@ -172,3 +176,4 @@ serial_putc_options(char c, bool poll)
  {
 +	if (c != '\r') { tb710fu_cdc_log_tap_putc(c); }
  	uart_putc_options(c, poll);
  }
-@@ -179,4 +184,5 @@ serial_putc(char c)
+@@ -179,3 +184,4 @@ serial_putc(char c)
  {
 +	if (c != '\r') { tb710fu_cdc_log_tap_putc(c); }
  	uart_putc(c);

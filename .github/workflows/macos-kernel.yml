@@ -73,6 +73,7 @@ jobs:
           set -euo pipefail
           python3 .work/UniXNU/scripts/build-tb710fu-ufs-adapter.py
           cp .work/UniXNU/build/tb710fu-ufs-adapter/build-report.json .work/artifacts/ufs-adapter-build.json
+          cat .work/UniXNU/build/tb710fu-ufs-adapter/build-report.json >> "$GITHUB_STEP_SUMMARY"
       - name: Verify the fileset with the production DarwinBoot parser
         if: inputs.stage == 'prelink'
         run: |
@@ -83,7 +84,7 @@ jobs:
         if: always()
         run: python3 tools/ci_kernel.py collect
       - name: Upload private build artifacts
-        if: always()
+        if: always() && inputs.stage != 'ufs-source'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: tb710fu-${{ inputs.stage }}-${{ github.run_id }}
