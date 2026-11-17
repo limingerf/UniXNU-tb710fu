@@ -37,7 +37,7 @@ def main():
     state = sym['diag_state']
     width, height = args.width, args.height
     fb, stride = 0xd5100000, width * 4
-    qr = args.stage in (47, 48, 49, 50, 51, 52, 54, 55, 56)
+    qr = 47 <= args.stage <= 89
     scale = min(8, (height-128)//121, (width-32)//121)
     rows = 112+121*scale if qr else 48
     uc.mem_map(fb, (stride*height+4095)&~4095)
@@ -65,6 +65,14 @@ def main():
         55: b'XNU enter: tb710fu_ramoops_init',
         56: b'XNU returned: tb710fu_ramoops_init',
     }.get(args.stage, b'XNU enter: arm_vm_init')
+    if args.stage >= 57:
+        matches = [(item, phase) for item in build['call_trace']
+                   for phase, key in (('enter', 'before_stage'), ('returned', 'after_stage'))
+                   if item[key] == args.stage]
+        assert len(matches) == 1, 'require a real reported platform trace stage'
+        item, phase = matches[0]
+        assert item['parent'] == '_arm_init'
+        message = ('XNU ' + phase + ': ' + item['name'][1:]).encode()
     uc.mem_write(msg, message+b'\0')
     stop = msg+4092
     uc.reg_write(r.UC_ARM64_REG_X0, state)

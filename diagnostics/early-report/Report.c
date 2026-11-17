@@ -442,6 +442,8 @@ VOID diag_prepare_live_frame(TB_REPORT *s,CONST CHAR8 *message){
   if(diag_last_stage==54)append("preemption re-enabled; post-mapping checkpoint\n");
   if(diag_last_stage==55)append("arm_vm_init returned; ramoops initialization begins\n");
   if(diag_last_stage==56)append("ramoops initialization returned\n");
+  if(diag_last_stage>=57&&diag_last_stage<89)append("pre-scheduler path; CDC worker has not been reached\n");
+  if(diag_last_stage==89)append("handing control to machine_startup; BSD/CDC not yet observed\n");
 #ifndef TB_REPORT_HOST_TEST
   }
 #endif
@@ -524,7 +526,7 @@ VOID diag_live_text(TB_REPORT *s,CONST CHAR8 *message){
     CONST CHAR8 *args=(CONST CHAR8*)(UINTN)(s->BootArgsPa-s->PhysicalBase+s->VirtualBase+0x6c);
     diag_export_mode=diag_export_option(args);
   }
-  BOOLEAN qr=diag_last_stage>=47&&diag_last_stage<=60;
+  BOOLEAN qr=diag_last_stage>=47&&diag_last_stage<=89;
   UINTN scale=s->Height>128?(s->Height-128)/121:0;
   UINTN horizontal=s->Width>32?(s->Width-32)/121:0;
   if(scale>horizontal)scale=horizontal;

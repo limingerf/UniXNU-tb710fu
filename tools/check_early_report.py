@@ -38,7 +38,9 @@ def main():
         ctypes.memmove(ctypes.addressof(memory), blob, len(blob))
         uc.mem_map_ptr(base, size, 7, ctypes.addressof(memory))
         uc.mem_map_ptr(physical, size, 7, ctypes.addressof(memory))
-        bootva, bootpa = vbase + 0x8900000, pbase + 0x8900000
+        # Keep synthetic boot args outside the actual appended reporter. New
+        # native layouts can place its state across the old fixed 0xf904000.
+        bootva, bootpa = base + size + 0x10000, physical + size + 0x10000
         boot = ctypes.create_string_buffer(4096)
         uc.mem_map_ptr(bootva, 4096, 7, ctypes.addressof(boot))
         uc.mem_map_ptr(bootpa, 4096, 7, ctypes.addressof(boot))

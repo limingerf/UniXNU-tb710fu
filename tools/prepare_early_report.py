@@ -43,9 +43,14 @@ def main():
     p.add_argument('--trace-switch-probe', action='store_true',
                    help='Trace the noinline 0007 marker helper with separate QR frames '
                         'before entry and after it returns. Requires --trace-past-switch.')
+    p.add_argument('--trace-platform-startup', action='store_true',
+                   help='Extend the continuing trace from ramoops through arm_init\'s '
+                        'pre-scheduler platform calls; stop tracing at machine_startup entry.')
     args = p.parse_args()
     if args.trace_switch_probe and not args.trace_past_switch:
         raise SystemExit('--trace-switch-probe requires --trace-past-switch')
+    if args.trace_platform_startup and not args.trace_switch_probe:
+        raise SystemExit('--trace-platform-startup requires --trace-switch-probe')
     root = Path(__file__).resolve().parents[1]
     src = root / 'diagnostics/early-report'
     source_snapshot = {str(q.relative_to(root)): sha(q.read_bytes()) for q in sorted(src.rglob('*'))
@@ -173,6 +178,22 @@ def main():
             # This call is immediately after arm_vm_init returns, so its entry
             # checkpoint proves the entire function returned to its caller.
             specs += [('_arm_init', '_tb710fu_ramoops_init', 1)]
+    if args.trace_platform_startup:
+        # All these calls precede scheduling. fiq_context_init still asserts
+        # interrupts disabled; machine_startup never returns, and only its entry
+        # is reported. Do not extend this shared-stack/GOP reporter into BSD or
+        # a CDC worker, where interrupts, scheduling and concurrent CPUs apply.
+        specs += [('_arm_init', name, occurrence) for name, occurrence in (
+            ('_PE_consistent_debug_inherit', 1), ('_serial_init', 1),
+            ('_kernel_startup_initialize_upto', 1), ('_PE_create_console', 1),
+            ('_PE_init_printf', 1), ('_cpu_machine_idle_init', 1),
+            ('_PE_init_platform', 2), ('_pe_arm_debug_init_early', 1),
+            ('_ml_map_cpu_pio', 1), ('_cpu_timebase_init', 1),
+            ('_kptimer_curcpu_up', 1), ('_PE_init_cpu', 1),
+            ('_apt_msg_init', 1), ('_apt_msg_init_cpu', 1),
+            ('_fiq_context_init', 1), ('_early_random', 1),
+            ('_machine_startup', 1),
+        )]
     traced = []
     trace_source = '.section .text.calltrace,"ax"\n'
     definitions = []
@@ -190,7 +211,7 @@ def main():
         # in this set, so it goes through `bl`, the wrapper regains control and
         # writes stage 49. Listing it while it was treated as a tail is why stage
         # 49 never appeared on the device.
-        tail = name in ('_arm_vm_init', '_set_mmu_ttb_alternate')
+        tail = name in ('_arm_vm_init', '_set_mmu_ttb_alternate', '_machine_startup')
         handoff_before = name == '_set_mmu_ttb_alternate'
         handoff_after = name == '_set_mmu_ttb_alternate_probed'
         label, symbol, resume = 'diag_trace_' + str(index), 'diag_original_' + str(index), 'diag_return_' + str(index)
@@ -412,14 +433,16 @@ def main():
               'symbols': {k: hex(v) for k, v in table.items() if k.startswith('diag_')},
               'qr_source': manifest,
               'reporter_sources': source_snapshot,
-              'user_display_request': 'live QR at TTBR1 switch, post-switch VM milestones, and arm_vm_init return',
+              'user_display_request': 'live QR through pre-scheduler platform startup' if args.trace_platform_startup else 'live QR at TTBR1 switch, post-switch VM milestones, and arm_vm_init return',
               'display_build_label': build_label,
               'report_is_full_console_log': False, 'static_single_OS_frame': True,
               'strict_alignment': True, 'live_stage_text': True, 'live_stage_QR': True,
               'live_QR_first_stage': 47, 'live_QR_return_stage': 48,
               'live_QR_first_post_switch_stage': 49, 'VM_boundary_stage': 47,
               'stable_transfer_at_final_checkpoint_only': False,
-              'live_checkpoint_stages': [47, 48, 49, 50, 51, 52, 54, 55, 56],
+              'live_checkpoint_stages': [47, 48, 49, 50, 51, 52, 54, 55, 56] + (list(range(57, 90)) if args.trace_platform_startup else []),
+              'platform_startup_trace': args.trace_platform_startup,
+              'platform_trace_boundary': 'machine_startup entry only; no BSD/CDC worker instrumentation',
               'stage_47_page_table_snapshot': {
                   'root_argument': 'ARG0 before set_mmu_ttb_alternate',
                   'walk': 'TTBR1 4 KiB, T1SZ=26/TG1=2 only; reads L1/L2/L3 descriptors through the old TTBR1 linear alias after AT S1E1R confirms the physical page',

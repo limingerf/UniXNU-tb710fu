@@ -32,6 +32,16 @@ TRACE_SPECS = tuple(('_arm_init', name, 1) for name in (
     ('_arm_vm_prot_init', 1), ('_qsort', 1), ('_set_mmu_ttb_alternate_probed', 1),
     ('_set_mmu_ttb', 1), ('_pmap_bootstrap', 1), ('__enable_preemption', 1),
 )) + (('_arm_init', '_tb710fu_ramoops_init', 1),)
+PLATFORM_TRACE_SPECS = tuple(('_arm_init', name, occurrence) for name, occurrence in (
+    ('_PE_consistent_debug_inherit', 1), ('_serial_init', 1),
+    ('_kernel_startup_initialize_upto', 1), ('_PE_create_console', 1),
+    ('_PE_init_printf', 1), ('_cpu_machine_idle_init', 1),
+    ('_PE_init_platform', 2), ('_pe_arm_debug_init_early', 1),
+    ('_ml_map_cpu_pio', 1), ('_cpu_timebase_init', 1),
+    ('_kptimer_curcpu_up', 1), ('_PE_init_cpu', 1),
+    ('_apt_msg_init', 1), ('_apt_msg_init_cpu', 1),
+    ('_fiq_context_init', 1), ('_early_random', 1), ('_machine_startup', 1),
+))
 
 
 def require(condition, message):
@@ -164,14 +174,41 @@ def _verify(original, candidate, report):
 
     require('com.apple.kernel' in old.entries, 'original has no native entry')
     native = audit.MachO(original, old.entries['com.apple.kernel'][1])
-    names = {}
+    names, definitions = {}, []
     for item in native.nlists():
         if not item['kind'] & 0xe0 and item['kind'] & 0x0e == 0x0e:
             names.setdefault(item['name'], set()).add(item['value'])
+            definitions.append(item)
 
     def named(name):
         require(len(names.get(name, set())) == 1, 'missing/ambiguous original symbol: ' + name)
         return next(iter(names[name]))
+
+    parent_ranges = {}
+
+    def trace_parent_range(name):
+        # Bind the claimed caller to executable bytes in the original native
+        # image. The next distinct symbol in that same section bounds its code;
+        # report metadata alone cannot establish the pre-scheduler boundary.
+        if name not in parent_ranges:
+            address = named(name)
+            sections = {item['section'] for item in definitions
+                        if item['name'] == name and item['value'] == address}
+            require(len(sections) == 1, 'ambiguous trace parent section: ' + name)
+            section_number = next(iter(sections))
+            require(0 < section_number <= len(native.sections), 'invalid trace parent section: ' + name)
+            section = native.sections[section_number - 1]
+            require(section['name'] == '__text' and section['flags'] & 0x80000000 and
+                    section['va'] <= address and address + 4 <= section['va'] + section['size'],
+                    'trace parent is not executable text: ' + name)
+            end = min([item['value'] for item in definitions
+                       if item['section'] == section_number and address < item['value'] <= section['va'] + section['size']]
+                      or [section['va'] + section['size']])
+            require(address % 4 == end % 4 == 0 and end > address,
+                    'invalid trace parent instruction range: ' + name)
+            native.offset(address, end - address)
+            parent_ranges[name] = address, end
+        return parent_ranges[name]
 
     spans = report['patch_spans']
     require(isinstance(spans, list) and spans, 'missing patch spans')
@@ -212,16 +249,36 @@ def _verify(original, candidate, report):
             direct_branch(struct.unpack('<I', after)[0], arm) == code_target('diag_init'),
             'arm_init does not preserve the PACIBSP-entry contract')
     traces = report['call_trace']
-    require(isinstance(traces, list) and len(traces) == len(TRACE_SPECS), 'expected the complete guard11 trace list')
-    for index, (item, expected) in enumerate(zip(traces, TRACE_SPECS)):
+    platform = report.get('platform_startup_trace', False)
+    require(isinstance(platform, bool), 'invalid platform trace selector')
+    expected_traces = TRACE_SPECS + (PLATFORM_TRACE_SPECS if platform else ())
+    require(isinstance(traces, list) and len(traces) == len(expected_traces), 'expected the complete bounded trace list')
+    for index, (item, expected) in enumerate(zip(traces, expected_traces)):
         require((item['parent'], item['name'], item['occurrence']) == expected and item['label'] == 'diag_trace_' + str(index),
                 'unexpected trace function/order')
         site, callee = number(item['site']), number(item['callee'])
         require(callee == named(item['name']), 'trace callee is not the original function')
+        parent_start, parent_end = trace_parent_range(item['parent'])
+        require(parent_start <= site and site + 4 <= parent_end and site % 4 == 0,
+                'trace site is outside original parent function: ' + item['parent'])
+        calls = []
+        for address in range(parent_start, parent_end, 4):
+            word = struct.unpack('<I', native.read(address, 4))[0]
+            if word >> 26 == 0b100101 and direct_branch(word, address, True) == callee:
+                calls.append(address)
+        occurrence = item['occurrence']
+        require(0 < occurrence <= len(calls) and calls[occurrence - 1] == site,
+                'trace site is not the original direct BL occurrence')
         before, after = patch('call_trace', site)
         require(direct_branch(struct.unpack('<I', before)[0], site, True) == callee and
                 direct_branch(struct.unpack('<I', after)[0], site) == code_target(item['label']),
                 'trace branch does not wrap the original BL')
+        if platform:
+            tail = item['name'] in ('_arm_vm_init', '_set_mmu_ttb_alternate', '_machine_startup')
+            require(item.get('before_stage') == index * 2 + 1 and
+                    item.get('after_stage') == (None if tail else index * 2 + 2) and
+                    item.get('original_LR_tail_transfer') is tail,
+                    'platform trace stage/continuation contract differs')
     compact = report['compact_checkpoints']
     require(isinstance(compact, list) and [item['stage'] for item in compact] == [1, 2, 3], 'expected exactly three compact checkpoints')
     for item in compact:

@@ -16,7 +16,7 @@ def branch(site, target, link=False):
     return struct.pack('<I', (0x94000000 if link else 0x14000000) | (((target - site) // 4) & 0x3ffffff))
 
 
-def fixture():
+def fixture(platform=False):
     """Synthetic arm64e fileset with real sections/symbols and bounded hooks."""
     base, native_at, text, symoff, stroff = 0x100000, 0x1000, 0x2000, 0x5000, 0x6000
     original = bytearray(0x8000)
@@ -25,9 +25,14 @@ def fixture():
     entry = struct.pack('<IIQQII', 0x80000035, 64, base + native_at, native_at, 32, 0)
     original[:168] = header + segment + entry + b'com.apple.kernel\0'.ljust(32, b'\0')
     names = {name: base + 0x2800 + i * 16 for i, name in enumerate(verify.RUNTIME_SYMBOLS)}
-    names.update({name: base + 0x3000 + i * 16 for i, name in enumerate(dict.fromkeys(item[1] for item in verify.TRACE_SPECS))})
+    specs = verify.TRACE_SPECS + (verify.PLATFORM_TRACE_SPECS if platform else ())
+    names.update({name: base + 0x3000 + i * 16 for i, name in enumerate(dict.fromkeys(item[1] for item in specs))})
     names['_arm_init'] = base + 0x2040
+    names['_fixture_after_arm_init'] = base + 0x2180
+    names['_arm_vm_init'] = base + 0x2200
+    names['_fixture_after_arm_vm_init'] = base + 0x2300
     names['_start_first_cpu'] = base + 0x3400
+    names['_fixture_scheduled_path'] = base + 0x3500
     strings, table = b'\0', bytearray()
     for name, address in names.items():
         table += struct.pack('<IBBHQ', len(strings), 15, 1, 0, address)
@@ -45,11 +50,16 @@ def fixture():
     arm = names['_arm_init']
     original[arm - base:arm - base + 4] = struct.pack('<I', 0xd503237f)
     trace_items = []
-    for index, (parent, name, occurrence) in enumerate(verify.TRACE_SPECS):
-        site = base + 0x2080 + index * 4
+    next_site = {'_arm_init': base + 0x2080, '_arm_vm_init': base + 0x2240}
+    for index, (parent, name, occurrence) in enumerate(specs):
+        site = next_site[parent]
+        next_site[parent] += 4
         original[site - base:site - base + 4] = branch(site, names[name], True)
+        tail = name in ('_arm_vm_init', '_set_mmu_ttb_alternate', '_machine_startup')
         trace_items.append({'parent': parent, 'name': name, 'occurrence': occurrence,
-                            'site': hex(site), 'callee': hex(names[name]), 'label': 'diag_trace_' + str(index)})
+                            'site': hex(site), 'callee': hex(names[name]), 'label': 'diag_trace_' + str(index),
+                            'before_stage': index * 2 + 1, 'after_stage': None if tail else index * 2 + 2,
+                            'original_LR_tail_transfer': tail})
     compact = []
     for stage in (1, 2, 3):
         site, cave = base + 0x2020 + (stage - 1) * 4, base + 0x2400 + (stage - 1) * 0x180
@@ -93,7 +103,8 @@ def fixture():
               'state_segment': {'name': '__KDATRW', 'va': hex(code_base + code_size), 'bytes': state_size, 'fileoff': fileoff + code_size, 'filesize': state_file_size, 'protection': 'RW-NX'},
               'segment_va': hex(code_base), 'segment_fileoff': fileoff, 'segment_bytes': code_size + state_size,
               'payload_bytes': len(payload), 'payload_sha256': sha(payload), 'symbols': symbols,
-              'patch_spans': spans, 'arm_init_va': hex(arm), 'call_trace': trace_items, 'compact_checkpoints': compact}
+              'patch_spans': spans, 'arm_init_va': hex(arm), 'call_trace': trace_items, 'compact_checkpoints': compact,
+              'platform_startup_trace': platform}
     return bytes(original), bytes(candidate), report
 
 
@@ -118,6 +129,22 @@ class ReporterTransformTests(unittest.TestCase):
         self.assertEqual(result['strong_runtime_definitions_verified'], 13)
         self.assertEqual(result['trace_sites_verified'], 28)
         self.assertGreaterEqual(result['preserved_runtime_code_bytes'], 13 * 4)
+
+    def test_platform_extension_is_complete_and_stops_at_machine_startup_entry(self):
+        self.original, self.candidate, self.report = fixture(platform=True)
+        result = self.check()
+        self.assertEqual(result['trace_sites_verified'], 45)
+        self.assertEqual(self.report['call_trace'][-1]['name'], '_machine_startup')
+        self.assertEqual(self.report['call_trace'][-1]['before_stage'], 89)
+        self.assertIsNone(self.report['call_trace'][-1]['after_stage'])
+
+    def test_platform_trace_cannot_be_downgraded_or_claim_a_machine_startup_return(self):
+        self.original, self.candidate, self.report = fixture(platform=True)
+        self.report['platform_startup_trace'] = False
+        self.reject('complete bounded trace')
+        self.report['platform_startup_trace'] = True
+        self.report['call_trace'][-1]['after_stage'] = 90
+        self.reject('continuation contract')
 
     def test_original_and_candidate_hashes_are_both_required(self):
         self.report['original_sha256'] = '0' * 64
@@ -163,6 +190,35 @@ class ReporterTransformTests(unittest.TestCase):
         span['after_hex'] = data[offset:offset + 4].hex()
         self.candidate = bytes(data); self.rebind()
         self.reject('wrap the original BL')
+
+    def test_trace_cannot_claim_an_arm_init_parent_for_a_scheduled_path_bl(self):
+        # Keep hashes, delta spans, original callee and wrapper target valid,
+        # while moving a claimed arm_init trace into another real function.
+        item = self.report['call_trace'][0]
+        old_site, new_site = int(item['site'], 16), 0x103504
+        original, candidate = bytearray(self.original), bytearray(self.candidate)
+        candidate[old_site - 0x100000:old_site - 0x100000 + 4] = original[old_site - 0x100000:old_site - 0x100000 + 4]
+        before = branch(new_site, int(item['callee'], 16), True)
+        after = branch(new_site, int(self.report['symbols'][item['label']], 16))
+        original[new_site - 0x100000:new_site - 0x100000 + 4] = before
+        candidate[new_site - 0x100000:new_site - 0x100000 + 4] = after
+        span = next(s for s in self.report['patch_spans'] if s['kind'] == 'call_trace' and s['offset'] == old_site - 0x100000)
+        span.update(offset=new_site - 0x100000, before_hex=before.hex(), after_hex=after.hex())
+        item['site'] = hex(new_site)
+        self.original, self.candidate = bytes(original), bytes(candidate); self.rebind()
+        self.reject('outside original parent function')
+
+    def test_trace_actual_direct_bl_occurrence_is_recomputed(self):
+        # An earlier unmodified call to the same target makes the still-bound
+        # trace site occurrence 2. All report hashes/deltas remain consistent.
+        item = self.report['call_trace'][0]
+        original, candidate = bytearray(self.original), bytearray(self.candidate)
+        earlier = 0x102044
+        content = branch(earlier, int(item['callee'], 16), True)
+        original[earlier - 0x100000:earlier - 0x100000 + 4] = content
+        candidate[earlier - 0x100000:earlier - 0x100000 + 4] = content
+        self.original, self.candidate = bytes(original), bytes(candidate); self.rebind()
+        self.reject('not the original direct BL occurrence')
 
     def test_compact_code_must_return_and_replay_original_instruction(self):
         item = self.report['compact_checkpoints'][1]
