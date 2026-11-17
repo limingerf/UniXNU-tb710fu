@@ -11,15 +11,31 @@ DMA ownership, startup and enumeration remain unimplemented. The official
 `QcomDwc3` component is Apple XDCI/XHCI stack integration, not CDC-ACM, and its
 PHY headers have a separate GPL-2.0-only license.
 
-An optional `ufs-source` runner stage performs the minimal native kernel build
-first, then compiles pinned `ShengUfs@99d8bcd3e43dd24fc3c8437c67b5d4cc71ab94d0`
-with a board patch that adds the TB710FU `qcom,sm8650-ufshc` match. The driver
-archive is intentionally not linked into that kernel. The official macOS 27
-source-storage route still requires owner-signed OS/SystemOS policies and the
-matching `.vroot` tables in userdata. The root-volume image from run
-`43724852936` is a valid image input, but does not contain those policy
-artifacts. No target kernel or UFS archive result exists for this new change
-until the supported macOS runner completes.
+The optional `ufs-source` workflow has been corrected to run the device-owned
+builder after the minimal native kernel, using that build's XNU records and the
+pinned framework interfaces. It compiles a standalone `NativeUfs` archive with
+the TB710FU compatible patch; the workflow has not yet run with this correction,
+and the archive will remain unlinked. The full source-storage route is still
+not connected: the board disables `CONFIG_XNU_SOURCE_STORAGE`, and the clean
+device repository lacks the `SourceStorage.cpp`, `SourceRootPolicies.cpp`, and
+`SourceRootBinding.cpp` bridge files required by that recipe.
+
+## Owner policies and userdata `.vroot` rebuilt · 2026-11-17
+
+Using the user-provided run `43724852936` artifact, OS, SystemOS and App were
+extracted and matched to the pinned macOS 27.3 profile. The VerifiedRoot C host
+verifier authenticated the RSA-3072/SHA-256 signatures and every 4 KiB block:
+OS 3,538,432; SystemOS 712,192; App 13,312. All three policies share owner-key
+SHA-256 `c2d8d462d0a790056bef2dddc30ae60ce210dbf0ee1cd4350a21e864db3a7d7e`.
+
+The rebuilt `SHNGROOT v2` image contains the original windows plus raw
+`OS.vroot`, `SystemOS.vroot` and `App.vroot` hash tables. The final 1 MiB object
+padding, manifest checksum, all six row hashes, and zero-filled gaps passed a
+full read-back. Image size is 17,603,493,888 B; SHA-256 is
+`35b1c581c7074c626b4b3750af93901a988425e42671f1aaeafd7fd6e13de199`. Public
+signed headers and trusted keys are in `scripts/policies/26C5035r/`; the private
+key stays in the ignored local build tree with a restricted Windows ACL. This
+is host-only validation: no flash, boot, or root mount has been tested.
 
 ## USB/UFS driver review · 2026-11-17
 
@@ -42,13 +58,11 @@ SMMU and command code, but its catalog metadata targets SM8550/iOS 17. The
 macOS profile already supplies IPSW build `26C5035r` and the OS/SystemOS/App
 image hashes and UUIDs; the official kernel context merges them and exports
 `UNIXNU_IPSW_BUILD`. A direct component-script invocation omits that context.
-With the correct build ID supplied, the builder reaches its real next blocker:
-there is no matching signed root-policy bundle for this build in the workspace.
-The XNU compile records needed by the archive recipe are also absent until the
-official kernel build produces them. The public-source storage route still
-requires IOStorageFamily/APFS ABI inputs and is marked unbuilt/unqualified
-upstream, so it is not a drop-in macOS 27 driver. No standalone UFS probe is
-required before adaptation.
+The owner policies and matching `.vroot` userdata tables are now host-verified;
+`docs/USERDATA_BUILD.md` records their hashes. The public-source storage route
+still requires IOStorageFamily/APFS ABI inputs and remains unbuilt and
+unqualified upstream, so it is not a drop-in macOS 27 driver. No standalone UFS
+probe is required before adaptation.
 
 ## Mainline integration and Meizu21 audit · 2026-11-17
 

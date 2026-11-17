@@ -120,9 +120,37 @@ flag）在 step 5 提前失败，已修正；43724852936 全部 9 步通过。
 1 MiB `SHNGROOT` 头 + 三个窗口（各 1 MiB 对齐）的实际内容。压缩后 artifact
 13.2 GiB。
 
-> 本机未下载该 14 GiB artifact：`github_admin.py download` 按 256 KiB 分块
-> 串行拉取，14 GiB 不实用。产物保留在 GitHub 私有 artifact（3 天），刷入时
-> 应直接从 CI 侧取用，无需经本机中转。
+本机后来收到 run `43724852936` 的 artifact ZIP，下面的策略和 userdata 重建都以该
+镜像及其 `userdata-root.json` 为输入。
+
+### Owner policies 与 `.vroot` 表
+
+2026-11-17 从 OS、SystemOS 和 App 原始窗口生成同一 owner key 的 RSA-3072/SHA-256
+签名策略。VerifiedRoot 的 C host verifier 对签名和每个 4 KiB block 做了完整验证：
+
+| 窗口 | 已验证 blocks | `.vroot` 大小 | `.vroot` SHA-256 |
+| --- | ---: | ---: | --- |
+| OS | 3,538,432 | 113,229,824 B | `f10b77a0b2f0475c296a66c69ec3c1d26598dbca3e6b09751a0b1cc31af533b0` |
+| SystemOS | 712,192 | 22,790,144 B | `48402d8eccea26cd5e226830f97a08fe3c1d8d2265bdd38977c39b761a79d608` |
+| App | 13,312 | 425,984 B | `8e0bfe4d34f4bda99b8f04fb2dc7af157ebf587631ed093b344023c4a092ec62` |
+
+三份验证报告都记录 `hardware_tested=false`、`boot_root_authenticated=false`。公钥哈希为
+`c2d8d462d0a790056bef2dddc30ae60ce210dbf0ee1cd4350a21e864db3a7d7e`；公开签名头和
+公钥位于 `scripts/policies/26C5035r/`。owner 私钥只保留在本地忽略的构建目录，不入库。
+
+重建后的 `userdata-root-vroot.img` 保留原三个镜像窗口，并以官方 `SHNGROOT v2`
+数据对象格式加入三张原始 32-byte/block 哈希表。对象起点均按 1 MiB 对齐，最后对象后
+也按官方 builder 补齐。全镜像读回检查了 manifest checksum、所有窗口和表格哈希、零填充
+以及最终 SHA-256：
+
+| 项 | 值 |
+| --- | --- |
+| `image_bytes` | **17,603,493,888 B** |
+| `image_sha256` | `35b1c581c7074c626b4b3750af93901a988425e42671f1aaeafd7fd6e13de199` |
+| `source_image_sha256` | `221d18c76ccd6bcc0ec9141508ef109a254783d029b04e3401993450440ccc7a` |
+| `hardware_tested` | `false` |
+
+新镜像仅完成主机端格式和哈希验证，未刷入设备，也不代表根卷已挂载。
 
 ## 尚未解决 / 需要决策
 
