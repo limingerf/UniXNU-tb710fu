@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "stage": "signed-prelinked-dual-live-test-candidate",
+  "device_commit": "da488d376954e5490685aa0580f71c98ecb1c2c0",
+  "run_id": 44149353099,
+  "display_build_label": "src-da488d37-ramoops",
+  "baseline": "out/tb710fu-dual-live-wsl-44124706860-signed",
+  "baseline_vendor_sha256": "a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2",
+  "baseline_vbmeta_sha256": "3fd43a5a7adc0275eb8d241b94f1c2520b6b630ae912c3eff4a3869d76228e04",
+  "native_sha256": "941b61b13111842fcf129f43bbd163cf06b20df58694e0e602c949e2a7deaf73",
+  "prelinked_sha256": "b368b5bd8525124816d01f3f6173c488a599616490f5429fa365ce7abbb8a92c",
+  "packaged_kernel_sha256": "6885af59fb414ce40c459b4144f0eb57219c18c8e5994243c4b2fb73f906d8e1",
+  "manifest_sha256": "f1c8bb813b0e6fd77312f136f0e056b01490253edf8f7f9392a29f633bf472c5",
+  "unsigned_vendor_sha256": "ec87f55d7a22127a675cdc0bae820541a3c5b6b763185b6518ab3e375c7fe263",
+  "images": {
+    "boot.img": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83",
+    "vendor_boot.img": "dab654067e9915794b86efa0c4e79668f54da0cc8d201f21dafcec3f6ff75b47",
+    "vbmeta.img": "7552ab09b4712ff83f802bb409c4fc93c1413be2ca73571cce5b74e1354afc7a"
+  },
+  "zip": {
+    "path": "out/tb710fu-dual-live-44149353099-signed.zip",
+    "bytes": 35646233,
+    "sha256": "1f23937eb7157bd731de6e83baa86beaa7ecef1b58c5911a1837ed7c475a52af",
+    "all_members_match_source": true
+  },
+  "packager_tests": {"passed": 15, "skipped_missing_old_fixtures": 2},
+  "independent_verification": "out/live-ramoops-44149353099-signed/verification-report.json",
+  "rsa_signatures_and_salted_hashes": "PASS",
+  "unchanged_other_descriptors": 22,
+  "adt_vroot_config_unchanged": true,
+  "hardware_verified": false,
+  "device_operations": false
+}

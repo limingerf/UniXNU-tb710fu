@@ -1,5 +1,162 @@
 # Current status · 2026-11-18
 
+## Volatile current-boot ramoops selected · 2026-11-18
+
+The user selected the safe temporary policy after the device report showed the
+dual-live display stopped at `W=0 P=6 S=XNU`, the right QR contained only the
+ramoops boot banner, and a button-forced reboot was needed before the scan.
+The new `0015-tb710fu-ramoops-volatile-buffer.patch` removes the unreserved
+physical ramoops mapping and stores the 256 KiB zone in an aligned writable
+kernel BSS buffer. It preserves the current-boot snapshot format and early
+capture, but intentionally cannot survive reset or serve Android pstore.
+`ramoops_selftest=1` now records that limitation without resetting.
+
+The production ramoops snapshot check passes all 10 cases under WSL GCC and the
+dual-stream adapter check passes 10 groups and 15 invalid-video cases. These
+are host checks only. A fresh macOS arm64e runner build is required before a
+new signed image; no image or device operation has been produced for 0015.
+The earlier fixed-region analysis is retained as historical evidence and marked
+superseded in `docs/LOG_REGION_IN_WINDOW.md`.
+
+The protocol now has a strict one-frame path for the pre-worker state: the XNU
+side prioritizes the newest tail while retaining the early backup in memory,
+and ramoops uses the same bounded still-frame path. The pinned OneSend
+interoperability check passes with ASan/UBSan, including the single-frame
+capacity boundary and slow-scan recovery. Once the worker runs, the existing
+multi-frame early-backup/current-tail export remains active.
+
+## Dual-live device report and memory reservation risk · 2026-11-18
+
+The user scanned `src-da488d37-ramoops` on the device. The XNU file has a
+409-byte early backup and a 512-byte current tail ending at offset 1244; its
+last line is the phase 6, rank 0 startup callback. The right QR yielded the
+ramoops boot banner. The display read `W=0 P=6 S=XNU` and stopped cycling.
+The user forced a reboot and scanned before it stopped, not an independently
+reported spontaneous reboot. Verbatim/transcribed evidence and limitations are
+in `docs/evidence/dual-live-device-44149353099.json`.
+
+The worker flag and snapshot capacity indicate the displayed snapshot was made
+before the worker ran. The callback pointer's low address matches
+`_vm_compressor_set_size` in this exact fileset, but the line is emitted before
+the diagnostic poll and callback, not at a fault PC. It does not prove whether
+the poll or callback completed. The initial right snapshot immediately follows
+ramoops init, consistent with a stale boot banner. Timer/worker animation cannot
+continue if startup stops before scheduling or the CPU cannot execute it.
+
+The current 256 KiB ramoops default lies inside managed DRAM and is not proven
+reserved from XNU's page allocator. The delivered ADT lacks
+`darwinboot-memory-excluded`; the observed zero excluded pages is consistent
+with this risk. `ml_io_map` alone does not reserve pages. Do not treat this
+region as safely reserved or rely on it for persistent logs. The user selected
+a compact single-frame fallback prioritizing the latest XNU tail, with the early
+backup retained in memory; implementation and a safe ramoops ownership path
+are being investigated. No newer hardware result is established.
+
+## Retained signed baseline reused for the dual-live fix · 2026-11-18
+
+The user selected `out/tb710fu-dual-live-wsl-44124706860-signed/` as the
+packaging baseline after earlier outputs were deleted. All three retained
+images match the historical SHA-256 records. Independent RSA checks for boot,
+vendor_boot and vbmeta, boot/vendor salted hashes, vendor descriptor and boot
+chain key checks passed. The packager now accepts this exact vendor/vbmeta
+pair, validates its existing ADT, configuration, old kernel and root policies,
+and replaces only the payload kernel. The original baseline path remains
+separately supported. Fifteen of 17 focused tests passed; two tests requiring
+deleted earlier fixtures were skipped.
+
+Run 44149353099's prelinked kernel was transformed to the standard-band
+derivative SHA-256 `6885af59fb414ce40c459b4144f0eb57219c18c8e5994243c4b2fb73f906d8e1`;
+six spans were verified, other bytes and segments are unchanged, and the
+production parser passes. The image was locally signed under the user's prior
+explicit signing authorization. Independent checks confirm all three RSA
+signatures, salted hashes, boot chain key, 22 unchanged other descriptors,
+unchanged ADT/config/policies and actual FAT/LZMA readback of the new kernel.
+No device command or hardware test occurred. The receiver still needs a reset
+for a different session; runtime animation and ramoops contents remain unproven.
+
+Signed files are in `out/live-ramoops-44149353099-signed/`; ZIP is
+`out/tb710fu-dual-live-44149353099-signed.zip` (35,646,233 bytes), SHA-256
+`1f23937eb7157bd731de6e83baa86beaa7ecef1b58c5911a1837ed7c475a52af`.
+Every ZIP member was compared with its source. Display label is
+`src-da488d37-ramoops`. Details are in
+`docs/evidence/dual-live-signed-44149353099.json`.
+
+## macOS runner resumed for dual-live fix · 2026-11-18
+
+At the user's request, device commit
+`da488d376954e5490685aa0580f71c98ecb1c2c0` was pushed to
+`codex/ufs-transactional-handoff` and one `ufs-integrated` workflow was
+dispatched as run `44149353099`, attempt 1, job `134273078747`. It completed
+successfully on macOS: native arm64e compilation/link, both QR checks, strict
+prelink and the production DarwinBoot parser passed. The native input SHA-256
+is `941b61b13111842fcf129f43bbd163cf06b20df58694e0e602c949e2a7deaf73`;
+the 142,819,328-byte fileset SHA-256 is
+`b368b5bd8525124816d01f3f6173c488a599616490f5429fa365ce7abbb8a92c`.
+Mapping is complete, missing and stubbed are empty, and allow-missing is false.
+The downloaded artifact SHA-256 matches GitHub's digest. Its LiveLog integration
+report binds the exact device commit and label `src-da488d37-ramoops`. Details
+are recorded in `docs/evidence/dual-live-runner-44149353099.json`.
+
+This is a prelinked build, not a signed or flashable image or a hardware boot.
+The old `vendor_boot` and `vbmeta` packaging baselines are missing at their
+recorded paths; a matching boot image and prior unsigned payload were located,
+but the missing signed baselines have not been reconstructed or verified.
+No signing or device operation was performed. No duplicate run was dispatched.
+
+## WSL toolchain source investigation · 2026-11-18
+
+The pinned XNU README requests a matching Xcode and, for Apple Silicon,
+a matching KDK; it does not supply a Linux arm64e Apple Clang. The pinned
+UniXNU Linux environment documents plain arm64 iOS 17. A public UniXNU WSL
+example builds the same XNU revision as plain ARM64 for iOS and reaches a
+QEMU boot boundary; it is not evidence of macOS arm64e or signed-null ABI
+compatibility. A newer, unpinned framework checkout selects an arm64e target
+but still pins the same LLVM revision and does not resolve the observed error.
+
+The public swiftlang/llvm-project Apple branch at
+`7ca7a2547f00e34f5ec91be776a1d0bbca74b7a9` rejects more than three
+`__ptrauth` arguments in Sema. The checked `next` revision
+`c1cf5082012dc490621de846c0aa112ad47af6ea` fixes
+`AuthenticatesNullValues` to false. These are bounded source checks, not a
+claim about every branch or Apple's private toolchains. A third-party patch
+that removes the fourth argument changes null authentication behavior and is
+not an established ABI-equivalent solution. Exact links and local findings
+are in `docs/evidence/wsl-toolchain-investigation-20261118.json`.
+
+The WSL installation has Debian Clang 19.1.7 and the pinned UniXNU Clang 24;
+neither passed a minimal four-argument qualifier probe. Its `xcrun` is a
+UniXNU shim, not Xcode. No compatible local compiler has been identified and
+the existing native bootstrap failure remains the last actual build result.
+No new native kernel, prelink or signed image was produced, and no runner or
+device operation was started during this investigation.
+
+## WSL native build blocked by arm64e pointer authentication · 2026-11-18
+
+At the user's request, native source revision
+`da488d376954e5490685aa0580f71c98ecb1c2c0` was built in WSL without a GitHub
+runner. The first attempt on the Windows-mounted framework stopped in the
+AvailabilityVersions tool because the checked-out shebang contained CRLF;
+that was an environment error, not a compiler failure. No fetched cache was
+edited. A separate LF checkout on the WSL Linux filesystem used the official
+framework `0c1bac3d51a3009dca1708b15a5198f4b43d057a`, the same device commit,
+and the official pinned Linux toolchain. It passed that point and began the
+native bootstrap, including all 140 selected XNU patches.
+
+The first actual compiler error occurred in libdispatch firehose compilation:
+`sys/ucred.h` uses XNU's four-argument `__ptrauth` with
+`"authenticates-null-values"`; the installed Clang 24 rejects more than three
+arguments. The fourth argument concerns authentication semantics of a security
+credential pointer. Removing it or disabling pointer authentication would change
+the kernel's security and ABI behavior and is not accepted as a build fix.
+The pinned official `linux_env` is documented for plain arm64 iOS 17 and sets
+`DARWIN_TRIPLE=arm64-apple-ios17.0`, not the selected arm64e macOS profile.
+No compatible local compiler has been established. Actual bootstrap log SHA-256
+is `b0efbf244ba0ab4271737cc603089965f23ab7830c129734e0a0be25a2a725f8`;
+the exact compiler SHA-256 is
+`ff36a7a15a3f68434a41af0732e8dda147436275d1409abeb4741526d3f385dc`.
+See `docs/evidence/wsl-native-arm64e-blocker-20261118.json`. No new native
+kernel, prelink, signed image or hardware result was produced by this attempt.
+
 ## Dual-live field report: session timeout and hidden status · 2026-11-18
 
 The user tested the signed `src-7f409ffb-ramoops` bundle. They report a

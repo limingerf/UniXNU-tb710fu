@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "source": "User-provided decoded XNU QR text and observation",
+  "display_build_label": "src-da488d37-ramoops",
+  "reported_behavior": "Right QR yielded only a title; neither QR visibly cycled; slow scanning required restarting the scan.",
+  "reboot_or_receiver_reset": "User forced a reboot with the button, then scanned before the QR rotation stopped; no spontaneous device reboot was reported.",
+  "right_qr_title_verbatim": "tb710fu xnu boot (unixnu ramoops)",
+  "on_screen_status_transcribed": "W=0 P=6 S=XNU",
+  "decoded_xnu_export": {
+    "source": "xnu-debug",
+    "earlybackup_state": "ready",
+    "earlybackup_start": 0,
+    "earlybackup_end": 409,
+    "earlybackup_bytes": 409,
+    "current_start": 732,
+    "current_end": 1244,
+    "current_bytes": 512,
+    "dropped": 0,
+    "earlybackup_text": "kernel_startup_initialize_upto: reached phase 4\nkprintf initialized\nSerial mode specified: 00000003\ninitialize_screen: b=D5100000, w=00000C80, h=000007D0, r=00003200, d=00000000\npe_arm_init_interrupts: args: 0xfffffff00c8c6fa0\npe_arm_map_interrupt_controller: soc_phys:  0x1000000\npe_arm_map_interrupt_controller: failed to find the interrupt-controller.\npe_arm_init_debug: failed to find cpu-debug-interface\n",
+    "current_tail_text": "to[5, rank 0]: 0xff8e3b300c2942a8(0)\nkernel_startup_initialize_upto[5, rank 2147483647]: 0xb89ccbf00bf43e8c(0)\nkernel_startup_initialize_upto: reached phase 5\npmap_startup() init/release time: 96718 microsec\npmap_startup() 481637 page entries, 0 of them excluded memory, 1 unused\nvm_page_bootstrap: 481637 free pages, 42651 wired pages\nVM bootstrap: 30 maps, 128 entries and 16 nodes available\nEnable all vm_debug options with boot-arg vm_debug=1\nkernel_startup_initialize_upto[6, rank 0]: 0xdc9a56700c28d884(0)\n"
+  },
+  "analysis": {
+    "snapshot_created_before_worker_started": "The current snapshot has exactly the pre-worker 512-byte tail and ends at 1244 bytes; a started worker uses a 3072-byte capacity. This does not prove the worker never starts later.",
+    "last_callback_symbol_correlation": "The PAC-bearing pointer's low address matches fffffff00c28d884, _vm_compressor_set_size, in the exact 44149353099 fileset; the phase-6 rank-0 log is emitted before the diagnostic poll and callback. This is not a fault PC and does not prove the callback ran or hung.",
+    "right_title_cause": "The reported title matches the boot banner written at ramoops initialization. The first right snapshot is taken immediately after initialization, before later startup messages; this is consistent with a stale initial snapshot and does not alone prove the reason animation stopped.",
+    "ramoops_reservation": "The current 0x93ff00000 + 0x40000 region is inside managed DRAM and is not proven reserved from XNU's allocator. ml_io_map does not reserve pages. Zero excluded pages in the user's log is consistent with, but does not alone prove, this risk."
+  },
+  "hardware_partition_hash_readback": false,
+  "fault_pc_known": false,
+  "usb_enumeration_verified": false
+}

@@ -92,6 +92,8 @@ def main():
                 '16_round_replacement_gate_per_stream': True,
                 'one_frame_per_global_250ms_tick_including_refresh': True,
                 'initial_raw_ramoops_frame_before_freeze': True,
+                'worker_not_started_uses_single_frame_latest_tail': True,
+                'single_frame_keeps_early_backup_deferred_metadata': True,
                 'dual_slots_preserve_other_stream': True,
                 'small_screen_alternates_one_bounded_rectangle': True,
                 'capture_and_render_contention_skip_without_wait': True,

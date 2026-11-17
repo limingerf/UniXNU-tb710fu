@@ -124,6 +124,16 @@ enum tb710fu_live_log_result tb710fu_live_log_snapshot(
 enum tb710fu_live_log_result tb710fu_live_log_snapshot_file(
     struct tb710fu_live_log_sender *sender, const uint8_t *bytes, size_t length,
     uint64_t generation, uint64_t start, uint64_t end);
+/* Compute the maximum file body that fits one systematic frame for the actual
+ * filename. Invalid source/range returns zero. The caller chooses which bytes
+ * to include; this function neither truncates nor changes snapshot state. */
+size_t tb710fu_live_log_single_file_capacity(enum tb710fu_live_log_source source,
+    uint64_t generation, uint64_t start, uint64_t end);
+/* Same file-body semantics and replacement gate as snapshot_file, but reject
+ * any body that would require more than one frame. */
+enum tb710fu_live_log_result tb710fu_live_log_snapshot_single_file(
+    struct tb710fu_live_log_sender *sender, const uint8_t *bytes, size_t length,
+    uint64_t generation, uint64_t start, uint64_t end);
 int tb710fu_live_log_next_frame(struct tb710fu_live_log_sender *sender,
     uint8_t out[TB710FU_LIVE_LOG_FRAME_BYTES]);
 int tb710fu_live_log_can_snapshot(const struct tb710fu_live_log_sender *sender);

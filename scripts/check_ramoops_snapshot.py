@@ -19,6 +19,7 @@ PATCHES = (
     'patches/xnu/0004-tb710fu-ramoops-console.patch',
     'patches/xnu/0008-tb710fu-ramoops-in-window.patch',
     'patches/xnu/0013-tb710fu-ramoops-snapshot.patch',
+    'patches/xnu/0015-tb710fu-ramoops-volatile-buffer.patch',
 )
 
 
@@ -59,6 +60,9 @@ def main():
             run(['git', '-C', str(scratch), 'apply', *include, str(ROOT / patch)])
             for name in FILES:
                 hashes.setdefault(patch, {})[name] = sha(scratch / name)
+        production = (scratch / FILES[0]).read_text()
+        if 'volatile_zone' not in production or 'ml_io_map(' in production:
+            raise SystemExit('Volatile current-boot ramoops source did not replace physical mapping')
         executable = scratch / 'ramoops-snapshot-test'
         command = [compiler, '-std=c11', '-O1', '-g', '-Wall', '-Wextra', '-Werror',
                    '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
@@ -79,7 +83,7 @@ def main():
             'test_sha256': sha(ROOT / 'tests/ramoops_snapshot_test.c'),
             'checker_sha256': sha(Path(__file__)),
             'output': result.stdout.strip(),
-            'limits': 'Host production-code check; native target, live framebuffer and retention unverified.',
+            'limits': 'Host production-code check; volatile current-boot buffer does not provide reset persistence; native target and live framebuffer unverified.',
             'device_operations': False,
         }
         (output / 'check-report.json').write_text(json.dumps(report, indent=2) + '\n')

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "result": "BLOCKED",
+  "device_commit": "da488d376954e5490685aa0580f71c98ecb1c2c0",
+  "framework_commit": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+  "xnu_commit": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+  "profile": "macos-27.3-26C5035r",
+  "requested_environment": "WSL Debian, no GitHub runner",
+  "first_attempt": {
+    "working_directory": "/mnt/d/unixnu-tb710fu-clean",
+    "stage": "AvailabilityVersions tool execution",
+    "failure": "env: 'python3\\r': No such file or directory",
+    "classification": "Windows CRLF checkout environment error, not a compiler failure"
+  },
+  "second_attempt": {
+    "device": "/home/bai/tb710fu-wsl-da488d3/device",
+    "framework": "/home/bai/tb710fu-wsl-da488d3/framework",
+    "command": "JOBS=4 python3 tools/ci_kernel.py native --source /home/bai/tb710fu-wsl-da488d3/framework",
+    "stage": "native bootstrap, libdispatch firehose compilation",
+    "bootstrap_log": "/home/bai/tb710fu-wsl-da488d3/framework/out/tb710fu/macos-27.3-26C5035r/tb710fu_macos/logs/kernel-bootstrap.log",
+    "bootstrap_log_sha256": "b0efbf244ba0ab4271737cc603089965f23ab7830c129734e0a0be25a2a725f8",
+    "first_error": "sys/ucred.h:164:20: error: '__ptrauth' qualifier must take between 1 and 3 arguments",
+    "source_macro": "OS_PTRAUTH_SIGNED_PTR_AUTH_NULL expands to __ptrauth(key, address_diversity, discriminator, authenticates-null-values)",
+    "compiler_version": "clang version 24.0.0git (llvm-project 58c46bae21181fb4240cf964461bea738d96d50e)",
+    "compiler_sha256": "ff36a7a15a3f68434a41af0732e8dda147436275d1409abeb4741526d3f385dc",
+    "compiler_support_probe": "An arm64e compilation of a four-argument __ptrauth qualifier independently fails with the same diagnostic.",
+    "official_linux_profile_boundary": "Pinned linux_env documents plain arm64 iOS 17 and sets DARWIN_TRIPLE=arm64-apple-ios17.0; selected device profile requires arm64e macOS.",
+    "native_compilation_complete": false,
+    "native_link_complete": false,
+    "prelink_started": false
+  },
+  "security_semantics_relaxed": false,
+  "official_scripts_modified": false,
+  "fetched_source_caches_modified": false,
+  "github_runner_started": false,
+  "new_signed_image_created": false,
+  "device_operations": false,
+  "hardware_verified": false
+}

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "patch": "patches/xnu/0015-tb710fu-ramoops-volatile-buffer.patch",
+  "policy": "current-boot-only kernel-owned BSS buffer",
+  "physical_mapping_removed": true,
+  "cross_reset_persistence": false,
+  "ramoops_snapshot_host_check": {
+    "command": "wsl -d Debian -- python3 scripts/check_ramoops_snapshot.py --cc /usr/bin/gcc --output-dir .work/ramoops-volatile-check",
+    "result": "PASS",
+    "cases": 10,
+    "sanitizers": ["address", "undefined"]
+  },
+  "live_adapter_host_check": {
+    "command": "wsl -d Debian -- python3 scripts/check_live_xnu_adapter.py --cc /usr/bin/gcc --output-dir .work/live-adapter-volatile-check",
+    "result": "PASS",
+    "groups": 10,
+    "invalid_video_cases": 15,
+    "sanitizers": ["address", "undefined"]
+  },
+  "live_protocol_host_check": {
+    "command": "wsl -d Debian -- python3 scripts/check_live_log_protocol.py --node <Windows Node.js> --output-dir .work/live-protocol-volatile-check",
+    "result": "PASS",
+    "pinned_receiver": "makerjackie/onesend@39e95ce59df2f2dc38d2556dd4239cec6a0ca35f",
+    "single_frame_capacity_and_still_frame_recovery": "PASS",
+    "sanitizers": ["address", "undefined"]
+  },
+  "device_operations": false,
+  "hardware_verified": false,
+  "native_runner_build": false
+}

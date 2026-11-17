@@ -113,7 +113,26 @@ for (const item of fixtures.cases) {
 assert.deepEqual(results.map(item => item.block_count), [1, 2, 6, 1, 1, 6, 2]);
 assert.equal(sourceSessions.size, 2);
 assert.notEqual(sourceSessions.get('xnu'), sourceSessions.get('ramoops'), 'source identity isolates sessions even with identical raw content/range/generation');
+for (const source of [0, 1]) {
+  const expected = await readFile(resolve(values.fixtures, `single-${source}.expected`));
+  const envelope = await readFile(resolve(values.fixtures, `single-${source}.envelope`));
+  const frame = await readFile(resolve(values.fixtures, `single-${source}.frame`));
+  const parsed = protocol.parseFrame(frame);
+  assert.ok(parsed);
+  assert.equal(parsed.header.blockCount, 1);
+  assert.equal(parsed.header.totalLength, 720);
+  const reference = new protocol.OpticalSender(envelope, 'reliable', parsed.header.sessionId);
+  assert.deepEqual(Buffer.from(reference.nextFrame().bytes), frame);
+  const receiver = new protocol.OpticalReceiver();
+  const event = receiver.consume(frame);
+  assert.equal(event?.verified, true, 'one still frame completes the transfer');
+  assert.deepEqual(Buffer.from(event.payload), envelope);
+  const decoded = await protocol.decodeTransferFile(event.payload);
+  assert.deepEqual(Buffer.from(decoded.bytes), expected);
+  assert.match(decoded.name, source ? /^TB710FU-xnu-fixed-/ : /^TB710FU-ramoops-fixed-/);
+}
 const result = { result: 'PASS', receiver_source: manifest, cases: results,
+  single_frame_capacity_boundary_and_still_frame_recovery: 'PASS',
   limits: 'Portable C sender and unchanged pinned browser protocol; camera acquisition, kernel scheduling and real ramoops bytes remain hardware gates.' };
 await writeFile(values.output, JSON.stringify(result, null, 2) + '\n');
 console.log(JSON.stringify(result, null, 2));

@@ -35,6 +35,10 @@ ROOT = Path(__file__).resolve().parents[1]
 LOCK = json.loads((ROOT / 'upstream.lock.json').read_text())
 BASELINE = '15846226236b56bd3abb104ae57f45e23307f3ea52321fd03ed153fd2e4e0718'
 BASE_VBMETA = 'e4cffaf3414a2c22d6c129ed62ac382424f67da8a0dd62aa9ae0ccb73fec63de'
+ROOTED_BASELINE = 'a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2'
+ROOTED_VBMETA = '3fd43a5a7adc0275eb8d241b94f1c2520b6b630ae912c3eff4a3869d76228e04'
+ROOTED_KERNEL = '1601b0af6d31dffba85d7e18b7fdf683531f3c7e9fc3fb924701869120ebbccc'
+ROOTED_CONFIG = 'ea386850fa2a39822d33c2a992d13b34fec1f8f6cade88c2e00ea803699966d3'
 BASE_ADT = 'f4161ff940b78e777ca2a6f4cb02191ff00f5046cc4dc3302d8fc4ce00f9c1a0'
 ROOT_ADT = '61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7'
 POLICIES = '49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68'
@@ -71,6 +75,11 @@ OBJECTS = {'IOBlockStorageDevice.late.o', 'NativeUfs.late.o', 'SourceStorage.o',
 def require(condition, message):
     if not condition:
         raise ValueError(message)
+
+
+def check_baseline_pair(vendor, vbmeta):
+    require((vendor, vbmeta) in ((BASELINE, BASE_VBMETA), (ROOTED_BASELINE, ROOTED_VBMETA)),
+            'Require an exact reviewed signed vendor/vbmeta baseline pair')
 
 
 def sha(data):
@@ -476,6 +485,36 @@ def extend_adt(data, serializer, profile):
                     'all_original_properties_and_random_seed_preserved': True, 'identity': checked}
 
 
+def reuse_root_adt(data, serializer, profile):
+    require(sha(data) == ROOT_ADT, 'Rooted baseline ADT differs from the reviewed tree')
+    tree = read_nodes(data)
+    memory = unique_child(unique_child(tree, 'chosen'), 'memory-map')
+    require(sum(key == 'RootPolicies' and value == bytes(16) for key, value in memory[0]) == 1 and
+            sum(key == 'RootPolicies' for key, _ in memory[0]) == 1,
+            'Rooted baseline needs one zero16 RootPolicies property')
+    memory[0][:] = [(key, value) for key, value in memory[0] if key != 'RootPolicies']
+
+    def encode(node):
+        return serializer(name_of(node), [(k, v) for k, v in node[0] if k != 'name'],
+                          [encode(child) for child in node[1]])
+
+    rebuilt, report = extend_adt(encode(tree), serializer, profile)
+    require(rebuilt == data, 'Rooted ADT is not the exact reviewed extension')
+    report['before_sha256'] = sha(data)
+    report['only_change'] = 'none; existing reviewed RootPolicies preserved'
+    return data, report
+
+
+def reuse_root_payload(adt, config, old_kernel, old_policies, policies, args, serializer, profile):
+    require(sha(old_kernel) == ROOTED_KERNEL, 'Rooted baseline kernel differs from the reviewed payload')
+    require(sha(config) == ROOTED_CONFIG, 'Rooted baseline config differs from the reviewed payload')
+    require(old_policies == policies and sha(old_policies) == POLICIES,
+            'Rooted baseline policies differ from the selected verified policy bundle')
+    require(update_config(config, args) == config, 'Rooted baseline boot configuration must remain unchanged')
+    tree, report = reuse_root_adt(adt, serializer, profile)
+    return tree, config, report
+
+
 def update_config(data, args):
     original = tomllib.loads(data.decode())
     matches = [entry for entry in original['entry'] if entry.get('id') == 'xnu' and entry.get('type') == 'xnu']
@@ -625,8 +664,7 @@ def checked_inputs(manifest_path, expected):
         require(digest == item['sha256'], 'Input SHA-256 mismatch: ' + name)
         paths[name] = path
         records[name] = {'path': str(path), 'sha256': digest, 'bytes': path.stat().st_size}
-    require(records['source_vendor']['sha256'] == BASELINE and records['source_vbmeta']['sha256'] == BASE_VBMETA,
-            'Require the exact reviewed ADT-correct signed vendor/vbmeta baseline pair')
+    check_baseline_pair(records['source_vendor']['sha256'], records['source_vbmeta']['sha256'])
     return manifest, paths, records
 
 
@@ -707,10 +745,18 @@ def package(manifest_path, manifest_sha, output):
 
         expected_listing = {'::/EFI/', '::/EFI/UniXNU/', '::/EFI/UniXNU/Payloads/', '::/EFI/UniXNU/unixnu.toml',
                             '::/EFI/UniXNU/Payloads/kernel.macho', '::/EFI/UniXNU/Payloads/kernel.macho.adt'}
+        rooted = inputs['source_vendor']['sha256'] == ROOTED_BASELINE
+        if rooted:
+            expected_listing |= {'::/EFI/UniXNU/Payloads/kernel.macho.vroot'}
         require(listing() == expected_listing, 'Unexpected files in the fixed baseline payload')
         before_adt, before_config = read('Payloads/kernel.macho.adt'), read('unixnu.toml')
-        tree, adt_report = extend_adt(before_adt, serializer, profile)
-        config = update_config(before_config, manifest['boot_args'])
+        if rooted:
+            tree, config, adt_report = reuse_root_payload(before_adt, before_config,
+                read('Payloads/kernel.macho'), read('Payloads/kernel.macho.vroot'), policies,
+                manifest['boot_args'], serializer, profile)
+        else:
+            tree, adt_report = extend_adt(before_adt, serializer, profile)
+            config = update_config(before_config, manifest['boot_args'])
         options = {'id': lzma.FILTER_LZMA1, 'dict_size': 8 << 20, 'lc': 3, 'lp': 0, 'pb': 2, 'preset': 6}
         encoded = lzma.compress(kernel, format=lzma.FORMAT_ALONE, filters=[options])
         encoded = encoded[:5] + struct.pack('<Q', len(kernel)) + encoded[13:]
@@ -719,7 +765,8 @@ def package(manifest_path, manifest_sha, output):
                 'LZMA raw-stream roundtrip/bounds failed')
         expected_files = {'Payloads/kernel.macho': encoded, 'Payloads/kernel.macho.adt': tree,
                           'Payloads/kernel.macho.vroot': policies, 'unixnu.toml': config}
-        for index, (name, content) in enumerate(expected_files.items()):
+        updates = {'Payloads/kernel.macho': encoded} if rooted else expected_files
+        for index, (name, content) in enumerate(updates.items()):
             local = work / f'payload-input-{index}'
             local.write_bytes(content)
             subprocess.run(['mcopy', '-o', '-i', str(payload), str(local), '::/EFI/UniXNU/' + name], check=True)

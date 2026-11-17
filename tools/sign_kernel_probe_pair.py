@@ -24,6 +24,9 @@ SOURCE_IMAGE_BASELINES = {
         '3992de82a3a03584b0e03c43bd66060ef93684122bb8867c893ed6c45ea85331',
     '15846226236b56bd3abb104ae57f45e23307f3ea52321fd03ed153fd2e4e0718':
         'e4cffaf3414a2c22d6c129ed62ac382424f67da8a0dd62aa9ae0ccb73fec63de',
+    # Independently verified retained dual-live test bundle, run 44124706860.
+    'a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2':
+        '3fd43a5a7adc0275eb8d241b94f1c2520b6b630ae912c3eff4a3869d76228e04',
 }
 
 

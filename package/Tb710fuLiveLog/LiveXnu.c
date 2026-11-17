@@ -104,6 +104,44 @@ static void snapshot_xnu(void)
     if (!tb710fu_live_log_can_snapshot(&xnu_sender) ||
         (xnu_sender.valid && xnu_state.start == info.start && xnu_state.end == info.end &&
          xnu_state.dropped == xnu_last_dropped)) return;
+    /* Before the worker runs, export one compact current-tail frame. The early
+     * backup remains in early_bytes for the later multi-frame export, but is not
+     * silently truncated into this single-frame file. */
+    if (!__atomic_load_n(&worker_started, __ATOMIC_ACQUIRE)) {
+        uint64_t generation = xnu_generation + 1u;
+        size_t count = (size_t)copied;
+        while (count > 0 || xnu_state.state == TB710FU_LIVE_CAPTURE_EMPTY) {
+            uint64_t start = xnu_state.end - count;
+            size_t capacity = tb710fu_live_log_single_file_capacity(
+                TB710FU_LIVE_LOG_XNU, generation, start, xnu_state.end);
+            int header = snprintf((char *)xnu_file, sizeof(xnu_file),
+                "TB710FU XNU DEBUG EXPORT v1\nsource=xnu-debug\nbuild=%.64s\n"
+                "earlybackup_state=%s\nearlybackup_start=%llu\nearlybackup_end=%llu\n"
+                "earlybackup_bytes=%u\nearlybackup_export=deferred_multi_frame\n"
+                "current_start=%llu\ncurrent_end=%llu\ncurrent_bytes=%u\n"
+                "dropped=%llu\nraw_layout=current_only_single_frame\nraw_bytes_begin\n",
+                TB_LIVE_BUILD_LABEL, state_name(early_state.state),
+                (unsigned long long)early_state.start, (unsigned long long)early_state.end,
+                early_state.copied, (unsigned long long)start,
+                (unsigned long long)xnu_state.end, (unsigned)count,
+                (unsigned long long)xnu_state.dropped);
+            if (header >= 0 && (size_t)header + count <= capacity) {
+                for (size_t i = 0; i < count; ++i)
+                    xnu_file[(size_t)header + i] = snapshot[copied - count + i];
+                if (tb710fu_live_log_snapshot_single_file(&xnu_sender, xnu_file,
+                    (size_t)header + count, generation, start, xnu_state.end) ==
+                    TB710FU_LIVE_LOG_READY) {
+                    ++xnu_generation;
+                    xnu_last_dropped = xnu_state.dropped;
+                }
+                return;
+            }
+            if (count == 0) break;
+            --count;
+        }
+        return;
+    }
+
     /* The header supplies exact raw-section lengths; no separator or newline is
      * inserted into either captured byte sequence. The filename range describes
      * only the current tail, not metadata or the preserved early backup. */
@@ -137,8 +175,16 @@ static void snapshot_ramoops(void)
     (void)tb710fu_live_log_get_info(&ramoops_sender, &info);
     if (copied > 0 && tb710fu_live_log_can_snapshot(&ramoops_sender) &&
         (!ramoops_sender.valid || ramoops_state.start != info.start || ramoops_state.end != info.end)) {
-        if (tb710fu_live_log_snapshot(&ramoops_sender, snapshot, (size_t)copied,
-            ramoops_generation + 1u, ramoops_state.start, ramoops_state.end) == TB710FU_LIVE_LOG_READY)
+        enum tb710fu_live_log_result result;
+        if (!__atomic_load_n(&worker_started, __ATOMIC_ACQUIRE))
+            result = tb710fu_live_log_snapshot_single_file(&ramoops_sender,
+                snapshot, (size_t)copied, ramoops_generation + 1u,
+                ramoops_state.start, ramoops_state.end);
+        else
+            result = tb710fu_live_log_snapshot(&ramoops_sender, snapshot,
+                (size_t)copied, ramoops_generation + 1u,
+                ramoops_state.start, ramoops_state.end);
+        if (result == TB710FU_LIVE_LOG_READY)
             ++ramoops_generation;
     }
 }

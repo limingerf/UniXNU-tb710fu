@@ -26,6 +26,7 @@ FINAL_SYMBOLS = (
     '_tb710fu_live_log_putc', '_tb710fu_live_capture_putc',
     '_tb710fu_live_capture_copy', '_tb710fu_live_log_set_source',
     '_tb710fu_live_log_snapshot_file',
+    '_tb710fu_live_log_snapshot_single_file',
     '_tb710fu_live_log_poll', '_tb710fu_live_log_refresh',
     '_tb710fu_live_log_active', '_tb710fu_ramoops_snapshot_copy',
     '_tb710fu_live_log_sender_init', '_tb710fu_live_log_snapshot',
@@ -47,7 +48,7 @@ HOOK_OBJECTS = {
 ADAPTER_SOURCE_IMPORTS = (
     '_tb710fu_ramoops_snapshot_copy', '_tb710fu_live_capture_putc',
     '_tb710fu_live_capture_copy', '_tb710fu_live_log_set_source',
-    '_tb710fu_live_log_snapshot_file',
+    '_tb710fu_live_log_snapshot_file', '_tb710fu_live_log_snapshot_single_file',
 )
 DISABLED_CAPTURE_CALLERS = {'_tb710fu_live_capture_disabled', '_console_write',
                            '_console_write_unbuffered', '__cnputs',

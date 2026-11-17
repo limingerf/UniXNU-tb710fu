@@ -1,0 +1,94 @@
+From: TB710FU clean board
+Subject: [PATCH] Keep ramoops snapshots in kernel-owned current-boot memory
+
+The fixed physical ramoops region was not present in XNU's excluded-memory
+table. Mapping it without reservation could alias VM pages. Keep the existing
+bounded snapshot and Linux-compatible in-memory format, but attach it to a
+256 KiB aligned writable BSS buffer owned by the kernel image. This is safe for
+the current boot and deliberately does not promise persistence across reset.
+The old physical address and `ramoops=` override are no longer used. The
+ramoops selftest records that persistence is unavailable and does not reset.
+
+This patch is deliberately separate from the earlier address-window patch so
+the unsafe physical-region assumption is visible in source and provenance.
+
+diff --git a/osfmk/kern/tb710fu_ramoops.c b/osfmk/kern/tb710fu_ramoops.c
+--- a/osfmk/kern/tb710fu_ramoops.c
++++ b/osfmk/kern/tb710fu_ramoops.c
+@@ -39,6 +39,11 @@
+ #define RAMOOPS_MAX_SIZE 0x40000U
+ #define RAMOOPS_SNAPSHOT_MAX 4096U
+ 
++/* This buffer is part of the kernel image's writable BSS. It is deliberately
++ * volatile: it is safe for the current boot, but cannot survive a reset. */
++RAMOOPS_STATIC volatile uint8_t volatile_zone[RAMOOPS_MAX_SIZE]
++    __attribute__((aligned(16384)));
++
+ /* --- Reed-Solomon (Phil Karn's formulation, as used by Linux encode_rs8) ---------- */
+ 
+ static uint8_t  rs_alpha_to[RS_NN + 1];
+@@ -417,54 +422,31 @@ psci_system_reset(void)
+ void
+ tb710fu_ramoops_init(void)
+ {
+-	/*
+-	 * TB710FU: the Android ramoops zone at 0xac340000 is 32.3 GiB below
+-	 * gPhysBase (0x8c0000000) and cannot be reached by ml_io_map. Reserve
+-	 * a 256 KiB region inside the managed span instead. It sits 1 MiB below
+-	 * the top of the 2 GiB window so it does not collide with the 0007
+-	 * switch-marker page at 0x93ffff000. See docs/LOG_REGION_IN_WINDOW.md.
+-	 */
+-#define TB710FU_LOG_REGION_PA    0x93ff00000ULL
+-#define TB710FU_LOG_REGION_SIZE  0x40000U
+-#define TB710FU_SPAN_BASE        0x8c0000000ULL
+-#define TB710FU_SPAN_END         0x940000000ULL
+-
+-	uint64_t pa = TB710FU_LOG_REGION_PA;
+-	uint64_t arg_pa = 0;
+-	uint32_t size = TB710FU_LOG_REGION_SIZE, ecc = 16;
+-
+-	/* A boot-arg override is honoured only when it names an in-span range.
+-	 * The live argument 0xac340000 is out of span and falls back to the
+-	 * default instead of silently selecting an unreachable address. */
+-	if (PE_parse_boot_argn("ramoops", &arg_pa, sizeof(arg_pa)) &&
+-	    arg_pa >= TB710FU_SPAN_BASE &&
+-	    arg_pa + size <= TB710FU_SPAN_END) {
+-		pa = arg_pa;
+-	}
++	/* The old physical ramoops addresses were not reserved from XNU's VM.
++	 * Use only the kernel-owned BSS buffer for this boot; no ml_io_map or
++	 * fixed physical address is safe here. The buffer is not persistent. */
++	uint32_t size = 0x40000U, ecc = 16;
+ 	PE_parse_boot_argn("ramoops_size", &size, sizeof(size));
+ 	PE_parse_boot_argn("ramoops_ecc", &ecc, sizeof(ecc));
+ 	PE_parse_boot_argn("ramoops_panic_delay", &panic_delay, sizeof(panic_delay));
+ 	PE_parse_boot_argn("ramoops_reset_after", &reset_after, sizeof(reset_after));
+ 	PE_parse_boot_argn("ramoops_reset_warm", &reset_warm, sizeof(reset_warm));
+ 	PE_parse_boot_argn("ramoops_selftest", &selftest, sizeof(selftest));
+-	/* Recheck the final parsed size before mapping, including its span. */
++	/* Recheck the final parsed size before attaching the owned buffer. */
+ 	if (size <= HDR_BYTES + 2 * RS_BLOCK || size > RAMOOPS_MAX_SIZE ||
+-	    ecc > RS_MAX_ROOTS || pa < TB710FU_SPAN_BASE ||
+-	    pa > TB710FU_SPAN_END - size) {
++	    ecc > RS_MAX_ROOTS) {
+ 		zone = NULL;
+ 		return;
+ 	}
+-	if (ramoops_start_boot((volatile uint8_t *)ml_io_map((vm_offset_t)pa, size), size, ecc)) {
++	if (ramoops_start_boot(volatile_zone, size, ecc)) {
+ 		return;
+ 	}
+ 	if (selftest) {
+-		/* ramoops_selftest=1: prove the zone survives this reset type, then reboot at once. */
+-		static const char line[] = "ramoops selftest: PSCI reset now, warm=";
++		/* A volatile buffer cannot prove reset persistence; leave a clear record. */
++		static const char line[] = "ramoops selftest: volatile current-boot buffer; no reset\n";
+ 		for (const char *s = line; *s; s++) {
+ 			ramoops_zone_putc(*s);
+ 		}
+-		ramoops_zone_putc(reset_warm ? '1' : '0');
+-		ramoops_zone_putc('\n');
+-		psci_system_reset();
++		ramoops_zone_flush();
+ 	}
+ }

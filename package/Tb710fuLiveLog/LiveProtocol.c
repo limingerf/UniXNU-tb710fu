@@ -137,6 +137,17 @@ static int valid_source(enum tb710fu_live_log_source source)
     return source == TB710FU_LIVE_LOG_RAMOOPS || source == TB710FU_LIVE_LOG_XNU;
 }
 
+size_t tb710fu_live_log_single_file_capacity(enum tb710fu_live_log_source source,
+    uint64_t generation, uint64_t start, uint64_t end)
+{
+    if (!valid_source(source) || end < start) return 0;
+    char name[TB710FU_LIVE_LOG_NAME_BYTES];
+    size_t overhead = 26u + filename(name, source, generation, start, end) +
+        sizeof("text/plain") - 1u;
+    return overhead < TB710FU_LIVE_LOG_BLOCK_BYTES ?
+        TB710FU_LIVE_LOG_BLOCK_BYTES - overhead : 0;
+}
+
 int tb710fu_live_log_set_source(struct tb710fu_live_log_sender *sender,
     enum tb710fu_live_log_source source)
 {
@@ -212,6 +223,17 @@ enum tb710fu_live_log_result tb710fu_live_log_snapshot_file(
     sender->source_in_round = 0;
     sender->valid = 1;
     return TB710FU_LIVE_LOG_READY;
+}
+
+enum tb710fu_live_log_result tb710fu_live_log_snapshot_single_file(
+    struct tb710fu_live_log_sender *sender, const uint8_t *bytes, size_t length,
+    uint64_t generation, uint64_t start, uint64_t end)
+{
+    if (sender == NULL) return TB710FU_LIVE_LOG_INVALID;
+    size_t capacity = tb710fu_live_log_single_file_capacity(sender->source,
+        generation, start, end);
+    if (capacity == 0 || length > capacity) return TB710FU_LIVE_LOG_INVALID;
+    return tb710fu_live_log_snapshot_file(sender, bytes, length, generation, start, end);
 }
 
 int tb710fu_live_log_next_frame(struct tb710fu_live_log_sender *sender,

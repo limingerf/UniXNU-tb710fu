@@ -121,6 +121,15 @@ def real_bundle():
 
 
 class PackagingBoundaries(unittest.TestCase):
+    def test_reviewed_vendor_vbmeta_pairs_must_match(self):
+        pack.check_baseline_pair(pack.BASELINE, pack.BASE_VBMETA)
+        pack.check_baseline_pair(pack.ROOTED_BASELINE, pack.ROOTED_VBMETA)
+        for vendor, vbmeta in ((pack.BASELINE, pack.ROOTED_VBMETA),
+                               (pack.ROOTED_BASELINE, pack.BASE_VBMETA),
+                               ('0' * 64, pack.ROOTED_VBMETA)):
+            with self.subTest(vendor=vendor, vbmeta=vbmeta), self.assertRaises(ValueError):
+                pack.check_baseline_pair(vendor, vbmeta)
+
     def test_reporter_manifest_preserves_original_and_requires_both_derivative_inputs(self):
         with tempfile.TemporaryDirectory(prefix='tb710fu-reporter-manifest-') as temporary:
             root = Path(temporary)
@@ -362,11 +371,42 @@ class PackagingBoundaries(unittest.TestCase):
         with self.assertRaises(ValueError):
             pack.extend_adt(changed, serializer, profile)
 
+    def test_rooted_baseline_reuses_exact_payload_and_rejects_changes(self):
+        if not SETTINGS or not SETTINGS.rooted_baseline:
+            self.skipTest('pass --rooted-baseline for the retained signed payload test')
+        serializer, profile, _, _ = pack.pinned_tools(SETTINGS.framework)
+        image = str(SETTINGS.rooted_baseline) + '@@4096'
+
+        def read(name):
+            return subprocess.check_output(['mtype', '-i', image, '::/EFI/UniXNU/' + name])
+
+        adt = read('Payloads/kernel.macho.adt')
+        config = read('unixnu.toml')
+        kernel = read('Payloads/kernel.macho')
+        policies = read('Payloads/kernel.macho.vroot')
+        args = '-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 debug=0x8 -enable_kprintf_spam startup_debug=1'
+        tree, unchanged_config, report = pack.reuse_root_payload(
+            adt, config, kernel, policies, real_bundle(), args, serializer, profile)
+        self.assertEqual(tree, adt)
+        self.assertEqual(unchanged_config, config)
+        self.assertEqual(report['only_change'], 'none; existing reviewed RootPolicies preserved')
+        for index, value in enumerate((adt, config, kernel, policies)):
+            changed = bytearray(value)
+            changed[-1] ^= 1
+            inputs = [adt, config, kernel, policies]
+            inputs[index] = bytes(changed)
+            with self.subTest(input=index), self.assertRaises(ValueError):
+                pack.reuse_root_payload(*inputs, real_bundle(), args, serializer, profile)
+        with self.assertRaisesRegex(ValueError, 'configuration must remain unchanged'):
+            pack.reuse_root_payload(adt, config, kernel, policies, real_bundle(),
+                                    args.replace('serial=3 ', ''), serializer, profile)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--framework', type=Path, default=ROOT / '.work/UniXNU')
     parser.add_argument('--retained-prelink', type=Path)
     parser.add_argument('--baseline', type=Path)
+    parser.add_argument('--rooted-baseline', type=Path)
     SETTINGS = parser.parse_args()
     unittest.main(argv=[sys.argv[0]], verbosity=2)

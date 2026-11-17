@@ -130,6 +130,42 @@ static uint32_t read32(const uint8_t *p)
         ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
+static void test_single_frame_files(const char *directory)
+{
+    uint8_t frame[TB710FU_LIVE_LOG_FRAME_BYTES];
+    assert(!tb710fu_live_log_single_file_capacity((enum tb710fu_live_log_source)2, 0, 0, 0));
+    assert(!tb710fu_live_log_single_file_capacity(TB710FU_LIVE_LOG_XNU, 0, 2, 1));
+    assert(tb710fu_live_log_snapshot_single_file(NULL, bytes, 1, 0, 0, 0) == TB710FU_LIVE_LOG_INVALID);
+    for (unsigned source = 0; source < 2; ++source) {
+        enum tb710fu_live_log_source kind = (enum tb710fu_live_log_source)source;
+        size_t capacity = tb710fu_live_log_single_file_capacity(kind, 0, UINT64_MAX, UINT64_MAX);
+        size_t worst = tb710fu_live_log_single_file_capacity(kind, UINT64_MAX, UINT64_MAX, UINT64_MAX);
+        assert(worst >= 512 && capacity >= worst && capacity < TB710FU_LIVE_LOG_BLOCK_BYTES);
+        for (size_t i = 0; i <= capacity; ++i) bytes[i] = (uint8_t)(i * 17u + source);
+        tb710fu_live_log_sender_init(&sender);
+        assert(tb710fu_live_log_set_source(&sender, kind));
+        saved = sender;
+        assert(tb710fu_live_log_snapshot_single_file(&sender, bytes, capacity + 1u,
+            0, UINT64_MAX, UINT64_MAX) == TB710FU_LIVE_LOG_INVALID);
+        assert(memcmp(&sender, &saved, sizeof(sender)) == 0);
+        assert(tb710fu_live_log_snapshot_single_file(&sender, bytes, capacity,
+            0, UINT64_MAX, UINT64_MAX) == TB710FU_LIVE_LOG_READY);
+        assert(sender.info.block_count == 1 && sender.info.envelope_bytes == TB710FU_LIVE_LOG_BLOCK_BYTES);
+        saved = sender;
+        assert(tb710fu_live_log_snapshot_single_file(&sender, bytes, capacity,
+            0, UINT64_MAX, UINT64_MAX) == TB710FU_LIVE_LOG_BUSY);
+        assert(memcmp(&sender, &saved, sizeof(sender)) == 0);
+        char name[64];
+        assert(snprintf(name, sizeof(name), "single-%u.expected", source) > 0);
+        write_bytes(directory, name, bytes, capacity);
+        assert(snprintf(name, sizeof(name), "single-%u.envelope", source) > 0);
+        write_bytes(directory, name, sender.envelope, sender.info.envelope_bytes);
+        assert(tb710fu_live_log_next_frame(&sender, frame));
+        assert(snprintf(name, sizeof(name), "single-%u.frame", source) > 0);
+        write_bytes(directory, name, frame, sizeof(frame));
+    }
+}
+
 static enum tb710fu_live_log_result snapshot_case(unsigned test,
     const uint8_t *body, size_t length, uint64_t generation,
     uint64_t start, uint64_t end)
@@ -144,6 +180,7 @@ int main(int argc, char **argv)
     const char *directory = argv[1];
     test_capture();
     test_file_bounds();
+    test_single_frame_files(directory);
     FILE *capture_report = output(directory, "capture-check.json");
     assert(fputs("{\"result\":\"PASS\",\"capacity_bytes\":65536,\"tail_limit\":4096,"
         "\"zero_init_empty\":true,\"two_wraps_and_boundary_tail\":true,"

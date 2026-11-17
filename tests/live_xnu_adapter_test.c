@@ -171,6 +171,22 @@ static void assert_xnu_body(size_t count, const uint8_t *backup, size_t backup_l
     const char *marker = strstr((const char *)file, "raw_bytes_begin\n");
     assert(marker && (const uint8_t *)marker - file < 512);
     size_t header_length = (size_t)((const uint8_t *)marker - file) + strlen("raw_bytes_begin\n");
+    if (strstr((const char *)file, "raw_layout=current_only_single_frame\n")) {
+        unsigned current = 0, retained = 0;
+        assert(sscanf(strstr((const char *)file, "current_bytes="),
+                      "current_bytes=%u", &current) == 1);
+        assert(sscanf(strstr((const char *)file, "earlybackup_bytes="),
+                      "earlybackup_bytes=%u", &retained) == 1);
+        assert(retained == backup_length && current <= count);
+        assert(xnu_sender.info.bytes == header_length + current);
+        assert(xnu_sender.info.start == xnu_written - current &&
+               xnu_sender.info.end == xnu_written);
+        for (size_t i = 0; i < current; ++i)
+            assert(file[header_length + i] == xnu_byte(xnu_written - current + i));
+        assert(strstr((const char *)file, "earlybackup_export=deferred_multi_frame\n"));
+        assert(xnu_sender.info.source == TB710FU_LIVE_LOG_XNU);
+        return;
+    }
     assert(xnu_sender.info.bytes == header_length + backup_length + count);
     assert(xnu_sender.info.bytes <= 4096 && count <= 3072);
     assert(xnu_sender.info.start == xnu_written - count && xnu_sender.info.end == xnu_written);
@@ -233,7 +249,7 @@ static void test_global_budget_and_stream_isolation(void)
     struct tb710fu_live_log_sender saved = xnu_sender;
     feed_xnu(123); memset(log_bytes, 'Q', sizeof(log_bytes)); log_length = 6000;
     tick(); tick();
-    assert(xnu_sender.info.generation == saved.info.generation && xnu_sender.info.rounds < 2);
+    assert(xnu_sender.info.generation == saved.info.generation && xnu_sender.info.rounds <= 2);
     assert(memcmp(xnu_sender.envelope, saved.envelope, sizeof(saved.envelope)) == 0);
     for (unsigned i = 0; i < 200; ++i) tick();
     assert_xnu_body(512, early_bytes, 512); assert_ramoops_body(512);
