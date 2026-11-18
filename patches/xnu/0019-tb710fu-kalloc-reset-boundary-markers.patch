@@ -1,0 +1,29 @@
+From: TB710FU clean board
+Subject: [PATCH] Split kalloc scratch reset completion markers
+
+Reason: the device log with patch 0018 ends after fixed-size view initialization.
+The next operations are clearing the 256 KiB scratch buffer and resetting kt_count.
+Split these boundaries so one follow-up capture can distinguish bzero entry,
+bzero return, and the count update. Allocator data and control flow are unchanged.
+
+Markers are live-log-only and use the existing bounded poll throttle.
+
+Verification: generated from the pinned kalloc.c after patch 0018; the resulting
+patch is checked and applied to the same selected source fixture.
+
+diff --git a/osfmk/kern/kalloc.c b/osfmk/kern/kalloc.c
+--- a/osfmk/kern/kalloc.c
++++ b/osfmk/kern/kalloc.c
+@@ -2090,9 +2090,11 @@
+ 	/*
+ 	 * Reset
+ 	 */
++	TB710FU_KALLOC_CHECKPOINT("fixed-reset-clear-enter");
+ 	bzero(kt_buffer, kt_scratch_size);
++	TB710FU_KALLOC_CHECKPOINT("fixed-reset-clear-return");
+ 	kt_count = max_count;
+-	TB710FU_KALLOC_CHECKPOINT("fixed-reset");
++	TB710FU_KALLOC_CHECKPOINT("fixed-count-set");
+ 
+ 	/*
+ 	 * Handle variable size views

@@ -16,3 +16,4 @@
 0016-tb710fu-startup-callback-return-marker.patch
 0017-tb710fu-startup-callback-return-all-marker.patch
 0018-tb710fu-kalloc-init-substage-markers.patch
+0019-tb710fu-kalloc-reset-boundary-markers.patch
