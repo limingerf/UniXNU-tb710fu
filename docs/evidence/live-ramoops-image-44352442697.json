@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "stage": "live-ramoops-signed-package",
+  "run_id": 44352442697,
+  "source_commit": "90b857ac1f61f61acb30eb59d3daf024c3f7c2ba",
+  "native_sha256": "efe1b2a43d42eb6096b9016c9f8ded69f7bc78e021e7eab40b018d039c690e54",
+  "prelinked_sha256": "2f3bef2013f35b8998b178eae662b67653f48346c51ad62c30f4c5c9fc9503c2",
+  "packaged_kernel_sha256": "d18b22f292d0b2ee2555a7a9bf33dbad81ab2463ada5650c53417d87047f3df2",
+  "packaged_kernel_bytes": 142819328,
+  "unsigned_vendor_sha256": "3464fa63a48a0f00bd40c6c26db3380d493b5f23e270c7892c8215923d2017f6",
+  "images": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "a31c32a07bce37788047d367bba2b166859014ac377b829a337f2f280a9092fb"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "58c90c876078804bfcf3c3ca7f8a9965c8372554cabcebbcd2fe48610dfb22f6"
+    }
+  },
+  "zip": {
+    "path": "out/tb710fu-live-ramoops-44352442697-signed.zip",
+    "bytes": 35578789,
+    "sha256": "725784e7d1d692486595ab9875d96813f7d45b8136172468a5273fae5c471fee"
+  },
+  "verification": {
+    "schema_version": 1,
+    "stage": "signed-native-live-ramoops-bundle-independently-verified",
+    "kernel_run_id": 44352442697,
+    "kernel_source_commit": "90b857ac1f61f61acb30eb59d3daf024c3f7c2ba",
+    "native_sha256": "efe1b2a43d42eb6096b9016c9f8ded69f7bc78e021e7eab40b018d039c690e54",
+    "prelinked_sha256": "2f3bef2013f35b8998b178eae662b67653f48346c51ad62c30f4c5c9fc9503c2",
+    "standard_kernel_sha256": "d18b22f292d0b2ee2555a7a9bf33dbad81ab2463ada5650c53417d87047f3df2",
+    "files": {
+      "boot.img": {
+        "bytes": 100663296,
+        "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+      },
+      "vendor_boot.img": {
+        "bytes": 100663296,
+        "sha256": "a31c32a07bce37788047d367bba2b166859014ac377b829a337f2f280a9092fb"
+      },
+      "vbmeta.img": {
+        "bytes": 8000,
+        "sha256": "58c90c876078804bfcf3c3ca7f8a9965c8372554cabcebbcd2fe48610dfb22f6"
+      }
+    },
+    "unsigned_vendor_sha256": "3464fa63a48a0f00bd40c6c26db3380d493b5f23e270c7892c8215923d2017f6",
+    "source_vendor_sha256": "a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2",
+    "source_vbmeta_sha256": "3fd43a5a7adc0275eb8d241b94f1c2520b6b630ae912c3eff4a3869d76228e04",
+    "rsa4096_pkcs1_sha256_independent_checks": {
+      "vendor_boot_footer": "PASS",
+      "vbmeta": "PASS",
+      "boot_footer": "PASS"
+    },
+    "salted_image_hash_checks": {
+      "vendor_boot": "PASS",
+      "boot": "PASS"
+    },
+    "unchanged_other_raw_descriptors": 22,
+    "identical_vbmeta_header": true,
+    "public_key_unchanged": true,
+    "boot_chain_public_key_matches": true,
+    "payload_fat_clusters": 66512,
+    "payload_sha256": "18be8378a32f6d2c845d4a764a1ca5b51560557fd18b4ba86e3491ca3b8e9832",
+    "file_readback_sha256": {
+      "unixnu.toml": "ea386850fa2a39822d33c2a992d13b34fec1f8f6cade88c2e00ea803699966d3",
+      "Payloads/kernel.macho": "2839fb41bca31142f4ee87f19c2805e8e816b2c4dac0f6208d878a5e826f2880",
+      "Payloads/kernel.macho.adt": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+      "Payloads/kernel.macho.vroot": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68"
+    },
+    "packaged_kernel_bytes": 142819328,
+    "packaged_kernel_sha256": "d18b22f292d0b2ee2555a7a9bf33dbad81ab2463ada5650c53417d87047f3df2",
+    "mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "allow_missing": false,
+    "runtime_qualified": false,
+    "loadable": false,
+    "device_operations": false,
+    "hardware_boot_verified": false,
+    "limits": [
+      "Native/prelink/parser and host verification do not prove hardware boot.",
+      "No device reboot, flash, partition or filesystem operation was performed.",
+      "The ramoops buffer is current-boot volatile memory and does not survive reset."
+    ]
+  },
+  "device_operations": false,
+  "hardware_boot_verified": false
+}

@@ -1,5 +1,52 @@
 # Current status · 2026-11-19
 
+## macOS native/prelink build and可刷写候选 · 2026-11-19
+
+本次修复提交 `90b857ac1f61f61acb30eb59d3daf024c3f7c2ba` 已在 GitHub Actions
+run `44352442697` attempt 2 的 `ufs-integrated` 阶段完成。第一次 attempt 仅因
+macOS runner 长时间排队、job 未分配 runner 而被取消；没有执行任何编译步骤，
+不是源码或编译器失败。attempt 2 的 native arm64e、实际 Mu/QR、ramoops/LiveLog/
+CDC 宿主检查、strict prelink 和生产 DarwinBoot parser 全部通过。artifact
+`tb710fu-ufs-integrated-44352442697` 为 39,152,253 字节，GitHub digest
+`sha256:3598c3d1a3baf374cc0be853462fea5dda33bd2f508fadaee635e341cf03aa06`。
+
+Native arm64e SHA-256 为
+`efe1b2a43d42eb6096b9016c9f8ded69f7bc78e021e7eab40b018d039c690e54`；严格
+prelinked fileset 142,819,328 字节，SHA-256
+`2f3bef2013f35b8998b178eae662b67653f48346c51ad62c30f4c5c9fc9503c2`。
+`mapping_complete=true`、`missing={}`、`stubbed={}`、`allow_missing=false`；
+LiveLog/UFS/CDC 集成均链接进 kernel，生产 loader parser PASS，仍保持
+`runtime_qualified=false`、`loadable=false`。
+
+使用官方标准三色早期带变换生成交付内核，原 prelink 哈希不变，变换后标准带
+内核 SHA-256 为
+`d18b22f292d0b2ee2555a7a9bf33dbad81ab2463ada5650c53417d87047f3df2`。LZMA
+回读、FAT 结构、ADT、`unixnu.toml` 和 `.vroot` 保持检查通过。打包工具补充了
+此前已验证的 UFS signed baseline `a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2`
+allowlist；未修改官方缓存或脚本。
+
+本地签名使用现有授权和 test key，生成精确匹配的三文件集合：
+
+- `out/live-ramoops-44352442697-signed/boot.img`：SHA-256
+  `a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`
+  （未改变的 loader 基线）
+- `out/live-ramoops-44352442697-signed/vendor_boot.img`：SHA-256
+  `a31c32a07bce37788047d367bba2b166859014ac377b829a337f2f280a9092fb`
+- `out/live-ramoops-44352442697-signed/vbmeta.img`：SHA-256
+  `58c90c876078804bfcf3c3ca7f8a9965c8372554cabcebbcd2fe48610dfb22f6`
+- `out/tb710fu-live-ramoops-44352442697-signed.zip`：35,578,789 字节，
+  SHA-256 `725784e7d1d692486595ab9875d96813f7d45b8136172468a5273fae5c471fee`
+
+独立校验通过：三处 RSA-4096/PKCS#1 签名、boot/vendor salted hash、22 个未
+改变的 raw descriptors、vbmeta header/public key、boot chain key、FAT
+payload、ADT/config/vroot 和 LZMA kernel readback；ZIP integrity 与
+`SHA256SUMS` 回读通过。证据：
+`docs/evidence/live-ramoops-image-44352442697.json`。
+
+这是可刷写格式的测试候选，不是硬件验收结果。未刷写、未重启、未切槽、未修改
+设备文件系统；硬件启动、二维码相机解码、CDC 枚举、worker 调度和 macOS
+userspace 仍未验证。
+
 ## ramoops QR 首帧延迟修复 · 2026-11-19
 
 用户提供的 ramoops 文件为 43 字节，仅含 XNU 启动横幅；SHA-256

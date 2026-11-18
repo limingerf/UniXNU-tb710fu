@@ -21,6 +21,8 @@ def sha(data):
 SOURCE_VENDOR_SHA256S = {
     '836ca997d766dedfef0531f7283026b443d2227302148fdd107852e25354df15',
     '15846226236b56bd3abb104ae57f45e23307f3ea52321fd03ed153fd2e4e0718',
+    # Retained signed UFS-integrated baseline used by the verified live-log bundles.
+    'a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2',
 }
 
 
