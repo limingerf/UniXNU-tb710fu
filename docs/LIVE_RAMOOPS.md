@@ -107,8 +107,7 @@ XNU 的对象宏 DEBUG 仅在三个 QR 对象的兼容头内解除，再定义 E
 `0015` 将 ramoops 改为内核拥有的本次启动 BSS 缓冲区并移除物理映射。
 状态行还显示每路二维码编码成功数和 framebuffer 写入成功数。`ready` 只表示
 源快照与传输帧可用，并不证明编码或显示写入成功，也不证明面板扫描输出或
-相机解码正常。补丁 `0016` 仅在 live-log 启用时记录 KMEM rank-0 callback
-返回并轮询一次，以缩小下次启动的观察范围；它不修改 compressor 容量策略。
+相机解码正常。补丁 `0016` 曾只记录 KMEM rank-0 返回；新版 `0017` 在 live-log 启用时为每个 startup callback 记录 subsystem、rank、arg 的返回 marker，并调用受 250ms 全局节流限制的轮询。这样一次构建即可覆盖任意启动阶段，不再逐阶段增加 marker；不修改 callback、顺序或 compressor 容量策略。
 真实生产源码、独立捕获缓冲、双通道、早期备份、固定接收器和实际 Mu
 分别经过主机检查；实际 macOS arm64e 编译、强钩子、归档、最终代码和
 预链接另由 CI 验证。上述结果不等于 CDC 已枚举、实机日志已接收、

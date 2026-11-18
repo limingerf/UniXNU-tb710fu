@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "stage": "live-ramoops-signed-package",
+  "run_id": 44370040495,
+  "source_commit": "94be46ec78bc598f7ac875aa976a87b8401f9d02",
+  "native_sha256": "17a955ebc974d508904ba25b4e675ecd8c10706e456f89d43ebf46271579ba1c",
+  "prelinked_sha256": "d7bcc55aea54ceb4e8601be9a50e4e72d12305205ab29a786895e5fa6471becc",
+  "packaged_kernel_sha256": "cf666aabf251673b1117c44d96699031022157af0a0fdf1170d83a93dd5b8e1b",
+  "packaged_kernel_bytes": 142819328,
+  "unsigned_vendor_sha256": "43a24b265a86a20e1276eea6eb08675555764f32a0dd5886dbda59d1c60e508d",
+  "images": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "5ac5eeeee6ef3ecd016823ff2dbc4e037db180885be0966b0b27a8ce2ad7f9c2"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "d7324cfa02df73cb77354c8f5c4fb5ea070aad7df8dedacc20202998e4f89e45"
+    }
+  },
+  "zip": {
+    "path": "out/tb710fu-live-ramoops-44370040495-signed.zip",
+    "bytes": 35579348,
+    "sha256": "7de6a69d6cc6d407500e5ceae94f46e4cb47045207a5bff49d582f3b51c26f48"
+  },
+  "verification": {
+    "schema_version": 1,
+    "stage": "signed-native-live-ramoops-bundle-independently-verified",
+    "kernel_run_id": 44370040495,
+    "kernel_source_commit": "94be46ec78bc598f7ac875aa976a87b8401f9d02",
+    "native_sha256": "17a955ebc974d508904ba25b4e675ecd8c10706e456f89d43ebf46271579ba1c",
+    "prelinked_sha256": "d7bcc55aea54ceb4e8601be9a50e4e72d12305205ab29a786895e5fa6471becc",
+    "standard_kernel_sha256": "cf666aabf251673b1117c44d96699031022157af0a0fdf1170d83a93dd5b8e1b",
+    "files": {
+      "boot.img": {
+        "bytes": 100663296,
+        "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+      },
+      "vendor_boot.img": {
+        "bytes": 100663296,
+        "sha256": "5ac5eeeee6ef3ecd016823ff2dbc4e037db180885be0966b0b27a8ce2ad7f9c2"
+      },
+      "vbmeta.img": {
+        "bytes": 8000,
+        "sha256": "d7324cfa02df73cb77354c8f5c4fb5ea070aad7df8dedacc20202998e4f89e45"
+      }
+    },
+    "unsigned_vendor_sha256": "43a24b265a86a20e1276eea6eb08675555764f32a0dd5886dbda59d1c60e508d",
+    "source_vendor_sha256": "a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2",
+    "source_vbmeta_sha256": "3fd43a5a7adc0275eb8d241b94f1c2520b6b630ae912c3eff4a3869d76228e04",
+    "rsa4096_pkcs1_sha256_independent_checks": {
+      "vendor_boot_footer": "PASS",
+      "vbmeta": "PASS",
+      "boot_footer": "PASS"
+    },
+    "salted_image_hash_checks": {
+      "vendor_boot": "PASS",
+      "boot": "PASS"
+    },
+    "unchanged_other_raw_descriptors": 22,
+    "identical_vbmeta_header": true,
+    "public_key_unchanged": true,
+    "boot_chain_public_key_matches": true,
+    "payload_fat_clusters": 66512,
+    "payload_sha256": "9d13de35b33cbaac36d15eef3a02ac21ae8d333928065c1daf1a36ce8132b329",
+    "file_readback_sha256": {
+      "unixnu.toml": "ea386850fa2a39822d33c2a992d13b34fec1f8f6cade88c2e00ea803699966d3",
+      "Payloads/kernel.macho": "b133a97a91b0e9a7cbdecea8901db46f74fd86ff7c1194135e0f49ed3220b493",
+      "Payloads/kernel.macho.adt": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+      "Payloads/kernel.macho.vroot": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68"
+    },
+    "packaged_kernel_bytes": 142819328,
+    "packaged_kernel_sha256": "cf666aabf251673b1117c44d96699031022157af0a0fdf1170d83a93dd5b8e1b",
+    "mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "allow_missing": false,
+    "runtime_qualified": false,
+    "loadable": false,
+    "device_operations": false,
+    "hardware_boot_verified": false,
+    "limits": [
+      "Native/prelink/parser and host verification do not prove hardware boot.",
+      "No device reboot, flash, partition or filesystem operation was performed.",
+      "The ramoops buffer is current-boot volatile memory and does not survive reset."
+    ],
+    "startup_callback_diagnostics": {
+      "patch": "0017-tb710fu-startup-callback-return-all-marker.patch",
+      "marker_string_in_prelinked_fileset": true,
+      "behavior": "One marker after every startup callback returns while live-log is active; includes subsystem, rank and arg.",
+      "poll_throttle_ms": 250,
+      "startup_order_or_callback_behavior_changed": false,
+      "device_observation_source": "run 44352442697 package; reached SYSCTL phase, four sysctl_register_oid_early entries, return of final callback unknown."
+    }
+  },
+  "device_operations": false,
+  "hardware_boot_verified": false,
+  "startup_callback_diagnostics": {
+    "patch": "0017-tb710fu-startup-callback-return-all-marker.patch",
+    "marker_string_in_prelinked_fileset": true,
+    "marker_behavior": "Records subsystem, rank and arg after every startup callback returns when live-log is active.",
+    "poll_throttle_ms": 250,
+    "source_device_observation": "docs/evidence/live-ramoops-device-44352442697-phase16.json"
+  }
+}

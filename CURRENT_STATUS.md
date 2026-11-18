@@ -1,5 +1,23 @@
 # Current status · 2026-11-19
 
+## 实机阶段 7→16 转录与一次性全 callback marker · 2026-11-19
+
+用户提供的旧包转录 build label 为 `src-90b857ac-ramoops`（run `44352442697`），不是最新的全 marker 包。对该 run 的精确 fileset 映射显示 phase 7 是 ZALLOC：日志在 `_vm_btlog_init` 和 btlog 提示后继续到多个 rank callback；随后 VM bootstrap done，并继续打印 phase 7 rank 1/2/3。出现后续 entry 证明前一个 callback 返回，因此执行已越过 phase 7。之后进入 phase 16 SYSCTL，四次 entry 均为 `_sysctl_register_oid_early`，参数不同；entry 在调用前打印，最后一次 callback 是否返回无法从旧包日志判断。证据见 `docs/evidence/live-ramoops-device-44352442697-phase16.json`。
+
+用户指出 ramoops 只显示 `0:0 (0B)`，说明它不是可靠的最终停点记录；它是轮播的有界尾部，不能保证相机捕获最后更新。故修复方向改为在 XNU 的统一 startup loop 对每个 callback 返回后记录 `[subsystem, rank, arg]` 并有界 poll，而不是逐阶段追加 marker/重复编译。patch `0017` 已在新包 build run `44370040495` 中通过 native、strict prelink 和 production parser；marker 字符串确认存在于 prelinked fileset。run 的第一次 attempt 是 patch 文件 hunk 行数错误，runner 在应用 patch 时拒绝，未进入编译；修正后 attempt 2 全部通过。
+
+最新候选仍为 run `44370040495` 的匹配镜像组，README、验证报告和 ZIP manifest 已补充全 callback marker 说明。ZIP SHA-256 为 `7de6a69d6cc6d407500e5ceae94f46e4cb47045207a5bff49d582f3b51c26f48`。无刷机/重启操作；是否能拍到最后返回 marker 仍需设备实测。
+
+## 全阶段 startup callback 返回诊断包 · 2026-11-19
+
+用户提供的设备转录来自旧包 `src-90b857ac-ramoops`（run `44352442697`），不是本节的新包。按精确 run `44352442697` fileset 的 `llvm-nm` 映射，phase 7 是 `ZALLOC`：rank 0 地址对应 `_vm_btlog_init`，后续 rank 1/2/3 分别对应 `_vm_kernel_boostraped`、`_vm_page_module_init`、`_zleak_init`、`_zone_create_startup` 等。随后出现的下一条 entry 证明前一 callback 已返回；日志最终已越过整个 phase 7 并到达 phase 16 `SYSCTL`。
+
+phase 16 四条 entry 的低地址均映射到 `_sysctl_register_oid_early`，arg 分别为 `0xfffffff007e2b490`、`0xfffffff007dfb600`、`0xfffffff007e0e0a8`、`0xfffffff007e0dff8`。entry 行在调用前打印；四条行只证明已经进入这四次调用，最后一个 callback 是否返回尚未知。提示 `Unable to find vm tag for btlog` 后启动继续，不能据此判定致命错误。此次转录的阶段/符号和不确定性见 `docs/evidence/live-ramoops-device-44352442697-phase16.json`。
+
+为避免按阶段逐次构建，XNU patch `0017` 在每个 startup callback 返回后记录 subsystem、rank、arg 并调用既有有界 poll；entry 顺序、callback、arg 和启动行为不变，250 ms 全局节流仍保留。新构建 run `44370040495` attempt 2 已通过 native arm64e、strict prelink、production DarwinBoot parser 及宿主检查。prelink SHA-256 `d7bcc55aea54ceb4e8601be9a50e4e72d12305205ab29a786895e5fa6471becc`；该通用 marker 字符串已在此 fileset 中确认。
+
+新候选镜像在 `out/live-ramoops-44370040495-signed/`，匹配 ZIP 为 `out/tb710fu-live-ramoops-44370040495-signed.zip`，SHA-256 `7de6a69d6cc6d407500e5ceae94f46e4cb47045207a5bff49d582f3b51c26f48`。独立 AVB、salted hash、22 个未变 descriptor、FAT 与 LZMA 回读均通过。它是格式/签名已验证的测试候选，不是硬件验收；未刷机、未重启，运行/扫码仍待实测。完整构建和镜像 provenance 见 `docs/evidence/live-ramoops-image-44370040495.json`。
+
 ## macOS native/prelink build and可刷写候选 · 2026-11-19
 
 本次修复提交 `90b857ac1f61f61acb30eb59d3daf024c3f7c2ba` 已在 GitHub Actions

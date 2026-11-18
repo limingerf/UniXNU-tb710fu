@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "stage": "user-supplied-device-startup-tail",
+  "source": "Pasted by user in chat on 2026-11-19; no original log file or cryptographic hash supplied.",
+  "device_build_label": "src-90b857ac-ramoops",
+  "build_run_id": 44352442697,
+  "build_commit": "90b857ac1f61f61acb30eb59d3daf024c3f7c2ba",
+  "observations": {
+    "zalloc": {
+      "phase": 7,
+      "callbacks_observed": [
+        {
+          "rank": 0,
+          "symbol": "_vm_btlog_init",
+          "entry_pointer": "0x2a9166700c2a1328"
+        },
+        {
+          "rank": 1,
+          "symbol": "_vm_kernel_boostraped",
+          "entry_pointer": "0x48b759300c294860"
+        },
+        {
+          "rank": 1,
+          "symbol": "_vm_page_module_init",
+          "entry_pointer": "0xa4edff300c2a102c"
+        },
+        {
+          "rank": 2,
+          "symbol": "_zleak_init",
+          "entry_pointer": "0xd3bf25b00c274b18"
+        },
+        {
+          "rank": 3,
+          "symbol": "_zone_create_startup",
+          "entry_pointer": "0x1cad26f00c285dac"
+        }
+      ],
+      "inference": "Subsequent startup entry lines show prior callbacks returned; execution advanced beyond phase 7."
+    },
+    "btlog_message": {
+      "text": "Unable to find vm tag for btlog",
+      "inference": "Non-fatal in this capture: startup continued into later ZALLOC callbacks."
+    },
+    "sysctl": {
+      "phase": 16,
+      "subsystem": "SYSCTL",
+      "callbacks_observed": [
+        {
+          "symbol": "_sysctl_register_oid_early",
+          "argument": "0xfffffff007e2b490"
+        },
+        {
+          "symbol": "_sysctl_register_oid_early",
+          "argument": "0xfffffff007dfb600"
+        },
+        {
+          "symbol": "_sysctl_register_oid_early",
+          "argument": "0xfffffff007e0e0a8"
+        },
+        {
+          "symbol": "_sysctl_register_oid_early",
+          "argument": "0xfffffff007e0dff8"
+        }
+      ],
+      "inference": "These are pre-callback entry records. The final callback return is not shown; no fault PC is present."
+    }
+  },
+  "symbol_map": {
+    "kernel_artifact": ".work/ufs-integrated-44352442697-artifact/kernel/kernel.macho",
+    "prelinked_sha256": "2f3bef2013f35b8998b178eae662b67653f48346c51ad62c30f4c5c9fc9503c2",
+    "tool": "llvm-nm --defined-only"
+  },
+  "relationship_to_new_candidate": {
+    "newer_run_id": 44370040495,
+    "newer_commit": "94be46ec78bc598f7ac875aa976a87b8401f9d02",
+    "marker_patch": "0017-tb710fu-startup-callback-return-all-marker.patch",
+    "scope": "Records subsystem/rank/arg after every startup callback returns when live-log is active; no phase-specific follow-up build needed."
+  },
+  "limitations": [
+    "The ramoops display is a rotating bounded tail and is not guaranteed to preserve the last startup line.",
+    "The prior device package had only a KMEM-specific completion marker, so absence of a SYSCTL return marker is not informative.",
+    "Actual return status for the final SYSCTL callback remains unknown until a capture from the newer package.",
+    "No device operation was performed by this diagnostic task."
+  ]
+}
