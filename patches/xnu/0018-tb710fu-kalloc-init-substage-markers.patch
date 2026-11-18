@@ -1,0 +1,81 @@
+From: TB710FU clean board
+Subject: [PATCH] Record kalloc_init substage completion in live log
+
+Reason: the new all-callback marker narrows the hardware boundary to ZALLOC
+rank 2, kalloc_init. Add bounded completion markers around each major operation
+inside that one callback so one follow-up build identifies the last completed
+kalloc stage. No allocator sizing, view parsing, heap policy, allocation,
+callback order, or error handling is changed.
+
+Markers emit only when live-log is active and use the existing 250 ms bounded
+poll. With live-log disabled, the macro compiles to a no-op.
+
+Verification: applies after patch 0017 to the pinned XNU kalloc.c. Native
+arm64e compilation and strict prelink must pass before hardware use.
+
+diff --git a/osfmk/kern/kalloc.c b/osfmk/kern/kalloc.c
+--- a/osfmk/kern/kalloc.c
++++ b/osfmk/kern/kalloc.c
+@@ -85,6 +85,18 @@
+ #include <san/kasan.h>
+ #include <libkern/section_keywords.h>
+ #include <libkern/prelink.h>
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++#include <kern/tb710fu_live_log.h>
++#define TB710FU_KALLOC_CHECKPOINT(label) \
++	do { \
++		if (tb710fu_live_log_active()) { \
++			kprintf("TB710FU kalloc: %s complete\n", label); \
++			tb710fu_live_log_poll(); \
++		} \
++	} while (0)
++#else
++#define TB710FU_KALLOC_CHECKPOINT(label) do { } while (0)
++#endif
+ 
+ #if HAS_MTE
+ #include <arm64/mte_xnu.h>
+@@ -2056,34 +2068,43 @@
+ 
+ 	static_assert(KHEAP_MAX_SIZE >= KALLOC_SAFE_ALLOC_SIZE);
+ 	kalloc_zsize_compute();
++	TB710FU_KALLOC_CHECKPOINT("zsize");
+ 
+ 	kalloc_heap_init(KHEAP_DATA_PRIVATE);
++	TB710FU_KALLOC_CHECKPOINT("heap-private");
+ 	kalloc_heap_init(KHEAP_DATA_SHARED);
++	TB710FU_KALLOC_CHECKPOINT("heap-shared");
+ 	kalloc_heap_init(KHEAP_EARLY);
++	TB710FU_KALLOC_CHECKPOINT("heap-early");
+ 
+ 	kmem_alloc(kernel_map, (vm_offset_t *)&kt_buffer, kt_scratch_size,
+ 	    KMA_NOFAIL | KMA_ZERO | KMA_KOBJECT, VM_KERN_MEMORY_KALLOC);
++	TB710FU_KALLOC_CHECKPOINT("scratch-alloc");
+ 
+ 	/*
+ 	 * Handle fixed size views
+ 	 */
+ 	kalloc_type_view_init_fixed();
++	TB710FU_KALLOC_CHECKPOINT("fixed-views");
+ 
+ 	/*
+ 	 * Reset
+ 	 */
+ 	bzero(kt_buffer, kt_scratch_size);
+ 	kt_count = max_count;
++	TB710FU_KALLOC_CHECKPOINT("fixed-reset");
+ 
+ 	/*
+ 	 * Handle variable size views
+ 	 */
+ 	kalloc_type_view_init_var();
++	TB710FU_KALLOC_CHECKPOINT("variable-views");
+ 
+ 	/*
+ 	 * Free resources used
+ 	 */
+ 	kmem_free(kernel_map, (vm_offset_t) kt_buffer, kt_scratch_size);
++	TB710FU_KALLOC_CHECKPOINT("scratch-free");
+ }
+ STARTUP(ZALLOC, STARTUP_RANK_THIRD, kalloc_init);
+ 
