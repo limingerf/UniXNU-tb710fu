@@ -1,5 +1,32 @@
 # Current status · 2026-11-18
 
+## macOS runner build of QR/callback diagnostics · 2026-11-18
+
+GitHub Actions run `44325375059` built commit
+`1446070ec13d33165c344dab3be9c21d6d93d83d` on
+`codex/ufs-transactional-handoff` with stage `ufs-integrated`; conclusion:
+success. Native arm64e SHA-256 is
+`af5b2efee21868c3c77db2963f9a4a029f3ec43a62d720921bea2b2e4a7071b6`.
+Strict prelink produced a 142,819,328-byte fileset with SHA-256
+`56a6931b5451d90922e54595ea6ecf99380f4b169549dc9d72866851930e864e`;
+the production DarwinBoot parser passed. Mapping is complete, missing and
+stubbed sets are empty, and allow-missing is false. The ordered patch list
+contains 0016, and the callback-return marker string is present in the
+prelinked fileset.
+
+The runner passed the native build, pinned Mu/QR and protocol interoperability
+checks, live-console capture, ramoops snapshot cases (10), display checks, and
+the adapter check (12 groups, 15 invalid-video cases, including both new QR
+failure counters). UFS standalone adapter stages were skipped by this stage's
+workflow conditions. GitHub artifact `14436169457` is 39,152,354 bytes;
+downloaded SHA-256 `c5c1a58fde3c01dd39cb7e262510f47c5c0f833178e2a5771c0d0688093d2e0d`
+matches the GitHub artifact digest.
+
+This is still only a built and prelinked candidate: `runtime_qualified=false`,
+`loadable=false`, and hardware boot, ramoops QR camera decoding, CDC enumeration
+and macOS userspace are unverified. No image was signed and no device operation
+occurred. Full run evidence: `docs/evidence/live-qr-return-marker-20261118.json`.
+
 ## QR render feedback and KMEM callback return marker · 2026-11-18
 
 The user supplied a scan from `src-b11eddff-ramoops` (device commit
@@ -30,11 +57,10 @@ cases); production ramoops snapshot checks pass (10 cases); portable display
 pixel/guard checks pass. `tools/ci_kernel.py configure` resolves the new ordered
 patch series, and `0016` passes `git apply --check` and actual application to a
 temporary LF-normalized copy of the selected `startup.c` fixture.
-`git diff --check` passes. This is not a native arm64e build or prelink: those still need
-the supported macOS runner. The protocol interop script was not run because
-Node.js is absent; the Clang sanitizer runtime is also absent, so the C checks
-were rerun successfully with GCC. No image was signed, and no device operation
-occurred. Evidence: `docs/evidence/live-qr-return-marker-20261118.json`.
+The WSL Clang sanitizer runtime is absent, so local C host checks used GCC.
+Local protocol interop was unavailable because WSL lacks Node.js; the pinned
+protocol check passed on the macOS runner above. No image was signed, and no
+device operation occurred.
 
 ## Short gate built, signed and ready for the device · 2026-11-18
 

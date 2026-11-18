@@ -11,6 +11,46 @@
     "prelinked_sha256": "665b41f1248ab74afb705453e8b8e786004253263f12dafeca8c8d5ba1f6b35d",
     "display_build_label": "src-b11eddff-ramoops"
   },
+  "diagnostic_build_run": {
+    "run_id": 44325375059,
+    "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44325375059",
+    "event": "workflow_dispatch",
+    "stage": "ufs-integrated",
+    "status": "completed",
+    "conclusion": "success",
+    "branch": "codex/ufs-transactional-handoff",
+    "device_commit": "1446070ec13d33165c344dab3be9c21d6d93d83d",
+    "native_sha256": "af5b2efee21868c3c77db2963f9a4a029f3ec43a62d720921bea2b2e4a7071b6",
+    "prelinked_bytes": 142819328,
+    "prelinked_sha256": "56a6931b5451d90922e54595ea6ecf99380f4b169549dc9d72866851930e864e",
+    "mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "allow_missing": false,
+    "runtime_qualified": false,
+    "loadable": false,
+    "hardware_boot_verified": false,
+    "production_darwinboot_parser": "PASS",
+    "ordered_patch_0016_present": true,
+    "callback_return_marker_in_prelinked_fileset": true,
+    "host_checks": {
+      "live_adapter": "PASS: 12 groups, 15 invalid-video cases; QR encode/draw failure visibility included",
+      "ramoops_snapshot": "PASS: 10 cases",
+      "display_renderer": "PASS",
+      "pinned_protocol_interop": "PASS",
+      "pinned_mu_qr_debug_0": "PASS",
+      "pinned_mu_qr_debug_1": "PASS",
+      "live_console_capture": "PASS"
+    },
+    "artifact": {
+      "id": 14436169457,
+      "bytes": 39152354,
+      "sha256": "c5c1a58fde3c01dd39cb7e262510f47c5c0f833178e2a5771c0d0688093d2e0d",
+      "digest_matches_github": true
+    },
+    "signed_or_device_artifacts_created": false,
+    "device_operations": false
+  },
   "device_observation": {
     "earlybackup_bytes": 409,
     "current_start": 905,
