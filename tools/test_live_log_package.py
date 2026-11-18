@@ -101,7 +101,8 @@ class LiveLogPackaging(unittest.TestCase):
     def test_dual_live_sources_and_early_backup_contract_are_required(self):
         for report_name in ('report', 'integration'):
             for mutation in ('missing', 'swapped_sources', 'shared_capture', 'lost_early_backup',
-                             'oversize_tail', 'oversize_body', 'old_fixed_left', 'multiple_frames', 'one_round'):
+                             'oversize_tail', 'oversize_body', 'old_fixed_left', 'multiple_frames',
+                             'one_round', 'long_single_frame'):
                 with self.subTest(report=report_name, mutation=mutation):
                     value = fixture()
                     contract = value[report_name]['dual_source_log_contract']
@@ -114,6 +115,8 @@ class LiveLogPackaging(unittest.TestCase):
                     elif mutation == 'oversize_body': contract['left']['export_body_bytes_max'] = 8192
                     elif mutation == 'old_fixed_left': contract['left']['source'] = 'fixed-ramoops'
                     elif mutation == 'multiple_frames': contract['frames_per_poll_max'] = 2
+                    elif mutation == 'long_single_frame':
+                        contract['single_frame_rounds_before_replacement'] = 16
                     else: contract['complete_rounds_before_replacement_min'] = 1
                     with self.assertRaisesRegex(ValueError, 'dual-source capture/export contract'):
                         check(value)

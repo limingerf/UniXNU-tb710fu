@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "stage": "device-observation-of-signed-candidate",
+  "source": "User-provided decoded LEFT XNU QR text and reported behaviour",
+  "device_commit": "d181905f59125ec380249f54ec53e3b6f8141386",
+  "run_id": 44165508547,
+  "display_build_label": "src-d181905f-ramoops",
+  "signed_bundle": "out/tb710fu-dual-live-44165508547-signed.zip",
+  "signed_vendor_boot_sha256": "7f5ac5520ca6fe2592d050066559c5d7c81529c7468fc1be9271e9388ea1c427",
+  "packaged_kernel_sha256": "9181c38ab67c69d760564c64bb801e0678d06e693c607faa51900486d1a117f5",
+  "reported_behavior": "LEFT QR decodes; RIGHT QR still carries no usable content; the display does not cycle or rotate after the kernel stops.",
+  "decoded_left_export": {
+    "header": "TB710FU XNU DEBUG EXPORT v1",
+    "source": "xnu-debug",
+    "build": "src-d181905f-ramoops",
+    "earlybackup_state": "ready",
+    "earlybackup_start": 0,
+    "earlybackup_end": 409,
+    "earlybackup_bytes": 409,
+    "earlybackup_export": "deferred_multi_frame",
+    "current_start": 904,
+    "current_end": 1243,
+    "current_bytes": 339,
+    "dropped": 0,
+    "raw_layout": "current_only_single_frame",
+    "last_line": "kernel_startup_initialize_upto[6, rank 0]: 0x40ef54700c28dc98(0)"
+  },
+  "analysis": {
+    "frame_budget_arithmetic_matches_source": "The published LEFT file is exactly one OneSend source block: header 314 bytes + 339 raw bytes = 653 bytes, and TB710FU_LIVE_LOG_BLOCK_BYTES (720) minus the per-file overhead 67 (26 envelope + 31 filename + 10 MIME) is also 653. current_start 904 is 1243 - 339. This reproduces the single-frame trim loop in package/Tb710fuLiveLog/LiveXnu.c exactly, so the LEFT path behaves as designed.",
+    "callback_identification": "The PAC-bearing pointer 0x40ef54700c28dc98 resolves to _vm_compressor_set_size at 0xfffffff00c28dc98 in the exact 44165508547 fileset (kernel.map.json native address, confirmed in the kernel fileset entry). Kernel startup subsystem 6 is STARTUP_SUB_KMEM and rank 0 is STARTUP_RANK_FIRST; osfmk/vm/vm_compressor.c declares exactly STARTUP(KMEM, STARTUP_RANK_FIRST, vm_compressor_set_size). The line is printed before the diagnostic poll and the callback, so it identifies the callback that was about to run, not a fault PC.",
+    "right_channel_cannot_refresh_in_this_window": "In the pre-worker state package/Tb710fuLiveLog/LiveXnu.c publishes the RIGHT stream from tb710fu_ramoops_snapshot_copy with a 512-byte capacity, and the first RIGHT snapshot is drawn during tb710fu_live_log_init() from out/live-ramoops-44165508547-signed before any later kernel output exists. That snapshot is the 43-byte ramoops boot banner. The replacement gate requires TB710FU_LIVE_LOG_MIN_ROUNDS (16) complete rounds of the current one-block file before any newer file may replace it, and each channel is only advanced on alternate polls.",
+    "poll_cadence_math": "tb710fu_live_log_poll() is throttled to frequency/4 (250 ms) globally, so about four polls per second in total and about two per channel. A stale single-block RIGHT file therefore needs about 16 right-side polls, i.e. roughly 8 seconds of running XNU, before the newest ramoops text can be published. A boot that stalls earlier than that leaves the RIGHT rectangle permanently on the init banner, which matches the reported empty/title-only RIGHT QR.",
+    "no_rotation_is_expected_after_a_halt": "Every frame advance comes from executed kernel code: the startup-entry polls in osfmk/kern/startup.c and the EARLY_BOOT worker. The status row previously read W=0, so the worker had not run, and the startup-entry polls stop with the CPU. A halted or non-scheduling CPU cannot animate or re-encode either QR; the last drawn frame is what a camera must recover.",
+    "cannot_conclude_more_from_a_frozen_frame": "Because newer snapshots are suppressed by the 16-round gate, the frozen LEFT image proves only that 1243 bytes had been captured at the poll that published it. Later output could exist in the ring and still be invisible. The observation is consistent with a stall inside or immediately after _vm_compressor_set_size, but does not prove it."
+  },
+  "proposed_source_fix": {
+    "change": "In the pre-worker single-frame mode, gate replacement on TB710FU_LIVE_LOG_SINGLE_FRAME_ROUNDS (2) instead of TB710FU_LIVE_LOG_MIN_ROUNDS (16), for both streams.",
+    "reason": "A one-block file is completely described by a single photograph; waiting 16 rounds only delays the newest boot text. Keeping the 16-round window is meaningful only for multi-block files, where a slow camera must collect several frames of one immutable file.",
+    "scope": "package/Tb710fuLiveLog (adapter policy) and its host checks only; no XNU patch, no boot-argument change, no security or storage policy change.",
+    "implemented": true,
+    "implemented_files": [
+      "package/Tb710fuLiveLog/LiveProtocol.h",
+      "package/Tb710fuLiveLog/LiveProtocol.c",
+      "package/Tb710fuLiveLog/LiveXnu.c",
+      "package/Tb710fuLiveLog/Test/live_protocol_test.c",
+      "tests/live_xnu_adapter_test.c",
+      "scripts/build-tb710fu-live-log.py",
+      "tools/verify_live_log_package.py",
+      "tools/verify_live_log_integration.py",
+      "tools/test_live_log_package.py",
+      "scripts/check_live_xnu_adapter.py",
+      "docs/LIVE_RAMOOPS.md"
+    ],
+    "host_compiler_verified": false,
+    "native_build_verified": false
+  },
+  "hardware_partition_hash_readback": false,
+  "fault_pc_known": false,
+  "usb_enumeration_verified": false,
+  "device_operations": false
+}

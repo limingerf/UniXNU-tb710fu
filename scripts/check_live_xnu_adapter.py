@@ -90,6 +90,8 @@ def main():
                 'metadata_lengths_and_current_filename_range': True,
                 'stream_frames_match_own_immutable_envelopes': True,
                 '16_round_replacement_gate_per_stream': True,
+                'single_frame_mode_uses_short_replacement_gate': True,
+                'pre_worker_header_and_tail_fit_one_systematic_frame': True,
                 'one_frame_per_global_250ms_tick_including_refresh': True,
                 'initial_raw_ramoops_frame_before_freeze': True,
                 'worker_not_started_uses_single_frame_latest_tail': True,

@@ -165,6 +165,14 @@ int tb710fu_live_log_can_snapshot(const struct tb710fu_live_log_sender *sender)
         sender->info.rounds >= TB710FU_LIVE_LOG_MIN_ROUNDS);
 }
 
+/* The pre-worker single-frame path publishes a one-block file, so it only needs
+ * enough rounds for the rectangle to be stable, not a multi-frame dwell. */
+int tb710fu_live_log_can_snapshot_single(const struct tb710fu_live_log_sender *sender)
+{
+    return sender != NULL && (!sender->valid ||
+        sender->info.rounds >= TB710FU_LIVE_LOG_SINGLE_FRAME_ROUNDS);
+}
+
 int tb710fu_live_log_get_info(const struct tb710fu_live_log_sender *sender,
     struct tb710fu_live_log_info *out)
 {
@@ -182,7 +190,9 @@ enum tb710fu_live_log_result tb710fu_live_log_snapshot(
     return tb710fu_live_log_snapshot_file(sender, bytes, length, generation, start, end);
 }
 
-enum tb710fu_live_log_result tb710fu_live_log_snapshot_file(
+/* The dwell before a newer file may replace this one is the only difference
+ * between the multi-frame and pre-worker single-frame publishers. */
+static enum tb710fu_live_log_result snapshot_after(uint32_t minimum_rounds,
     struct tb710fu_live_log_sender *sender, const uint8_t *bytes, size_t length,
     uint64_t generation, uint64_t start, uint64_t end)
 {
@@ -191,7 +201,8 @@ enum tb710fu_live_log_result tb710fu_live_log_snapshot_file(
         !valid_source(sender->source) || end < start || end - start > (uint64_t)length ||
         (length != 0 && bytes == NULL)) return TB710FU_LIVE_LOG_INVALID;
     if (length == 0) return TB710FU_LIVE_LOG_EMPTY;
-    if (!tb710fu_live_log_can_snapshot(sender)) return TB710FU_LIVE_LOG_BUSY;
+    if (sender->valid && sender->info.rounds < minimum_rounds)
+        return TB710FU_LIVE_LOG_BUSY;
 
     clear_bytes(&sender->info, sizeof(sender->info));
     clear_bytes(sender->envelope, sizeof(sender->envelope));
@@ -233,7 +244,16 @@ enum tb710fu_live_log_result tb710fu_live_log_snapshot_single_file(
     size_t capacity = tb710fu_live_log_single_file_capacity(sender->source,
         generation, start, end);
     if (capacity == 0 || length > capacity) return TB710FU_LIVE_LOG_INVALID;
-    return tb710fu_live_log_snapshot_file(sender, bytes, length, generation, start, end);
+    return snapshot_after(TB710FU_LIVE_LOG_SINGLE_FRAME_ROUNDS, sender, bytes,
+        length, generation, start, end);
+}
+
+enum tb710fu_live_log_result tb710fu_live_log_snapshot_file(
+    struct tb710fu_live_log_sender *sender, const uint8_t *bytes, size_t length,
+    uint64_t generation, uint64_t start, uint64_t end)
+{
+    return snapshot_after(TB710FU_LIVE_LOG_MIN_ROUNDS, sender, bytes, length,
+        generation, start, end);
 }
 
 int tb710fu_live_log_next_frame(struct tb710fu_live_log_sender *sender,

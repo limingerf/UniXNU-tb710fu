@@ -51,7 +51,13 @@ DUAL_SOURCE_LOG_CONTRACT = {
     'right': {'slot': 1, 'source': 'ramoops', 'current_tail_bytes_max': 4096,
               'provider': 'tb710fu_ramoops_snapshot_copy', 'export_body_bytes_max': 4096},
     'frames_per_poll_max': 1, 'poll_interval_ms': 250,
+    # Multi-frame transfers need a long immutable dwell so a slow camera can
+    # collect every frame of one session.
     'complete_rounds_before_replacement_min': 16,
+    # The pre-worker export is a single source block, fully described by one
+    # photograph; its dwell is deliberately short so the newest boot text is
+    # published before an early halt can freeze the display.
+    'single_frame_rounds_before_replacement': 2,
 }
 
 

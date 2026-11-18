@@ -95,19 +95,22 @@ static void status_line(unsigned slot)
 static void snapshot_xnu(void)
 {
     if (!__atomic_load_n(&early_frozen, __ATOMIC_ACQUIRE)) return;
-    size_t capacity = __atomic_load_n(&worker_started, __ATOMIC_ACQUIRE) ? 3072u : 512u;
+    int started = __atomic_load_n(&worker_started, __ATOMIC_ACQUIRE);
+    size_t capacity = started ? 3072u : 512u;
     int copied = tb710fu_live_capture_copy(&xnu_capture, snapshot, capacity, &xnu_state);
     if (xnu_state.state != TB710FU_LIVE_CAPTURE_EMPTY &&
         xnu_state.state != TB710FU_LIVE_CAPTURE_READY) return;
     struct tb710fu_live_log_info info = {0};
     (void)tb710fu_live_log_get_info(&xnu_sender, &info);
-    if (!tb710fu_live_log_can_snapshot(&xnu_sender) ||
+    int permitted = started ? tb710fu_live_log_can_snapshot(&xnu_sender) :
+                              tb710fu_live_log_can_snapshot_single(&xnu_sender);
+    if (!permitted ||
         (xnu_sender.valid && xnu_state.start == info.start && xnu_state.end == info.end &&
          xnu_state.dropped == xnu_last_dropped)) return;
     /* Before the worker runs, export one compact current-tail frame. The early
      * backup remains in early_bytes for the later multi-frame export, but is not
      * silently truncated into this single-frame file. */
-    if (!__atomic_load_n(&worker_started, __ATOMIC_ACQUIRE)) {
+    if (!started) {
         uint64_t generation = xnu_generation + 1u;
         size_t count = (size_t)copied;
         while (count > 0 || xnu_state.state == TB710FU_LIVE_CAPTURE_EMPTY) {
@@ -168,15 +171,17 @@ static void snapshot_xnu(void)
 
 static void snapshot_ramoops(void)
 {
-    size_t capacity = __atomic_load_n(&worker_started, __ATOMIC_ACQUIRE) ?
-                      sizeof(snapshot) : 512u;
+    int started = __atomic_load_n(&worker_started, __ATOMIC_ACQUIRE);
+    size_t capacity = started ? sizeof(snapshot) : 512u;
     int copied = tb710fu_ramoops_snapshot_copy(snapshot, capacity, &ramoops_state);
     struct tb710fu_live_log_info info = {0};
     (void)tb710fu_live_log_get_info(&ramoops_sender, &info);
-    if (copied > 0 && tb710fu_live_log_can_snapshot(&ramoops_sender) &&
+    int permitted = started ? tb710fu_live_log_can_snapshot(&ramoops_sender) :
+                              tb710fu_live_log_can_snapshot_single(&ramoops_sender);
+    if (copied > 0 && permitted &&
         (!ramoops_sender.valid || ramoops_state.start != info.start || ramoops_state.end != info.end)) {
         enum tb710fu_live_log_result result;
-        if (!__atomic_load_n(&worker_started, __ATOMIC_ACQUIRE))
+        if (!started)
             result = tb710fu_live_log_snapshot_single_file(&ramoops_sender,
                 snapshot, (size_t)copied, ramoops_generation + 1u,
                 ramoops_state.start, ramoops_state.end);
@@ -190,7 +195,10 @@ static void snapshot_ramoops(void)
 }
 
 /* Each global 250 ms tick handles at most one stream/frame. Slots alternate;
- * drawing one dual-screen slot never clears the other stream's last frame. */
+ * drawing one dual-screen slot never clears the other stream's last frame.
+ * A refresh repaints the three bands on the tick that consumed the redraw flag
+ * and then draws only that tick's slot, so the other rectangle returns on the
+ * following tick; no extra frame or snapshot is created for it. */
 void tb710fu_live_log_poll(void)
 {
     if (!tb710fu_live_log_active()) return;

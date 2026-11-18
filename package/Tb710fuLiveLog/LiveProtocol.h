@@ -17,6 +17,12 @@ enum tb710fu_live_capture_state {
 #define TB710FU_LIVE_LOG_BLOCK_BYTES 720u
 #define TB710FU_LIVE_LOG_FRAME_BYTES 752u
 #define TB710FU_LIVE_LOG_MIN_ROUNDS 16u
+/* A pre-worker file is one source block: a single photograph recovers it, so a
+ * long dwell only hides newer boot text. Two rounds keep the rectangle stable
+ * for roughly one second per channel while still letting the newest tail be
+ * published before an early halt. Multi-frame files keep the 16-round window,
+ * where a camera really must collect several immutable frames. */
+#define TB710FU_LIVE_LOG_SINGLE_FRAME_ROUNDS 2u
 #define TB710FU_LIVE_LOG_ENVELOPE_BYTES \
     (26u + TB710FU_LIVE_LOG_NAME_BYTES + 10u + TB710FU_LIVE_LOG_MAX_BYTES)
 
@@ -129,14 +135,21 @@ enum tb710fu_live_log_result tb710fu_live_log_snapshot_file(
  * to include; this function neither truncates nor changes snapshot state. */
 size_t tb710fu_live_log_single_file_capacity(enum tb710fu_live_log_source source,
     uint64_t generation, uint64_t start, uint64_t end);
-/* Same file-body semantics and replacement gate as snapshot_file, but reject
- * any body that would require more than one frame. */
+/* Same file-body semantics as snapshot_file, but reject any body that would
+ * require more than one frame, and gate replacement on
+ * TB710FU_LIVE_LOG_SINGLE_FRAME_ROUNDS instead of the multi-frame window. */
 enum tb710fu_live_log_result tb710fu_live_log_snapshot_single_file(
     struct tb710fu_live_log_sender *sender, const uint8_t *bytes, size_t length,
     uint64_t generation, uint64_t start, uint64_t end);
 int tb710fu_live_log_next_frame(struct tb710fu_live_log_sender *sender,
     uint8_t out[TB710FU_LIVE_LOG_FRAME_BYTES]);
 int tb710fu_live_log_can_snapshot(const struct tb710fu_live_log_sender *sender);
+/* Same gate, but only TB710FU_LIVE_LOG_SINGLE_FRAME_ROUNDS complete rounds.
+ * Use it exclusively with tb710fu_live_log_snapshot_single_file: a one-block
+ * file is fully recovered from a single photograph, so waiting the multi-frame
+ * window would only delay the newest boot text. Multi-block files must still use
+ * tb710fu_live_log_can_snapshot. */
+int tb710fu_live_log_can_snapshot_single(const struct tb710fu_live_log_sender *sender);
 int tb710fu_live_log_get_info(const struct tb710fu_live_log_sender *sender,
     struct tb710fu_live_log_info *out);
 

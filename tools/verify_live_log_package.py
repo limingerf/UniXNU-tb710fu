@@ -21,13 +21,15 @@ SYMBOLS = ('_tb710fu_live_log_init', '_tb710fu_live_log_poll',
            '_tb710fu_live_log_snapshot_file',
            '_tb710fu_live_log_snapshot_single_file',
            '_tb710fu_live_log_snapshot', '_tb710fu_live_log_next_frame',
+           '_tb710fu_live_log_can_snapshot', '_tb710fu_live_log_can_snapshot_single',
            '_tb_live_display_qr_slot', '_tb_live_qr_encode',
            '_tb_live_qr_QrEncodeData')
 OBJECT_SYMBOLS = {
     'LiveProtocol.o': ('_tb710fu_live_log_snapshot', '_tb710fu_live_log_next_frame',
                        '_tb710fu_live_capture_putc', '_tb710fu_live_capture_copy',
                        '_tb710fu_live_log_set_source', '_tb710fu_live_log_snapshot_file',
-                       '_tb710fu_live_log_snapshot_single_file'),
+                       '_tb710fu_live_log_snapshot_single_file',
+                       '_tb710fu_live_log_can_snapshot_single'),
     'LiveDisplay.o': ('_tb_live_display_qr_slot', '_tb_live_display_bands'),
     'LiveQr.o': ('_tb_live_qr_encode',),
     'LiveXnu.o': ('_tb710fu_live_log_init', '_tb710fu_live_log_poll',
@@ -45,6 +47,7 @@ DUAL_SOURCE_LOG_CONTRACT = {
               'provider': 'tb710fu_ramoops_snapshot_copy', 'export_body_bytes_max': 4096},
     'frames_per_poll_max': 1, 'poll_interval_ms': 250,
     'complete_rounds_before_replacement_min': 16,
+    'single_frame_rounds_before_replacement': 2,
 }
 ADAPTER_SOURCE_IMPORTS = (
     '_tb710fu_ramoops_snapshot_copy', '_tb710fu_live_capture_putc',

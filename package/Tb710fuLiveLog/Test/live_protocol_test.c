@@ -144,6 +144,7 @@ static void test_single_frame_files(const char *directory)
         for (size_t i = 0; i <= capacity; ++i) bytes[i] = (uint8_t)(i * 17u + source);
         tb710fu_live_log_sender_init(&sender);
         assert(tb710fu_live_log_set_source(&sender, kind));
+        assert(tb710fu_live_log_can_snapshot_single(&sender));
         saved = sender;
         assert(tb710fu_live_log_snapshot_single_file(&sender, bytes, capacity + 1u,
             0, UINT64_MAX, UINT64_MAX) == TB710FU_LIVE_LOG_INVALID);
@@ -155,6 +156,8 @@ static void test_single_frame_files(const char *directory)
         assert(tb710fu_live_log_snapshot_single_file(&sender, bytes, capacity,
             0, UINT64_MAX, UINT64_MAX) == TB710FU_LIVE_LOG_BUSY);
         assert(memcmp(&sender, &saved, sizeof(sender)) == 0);
+        assert(!tb710fu_live_log_can_snapshot(&sender) &&
+               !tb710fu_live_log_can_snapshot_single(&sender));
         char name[64];
         assert(snprintf(name, sizeof(name), "single-%u.expected", source) > 0);
         write_bytes(directory, name, bytes, capacity);
@@ -163,6 +166,23 @@ static void test_single_frame_files(const char *directory)
         assert(tb710fu_live_log_next_frame(&sender, frame));
         assert(snprintf(name, sizeof(name), "single-%u.frame", source) > 0);
         write_bytes(directory, name, frame, sizeof(frame));
+        /* A one-block file is fully described by one photograph, so the
+         * pre-worker publisher uses the short single-frame window while the
+         * multi-frame gate keeps protecting the very same transfer. */
+        assert(TB710FU_LIVE_LOG_SINGLE_FRAME_ROUNDS < TB710FU_LIVE_LOG_MIN_ROUNDS);
+        assert(!tb710fu_live_log_can_snapshot_single(&sender) &&
+               !tb710fu_live_log_can_snapshot(&sender));
+        for (unsigned round = 1; round < TB710FU_LIVE_LOG_SINGLE_FRAME_ROUNDS; ++round) {
+            assert(tb710fu_live_log_next_frame(&sender, frame));
+            int open = round + 1u >= TB710FU_LIVE_LOG_SINGLE_FRAME_ROUNDS;
+            assert(tb710fu_live_log_can_snapshot_single(&sender) == open);
+            assert(!tb710fu_live_log_can_snapshot(&sender));
+        }
+        assert(tb710fu_live_log_can_snapshot_single(&sender));
+        assert(tb710fu_live_log_snapshot_single_file(&sender, bytes, capacity,
+            0, UINT64_MAX, UINT64_MAX) == TB710FU_LIVE_LOG_READY);
+        assert(tb710fu_live_log_snapshot_file(&sender, bytes, capacity,
+            0, UINT64_MAX, UINT64_MAX) == TB710FU_LIVE_LOG_BUSY);
     }
 }
 

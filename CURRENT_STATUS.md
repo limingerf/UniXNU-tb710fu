@@ -1,5 +1,43 @@
 # Current status · 2026-11-18
 
+## Pre-worker replacement gate shortened · 2026-11-18
+
+The user scanned `src-d181905f-ramoops` on the device: the LEFT QR decodes and
+the RIGHT QR is still empty, and the display does not cycle after the kernel
+stops. The decoded export is `earlybackup_bytes=409`,
+`current_start=904 current_end=1243 current_bytes=339`,
+`raw_layout=current_only_single_frame`, and its last line is
+`kernel_startup_initialize_upto[6, rank 0]: 0x40ef54700c28dc98(0)`. The
+PAC-bearing pointer resolves exactly to `_vm_compressor_set_size` in this
+fileset, i.e. `STARTUP_SUB_KMEM` rank `STARTUP_RANK_FIRST`; that line is printed
+before the callback runs, so it names the callback next to execute rather than a
+fault PC.
+
+`314 + 339 = 653` reproduces both the fixed single-block capacity
+(`720 - (26 + 31 + 10)`) and the trim loop, so the LEFT path worked as designed.
+The reported symptoms follow from two limits, not from a protocol defect: the
+512-byte pre-worker snapshot plus the 16-round replacement gate needs about 8 s
+of running XNU (two polls per second per channel), and a frozen framebuffer
+means no code reaches `tb710fu_live_log_poll()` at all. A still photograph can
+only show the last published snapshot.
+
+Fix applied in this working tree, adapter/protocol layer only:
+`TB710FU_LIVE_LOG_SINGLE_FRAME_ROUNDS` is 2 and
+`tb710fu_live_log_can_snapshot_single` gates the pre-worker single-block
+publisher on it, while `tb710fu_live_log_snapshot_file` keeps the 16-round
+multi-frame dwell. Both streams use the matching gate. Header compaction was
+attempted, measured at 17 bytes, and reverted to avoid changing existing parse
+anchors.
+
+Python checks that need no compiler pass: 10 of 11 `LiveLogPackaging` tests
+(the excluded one fails on a sandbox temp-directory permission, unrelated to
+this change). This machine has no C compiler and no Node, so
+`check_live_xnu_adapter.py` (added check
+`single_frame_mode_uses_short_replacement_gate`), `check_live_log_protocol.py`
+and every native/prelink stage still require the macOS runner. No image was
+built, signed or flashed, and no device operation occurred. Evidence:
+`docs/evidence/dual-live-device-44165508547.json`.
+
 ## Volatile ramoops runner build and signed candidate · 2026-11-18
 
 The safe current-boot policy and compact pre-worker QR fallback were built on

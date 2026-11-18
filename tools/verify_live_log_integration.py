@@ -31,6 +31,7 @@ FINAL_SYMBOLS = (
     '_tb710fu_live_log_active', '_tb710fu_ramoops_snapshot_copy',
     '_tb710fu_live_log_sender_init', '_tb710fu_live_log_snapshot',
     '_tb710fu_live_log_next_frame', '_tb710fu_live_log_can_snapshot',
+    '_tb710fu_live_log_can_snapshot_single',
     '_tb710fu_live_log_get_info', '_tb_live_display_bind',
     '_tb_live_display_bands', '_tb_live_display_qr_slot',
     '_tb_live_display_status', '_tb_live_qr_encode',
