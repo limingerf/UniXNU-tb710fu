@@ -1,5 +1,42 @@
 # Current status · 2026-11-18
 
+## Short gate built, signed and ready for the device · 2026-11-18
+
+Run `44237938523` (attempt 1, job `134578502483`) built commit `b11eddff` on the
+supported macOS runner and passed every step: the ramoops/live-log host checks,
+native arm64e compile/link, pinned Mu/OneSend encoding, strict prelink and the
+production DarwinBoot parser. Native SHA-256 is
+`d3943ee2391c06cb9f0999d26f390921d4586abb4d9303cf504b3efd481aafd0`; the
+142,819,328-byte prelinked fileset SHA-256 is
+`665b41f1248ab74afb705453e8b8e786004253263f12dafeca8c8d5ba1f6b35d`. Mapping is
+complete with empty missing/stubbed sets and allow-missing false.
+
+The runner confirms what could not be checked locally. `adapter-check.json`
+reports `result: PASS`, 10 groups, 15 invalid-video cases, and both new checks:
+`single_frame_mode_uses_short_replacement_gate` and
+`pre_worker_header_and_tail_fit_one_systematic_frame`. Protocol interop is PASS
+including the single-frame capacity boundary. In the packaged kernel,
+`_tb710fu_live_log_can_snapshot_single` is defined at `0xfffffff00c250bd0`, is
+called from two sites, and its body compares `rounds` against 1 (i.e. requires
+2 rounds) while `_tb710fu_live_log_can_snapshot` still compares against 15.
+
+The standard-band derivative is `8826ed99…` (6 patch spans, 3 compact probes,
+other bytes and segments unchanged). Signed images are in
+`out/live-ramoops-44237938523-signed/`: boot `a3236acc…` (identical to the
+baseline), vendor_boot `f03102bc9d6d32f84b6e21d560a827692855730c23b124a8451705111816693c`,
+vbmeta `c5ae737e19f553e355b4475fc6ee3d9c9e3e748be02e6d30cbf107d18e0f62ff`.
+Independent RSA/salted-hash/payload/ADT/descriptor checks pass with 22
+descriptors unchanged. ZIP is `out/tb710fu-dual-live-44237938523-signed.zip`,
+35,576,693 bytes, SHA-256
+`6d71f8c6f77a2d186ad3ddb3efb4f57cad6d8fd5c9270942c71127131fc3640d`.
+
+Still a test candidate: no device boot, no CDC enumeration, no QR scan, and no
+evidence that the worker thread is ever scheduled. ramoops remains a volatile
+current-boot buffer that cannot survive reset. No device operation occurred.
+Evidence: `docs/evidence/dual-live-runner-44237938523.json`,
+`docs/evidence/dual-live-signed-44237938523.json` and
+`docs/evidence/dual-live-device-44165508547.json`.
+
 ## Pre-worker replacement gate shortened · 2026-11-18
 
 The user scanned `src-d181905f-ramoops` on the device: the LEFT QR decodes and

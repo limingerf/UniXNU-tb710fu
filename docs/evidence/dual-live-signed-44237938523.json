@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "run_id": 44237938523,
+  "device_commit": "b11eddff0e3a33ced74cf7f471c2359cc3af9f18",
+  "display_build_label": "src-b11eddff-ramoops",
+  "bundle_dir": "out/live-ramoops-44237938523-signed",
+  "zip": {
+    "path": "out/tb710fu-dual-live-44237938523-signed.zip",
+    "bytes": 35576693,
+    "sha256": "6d71f8c6f77a2d186ad3ddb3efb4f57cad6d8fd5c9270942c71127131fc3640d",
+    "member_count": 14,
+    "integrity": "pass"
+  },
+  "files": {
+    "boot.img": {"bytes": 100663296, "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83", "unchanged_from_baseline": true},
+    "vendor_boot.img": {"bytes": 100663296, "sha256": "f03102bc9d6d32f84b6e21d560a827692855730c23b124a8451705111816693c"},
+    "vbmeta.img": {"bytes": 8000, "sha256": "c5ae737e19f553e355b4475fc6ee3d9c9e3e748be02e6d30cbf107d18e0f62ff"}
+  },
+  "unsigned_vendor": {"bytes": 37859328, "sha256": "a7e5f04e1a351e7b80293ce69a015f31315541489c3fa027564b1fb77df034ce"},
+  "packaged_kernel": {
+    "sha256": "8826ed993ae0e7a06e784c55341e4eceac61e2cbfb63b7031d024d3ccd5d8d3c",
+    "bytes": 142819328,
+    "original_prelink_sha256": "665b41f1248ab74afb705453e8b8e786004253263f12dafeca8c8d5ba1f6b35d"
+  },
+  "independent_verification": {
+    "result": "PASS",
+    "independent_rsa_pkcs1_sha256": {"boot_footer": "PASS", "vendor_boot_footer": "PASS", "vbmeta": "PASS"},
+    "salted_image_hashes": {"boot": "PASS", "vendor_boot": "PASS"},
+    "vendor_footer_descriptor_matches_vbmeta": true,
+    "unchanged_other_descriptors": 22,
+    "vbmeta_header_and_public_key_unchanged": true,
+    "boot_chain_key_matches": true,
+    "unsigned_vendor_payload_preserved": true,
+    "adt_vroot_and_config_unchanged": true,
+    "decompressed_kernel_sha256": "8826ed993ae0e7a06e784c55341e4eceac61e2cbfb63b7031d024d3ccd5d8d3c",
+    "fat_clusters": 66512,
+    "payload_sha256": "cf82262cb09ccdd8535e0f3888abb66c5a7b4bf529f6d18565ac2e778e9f7a9e"
+  },
+  "standard_bands_derivative": {
+    "result": "PASS",
+    "original_prelink_sha256": "665b41f1248ab74afb705453e8b8e786004253263f12dafeca8c8d5ba1f6b35d",
+    "kernel_sha256": "8826ed993ae0e7a06e784c55341e4eceac61e2cbfb63b7031d024d3ccd5d8d3c",
+    "patch_spans_verified": 6,
+    "compact_probes_verified": 3,
+    "other_bytes_unchanged": true,
+    "segments_unchanged": true
+  },
+  "boot_chain": {"boot_partition": "boot_b", "vbmeta_unchanged_descriptors": 22, "boot_chain_rollback_index_location": 3},
+  "hardware_boot_verified": false,
+  "usb_enumeration_verified": false,
+  "qr_scan_verified": false,
+  "device_operations": false
+}
