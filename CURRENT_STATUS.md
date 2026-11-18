@@ -1,5 +1,22 @@
 # Current status · 2026-11-19
 
+## 一次性 kalloc_init 全路径诊断 · 2026-11-19
+
+用户提供的 `src-02eed84f-ramoops`（run `44383673876`）当前帧最后显示
+`TB710FU kalloc: fixed-views complete`，帧范围 `[127017,127346)`，329 字节。
+这是 current-only 单帧，不能把缺少后续行解释成故障 PC；但它明确要求下一份候选
+在 reset 前就留下边界。新 patch `0019-tb710fu-kalloc-full-diagnostic-trace.patch`
+紧跟 `0018`，在 `bzero` 前后及计数重置前后分别记录事件，并覆盖 fixed/variable
+view 解析、排序比较、迭代器、指针数组分组、zone 创建和 heap 分配。长循环按固定
+间隔输出索引；所有日志仅在 live-log 活跃时产生，继续使用既有 250 ms poll 节流。
+没有跳过或改动 allocator 的分配、随机选择、zone 初始化或 callback 顺序。
+
+验证：隔离的 pinned XNU `ac9718fb1af618d5ce8678d0dc6e8a58f252216f` fixture
+按 `0018`、`0019` 顺序完成 `git apply --check` 和实际应用；`git diff --check`、
+事件 begin/done 配对审计及 `python tools/ci_kernel.py configure` 通过。native
+arm64e、strict prelink 和生产 DarwinBoot parser 待唯一一次 macOS `ufs-integrated`
+run 验证。未做设备操作。
+
 ## 实机停在 kalloc_init 入口与子阶段诊断包 · 2026-11-19
 
 用户提供的新版导出 build label 为 `src-94be46ec-ramoops`（run `44370040495`，提交 `94be46ec78bc598f7ac875aa976a87b8401f9d02`）。当前尾部最后一条是 phase 7 / ZALLOC / rank 2，arg=0。入口指针低 32 位与该精确 fileset 中的 `_kalloc_init` @ `0xfffffff00c274b18` 匹配；没有随后的 callback-return 行，所以只证明到达入口，不证明 fault PC 或精确故障指令。此前的 rank 0、rank 1 callback 及 rank 2 前序 callback 均已有返回记录。用户提供的转录为 current-only 单帧，current 范围 `[135174,135503)`，329 字节、dropped=0；不能据此推断其后未显示的日志内容。

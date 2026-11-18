@@ -1,0 +1,548 @@
+From ebb28c5eea201d68eef9521bd7de37cb5e1d58c2 Mon Sep 17 00:00:00 2001
+From: TB710FU clean board <tb710fu@localhost>
+Date: Thu, 19 Nov 2026 05:20:39 +0800
+Subject: [PATCH] Trace kalloc initialization boundaries
+
+Reason: the existing completion-only marker cannot identify which operation follows the last recorded checkpoint. Pair events around each kalloc_init operation, instrument fixed/variable view phases, and emit bounded loop progress so one hardware capture covers the full ZALLOC callback.
+
+Source: pinned XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f, after device patch 0018. Diagnostics are active only with the selected live-log provider; allocator policy, callback order, and memory operations are unchanged.
+
+Verification: isolated pinned-XNU fixture passes git diff --check and balanced event-label audit. Native arm64e build, strict prelink, and production parser remain pending.
+---
+ osfmk/kern/kalloc.c | 170 ++++++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 158 insertions(+), 12 deletions(-)
+
+diff --git a/osfmk/kern/kalloc.c b/osfmk/kern/kalloc.c
+index 3adb269..630a283 100644
+--- a/osfmk/kern/kalloc.c
++++ b/osfmk/kern/kalloc.c
+@@ -87,15 +87,59 @@
+ #include <libkern/prelink.h>
+ #if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
+ #include <kern/tb710fu_live_log.h>
+-#define TB710FU_KALLOC_CHECKPOINT(label) \
++#define TB710FU_KALLOC_EVENT(label, event) \
+ 	do { \
+ 		if (tb710fu_live_log_active()) { \
+-			kprintf("TB710FU kalloc: %s complete\n", label); \
++			kprintf("TB710FU kalloc: %s %s\n", label, event); \
++			tb710fu_live_log_poll(); \
++		} \
++	} while (0)
++#define TB710FU_KALLOC_VALUE(label, value) \
++	do { \
++		if (tb710fu_live_log_active()) { \
++			kprintf("TB710FU kalloc: %s value=%u\n", label, \
++			    (uint32_t)(value)); \
++			tb710fu_live_log_poll(); \
++		} \
++	} while (0)
++#define TB710FU_KALLOC_PROGRESS(label, index, interval) \
++	do { \
++		uint32_t tb710fu_progress_index = (uint32_t)(index); \
++		uint32_t tb710fu_progress_interval = (uint32_t)(interval); \
++		if (tb710fu_progress_index != 0 && tb710fu_progress_interval != 0 && \
++		    tb710fu_progress_index % tb710fu_progress_interval == 0 && \
++		    tb710fu_live_log_active()) { \
++			kprintf("TB710FU kalloc: %s index=%u\n", label, \
++			    tb710fu_progress_index); \
++			tb710fu_live_log_poll(); \
++		} \
++	} while (0)
++#define TB710FU_KALLOC_RANGE(label, event, index, total, interval) \
++	do { \
++		uint32_t tb710fu_range_index = (uint32_t)(index); \
++		uint32_t tb710fu_range_total = (uint32_t)(total); \
++		uint32_t tb710fu_range_interval = (uint32_t)(interval); \
++		if ((tb710fu_range_index == 1 || tb710fu_range_index == tb710fu_range_total || \
++		    (tb710fu_range_interval != 0 && \
++		    tb710fu_range_index % tb710fu_range_interval == 0)) && \
++		    tb710fu_live_log_active()) { \
++			kprintf("TB710FU kalloc: %s %s index=%u total=%u\n", label, event, \
++			    tb710fu_range_index, tb710fu_range_total); \
+ 			tb710fu_live_log_poll(); \
+ 		} \
+ 	} while (0)
+ #else
+-#define TB710FU_KALLOC_CHECKPOINT(label) do { } while (0)
++#define TB710FU_KALLOC_EVENT(label, event) do { } while (0)
++#define TB710FU_KALLOC_VALUE(label, value) do { } while (0)
++#define TB710FU_KALLOC_PROGRESS(label, index, interval) do { } while (0)
++#define TB710FU_KALLOC_RANGE(label, event, index, total, interval) do { } while (0)
++#endif
++
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++__startup_data
++static uint32_t tb710fu_kalloc_fixed_cmp_count;
++__startup_data
++static uint32_t tb710fu_kalloc_var_cmp_count;
+ #endif
+ 
+ #if HAS_MTE
+@@ -621,9 +665,11 @@ kalloc_type_assign_zone_fixed(
+ 	 * Assign the zone created for every kalloc_type_view
+ 	 * of the same unique signature
+ 	 */
++	uint32_t tb710fu_progress = 0;
+ 	bool need_raw_view = false;
+ 
+ 	while (cur < end) {
++		TB710FU_KALLOC_PROGRESS("fixed-assign", ++tb710fu_progress, 4096);
+ 		kalloc_type_view_t kt = *cur;
+ 		struct zone_view *zv = &kt->kt_zv;
+ 		zv->zv_zone = z;
+@@ -690,7 +736,9 @@ kalloc_type_assign_zone_var(kalloc_type_var_view_t *cur,
+     kalloc_type_var_view_t *end, uint32_t heap_idx)
+ {
+ 	struct kheap_info *cfg = &kalloc_type_heap_array[heap_idx];
++	uint32_t tb710fu_progress = 0;
+ 	while (cur < end) {
++		TB710FU_KALLOC_PROGRESS("var-assign", ++tb710fu_progress, 4096);
+ 		kalloc_type_var_view_t kt = *cur;
+ 		kt->kt_heap_start = cfg->kh_zstart;
+ 		kalloc_type_flags_t kt_flags = kt->kt_flags;
+@@ -874,6 +922,7 @@ static uint32_t
+ kalloc_type_handle_parray_var(void)
+ {
+ 	uint32_t i = 0;
++	uint32_t tb710fu_progress = 0;
+ 	kalloc_type_var_view_t kt = kt_buffer[0].ktv_var;
+ 	const char *p_name = kt->kt_name;
+ 
+@@ -883,18 +932,22 @@ kalloc_type_handle_parray_var(void)
+ 	 * type detected by typename.
+ 	 */
+ 	while (kalloc_type_is_ptr_array(kt->kt_flags)) {
++		TB710FU_KALLOC_PROGRESS("var-ptr-array", ++tb710fu_progress, 256);
+ 		uint32_t heap_id = kmem_get_random16(1) + KT_VAR_PTR_HEAP0;
+ 		const char *c_name = kt->kt_name;
+ 		uint32_t p_i = i;
++		TB710FU_KALLOC_RANGE("var-ptr-group", "begin", p_i + 1, kt_count, 256);
+ 
+ 		while (strcmp(c_name, p_name) == 0) {
+ 			i++;
++			TB710FU_KALLOC_PROGRESS("var-ptr-group", i, 256);
+ 			kt = kt_buffer[i].ktv_var;
+ 			c_name = kt->kt_name;
+ 		}
+ 		p_name = c_name;
+ 		kalloc_type_assign_zone_var(&kt_buffer[p_i].ktv_var,
+ 		    &kt_buffer[i].ktv_var, heap_id);
++		TB710FU_KALLOC_RANGE("var-ptr-group", "done", p_i + 1, kt_count, 256);
+ 	}
+ 
+ 	/*
+@@ -996,11 +1049,13 @@ kalloc_type_view_copy(
+ 	uuid_string_t                 kext_uuid)
+ {
+ 	uint64_t count = kalloc_type_view_count(type, start, end);
++	uint32_t tb710fu_progress = 0;
+ 	if (count + *cur_count >= kt_count) {
+ 		panic("kalloc_type_view_copy: Insufficient space in scratch buffer");
+ 	}
+ 	vm_offset_t cur = start;
+ 	while (cur < end) {
++		TB710FU_KALLOC_PROGRESS("view-copy", ++tb710fu_progress, 1024);
+ 		if (slide) {
+ 			kalloc_type_func(type, slide, cur);
+ 		}
+@@ -1071,6 +1126,7 @@ kalloc_type_view_parse(const kalloc_type_variant_t type)
+ 		    (struct load_command *)((vm_offset_t)kc_mh + sizeof(*kc_mh));
+ 		for (uint32_t i = 0; i < kc_mh->ncmds;
+ 		    i++, lc = (struct load_command *)((vm_offset_t)lc + lc->cmdsize)) {
++			TB710FU_KALLOC_PROGRESS("fileset-command", i, 64);
+ 			if (lc->cmd != LC_FILESET_ENTRY) {
+ 				continue;
+ 			}
+@@ -1120,8 +1176,10 @@ kalloc_type_view_parse(const kalloc_type_variant_t type)
+ 		assert(prelink_sect);
+ 		cur = prelink_sect->addr;
+ 		end = prelink_sect->addr + prelink_sect->size;
++		uint32_t tb710fu_kext_index = 0;
+ 
+ 		while (cur < end) {
++			TB710FU_KALLOC_PROGRESS("prelink-kext", ++tb710fu_kext_index, 16);
+ 			uint64_t kext_text_sz = 0;
+ 			kernel_mach_header_t *kext_mh = (kernel_mach_header_t *) cur;
+ 
+@@ -1147,6 +1205,7 @@ kalloc_type_view_parse(const kalloc_type_variant_t type)
+ 
+ 			for (uint32_t i = 0; i < kext_mh->ncmds && (vm_offset_t)lc < end;
+ 			    i++, lc = (struct load_command *)((vm_offset_t)lc + lc->cmdsize)) {
++				TB710FU_KALLOC_PROGRESS("prelink-command", i, 128);
+ 				if (lc->cmd == LC_SEGMENT_SPLIT_INFO) {
+ 					isSplitKext = true;
+ 					continue;
+@@ -1207,6 +1266,8 @@ __startup_func
+ static int
+ kalloc_type_cmp_fixed(const void *a, const void *b)
+ {
++	TB710FU_KALLOC_PROGRESS("fixed-qsort-compare", ++tb710fu_kalloc_fixed_cmp_count,
++	    4096);
+ 	const kalloc_type_view_t ktA = *(const kalloc_type_view_t *)a;
+ 	const kalloc_type_view_t ktB = *(const kalloc_type_view_t *)b;
+ 
+@@ -1236,6 +1297,8 @@ __startup_func
+ static int
+ kalloc_type_cmp_var(const void *a, const void *b)
+ {
++	TB710FU_KALLOC_PROGRESS("var-qsort-compare", ++tb710fu_kalloc_var_cmp_count,
++	    4096);
+ 	const kalloc_type_var_view_t ktA = *(const kalloc_type_var_view_t *)a;
+ 	const kalloc_type_var_view_t ktB = *(const kalloc_type_var_view_t *)b;
+ 	const char *ktA_hdr = ktA->kt_sig_hdr ?: "";
+@@ -1281,6 +1344,7 @@ kalloc_type_create_iterators_fixed(
+ 	 * Walk over each kalloc_type_view
+ 	 */
+ 	for (uint16_t i = 0; i < count; i++) {
++		TB710FU_KALLOC_PROGRESS("fixed-iterator", i, 1024);
+ 		kalloc_type_view_t kt = kt_buffer[i].ktv_fixed;
+ 
+ 		c_idx = kalloc_type_get_idx(kt->kt_size);
+@@ -1373,6 +1437,7 @@ kalloc_type_create_iterators_var(
+ 	kt_skip_list[n] = buf_start;
+ 	assert(kt_count > buf_start + 1);
+ 	for (uint32_t i = buf_start + 1; i < kt_count; i++) {
++		TB710FU_KALLOC_PROGRESS("var-iterator", i, 1024);
+ 		kalloc_type_var_view_t ktA = kt_buffer[i - 1].ktv_var;
+ 		kalloc_type_var_view_t ktB = kt_buffer[i].ktv_var;
+ 		const char *ktA_hdr = ktA->kt_sig_hdr ?: "";
+@@ -1594,6 +1659,11 @@ kalloc_type_create_zone_for_size(
+ 	zone_t shared_z = NULL;
+ 
+ 	for (uint16_t i = 0; i < kt_zones; i++) {
++		if (i == 0) {
++			TB710FU_KALLOC_VALUE("fixed-zone-create-index", i);
++		} else {
++			TB710FU_KALLOC_PROGRESS("fixed-zone-create-index", i, 8);
++		}
+ 		z_name = zalloc_permanent(MAX_ZONE_NAME, ZALIGN_NONE);
+ 		snprintf(z_name, MAX_ZONE_NAME, "kalloc.type%u.%zu", i,
+ 		    (size_t) z_size);
+@@ -1672,6 +1742,7 @@ kalloc_type_build_skip_list(
+ 	idx++;
+ 
+ 	while (cur < end) {
++		TB710FU_KALLOC_PROGRESS("fixed-skip-list", i, 1024);
+ 		kalloc_type_view_t kt_cur = *cur;
+ 
+ 		if (strcmp(prev->kt_zv.zv_name, kt_cur->kt_zv.zv_name) != 0) {
+@@ -1734,7 +1805,9 @@ kalloc_type_distribute_zone_for_type(
+ 	/*
+ 	 * Assert there is space in buffer
+ 	 */
++	TB710FU_KALLOC_EVENT("fixed-type-skip-list", "begin");
+ 	count = kalloc_type_build_skip_list(start, end, kt_skip_list);
++	TB710FU_KALLOC_EVENT("fixed-type-skip-list", "done");
+ 	n_zones = kalloc_type_zones_for_type(zones_total_type, count, total_types,
+ 	    last_sig);
+ 	shuffle_buf = &kt_skip_list[count + 1];
+@@ -1765,12 +1838,14 @@ kalloc_type_distribute_zone_for_type(
+ 	n_zones++;
+ 
+ 	for (uint16_t i = 0; i < count; i++) {
++		TB710FU_KALLOC_PROGRESS("fixed-type-zone", i, 256);
+ 		uint16_t zidx = i % n_zones, shuffled_zidx = 0;
+ 		uint16_t type_start = kt_skip_list[i];
+ 		kalloc_type_view_t *kt_type_start = &start[type_start];
+ 		uint16_t type_end = kt_skip_list[i + 1];
+ 		kalloc_type_view_t *kt_type_end = &start[type_end];
+ 		zone_t zone;
++		TB710FU_KALLOC_RANGE("fixed-type-zone", "begin", i + 1, count, 256);
+ 
+ 		if (zidx == 0) {
+ 			kmem_shuffle(shuffle_buf, n_zones);
+@@ -1780,6 +1855,7 @@ kalloc_type_distribute_zone_for_type(
+ 		zone = shuffled_zidx == 0 ? sig_zone : type_zones[shuffled_zidx - 1];
+ 		kalloc_type_assign_zone_fixed(kt_type_start, kt_type_end, zone, sig_zone,
+ 		    early_zone);
++		TB710FU_KALLOC_RANGE("fixed-type-zone", "done", i + 1, count, 256);
+ 	}
+ 
+ 	return n_zones - 1;
+@@ -1803,10 +1879,13 @@ kalloc_type_create_zones_fixed(
+ 	 * Apply policy to determine how many zones to create for each size
+ 	 * class.
+ 	 */
++	TB710FU_KALLOC_EVENT("fixed-zone-policy", "begin");
+ 	kalloc_type_apply_policy(kt_freq_list, kt_freq_list_total,
+ 	    kt_zones_sig, kt_zones_type, kt_fixed_zones);
++	TB710FU_KALLOC_EVENT("fixed-zone-policy", "done");
+ 
+ 	for (uint16_t i = 0; i < MAX_K_ZONE(kt_zone_cfg); i++) {
++		TB710FU_KALLOC_PROGRESS("fixed-zone-class", i, 16);
+ 		uint16_t n_unique_sig = kt_freq_list[i];
+ 		vm_size_t z_size = kt_zone_cfg[i];
+ 		uint16_t n_zones_sig = kt_zones_sig[i];
+@@ -1821,8 +1900,10 @@ kalloc_type_create_zones_fixed(
+ 		zone_carry = 0;
+ 		assert(n_zones_sig + n_zones_type + 1 <= KT_ZONES_FOR_SIZE_SIZE);
+ 		zone_t kt_zones_for_size[KT_ZONES_FOR_SIZE_SIZE] = {};
++		TB710FU_KALLOC_EVENT("fixed-zone-create", "begin");
+ 		kalloc_type_create_zone_for_size(kt_zones_for_size,
+ 		    n_zones_sig + n_zones_type, z_size);
++		TB710FU_KALLOC_EVENT("fixed-zone-create", "done");
+ 
+ 		kalloc_type_zarray[i] = kt_zones_for_size[0];
+ 		/*
+@@ -1846,6 +1927,7 @@ kalloc_type_create_zones_fixed(
+ 		}
+ 
+ 		for (uint16_t j = 0; j < n_unique_sig; j++) {
++			TB710FU_KALLOC_PROGRESS("fixed-zone-signature", j, 256);
+ 			/*
+ 			 * For every size that has unique types
+ 			 */
+@@ -1873,13 +1955,20 @@ __startup_func
+ static void
+ kalloc_type_view_init_fixed(void)
+ {
++	TB710FU_KALLOC_EVENT("fixed-hash-seed", "begin");
+ 	kalloc_type_hash_seed = (uint32_t) early_random();
++	TB710FU_KALLOC_EVENT("fixed-hash-seed", "done");
++	TB710FU_KALLOC_EVENT("fixed-dlut", "begin");
+ 	kalloc_type_build_dlut();
++	TB710FU_KALLOC_EVENT("fixed-dlut", "done");
+ 	/*
+ 	 * Parse __kalloc_type sections and build array of pointers to
+ 	 * all kalloc type views in kt_buffer.
+ 	 */
++	TB710FU_KALLOC_EVENT("fixed-parse", "begin");
+ 	kt_count = kalloc_type_view_parse(KTV_FIXED);
++	TB710FU_KALLOC_VALUE("fixed-parse-views", kt_count);
++	TB710FU_KALLOC_EVENT("fixed-parse", "done");
+ 	assert(kt_count < KALLOC_TYPE_SIZE_MASK);
+ 
+ #if MACH_ASSERT
+@@ -1891,8 +1980,13 @@ kalloc_type_view_init_fixed(void)
+ 	/*
+ 	 * Sort based on size class and signature
+ 	 */
++	TB710FU_KALLOC_EVENT("fixed-qsort", "begin");
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	tb710fu_kalloc_fixed_cmp_count = 0;
++#endif
+ 	qsort(kt_buffer, (size_t) kt_count, sizeof(kalloc_type_view_t),
+ 	    kalloc_type_cmp_fixed);
++	TB710FU_KALLOC_EVENT("fixed-qsort", "done");
+ 
+ 	/*
+ 	 * Build a skip list that holds starts of unique signatures and a
+@@ -1900,13 +1994,17 @@ kalloc_type_view_init_fixed(void)
+ 	 * size class
+ 	 */
+ 	uint16_t *kt_skip_list_start = (uint16_t *)(kt_buffer + kt_count);
++	TB710FU_KALLOC_EVENT("fixed-iterators", "begin");
+ 	uint16_t *kt_shuffle_buf = kalloc_type_create_iterators_fixed(
+ 		kt_skip_list_start, kt_count);
++	TB710FU_KALLOC_EVENT("fixed-iterators", "done");
+ 
+ 	/*
+ 	 * Create zones based on signatures
+ 	 */
++	TB710FU_KALLOC_EVENT("fixed-zones", "begin");
+ 	kalloc_type_create_zones_fixed(kt_skip_list_start, kt_shuffle_buf);
++	TB710FU_KALLOC_EVENT("fixed-zones", "done");
+ }
+ 
+ __startup_func
+@@ -1918,15 +2016,21 @@ kalloc_type_heap_init(void)
+ 	uint32_t last_heap = KT_VAR_PTR_HEAP0 + kt_var_heaps;
+ 
+ 	for (uint32_t i = KT_VAR_PTR_HEAP0; i < last_heap; i++) {
++		TB710FU_KALLOC_PROGRESS("var-heap-init", i - KT_VAR_PTR_HEAP0 + 1, 16);
++		TB710FU_KALLOC_VALUE("var-heap-index", i);
+ 		snprintf(&kh_name[0], MAX_ZONE_NAME, "%s%u", KHEAP_KT_VAR->kh_name, i);
++		TB710FU_KALLOC_EVENT("var-zone-create", "begin");
+ 		kalloc_zone_init((const char *)&kh_name[0], KHEAP_ID_KT_VAR,
+ 		    &kalloc_type_heap_array[i].kh_zstart, ZC_KALLOC_TYPE);
++		TB710FU_KALLOC_EVENT("var-zone-create", "done");
+ 	}
+ 	/*
+ 	 * All variable kalloc type allocations are collapsed into a single
+ 	 * stat. Individual accounting can be requested via KT_PRIV_ACCT
+ 	 */
++	TB710FU_KALLOC_EVENT("var-heap-stats", "begin");
+ 	KHEAP_KT_VAR->kh_stats = zalloc_percpu_permanent_type(struct zone_stats);
++	TB710FU_KALLOC_EVENT("var-heap-stats", "done");
+ 	zone_view_count += 1;
+ }
+ 
+@@ -1954,9 +2058,11 @@ kalloc_type_split_heap(
+ 	uint32_t            heap_id)
+ {
+ 	uint32_t count = start;
++	uint32_t tb710fu_progress = 0;
+ 	const char *p_name = NULL;
+ 
+ 	while (count < end) {
++		TB710FU_KALLOC_PROGRESS("var-split-heap", ++tb710fu_progress, 1024);
+ 		kalloc_type_var_view_t cur = kt_buffer[count].ktv_var;
+ 		const char *c_name = cur->kt_name;
+ 
+@@ -1986,20 +2092,27 @@ kalloc_type_view_init_var(void)
+ 	/*
+ 	 * Pick a random heap to split
+ 	 */
++	TB710FU_KALLOC_EVENT("var-split-selection", "begin");
+ 	uint16_t split_heap = kmem_get_random16(flex_heap_count - 1);
++	TB710FU_KALLOC_EVENT("var-split-selection", "done");
+ 
+ 	/*
+ 	 * Zones are created prior to parsing the views as zone budget is fixed
+ 	 * per sizeclass and special types identified while parsing are redirected
+ 	 * as they are discovered.
+ 	 */
++	TB710FU_KALLOC_EVENT("var-heap-init", "begin");
+ 	kalloc_type_heap_init();
++	TB710FU_KALLOC_EVENT("var-heap-init", "done");
+ 
+ 	/*
+ 	 * Parse __kalloc_var sections and build array of pointers to views that
+ 	 * aren't rediected in kt_buffer.
+ 	 */
++	TB710FU_KALLOC_EVENT("var-parse", "begin");
+ 	kt_count = kalloc_type_view_parse(KTV_VAR);
++	TB710FU_KALLOC_VALUE("var-parse-views", kt_count);
++	TB710FU_KALLOC_EVENT("var-parse", "done");
+ 	assert(kt_count < UINT32_MAX);
+ 
+ #if MACH_ASSERT
+@@ -2011,17 +2124,28 @@ kalloc_type_view_init_var(void)
+ 	/*
+ 	 * Sort based on size class and signature
+ 	 */
++	TB710FU_KALLOC_EVENT("var-qsort", "begin");
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	tb710fu_kalloc_var_cmp_count = 0;
++#endif
+ 	qsort(kt_buffer, (size_t) kt_count, sizeof(kalloc_type_var_view_t),
+ 	    kalloc_type_cmp_var);
++	TB710FU_KALLOC_EVENT("var-qsort", "done");
+ 
++	TB710FU_KALLOC_EVENT("var-pointer-arrays", "begin");
+ 	buf_start = kalloc_type_handle_parray_var();
++	TB710FU_KALLOC_VALUE("var-pointer-first-normal", buf_start);
++	TB710FU_KALLOC_EVENT("var-pointer-arrays", "done");
+ 
+ 	/*
+ 	 * Build a skip list that holds starts of unique signatures
+ 	 */
+ 	kt_skip_list_start = (uint32_t *)(kt_buffer + kt_count);
++	TB710FU_KALLOC_EVENT("var-iterators", "begin");
+ 	unique_sig = kalloc_type_create_iterators_var(kt_skip_list_start,
+ 	    buf_start);
++	TB710FU_KALLOC_VALUE("var-iterator-unique", unique_sig);
++	TB710FU_KALLOC_EVENT("var-iterators", "done");
+ 	shuffle_buf = (uint16_t *)(kt_skip_list_start + unique_sig + 1);
+ 	/*
+ 	 * If we have only one heap then other elements share heap with pointer
+@@ -2031,7 +2155,9 @@ kalloc_type_view_init_var(void)
+ 		panic("kt_var_heaps is too small");
+ 	}
+ 
++	TB710FU_KALLOC_EVENT("var-shuffle", "begin");
+ 	kmem_shuffle(shuffle_buf, flex_heap_count);
++	TB710FU_KALLOC_EVENT("var-shuffle", "done");
+ 	/*
+ 	 * The index of the heap we decide to split is placed twice in the shuffle
+ 	 * buffer so that it gets twice the number of signatures that we split
+@@ -2040,7 +2166,9 @@ kalloc_type_view_init_var(void)
+ 	shuffle_buf[flex_heap_count] = split_heap;
+ 	split_heap += (fixed_heaps + 1);
+ 
++	TB710FU_KALLOC_EVENT("var-heap-assign", "begin");
+ 	for (uint32_t i = 1; i <= unique_sig; i++) {
++		TB710FU_KALLOC_RANGE("var-heap-range", "begin", i, unique_sig, 256);
+ 		uint32_t heap_id = shuffle_buf[i % (flex_heap_count + 1)] +
+ 		    fixed_heaps + 1;
+ 		uint32_t start = kt_skip_list_start[i - 1];
+@@ -2048,12 +2176,17 @@ kalloc_type_view_init_var(void)
+ 
+ 		assert(heap_id <= kt_var_heaps);
+ 		if (heap_id == split_heap) {
++			TB710FU_KALLOC_EVENT("var-split-heap", "begin");
+ 			kalloc_type_split_heap(start, end, heap_id);
++			TB710FU_KALLOC_EVENT("var-split-heap", "done");
++			TB710FU_KALLOC_RANGE("var-heap-range", "done", i, unique_sig, 256);
+ 			continue;
+ 		}
+ 		kalloc_type_assign_zone_var(&kt_buffer[start].ktv_var,
+ 		    &kt_buffer[end].ktv_var, heap_id);
++		TB710FU_KALLOC_RANGE("var-heap-range", "done", i, unique_sig, 256);
+ 	}
++	TB710FU_KALLOC_EVENT("var-heap-assign", "done");
+ }
+ 
+ __startup_func
+@@ -2066,45 +2199,58 @@ kalloc_init(void)
+ 	 */
+ 	uint64_t max_count = kt_count = kt_scratch_size / sizeof(kalloc_type_views_t);
+ 
++	TB710FU_KALLOC_EVENT("kalloc-init", "begin");
+ 	static_assert(KHEAP_MAX_SIZE >= KALLOC_SAFE_ALLOC_SIZE);
++	TB710FU_KALLOC_EVENT("zsize", "begin");
+ 	kalloc_zsize_compute();
+-	TB710FU_KALLOC_CHECKPOINT("zsize");
++	TB710FU_KALLOC_EVENT("zsize", "done");
+ 
++	TB710FU_KALLOC_EVENT("heap-private", "begin");
+ 	kalloc_heap_init(KHEAP_DATA_PRIVATE);
+-	TB710FU_KALLOC_CHECKPOINT("heap-private");
++	TB710FU_KALLOC_EVENT("heap-private", "done");
++	TB710FU_KALLOC_EVENT("heap-shared", "begin");
+ 	kalloc_heap_init(KHEAP_DATA_SHARED);
+-	TB710FU_KALLOC_CHECKPOINT("heap-shared");
++	TB710FU_KALLOC_EVENT("heap-shared", "done");
++	TB710FU_KALLOC_EVENT("heap-early", "begin");
+ 	kalloc_heap_init(KHEAP_EARLY);
+-	TB710FU_KALLOC_CHECKPOINT("heap-early");
++	TB710FU_KALLOC_EVENT("heap-early", "done");
+ 
++	TB710FU_KALLOC_EVENT("scratch-alloc", "begin");
+ 	kmem_alloc(kernel_map, (vm_offset_t *)&kt_buffer, kt_scratch_size,
+ 	    KMA_NOFAIL | KMA_ZERO | KMA_KOBJECT, VM_KERN_MEMORY_KALLOC);
+-	TB710FU_KALLOC_CHECKPOINT("scratch-alloc");
++	TB710FU_KALLOC_EVENT("scratch-alloc", "done");
+ 
+ 	/*
+ 	 * Handle fixed size views
+ 	 */
++	TB710FU_KALLOC_EVENT("fixed-views", "begin");
+ 	kalloc_type_view_init_fixed();
+-	TB710FU_KALLOC_CHECKPOINT("fixed-views");
++	TB710FU_KALLOC_EVENT("fixed-views", "done");
+ 
+ 	/*
+ 	 * Reset
+ 	 */
++	TB710FU_KALLOC_EVENT("scratch-reset-zero", "begin");
+ 	bzero(kt_buffer, kt_scratch_size);
++	TB710FU_KALLOC_EVENT("scratch-reset-zero", "done");
++	TB710FU_KALLOC_EVENT("scratch-reset-count", "begin");
+ 	kt_count = max_count;
+-	TB710FU_KALLOC_CHECKPOINT("fixed-reset");
++	TB710FU_KALLOC_EVENT("scratch-reset-count", "done");
+ 
+ 	/*
+ 	 * Handle variable size views
+ 	 */
++	TB710FU_KALLOC_EVENT("variable-views", "begin");
+ 	kalloc_type_view_init_var();
+-	TB710FU_KALLOC_CHECKPOINT("variable-views");
++	TB710FU_KALLOC_EVENT("variable-views", "done");
+ 
+ 	/*
+ 	 * Free resources used
+ 	 */
++	TB710FU_KALLOC_EVENT("scratch-free", "begin");
+ 	kmem_free(kernel_map, (vm_offset_t) kt_buffer, kt_scratch_size);
+-	TB710FU_KALLOC_CHECKPOINT("scratch-free");
++	TB710FU_KALLOC_EVENT("scratch-free", "done");
++	TB710FU_KALLOC_EVENT("kalloc-init", "done");
+ }
+ STARTUP(ZALLOC, STARTUP_RANK_THIRD, kalloc_init);
+ 
+-- 
+2.56.0.windows.4
+
