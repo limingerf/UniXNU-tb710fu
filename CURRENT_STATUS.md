@@ -1,4 +1,61 @@
-# Current status · 2026-11-18
+# Current status · 2026-11-19
+
+## ramoops QR 首帧延迟修复 · 2026-11-19
+
+用户提供的 ramoops 文件为 43 字节，仅含 XNU 启动横幅；SHA-256
+`7f35085750ebc3f6b3cc83773d47a5cfbb131913192cc89dc358ae0de8af1e36`，文件名范围
+`[0,43)`，generation 1。配对的 XNU 导出为 653 字节，SHA-256
+`c2f24cdecd68cd58b3df348d1cd422c646ca66490676c751ae21a3626840a05b`，build
+`src-1446070e-ramoops`，early backup 409 字节，current 范围 `[904,1243)`
+共 339 字节，dropped 为 0。
+
+构建身份是设备提交 `1446070ec13d33165c344dab3be9c21d6d93d83d`、GitHub run
+`44325375059`、prelinked fileset SHA-256
+`56a6931b5451d90922e54595ea6ecf99380f4b169549dc9d72866851930e864e`。对该
+精确 fileset 运行 `llvm-nm`，`_vm_compressor_set_size` 地址为
+`0xfffffff00c28dd70`；ramoops 导出末行所给指针的低 32 位相符。该行是
+KMEM rank-0 的待执行回调入口，不是 fault PC；此单帧导出没有回调返回标记，
+但受 250 ms 轮询节流影响，缺少标记仍不能证明回调未返回。没有依据改 VM
+压缩器大小或启动顺序。
+
+已确认的诊断问题是 ramoops generation 1 在显示初始化时发布，内容只有合成
+启动横幅；后续快照要通过两轮替换门限，启动若提前停住，屏幕会继续显示该旧
+帧。`package/Tb710fuLiveLog/LiveXnu.c` 现保留 freeze 前的状态读取但不发布
+ramoops 帧；freeze 后将下一许可槽优先给 ramoops，使用届时的真实尾部。全局
+250 ms 节流不变，freeze 仍不编码或绘制，XNU/VM 启动代码及设备配置未改。
+
+本地验证：LiveXnu 适配器 GCC ASan/UBSan 12 组、15 个无效视频场景通过；实际
+serial/PE 控制台镜像 18 项通过；生产 ramoops 快照 10 项通过；内核配置解析和
+`git diff --check` 通过。证据及输入哈希见
+`docs/evidence/ramoops-first-frame-diagnostic-20261119.json`。此次源代码改动尚
+未在 macOS runner 上做 native/prelink 构建，未生成新镜像，也未执行设备操作。
+
+## Signed diagnostic image package · 2026-11-18
+
+Following the user's packaging request and existing explicit local-signing
+authorization, a matched test bundle is in
+`out/tb710fu-live-qr-return-44325375059-signed.zip` (35,589,312 bytes,
+SHA-256 `2b7fe30d7b978fdc3ad1dad6b93a0df9f8b259217e28224f73897aee01d22356`).
+It contains the unchanged baseline `boot.img`, the new signed `vendor_boot.img`
+and matching `vbmeta.img`, README, SHA256SUMS and verification reports. The
+packaged kernel is the 142,819,328-byte standard-band derivative
+`92d91b61ad6df670a1fa738e934b7d148a925c6393a7e1e720d2172ec0a2f906`, derived
+from run `44325375059`'s prelink `56a6931b5451d90922e54595ea6ecf99380f4b169549dc9d72866851930e864e`.
+
+Image hashes: boot `a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`
+(unchanged), vendor_boot
+`0606e62d18028676a721e815dff3d23dbc7f4beda8125d801ffe657ed59d6e90`, and vbmeta
+`d8d25f085b622a5830e93861b7ecfc8ef70cb10b3ca00d81703e3dbf1fed1f49`. Independent
+verification passes for all three RSA structures, boot/vendor salted hashes,
+22 unchanged descriptors, vbmeta header/public key, boot-chain key, four FAT
+files and LZMA kernel readback. The signed ZIP passes member and SHA256SUMS
+readback; no private key is included.
+
+This is a signed, format-verified test package, not a hardware-qualified boot
+image: the runner reports `runtime_qualified=false` and `loadable=false`;
+hardware boot, QR camera decode, CDC enumeration and macOS userspace remain
+unverified. Nothing was flashed, rebooted or changed on the device. Evidence:
+`docs/evidence/live-qr-return-image-44325375059.json`.
 
 ## macOS runner build of QR/callback diagnostics · 2026-11-18
 
@@ -22,10 +79,11 @@ workflow conditions. GitHub artifact `14436169457` is 39,152,354 bytes;
 downloaded SHA-256 `c5c1a58fde3c01dd39cb7e262510f47c5c0f833178e2a5771c0d0688093d2e0d`
 matches the GitHub artifact digest.
 
-This is still only a built and prelinked candidate: `runtime_qualified=false`,
-`loadable=false`, and hardware boot, ramoops QR camera decoding, CDC enumeration
-and macOS userspace are unverified. No image was signed and no device operation
-occurred. Full run evidence: `docs/evidence/live-qr-return-marker-20261118.json`.
+At this runner stage no image had yet been packaged or signed. The later local
+signed package is recorded above. `runtime_qualified=false`, `loadable=false`,
+hardware boot, ramoops QR camera decoding, CDC enumeration and macOS userspace
+remain unverified. No device operation occurred. Full run evidence:
+`docs/evidence/live-qr-return-marker-20261118.json`.
 
 ## QR render feedback and KMEM callback return marker · 2026-11-18
 
@@ -59,8 +117,9 @@ patch series, and `0016` passes `git apply --check` and actual application to a
 temporary LF-normalized copy of the selected `startup.c` fixture.
 The WSL Clang sanitizer runtime is absent, so local C host checks used GCC.
 Local protocol interop was unavailable because WSL lacks Node.js; the pinned
-protocol check passed on the macOS runner above. No image was signed, and no
-device operation occurred.
+protocol check passed on the macOS runner above. At this diagnostic-source
+stage no image had yet been signed; the later package is recorded at the top of
+this file. No device operation occurred.
 
 ## Short gate built, signed and ready for the device · 2026-11-18
 

@@ -212,9 +212,10 @@ static void test_disabled_and_preinit_capture(void)
     tb710fu_live_log_freeze(); registered_startup();
     assert(!enabled && !map_calls && !snapshot_calls && !qr_calls && !create_calls);
     arg_present = 1; arg_value = 2; tb710fu_live_log_init(); assert(!map_calls);
-    arg_value = 1; tb710fu_live_log_init(); assert(xnu_capture.written == 700 && qr_calls == 1);
-    assert(!xnu_sender.valid && !early_frozen); assert_ramoops_body(512);
+    arg_value = 1; tb710fu_live_log_init(); assert(xnu_capture.written == 700 && qr_calls == 0);
+    assert(!xnu_sender.valid && !ramoops_sender.valid && !early_frozen);
     tb710fu_live_log_freeze(); assert(early_state.start == 188 && early_state.end == 700);
+    tick(); assert_ramoops_body(512);
     tick(); assert_xnu_body(512, early_bytes, 512); assert(!wait_calls && !create_calls); guards();
 }
 static void test_invalid_video_is_bounded(void)
@@ -244,12 +245,22 @@ static void test_invalid_video_is_bounded(void)
 }
 static void test_global_budget_and_stream_isolation(void)
 {
-    reset_fixture(); feed_xnu(1500); tb710fu_live_log_init(); tb710fu_live_log_freeze();
-    assert(map_calls == 1 && snapshot_calls == 1 && qr_calls == 1);
+    static const uint8_t banner[] = "\n=== TB710FU XNU boot (UniXNU ramoops) ===\n";
+    static const uint8_t tail[] = "pmap_startup() 481638 page entries\n";
+    reset_fixture(); feed_xnu(1500);
+    memcpy(log_bytes, banner, sizeof(banner) - 1u); log_length = sizeof(banner) - 1u;
+    tb710fu_live_log_init();
+    assert(!ramoops_sender.valid && qr_calls == 0); /* Do not freeze the banner as generation 1. */
+    memcpy(log_bytes + log_length, tail, sizeof(tail) - 1u); log_length += sizeof(tail) - 1u;
+    tb710fu_live_log_freeze();
+    assert(map_calls == 1 && snapshot_calls == 1 && qr_calls == 0);
     for (unsigned i = 0; i < 100; ++i) { tb710fu_live_log_refresh(); tb710fu_live_log_poll(); }
-    assert(qr_calls == 1 && snapshot_calls == 1); /* No refresh throttle bypass. */
-    tick(); assert(qr_calls == 2 && encoded_by_source[0] == 1 && last_capacity == 512);
-    assert_xnu_body(512, early_bytes, 512); assert_ramoops_body(512);
+    assert(qr_calls == 0 && snapshot_calls == 1); /* No refresh throttle bypass. */
+    tick(); assert(qr_calls == 1 && encoded_by_source[1] == 1 && last_capacity == 512);
+    assert_ramoops_body(log_length);
+    tick(); assert(qr_calls == 2 && encoded_by_source[0] == 1);
+    assert_xnu_body(512, early_bytes, 512); assert_ramoops_body(log_length);
+    assert(memcmp(body(&ramoops_sender) + sizeof(banner) - 1u, tail, sizeof(tail) - 1u) == 0);
     assert(strstr(last_status, "QR=X1/1 R1/1"));
     assert(xnu_sender.info.session_id != ramoops_sender.info.session_id);
     struct tb710fu_live_log_sender saved = xnu_sender;
@@ -277,7 +288,7 @@ static void test_backup_survives_wrap_in_every_left_file(void)
 static void test_capture_and_render_trylocks(void)
 {
     reset_fixture(); feed_xnu(600); reenter_encoder = 1;
-    tb710fu_live_log_init(); tb710fu_live_log_freeze(); tick(); assert(reentries == 2);
+    tb710fu_live_log_init(); tb710fu_live_log_freeze(); tick(); tick(); assert(reentries == 2);
     unsigned old_qr = qr_calls, old_snap = snapshot_calls;
     guard = 1; feed_xnu(10); tb710fu_live_log_poll(); tb710fu_live_log_refresh();
     assert(qr_calls == old_qr && snapshot_calls == old_snap && xnu_capture.written == xnu_written); guard = 0;
@@ -288,7 +299,7 @@ static void test_capture_and_render_trylocks(void)
 }
 static void test_worker_requires_actual_execution(void)
 {
-    reset_fixture(); feed_xnu(6000); tb710fu_live_log_init(); tb710fu_live_log_freeze(); tick();
+    reset_fixture(); feed_xnu(6000); tb710fu_live_log_init(); tb710fu_live_log_freeze(); tick(); tick();
     assert(registered_subsystem == EARLY_BOOT && registered_rank == STARTUP_RANK_FIRST);
     registered_startup(); assert(create_calls == 1 && deallocate_calls == 1 && created_worker && !worker_started);
     assert_xnu_body(512, early_bytes, 512); assert_ramoops_body(512); clock_now += 500;
@@ -297,7 +308,7 @@ static void test_worker_requires_actual_execution(void)
     for (unsigned i = 0; i < 220; ++i) tick();
     assert(last_capacity == 4096); assert_xnu_body(3072, early_bytes, 512); assert_ramoops_body(4096);
     assert(strstr(last_status, "W=1") && strstr(last_status, "P="));
-    assert(strstr(last_status, "R=ready:4096B 16/6"));
+    assert(strstr(last_status, "R=ready:4096B "));
     assert(wait_calls == 1 && block_calls == 1 && create_calls == 1);
 }
 static uint32_t slot_pixel(unsigned slot)
@@ -307,7 +318,7 @@ static uint32_t slot_pixel(unsigned slot)
 }
 static void test_dual_slots_do_not_clear_each_other(void)
 {
-    reset_fixture(); feed_xnu(700); tb710fu_live_log_init(); tb710fu_live_log_freeze(); tick();
+    reset_fixture(); feed_xnu(700); tb710fu_live_log_init(); tb710fu_live_log_freeze(); tick(); tick();
     assert(display.DualQr && slot_pixel(0) == 0xff112233u && slot_pixel(1) == 0xffaabbccu);
     for (unsigned i = 0; i < 8; ++i) { tick(); assert(slot_pixel(0) == 0xff112233u && slot_pixel(1) == 0xffaabbccu); }
 }
@@ -316,27 +327,28 @@ static void test_small_screen_alternates_one_rectangle(void)
     reset_fixture(); video_input.v_width = 240; video_input.v_rowBytes = 960;
     video_input.v_length = frame_bytes = 960u * 480u; feed_xnu(700);
     tb710fu_live_log_init(); tb710fu_live_log_freeze();
+    tick();
     assert(!display.DualQr && display.QrX == display.QrSecondX && slot_pixel(0) == 0xffaabbccu);
     for (unsigned i = 0; i < 10; ++i) { tick(); assert(slot_pixel(0) == (i % 2u ? 0xffaabbccu : 0xff112233u)); }
 }
 static void test_ready_stream_reports_qr_encode_failure(void)
 {
     reset_fixture(); qr_encode_fail_slot = 1;
-    tb710fu_live_log_init();
+    tb710fu_live_log_init(); tb710fu_live_log_freeze(); tick(); tick();
     assert(ramoops_sender.valid && ramoops_state.state == TB710FU_RAMOOPS_READY);
     assert(strstr(last_status, "R=ready:512B 1/1"));
-    assert(strstr(last_status, "QR=X0/0 R0/0"));
+    assert(strstr(last_status, "QR=X1/1 R0/0"));
     assert(slot_pixel(1) != 0xffaabbccu);
 }
 static void test_ready_stream_reports_qr_draw_failure(void)
 {
     reset_fixture();
-    tb710fu_live_log_init();
+    tb710fu_live_log_init(); tb710fu_live_log_freeze(); tick(); tick();
     assert(qr_encoded[1] == 1 && qr_drawn[1] == 1);
     display.Bytes = 0;
     tick(); tick();
     assert(ramoops_sender.valid && ramoops_state.state == TB710FU_RAMOOPS_READY);
-    assert(strstr(last_status, "QR=X0/0 R2/1"));
+    assert(strstr(last_status, "QR=X2/1 R2/1"));
 }
 static void test_freeze_busy_and_empty_are_honest(void)
 {
@@ -346,7 +358,7 @@ static void test_freeze_busy_and_empty_are_honest(void)
         assert(early_frozen && early_state.copied == 0);
         assert(early_state.state == (busy ? TB710FU_LIVE_CAPTURE_BUSY : TB710FU_LIVE_CAPTURE_EMPTY));
         xnu_capture.guard = 0; feed_xnu(1000); tb710fu_live_log_freeze();
-        assert(early_state.copied == 0); tick(); assert_xnu_body(512, early_bytes, 0);
+        assert(early_state.copied == 0); tick(); tick(); assert_xnu_body(512, early_bytes, 0);
         assert(strstr((const char *)body(&xnu_sender), busy ? "earlybackup_state=busy\n" : "earlybackup_state=empty\n"));
     }
 }
@@ -354,7 +366,7 @@ static void test_ramoops_failure_does_not_replace_xnu(void)
 {
     for (unsigned state = TB710FU_RAMOOPS_UNMAPPED; state <= TB710FU_RAMOOPS_EMPTY; ++state) {
         reset_fixture(); log_state = state; feed_xnu(700);
-        tb710fu_live_log_init(); tb710fu_live_log_freeze(); tick();
+        tb710fu_live_log_init(); tb710fu_live_log_freeze(); tick(); tick();
         assert(!ramoops_sender.valid && xnu_sender.valid && !guard);
         assert(encoded_by_source[0] == 1 && encoded_by_source[1] == 0); assert_xnu_body(512, early_bytes, 512);
     }

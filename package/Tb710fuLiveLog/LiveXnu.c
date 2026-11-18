@@ -178,6 +178,9 @@ static void snapshot_ramoops(void)
     int copied = tb710fu_ramoops_snapshot_copy(snapshot, capacity, &ramoops_state);
     struct tb710fu_live_log_info info = {0};
     (void)tb710fu_live_log_get_info(&ramoops_sender, &info);
+    /* Before the early freeze, the ring may contain only its synthetic banner.
+     * Do not latch that as generation 1 and delay useful text behind the dwell. */
+    if (!started && !__atomic_load_n(&early_frozen, __ATOMIC_ACQUIRE)) return;
     int permitted = started ? tb710fu_live_log_can_snapshot(&ramoops_sender) :
                               tb710fu_live_log_can_snapshot_single(&ramoops_sender);
     if (copied > 0 && permitted &&
@@ -246,6 +249,7 @@ void tb710fu_live_log_freeze(void)
     if (__atomic_exchange_n(&early_once, 1u, __ATOMIC_ACQUIRE)) return;
     (void)tb710fu_live_capture_copy(&xnu_capture, early_bytes, sizeof(early_bytes), &early_state);
     __atomic_store_n(&early_frozen, 1u, __ATOMIC_RELEASE);
+    next_slot = 1u;
 }
 
 void tb710fu_live_log_init(void)
@@ -281,7 +285,7 @@ void tb710fu_live_log_init(void)
     tb710fu_live_log_sender_init(&xnu_sender);
     tb710fu_live_log_sender_init(&ramoops_sender);
     (void)tb710fu_live_log_set_source(&xnu_sender, TB710FU_LIVE_LOG_XNU);
-    next_slot = 1u; /* Draw an initial raw ramoops frame before early freeze. */
+    next_slot = 1u; /* First sample ramoops, but publish only after early freeze. */
     __atomic_store_n(&enabled, 1u, __ATOMIC_RELEASE);
     tb710fu_live_log_refresh();
 }

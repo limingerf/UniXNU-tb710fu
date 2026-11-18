@@ -93,7 +93,7 @@ def main():
                 'single_frame_mode_uses_short_replacement_gate': True,
                 'pre_worker_header_and_tail_fit_one_systematic_frame': True,
                 'one_frame_per_global_250ms_tick_including_refresh': True,
-                'initial_raw_ramoops_frame_before_freeze': True,
+                'ramoops_first_frame_follows_freeze_and_includes_current_tail': True,
                 'worker_not_started_uses_single_frame_latest_tail': True,
                 'qr_encode_and_display_write_counters': True,
                 'ready_stream_encode_and_draw_failures_are_visible': True,

@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "stage": "ramoops-live-first-frame-diagnostic",
+  "observed_on": "2026-11-19",
+  "source_logs": {
+    "ramoops": {
+      "filename": "TB710FU-ramoops-live-1-0-43 (6)(1).log",
+      "bytes": 43,
+      "sha256": "7f35085750ebc3f6b3cc83773d47a5cfbb131913192cc89dc358ae0de8af1e36",
+      "generation": 1,
+      "range": "[0,43)",
+      "payload": "synthetic XNU boot banner only"
+    },
+    "xnu": {
+      "filename": "TB710FU-xnu-live-1-904-1243 (5).log",
+      "bytes": 653,
+      "sha256": "c2f24cdecd68cd58b3df348d1cd422c646ca66490676c751ae21a3626840a05b",
+      "build_label": "src-1446070e-ramoops",
+      "earlybackup_bytes": 409,
+      "current_start": 904,
+      "current_end": 1243,
+      "current_bytes": 339,
+      "dropped": 0,
+      "raw_layout": "current_only_single_frame",
+      "last_line": "kernel_startup_initialize_upto[6, rank 0]: 0xefa9df700c28dd70(0)"
+    }
+  },
+  "candidate": {
+    "device_commit": "1446070ec13d33165c344dab3be9c21d6d93d83d",
+    "github_run_id": 44325375059,
+    "stage": "ufs-integrated",
+    "conclusion": "success",
+    "native_sha256": "af5b2efee21868c3c77db2963f9a4a029f3ec43a62d720921bea2b2e4a7071b6",
+    "prelinked_sha256": "56a6931b5451d90922e54595ea6ecf99380f4b169549dc9d72866851930e864e",
+    "runtime_qualified": false,
+    "loadable": false
+  },
+  "callback_correlation": {
+    "pointer": "0xefa9df700c28dd70",
+    "symbol": "_vm_compressor_set_size",
+    "symbol_address": "0xfffffff00c28dd70",
+    "correlation": "low 32 bits match in the exact run's kernel.macho",
+    "meaning": "next KMEM rank-0 callback entry, not a fault PC",
+    "return_marker_in_this_export": false,
+    "absence_is_conclusive": false
+  },
+  "diagnosis": {
+    "ramoops_generation_1": "published before early freeze and contained only the synthetic banner",
+    "replacement_policy": "pre-worker snapshots require two complete single-frame rounds before replacement",
+    "result": "an early startup stop can leave the banner frame visible while XNU has a newer tail",
+    "vm_compressor_change": "none; this export does not identify a fault inside the callback"
+  },
+  "change": {
+    "files": [
+      "package/Tb710fuLiveLog/LiveXnu.c",
+      "tests/live_xnu_adapter_test.c",
+      "scripts/check_live_xnu_adapter.py"
+    ],
+    "behavior": "sample ramoops status before freeze without publishing; prioritize ramoops on the first permitted post-freeze slot",
+    "poll_interval_ms": 250,
+    "freeze_encodes_or_draws": false,
+    "source_sha256": {
+      "package/Tb710fuLiveLog/LiveXnu.c": "2d84a5967f2a9155af7f00ee42971086e033c07a54cf2c7a68f1cff24244f05c",
+      "tests/live_xnu_adapter_test.c": "0ed35627f449509ce791d212f232c1619cb42d77c74f3ac90b76a535051e06a4",
+      "scripts/check_live_xnu_adapter.py": "7e15fef3f049b31d6b5176b4ceaddaba0b284339f099672c19cff90d64a76f63"
+    }
+  },
+  "verification": {
+    "live_xnu_adapter": "PASS: GCC ASan/UBSan, 12 groups, 15 invalid-video cases",
+    "live_console_capture": "PASS: 18 serial/PE capture, preinit and no-duplicate cases",
+    "ramoops_snapshot": "PASS: 10 production snapshot cases",
+    "kernel_configuration": "PASS",
+    "diff_check": "PASS",
+    "native_arm64e_build_for_changed_sources": "NOT RUN",
+    "strict_prelink_for_changed_sources": "NOT RUN",
+    "device_operations": false
+  },
+  "unverified": [
+    "whether the KMEM rank-0 callback returns on hardware",
+    "whether the next ramoops QR contains the useful post-freeze tail",
+    "hardware boot, worker scheduling, CDC enumeration and macOS userspace"
+  ]
+}
