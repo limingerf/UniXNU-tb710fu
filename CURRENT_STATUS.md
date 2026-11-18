@@ -11,11 +11,15 @@ view 解析、排序比较、迭代器、指针数组分组、zone 创建和 hea
 间隔输出索引；所有日志仅在 live-log 活跃时产生，继续使用既有 250 ms poll 节流。
 没有跳过或改动 allocator 的分配、随机选择、zone 初始化或 callback 顺序。
 
-验证：隔离的 pinned XNU `ac9718fb1af618d5ce8678d0dc6e8a58f252216f` fixture
-按 `0018`、`0019` 顺序完成 `git apply --check` 和实际应用；`git diff --check`、
-事件 begin/done 配对审计及 `python tools/ci_kernel.py configure` 通过。native
-arm64e、strict prelink 和生产 DarwinBoot parser 待唯一一次 macOS `ufs-integrated`
-run 验证。未做设备操作。
+验证：隔离 pinned XNU fixture 按 `0018`、`0019` 顺序应用通过，`git diff --check`、
+事件 begin/done 配对审计及配置检查通过。唯一一次 macOS `ufs-integrated` run
+`44401178047` attempt 1 成功：native SHA-256 `c74c0cd1…a9a1ac94`，strict
+prelink SHA-256 `49f49f58…c9afac93`，生产 DarwinBoot parser PASS；runner 输入清单
+中的 `0019` patch SHA-256 与本地一致。完整构建 artifact SHA-256
+`c4d50282…7d8d1285`。证据见
+`docs/evidence/live-ramoops-image-44401178047-kalloc-full-diagnostics.json`。
+此候选仍为 `runtime_qualified=false`、`loadable=false`；没有制作签名/可刷写镜像，
+没有重启或操作设备，根因仍待设备返回新 live-log 帧确认。
 
 ## 实机停在 kalloc_init 入口与子阶段诊断包 · 2026-11-19
 
