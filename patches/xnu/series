@@ -14,3 +14,4 @@
 0014-tb710fu-native-live-log.patch
 0015-tb710fu-ramoops-volatile-buffer.patch
 0016-tb710fu-startup-callback-return-marker.patch
+0017-tb710fu-startup-callback-return-all-marker.patch

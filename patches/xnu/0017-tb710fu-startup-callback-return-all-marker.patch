@@ -1,0 +1,34 @@
+From: TB710FU clean board
+Subject: [PATCH] Record every startup callback completion in the live log
+
+Reason: the device now reaches later startup phases, while the verbose startup
+line is printed before each callback and cannot distinguish an entry from a
+return. A phase-specific marker would require one build per observed boundary.
+Record one bounded completion marker for every startup callback instead, so one
+diagnostic build covers KMEM, ZALLOC, SYSCTL, EARLY_BOOT and later callbacks.
+
+This is diagnostic-only: callback order, arguments, startup cursor and callback
+behavior remain unchanged. The global 250 ms live-log poll throttle remains in
+force, and the marker is emitted only when live-log is active.
+
+Verification: applies after patch 0016 to the selected startup.c. Native
+arm64e compilation and strict prelink must be rerun before hardware use.
+
+diff --git a/osfmk/kern/startup.c b/osfmk/kern/startup.c
+--- a/osfmk/kern/startup.c
++++ b/osfmk/kern/startup.c
+@@ -494,13 +494,11 @@ kernel_startup_initialize_upto(startup_subsystem_id_t upto)
+ 		startup_phase = cur->subsystem - 1;
+ 		kernel_startup_log(cur->subsystem);
+ 		cur->func(cur->arg);
+ #if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
+-		if (tb710fu_live_log_active() &&
+-		    cur->subsystem == STARTUP_SUB_KMEM &&
+-		    cur->rank == STARTUP_RANK_FIRST) {
+-			kprintf("TB710FU live log: KMEM rank-0 callback returned\n");
++		if (tb710fu_live_log_active()) {
++			kprintf("TB710FU live log: startup callback returned [%u, rank %d] %p\n",
++			    cur->subsystem, cur->rank, cur->arg);
+ 			tb710fu_live_log_poll();
+ 		}
+ #endif
