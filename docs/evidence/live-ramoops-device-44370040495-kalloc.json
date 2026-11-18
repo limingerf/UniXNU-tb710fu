@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "stage": "user-supplied-kalloc-init-boundary",
+  "observation_date": "2026-11-19",
+  "source": "User-pasted XNU DEBUG EXPORT in chat; raw attachment and log hash not supplied.",
+  "device_build": {
+    "label": "src-94be46ec-ramoops",
+    "run_id": 44370040495,
+    "commit": "94be46ec78bc598f7ac875aa976a87b8401f9d02",
+    "prelinked_sha256": "d7bcc55aea54ceb4e8601be9a50e4e72d12305205ab29a786895e5fa6471becc"
+  },
+  "export": {
+    "earlybackup_bytes": 467,
+    "current_start": 135174,
+    "current_end": 135503,
+    "current_bytes": 329,
+    "dropped": 0,
+    "raw_layout": "current_only_single_frame",
+    "last_entry": {
+      "phase": 7,
+      "phase_name": "ZALLOC",
+      "rank": 2,
+      "symbol": "_kalloc_init",
+      "entry_pointer": "0x24edacf00c274b18",
+      "entry_arg": "0"
+    },
+    "callbacks_returned_after_entry": [
+      {"phase": 7, "rank": 2147483647, "arg": "0xfffffff00c886ca8"},
+      {"phase": 7, "rank": 2147483647, "arg": "0xfffffff00c886cc8"},
+      {"phase": 7, "rank": 1, "arg": "0"},
+      {"phase": 7, "rank": 1, "arg": "0"},
+      {"phase": 7, "rank": 1, "arg": "0"},
+      {"phase": 7, "rank": 2, "arg": "0"}
+    ]
+  },
+  "interpretation": {
+    "reached_kalloc_init": true,
+    "kalloc_init_returned": false,
+    "last_record_is_fault_pc": false,
+    "root_cause_confirmed": false,
+    "notes": [
+      "The entry is emitted before the callback. No matching callback-return line follows in the supplied current frame.",
+      "Later ZALLOC callbacks, SYSCTL, and scheduler-startup phases are not shown in this current-only frame.",
+      "The startup return markers narrow the boundary; they do not identify which instruction inside kalloc_init stopped."
+    ]
+  },
+  "exact_symbol_source": {
+    "fileset": ".work/ufs-integrated-44370040495-artifact/kernel/kernel.macho",
+    "tool": "llvm-nm --defined-only",
+    "symbol_address": "0xfffffff00c274b18",
+    "symbol": "_kalloc_init",
+    "correlation": "PAC-bearing entry pointer low 32 bits match exact fileset symbol address."
+  },
+  "source_review": {
+    "source_file": ".work/UniXNU/out/feeds/xnu-3199e8bc/osfmk/kern/kalloc.c",
+    "startup_rank": "STARTUP_RANK_THIRD",
+    "major_operations": [
+      "kalloc_zsize_compute",
+      "initialize KHEAP_DATA_PRIVATE zones",
+      "initialize KHEAP_DATA_SHARED zones",
+      "initialize KHEAP_EARLY zones",
+      "allocate 256 KiB kalloc type-view scratch buffer",
+      "initialize fixed-size kalloc type views",
+      "clear scratch buffer and restore kt_count",
+      "initialize variable-size kalloc type views",
+      "free scratch buffer"
+    ],
+    "behavioral_fix_applied": false
+  },
+  "followup_candidate": {
+    "run_id": 44383673876,
+    "commit": "02eed84faf0ba921fdd2b2e3bf66fecd17f08df4",
+    "prelinked_sha256": "f0fad2bdc604742eaafbbfa6ec6b3f53c10ac9c0ac58ac45e2fb5fc6458a0bc0",
+    "patch": "0018-tb710fu-kalloc-init-substage-markers.patch",
+    "marker_format_present_in_prelinked_fileset": true,
+    "checkpoint_labels": [
+      "zsize", "heap-private", "heap-shared", "heap-early", "scratch-alloc",
+      "fixed-views", "fixed-reset", "variable-views", "scratch-free"
+    ],
+    "device_operations": false
+  }
+}

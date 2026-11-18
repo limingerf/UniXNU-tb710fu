@@ -1,14 +1,22 @@
 # Current status · 2026-11-19
 
+## 实机停在 kalloc_init 入口与子阶段诊断包 · 2026-11-19
+
+用户提供的新版导出 build label 为 `src-94be46ec-ramoops`（run `44370040495`，提交 `94be46ec78bc598f7ac875aa976a87b8401f9d02`）。当前尾部最后一条是 phase 7 / ZALLOC / rank 2，arg=0。入口指针低 32 位与该精确 fileset 中的 `_kalloc_init` @ `0xfffffff00c274b18` 匹配；没有随后的 callback-return 行，所以只证明到达入口，不证明 fault PC 或精确故障指令。此前的 rank 0、rank 1 callback 及 rank 2 前序 callback 均已有返回记录。用户提供的转录为 current-only 单帧，current 范围 `[135174,135503)`，329 字节、dropped=0；不能据此推断其后未显示的日志内容。
+
+固定 XNU 源码显示 `kalloc_init` 按序执行：zsize 计算、private/shared/early heap 初始化、256 KiB scratch 分配、fixed views 初始化、清零/reset、variable views 初始化、scratch 释放。没有证据支持跳过或改写任何 allocator 操作，因此没有做行为修复。新增 patch `0018` 在每个大步骤后发出有界 marker，标签为 `zsize`、`heap-private`、`heap-shared`、`heap-early`、`scratch-alloc`、`fixed-views`、`fixed-reset`、`variable-views`、`scratch-free`；仅 live-log 启用时生效，不改变 allocator 行为，沿用全局 250ms poll 节流。
+
+patch `0018` 已在 run `44383673876` attempt 2 的 macOS native/prelink 构建中通过；marker 字符串已在 fileset 中确认。新可刷写格式测试候选为 `out/tb710fu-live-ramoops-44383673876-signed.zip`，大小 35,579,272 字节，SHA-256 `a88bad697aa242cfe42ebbbd005752ec64e55f7205376fafe8a42f5570b53c5f`。设备日志和镜像证据分别见 `docs/evidence/live-ramoops-device-44370040495-kalloc.json` 与 `docs/evidence/live-ramoops-image-44383673876.json`。没有刷写、重启或改设备存储；是否能越过该 callback 仍待新包实机日志确认。
+
 ## 实机阶段 7→16 转录与一次性全 callback marker · 2026-11-19
 
 用户提供的旧包转录 build label 为 `src-90b857ac-ramoops`（run `44352442697`），不是最新的全 marker 包。对该 run 的精确 fileset 映射显示 phase 7 是 ZALLOC：日志在 `_vm_btlog_init` 和 btlog 提示后继续到多个 rank callback；随后 VM bootstrap done，并继续打印 phase 7 rank 1/2/3。出现后续 entry 证明前一个 callback 返回，因此执行已越过 phase 7。之后进入 phase 16 SYSCTL，四次 entry 均为 `_sysctl_register_oid_early`，参数不同；entry 在调用前打印，最后一次 callback 是否返回无法从旧包日志判断。证据见 `docs/evidence/live-ramoops-device-44352442697-phase16.json`。
 
 用户指出 ramoops 只显示 `0:0 (0B)`，说明它不是可靠的最终停点记录；它是轮播的有界尾部，不能保证相机捕获最后更新。故修复方向改为在 XNU 的统一 startup loop 对每个 callback 返回后记录 `[subsystem, rank, arg]` 并有界 poll，而不是逐阶段追加 marker/重复编译。patch `0017` 已在新包 build run `44370040495` 中通过 native、strict prelink 和 production parser；marker 字符串确认存在于 prelinked fileset。run 的第一次 attempt 是 patch 文件 hunk 行数错误，runner 在应用 patch 时拒绝，未进入编译；修正后 attempt 2 全部通过。
 
-最新候选仍为 run `44370040495` 的匹配镜像组，README、验证报告和 ZIP manifest 已补充全 callback marker 说明。ZIP SHA-256 为 `7de6a69d6cc6d407500e5ceae94f46e4cb47045207a5bff49d582f3b51c26f48`。无刷机/重启操作；是否能拍到最后返回 marker 仍需设备实测。
+该 callback-only 候选已由上方含 kalloc 子阶段 marker 的 run `44383673876` 取代；旧包 ZIP SHA-256 为 `7de6a69d6cc6d407500e5ceae94f46e4cb47045207a5bff49d582f3b51c26f48`，不要与新包混用。
 
-## 全阶段 startup callback 返回诊断包 · 2026-11-19
+## 全阶段 startup callback 返回诊断基线 · 2026-11-19
 
 用户提供的设备转录来自旧包 `src-90b857ac-ramoops`（run `44352442697`），不是本节的新包。按精确 run `44352442697` fileset 的 `llvm-nm` 映射，phase 7 是 `ZALLOC`：rank 0 地址对应 `_vm_btlog_init`，后续 rank 1/2/3 分别对应 `_vm_kernel_boostraped`、`_vm_page_module_init`、`_zleak_init`、`_zone_create_startup` 等。随后出现的下一条 entry 证明前一 callback 已返回；日志最终已越过整个 phase 7 并到达 phase 16 `SYSCTL`。
 
