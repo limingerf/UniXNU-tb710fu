@@ -13,3 +13,4 @@
 0013-tb710fu-ramoops-snapshot.patch
 0014-tb710fu-native-live-log.patch
 0015-tb710fu-ramoops-volatile-buffer.patch
+0016-tb710fu-startup-callback-return-marker.patch

@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "stage": "live-qr-render-feedback-and-kmem-callback-return-marker",
+  "source": "User-provided XNU DEBUG EXPORT and display status from the b11eddff candidate",
+  "candidate": {
+    "device_commit": "b11eddff0e3a33ced74cf7f471c2359cc3af9f18",
+    "run_id": 44237938523,
+    "framework_commit": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+    "xnu_commit": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+    "native_sha256": "d3943ee2391c06cb9f0999d26f390921d4586abb4d9303cf504b3efd481aafd0",
+    "prelinked_sha256": "665b41f1248ab74afb705453e8b8e786004253263f12dafeca8c8d5ba1f6b35d",
+    "display_build_label": "src-b11eddff-ramoops"
+  },
+  "device_observation": {
+    "earlybackup_bytes": 409,
+    "current_start": 905,
+    "current_end": 1244,
+    "current_bytes": 339,
+    "dropped": 0,
+    "raw_layout": "current_only_single_frame",
+    "last_line": "kernel_startup_initialize_upto[6, rank 0]: 0x66a392f00c28dd14(0)",
+    "status_transcription": "W=0 P=4; X and R ready:512B 2/1; E=ready",
+    "reported_symptoms": [
+      "XNU debug QR decodes",
+      "ramoops QR reported empty",
+      "display stopped at the KMEM rank-0 startup trace",
+      "green, blue and magenta bands visible at the top"
+    ]
+  },
+  "symbol_correlation": {
+    "fileset": ".work/ufs-integrated-44237938523/kernel/kernel.macho",
+    "fileset_sha256": "665b41f1248ab74afb705453e8b8e786004253263f12dafeca8c8d5ba1f6b35d",
+    "tool": "llvm-nm --defined-only",
+    "symbol": "_vm_compressor_set_size",
+    "symbol_address": "0xfffffff00c28dd14",
+    "pointer_match": "The pointer's low 40 bits match the symbol address's low 40 bits; the startup trace names the next callback, not a fault PC."
+  },
+  "changes": {
+    "status_feedback": "QR=X<encode-success-count>/<display-write-success-count> R<encode-success-count>/<display-write-success-count>",
+    "xnu_patch": "patches/xnu/0016-tb710fu-startup-callback-return-marker.patch",
+    "patch_behavior": "When live-log display initialization succeeded, emit a marker and call the bounded poll after STARTUP_SUB_KMEM / STARTUP_RANK_FIRST returns; the global 250 ms throttle remains in force.",
+    "scope": "Diagnostic feedback only; no VM compressor sizing, startup ordering, security, storage or device configuration changed.",
+    "source_sha256": {
+      "package/Tb710fuLiveLog/LiveXnu.c": "070d1c7bc5b8b66e6cabe0b82b9ee993862febb2b36c939eb542e9ed0b934ebc",
+      "tests/live_xnu_adapter_test.c": "52ff299e37e90a33bd5af3c4d2196e8b45330bf4f83f037c1f8ed6b944f30970",
+      "scripts/check_live_xnu_adapter.py": "7fc38d1dbff9337eb0cc77a95ddb610eee542b8a31d94a1edc2aba4d204b327c",
+      "patches/xnu/0016-tb710fu-startup-callback-return-marker.patch": "c8b27016491786f8ef6382f24fd7b5d7abb35785ee9b480955699d0733fbab8c"
+    }
+  },
+  "verification": {
+    "live_xnu_adapter": {
+      "result": "PASS",
+      "compiler": "gcc (Debian 14.2.0)",
+      "sanitizers": ["address", "undefined"],
+      "groups": 12,
+      "invalid_video_cases": 15,
+      "report": ".work/live-adapter-qr-status-check-gcc/adapter-check.json"
+    },
+    "ramoops_snapshot": {
+      "result": "PASS",
+      "cases": 10,
+      "compiler": "gcc (Debian 14.2.0)",
+      "sanitizers": ["address", "undefined"],
+      "report": ".work/ramoops-qr-status-check-gcc/check-report.json"
+    },
+    "display_renderer": "PASS: exact bands, BGRA QR, bounded text, guards and scanline padding",
+    "xnu_patch_application": "PASS: git apply --check and application to a temporary LF-normalized startup.c fixture",
+    "configuration": "PASS: tools/ci_kernel.py configure resolved patches/xnu/series including 0016",
+    "diff_check": "PASS",
+    "native_arm64e_build": "NOT RUN",
+    "strict_prelink": "NOT RUN",
+    "protocol_interop": "NOT RUN: Node.js unavailable in WSL",
+    "clang_sanitizers": "UNAVAILABLE: installed Clang is missing its ASan runtime; GCC sanitizer builds passed"
+  },
+  "unverified": [
+    "Whether KMEM rank-0 callback returns on hardware",
+    "Whether framebuffer writes reach physical scanout",
+    "Whether the ramoops QR is camera-decodable",
+    "Worker scheduling, CDC enumeration and macOS userspace"
+  ],
+  "signed_or_device_artifacts_created": false,
+  "device_operations": false
+}

@@ -44,6 +44,7 @@ static void thread_block(void *);
 
 static PE_Video video_input;
 static unsigned arg_present, arg_value, map_fail, reenter_encoder;
+static int qr_encode_fail_slot;
 static unsigned map_calls, snapshot_calls, qr_calls, wait_calls, block_calls;
 static unsigned create_calls, deallocate_calls, deadline_calls, reentries, encoded_by_source[2];
 static uint64_t clock_now, clock_frequency, xnu_written;
@@ -100,6 +101,7 @@ int tb_live_qr_encode(const uint8_t *input, size_t bytes, const uint32_t **pixel
     if (count > 720u) count = 720u;
     assert(memcmp(input + 28, s->envelope + offset, count) == 0);
     for (size_t i = count; i < 720u; ++i) assert(input[28u + i] == 0);
+    if (qr_encode_fail_slot == (int)slot) return 0;
     ++encoded_by_source[slot]; memcpy(encoded_frame, input, bytes);
     for (size_t i = 0; i < sizeof(qr_pixels) / sizeof(qr_pixels[0]); ++i)
         qr_pixels[i] = slot == 0 ? 0xff112233u : 0xffaabbccu;
@@ -138,8 +140,10 @@ static void reset_fixture(void)
     early_state = (struct tb710fu_live_capture_info){0}; xnu_state = early_state;
     ramoops_state = (struct tb710fu_ramoops_snapshot){0}; memset(early_bytes, 0, sizeof(early_bytes));
     enabled = guard = redraw = worker_started = sleep_channel = early_frozen = early_once = next_slot = 0;
+    qr_encoded[0] = qr_encoded[1] = qr_drawn[0] = qr_drawn[1] = 0;
     frequency = next_frame = xnu_generation = ramoops_generation = xnu_last_dropped = 0;
     arg_present = arg_value = 1; map_fail = reenter_encoder = 0;
+    qr_encode_fail_slot = -1;
     map_calls = snapshot_calls = qr_calls = wait_calls = block_calls = 0;
     create_calls = deallocate_calls = deadline_calls = reentries = 0;
     encoded_by_source[0] = encoded_by_source[1] = 0; clock_now = xnu_written = 0; clock_frequency = 1000;
@@ -246,6 +250,7 @@ static void test_global_budget_and_stream_isolation(void)
     assert(qr_calls == 1 && snapshot_calls == 1); /* No refresh throttle bypass. */
     tick(); assert(qr_calls == 2 && encoded_by_source[0] == 1 && last_capacity == 512);
     assert_xnu_body(512, early_bytes, 512); assert_ramoops_body(512);
+    assert(strstr(last_status, "QR=X1/1 R1/1"));
     assert(xnu_sender.info.session_id != ramoops_sender.info.session_id);
     struct tb710fu_live_log_sender saved = xnu_sender;
     feed_xnu(123); memset(log_bytes, 'Q', sizeof(log_bytes)); log_length = 6000;
@@ -314,6 +319,25 @@ static void test_small_screen_alternates_one_rectangle(void)
     assert(!display.DualQr && display.QrX == display.QrSecondX && slot_pixel(0) == 0xffaabbccu);
     for (unsigned i = 0; i < 10; ++i) { tick(); assert(slot_pixel(0) == (i % 2u ? 0xffaabbccu : 0xff112233u)); }
 }
+static void test_ready_stream_reports_qr_encode_failure(void)
+{
+    reset_fixture(); qr_encode_fail_slot = 1;
+    tb710fu_live_log_init();
+    assert(ramoops_sender.valid && ramoops_state.state == TB710FU_RAMOOPS_READY);
+    assert(strstr(last_status, "R=ready:512B 1/1"));
+    assert(strstr(last_status, "QR=X0/0 R0/0"));
+    assert(slot_pixel(1) != 0xffaabbccu);
+}
+static void test_ready_stream_reports_qr_draw_failure(void)
+{
+    reset_fixture();
+    tb710fu_live_log_init();
+    assert(qr_encoded[1] == 1 && qr_drawn[1] == 1);
+    display.Bytes = 0;
+    tick(); tick();
+    assert(ramoops_sender.valid && ramoops_state.state == TB710FU_RAMOOPS_READY);
+    assert(strstr(last_status, "QR=X0/0 R2/1"));
+}
 static void test_freeze_busy_and_empty_are_honest(void)
 {
     for (unsigned busy = 0; busy < 2; ++busy) {
@@ -341,6 +365,7 @@ int main(void)
     test_global_budget_and_stream_isolation(); test_backup_survives_wrap_in_every_left_file();
     test_capture_and_render_trylocks(); test_worker_requires_actual_execution();
     test_dual_slots_do_not_clear_each_other(); test_small_screen_alternates_one_rectangle();
+    test_ready_stream_reports_qr_encode_failure(); test_ready_stream_reports_qr_draw_failure();
     test_freeze_busy_and_empty_are_honest(); test_ramoops_failure_does_not_replace_xnu();
-    free(frame_allocation); puts("PASS: 10 dual-stream LiveXnu adapter groups (15 invalid video cases)"); return 0;
+    free(frame_allocation); puts("PASS: 12 dual-stream LiveXnu adapter groups (15 invalid video cases)"); return 0;
 }

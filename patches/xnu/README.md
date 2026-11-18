@@ -135,6 +135,11 @@ pre-machine_startup backup with explicit raw-section lengths. Normal and
 graphics-disabled console paths preserve their memory taps. See
 `docs/LIVE_RAMOOPS.md` for byte limits and scheduling boundaries.
 
+`0016-tb710fu-startup-callback-return-marker.patch` records a completion marker
+after the KMEM rank-0 startup callback and polls the live log, distinguishing
+callback return from the preceding trace. This is diagnostic instrumentation,
+not a compressor sizing or runtime fix.
+
 The first native attempt, run 44112832250 at `eb1f2bc7`, exposed a missing
 internal-header export in `pe_kprintf.c`. The device patch now adds its two real
 headers to `osfmk/kern/Makefile` XNU_ONLY_EXPORTS, using the same official

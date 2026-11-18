@@ -1,0 +1,33 @@
+From: TB710FU clean board
+Subject: [PATCH] Record KMEM startup callback completion in the live log
+
+Source: pinned XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f after the
+selected arm64e, device pre-OS, macOS 27.3 and device 0001..0015 patches.
+Reason: the live export ends at the verbose startup-entry line for KMEM rank 0.
+That line is emitted before the callback and cannot show whether the callback
+returned. When the live-log display initialized successfully, write one
+completion marker after the callback and call the bounded live-log poll. The
+existing global 250 ms frame throttle remains in force. This does not change VM
+sizing, callback order or error handling.
+
+Verification: applies after 0015 to the selected startup.c; the callback and
+startup-entry cursor remain in their original order. Native arm64e compilation
+and prelink must be rerun before this patch is used on a device.
+
+diff --git a/osfmk/kern/startup.c b/osfmk/kern/startup.c
+--- a/osfmk/kern/startup.c
++++ b/osfmk/kern/startup.c
+@@ -494,5 +494,13 @@ kernel_startup_initialize_upto(startup_subsystem_id_t upto)
+ 		startup_phase = cur->subsystem - 1;
+ 		kernel_startup_log(cur->subsystem);
+ 		cur->func(cur->arg);
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++		if (tb710fu_live_log_active() &&
++		    cur->subsystem == STARTUP_SUB_KMEM &&
++		    cur->rank == STARTUP_RANK_FIRST) {
++			kprintf("TB710FU live log: KMEM rank-0 callback returned\n");
++			tb710fu_live_log_poll();
++		}
++#endif
+ 		startup_entry_cur = ++cur;
+ 	}

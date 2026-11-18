@@ -30,6 +30,7 @@ static struct tb710fu_ramoops_snapshot ramoops_state;
 static uint8_t snapshot[TB710FU_LIVE_LOG_MAX_BYTES];
 static uint8_t xnu_file[TB710FU_LIVE_LOG_MAX_BYTES], early_bytes[512], frame[752];
 static unsigned enabled, guard, redraw, worker_started, sleep_channel, early_frozen, early_once;
+static unsigned qr_encoded[2], qr_drawn[2];
 static unsigned next_slot;
 static uint64_t frequency, next_frame, poll_count, xnu_generation, ramoops_generation, xnu_last_dropped;
 
@@ -78,12 +79,13 @@ static void status_line(unsigned slot)
     (void)tb710fu_live_log_get_info(&xnu_sender, &xnu);
     (void)tb710fu_live_log_get_info(&ramoops_sender, &ramoops);
     (void)snprintf(text, sizeof(text),
-        "W=%u P=%llu S=%s | X=%s:%uB %u/%u R=%s:%uB %u/%u | E=%s | %.24s",
+        "W=%u P=%llu S=%s | X=%s:%uB %u/%u R=%s:%uB %u/%u | QR=X%u/%u R%u/%u | E=%s | %.24s",
         __atomic_load_n(&worker_started, __ATOMIC_ACQUIRE),
         (unsigned long long)poll_count, slot == 0 ? "XNU" : "RAMOOPS",
         state_name(xnu_state.state), xnu_state.copied, xnu.rounds, xnu.block_count,
         state_name(ramoops_state.state), ramoops_state.copied,
         ramoops.rounds, ramoops.block_count,
+        qr_encoded[0], qr_drawn[0], qr_encoded[1], qr_drawn[1],
         __atomic_load_n(&early_frozen, __ATOMIC_ACQUIRE) ? state_name(early_state.state) : "pending",
         TB_LIVE_BUILD_LABEL);
 #ifdef TB_LIVE_HOST_TEST
@@ -216,8 +218,11 @@ void tb710fu_live_log_poll(void)
     struct tb710fu_live_log_sender *sender = slot == 0 ? &xnu_sender : &ramoops_sender;
     if (tb710fu_live_log_next_frame(sender, frame)) {
         const uint32_t *pixels;
-        if (tb_live_qr_encode(frame, sizeof(frame), &pixels))
-            (void)tb_live_display_qr_slot(&display, pixels, 121u * 121u, 121, slot);
+        if (tb_live_qr_encode(frame, sizeof(frame), &pixels)) {
+            ++qr_encoded[slot];
+            if (tb_live_display_qr_slot(&display, pixels, 121u * 121u, 121, slot))
+                ++qr_drawn[slot];
+        }
     }
     status_line(slot);
     live_barrier();

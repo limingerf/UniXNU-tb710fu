@@ -1,5 +1,41 @@
 # Current status · 2026-11-18
 
+## QR render feedback and KMEM callback return marker · 2026-11-18
+
+The user supplied a scan from `src-b11eddff-ramoops` (device commit
+`b11eddff0e3a33ced74cf7f471c2359cc3af9f18`, macOS runner run
+`44237938523`). The export retains 409 early bytes and has
+`current_start=905 current_end=1244 current_bytes=339`, `dropped=0`, and
+`raw_layout=current_only_single_frame`. Its final startup trace carries
+`0x66a392f00c28dd14`; the low address bits match `_vm_compressor_set_size` at
+`0xfffffff00c28dd14` in that exact run's `kernel.macho` (`llvm-nm`). This is
+still the trace printed before the startup poll and callback, not a fault PC.
+The reported `W=0`, `P=4`, and both `X/R=ready:512B 2/1` show ready source
+snapshots and one-block sender state before the worker ran; they do not prove QR
+encoding or framebuffer writes succeeded. The green/blue/magenta bands are the
+intentional standard diagnostic bands in `LiveDisplay.c`.
+
+Working-tree changes add `QR=X<encoded>/<drawn> R<encoded>/<drawn>` to the
+status row. Tests cover both a ready source with QR encode failure and a
+successful encode whose renderer rejects the write. New XNU patch `0016`
+records and polls after the KMEM rank-0 callback only when the live-log display
+is active. It invokes the existing bounded poll after the marker; the normal
+global 250 ms frame throttle remains in force. A readable return marker will
+prove that callback returned; its absence cannot distinguish failure inside
+the callback from an earlier stop or a halt before the next permitted frame.
+No speculative compressor sizing change was made.
+
+Verification: WSL GCC 14.2 ASan/UBSan adapter checks pass (12 groups, 15 video
+cases); production ramoops snapshot checks pass (10 cases); portable display
+pixel/guard checks pass. `tools/ci_kernel.py configure` resolves the new ordered
+patch series, and `0016` passes `git apply --check` and actual application to a
+temporary LF-normalized copy of the selected `startup.c` fixture.
+`git diff --check` passes. This is not a native arm64e build or prelink: those still need
+the supported macOS runner. The protocol interop script was not run because
+Node.js is absent; the Clang sanitizer runtime is also absent, so the C checks
+were rerun successfully with GCC. No image was signed, and no device operation
+occurred. Evidence: `docs/evidence/live-qr-return-marker-20261118.json`.
+
 ## Short gate built, signed and ready for the device · 2026-11-18
 
 Run `44237938523` (attempt 1, job `134578502483`) built commit `b11eddff` on the
