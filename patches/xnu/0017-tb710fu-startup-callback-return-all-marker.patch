@@ -17,7 +17,7 @@ arm64e compilation and strict prelink must be rerun before hardware use.
 diff --git a/osfmk/kern/startup.c b/osfmk/kern/startup.c
 --- a/osfmk/kern/startup.c
 +++ b/osfmk/kern/startup.c
-@@ -494,13 +494,11 @@ kernel_startup_initialize_upto(startup_subsystem_id_t upto)
+@@ -494,11 +494,10 @@ kernel_startup_initialize_upto(startup_subsystem_id_t upto)
  		startup_phase = cur->subsystem - 1;
  		kernel_startup_log(cur->subsystem);
  		cur->func(cur->arg);
