@@ -6,6 +6,8 @@
 #include <stdint.h>
 
 #define TB_LIVE_QR_SIDE 121U
+#define TB_LIVE_SCROLL_MAX_ROWS 64U
+#define TB_LIVE_SCROLL_MAX_COLUMNS 256U
 #define TB_LIVE_COLOR_GREEN UINT32_C(0xff00ff00)
 #define TB_LIVE_COLOR_BLUE UINT32_C(0xff0000ff)
 #define TB_LIVE_COLOR_MAGENTA UINT32_C(0xffff00ff)
@@ -20,6 +22,11 @@ typedef struct {
     size_t Bytes, FrameBytes, BandBytes;
     uint32_t Width, Height, StrideBytes;
     uint32_t QrX, QrSecondX, QrY, QrScale, StatusY, TextScale, DualQr;
+    uint32_t CheckpointQrX, CheckpointQrY, CheckpointQrScale;
+    uint32_t LogX, LogY, LogWidth, LogHeight, LogColumns, LogRows;
+    uint32_t CheckpointStatusY;
+    uint64_t LogEnd;
+    uint32_t LogHead, LogCount, LogColumn, LogInitialized;
 } TB_LIVE_DISPLAY;
 
 /* Return 1 on success, 0 for an invalid or too-small surface. bind never paints.
@@ -48,8 +55,19 @@ int tb_live_display_qr(TB_LIVE_DISPLAY *display, const uint32_t *bgra,
 int tb_live_display_qr_slot(TB_LIVE_DISPLAY *display, const uint32_t *bgra,
                             size_t pixels, uint32_t side, unsigned slot);
 
+/* One synchronous XNU checkpoint QR anchored at the bottom-right corner. */
+int tb_live_display_checkpoint_qr(TB_LIVE_DISPLAY *display, const uint32_t *bgra,
+                                 size_t pixels, uint32_t side);
+
+/* Append unseen bytes from the bounded XNU ring tail, preserving ring-overwrite gaps. */
+int tb_live_display_scroll_log(TB_LIVE_DISPLAY *display, const char *text,
+                               size_t bytes, uint64_t start, uint64_t end);
+
+/* One bounded ASCII status line below the scrollback pane, left of the QR. */
+int tb_live_display_checkpoint_status(TB_LIVE_DISPLAY *display, const char *text);
+
 /* One bounded ASCII line, truncated at the right edge. Unsupported bytes use ?.
- * It is painted below the QR, separate from the upstream color bands.
+ * This is the ordinary dual-stream status row below the legacy QR slots.
  */
 int tb_live_display_status(TB_LIVE_DISPLAY *display, const char *text);
 

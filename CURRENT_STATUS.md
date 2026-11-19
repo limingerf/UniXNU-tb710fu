@@ -1,6 +1,6 @@
 # Current status · 2026-11-19
 
-## PRELINKTEXT 首段边缘页表检查点待构建 · 2026-11-19
+## PRELINKTEXT 首段边缘页表检查点已构建，滚屏布局待构建 · 2026-11-19
 
 实机回传帧对应 run `44524596920`、设备提交
 `4abefb367d219908a9ebb3ebc2fdf830547e7e2d`，build label
@@ -17,7 +17,22 @@
 在边缘 helper 的 L2 TTE 查找、读取、已有表或新表分支加即时检查点；块展开与
 PTE 循环每完成 64 项立即发布一次，以避免 sampled quiet period 隐藏短进度。
 页表赋值顺序未改变。隔离 pinned-source fixture 的标准 `git apply --check` 通过；
-macOS 集成构建及实际对象分支检查待运行。
+官方 macOS `ufs-integrated` run [44538544326](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44538544326)
+attempt 1 success，提交 `4cf79a8422da4d1e46c472c6421f2c39f5be8ea7`。Native arm64e
+SHA-256 `467408dec8eed913810b764ce013959a6bdeb206ee203aea58d9ebb686971490`；严格
+prelink Mach-O 为 142,835,712 字节，SHA-256
+`feb58a85b7f7e786601ccf4458a76083ba2e66f0ffb4ee731cb32ff4a26bad03`，production
+DarwinBoot parser PASS。Runner artifact 14539106331，39,167,082 字节，GitHub SHA-256
+`c28889f89505e749fb676d0a6ac79801834a4c70e6c4f241a599b1d7e55e2188`。完整 provenance
+见 `docs/evidence/live-checkpoints-prelink-rnx-edge-build-44538544326.json`。
+
+用户要求保留二维码、移到右下角并开启滚屏日志。检查点模式现将最近 XNU capture
+tail 显示在左侧有界 ASCII 文本区，检查点 QR 固定在右下角；日志按绝对字节范围
+增量更新，检测到缓冲覆盖时显示 `[LOG GAP]`，字符采集回调保持纯内存写。顶部官方
+色带和非检查点双通道布局保留。显示
+ASan/UBSan、LiveXnu 15 组 adapter ASan/UBSan 和 live-log package 12 项主机测试通过；
+集成构建与新 arm64e display API branch verifier 待运行。二维码面板、相机可读性
+和实机停点仍未验证。
 
 ## PRELINKTEXT RNX 可刷写测试包已签出 · 2026-11-19
 

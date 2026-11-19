@@ -441,6 +441,11 @@ static void test_hot_checkpoints_leave_quiet_time_after_an_attempt(void)
 }
 static uint32_t slot_pixel(unsigned slot)
 {
+    if (checkpoint_mode) {
+        uint32_t x = display.CheckpointQrX;
+        return *(uint32_t *)(frame_allocation + 64u +
+            (size_t)display.CheckpointQrY * display.StrideBytes + x * 4u);
+    }
     unsigned x = slot ? display.QrSecondX : display.QrX;
     return *(uint32_t *)(frame_allocation + 64u + (size_t)display.QrY * display.StrideBytes + x * 4u);
 }
@@ -458,6 +463,15 @@ static void test_small_screen_alternates_one_rectangle(void)
     tick();
     assert(!display.DualQr && display.QrX == display.QrSecondX && slot_pixel(0) == 0xffaabbccu);
     for (unsigned i = 0; i < 10; ++i) { tick(); assert(slot_pixel(0) == (i % 2u ? 0xffaabbccu : 0xff112233u)); }
+}
+static void test_checkpoint_mode_rejects_surface_without_log_column(void)
+{
+    reset_fixture();
+    video_input.v_width = 153; video_input.v_height = 240;
+    video_input.v_rowBytes = 616; video_input.v_length = frame_bytes = 616u * 240u;
+    checkpoint_arg_present = checkpoint_arg_value = 1;
+    tb710fu_live_log_init();
+    assert(map_calls == 1 && !enabled && !checkpoint_mode && qr_calls == 0);
 }
 static void test_ready_stream_reports_qr_encode_failure(void)
 {
@@ -505,9 +519,10 @@ int main(void)
     test_global_budget_and_stream_isolation(); test_backup_survives_wrap_in_every_left_file();
     test_capture_and_render_trylocks(); test_worker_requires_actual_execution();
     test_dual_slots_do_not_clear_each_other(); test_small_screen_alternates_one_rectangle();
+    test_checkpoint_mode_rejects_surface_without_log_column();
     test_ready_stream_reports_qr_encode_failure(); test_ready_stream_reports_qr_draw_failure();
     test_freeze_busy_and_empty_are_honest(); test_ramoops_failure_does_not_replace_xnu();
     test_synchronous_checkpoints_bypass_worker_and_dwell();
     test_hot_checkpoints_leave_quiet_time_after_an_attempt();
-    free(frame_allocation); puts("PASS: 14 dual/live-checkpoint LiveXnu adapter groups (15 invalid video cases)"); return 0;
+    free(frame_allocation); puts("PASS: 15 dual/live-checkpoint LiveXnu adapter groups (15 invalid video cases)"); return 0;
 }

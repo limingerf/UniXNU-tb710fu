@@ -35,7 +35,8 @@ FINAL_SYMBOLS = (
     '_tb710fu_live_log_can_snapshot_single',
     '_tb710fu_live_log_get_info', '_tb_live_display_bind',
     '_tb_live_display_bands', '_tb_live_display_qr_slot',
-    '_tb_live_display_status', '_tb_live_qr_encode',
+    '_tb_live_display_checkpoint_qr', '_tb_live_display_scroll_log',
+    '_tb_live_display_checkpoint_status', '_tb_live_display_status', '_tb_live_qr_encode',
     '_tb_live_qr_QrEncodeData', '_tb_live_qr_InitializeLogTables',
 )
 HOOK_OBJECTS = {
@@ -58,6 +59,10 @@ ADAPTER_SOURCE_IMPORTS = (
     '_tb710fu_ramoops_snapshot_copy', '_tb710fu_live_capture_putc',
     '_tb710fu_live_capture_copy', '_tb710fu_live_log_set_source',
     '_tb710fu_live_log_snapshot_file', '_tb710fu_live_log_snapshot_single_file',
+)
+CHECKPOINT_DISPLAY_IMPORTS = (
+    '_tb_live_display_checkpoint_qr', '_tb_live_display_scroll_log',
+    '_tb_live_display_checkpoint_status',
 )
 DISABLED_CAPTURE_CALLERS = {'_tb710fu_live_capture_disabled', '_console_write',
                            '_console_write_unbuffered', '__cnputs',
@@ -313,6 +318,21 @@ def verify(tree, config, native_path):
     adapter_source_calls = {name: {'symbol': strong_import(live_xnu, name),
                                   'branches': branch_relocations(live_xnu, name)}
                             for name in ADAPTER_SOURCE_IMPORTS}
+    checkpoint_display_calls = {name: {'symbol': strong_import(live_xnu, name),
+                                       'branches': branch_relocations(live_xnu, name)}
+                                for name in CHECKPOINT_DISPLAY_IMPORTS}
+    require(any(call['caller'] == '_checkpoint_publish' for call in
+                checkpoint_display_calls['_tb_live_display_scroll_log']['branches']),
+            'Synchronous checkpoint renderer must draw the captured scrollback')
+    require(any(call['caller'] == '_checkpoint_publish' for call in
+                checkpoint_display_calls['_tb_live_display_checkpoint_qr']['branches']),
+            'Synchronous checkpoint QR must use the bottom-right layout')
+    require(any(call['caller'] in {'_checkpoint_status', '_checkpoint_publish'} for call in
+                checkpoint_display_calls['_tb_live_display_checkpoint_status']['branches']),
+            'Synchronous checkpoint status must stay in the text pane')
+    display = audit.MachO(members['LiveDisplay.o'])
+    for name in CHECKPOINT_DISPLAY_IMPORTS:
+        strong_definition(display, name)
     adapter_snapshot_calls = adapter_source_calls['_tb710fu_ramoops_snapshot_copy']['branches']
     require(any(call['caller'] == '_tb710fu_live_log_putc' for call in
                 adapter_source_calls['_tb710fu_live_capture_putc']['branches']),
@@ -411,6 +431,7 @@ def verify(tree, config, native_path):
             'ramoops_snapshot_provider': ramoops_provider,
             'adapter_snapshot_calls': adapter_snapshot_calls, 'native_definitions': definitions,
             'adapter_source_calls': adapter_source_calls,
+            'checkpoint_display_calls': checkpoint_display_calls,
             'dual_source_log_contract': builder.DUAL_SOURCE_LOG_CONTRACT,
             'object_instruction_checks': instruction_checks,
             'linkarchives_sha256': digest(link), 'linkarchives': link_text,

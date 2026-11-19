@@ -3,7 +3,8 @@
 
 Its host fixture checks all changed pixels, guard regions, padded scanlines,
 the exact upstream byte-band formula, invalid input rejection and status/QR
-updates preserving the three bands. Host execution is not panel validation.
+updates preserving the three bands. Checkpoint mode also keeps a bottom-right QR
+clear of a bounded scrolling log pane. Host execution is not panel validation.
 """
 import argparse
 import hashlib
@@ -59,8 +60,13 @@ def main():
         "sources": {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                     for path in sources},
         "geometry": [[3200, 2000, 12800], [640, 480, 2560], [641, 481, 2576],
-                     [153, 240, 616], [289, 480, 1160], [290, 480, 1160], [1600, 900, 6412]],
+                     [240, 480, 960], [153, 240, 616], [289, 480, 1160],
+                     [290, 480, 1160], [1600, 900, 6412]],
         "dual_QR": "independent fixed-left and live-right rectangles; status row is below both codes; small surfaces share one caller-alternated slot",
+        "checkpoint_display": {"qr_anchor": "bottom-right", "log_region": "left-of-QR",
+                               "scroll_max_rows": 64, "scroll_max_columns": 256,
+                               "offset_model": "absolute-range; append-unseen-suffix; mark-overwrite-gap",
+                               "source": "captured XNU ring tail", "console_writer_draws": False},
         "hardware_verified": False,
         "limits": "Host memory rendering only; no actual panel, cache, timing, mapping or concurrency proof.",
     }

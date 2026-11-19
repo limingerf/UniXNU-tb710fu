@@ -23,7 +23,9 @@ SYMBOLS = ('_tb710fu_live_log_init', '_tb710fu_live_log_poll',
            '_tb710fu_live_log_snapshot_single_file',
            '_tb710fu_live_log_snapshot', '_tb710fu_live_log_next_frame',
            '_tb710fu_live_log_can_snapshot', '_tb710fu_live_log_can_snapshot_single',
-           '_tb_live_display_qr_slot', '_tb_live_qr_encode',
+           '_tb_live_display_qr_slot', '_tb_live_display_checkpoint_qr',
+           '_tb_live_display_scroll_log', '_tb_live_display_checkpoint_status',
+           '_tb_live_qr_encode',
            '_tb_live_qr_QrEncodeData')
 OBJECT_SYMBOLS = {
     'LiveProtocol.o': ('_tb710fu_live_log_snapshot', '_tb710fu_live_log_next_frame',
@@ -31,7 +33,9 @@ OBJECT_SYMBOLS = {
                        '_tb710fu_live_log_set_source', '_tb710fu_live_log_snapshot_file',
                        '_tb710fu_live_log_snapshot_single_file',
                        '_tb710fu_live_log_can_snapshot_single'),
-    'LiveDisplay.o': ('_tb_live_display_qr_slot', '_tb_live_display_bands'),
+    'LiveDisplay.o': ('_tb_live_display_qr_slot', '_tb_live_display_bands',
+                      '_tb_live_display_checkpoint_qr', '_tb_live_display_scroll_log',
+                      '_tb_live_display_checkpoint_status'),
     'LiveQr.o': ('_tb_live_qr_encode',),
     'LiveXnu.o': ('_tb710fu_live_log_init', '_tb710fu_live_log_poll',
                   '_tb710fu_live_log_checkpoint',
@@ -50,11 +54,34 @@ DUAL_SOURCE_LOG_CONTRACT = {
     'frames_per_poll_max': 1, 'poll_interval_ms': 250,
     'complete_rounds_before_replacement_min': 16,
     'single_frame_rounds_before_replacement': 2,
+    'checkpoint_mode': {
+        'argument': 'tb710fu-live-checkpoints=1',
+        'requires': 'tb710fu-live-log=1',
+        'provider': 'tb710fu_live_log_checkpoint',
+        'background_worker_disabled': True,
+        'sampled_provider': 'tb710fu_live_log_checkpoint_sampled',
+        'sampled_quiet_period_ms_after_attempt': 250,
+        'explicit_stage_boundaries_immediate': True,
+        'independent_single_frame_session_per_render': True,
+        'raw_tail': 'largest current XNU suffix fitting one systematic frame',
+        'display': {'checkpoint_qr_anchor': 'bottom-right',
+                    'scroll_log_region': 'left-of-checkpoint-qr',
+                    'scroll_source': 'latest-current-xnu-capture-tail',
+                    'scroll_max_rows': 64, 'scroll_max_columns': 256,
+                    'scroll_offset_model': 'absolute-range; append-unseen-suffix; mark-overwrite-gap',
+                    'scroll_refresh': 'after-synchronous-checkpoint-snapshot',
+                    'console_character_writer_draws': False,
+                    'status_location': 'footer-left-of-checkpoint-qr'},
+    },
 }
 ADAPTER_SOURCE_IMPORTS = (
     '_tb710fu_ramoops_snapshot_copy', '_tb710fu_live_capture_putc',
     '_tb710fu_live_capture_copy', '_tb710fu_live_log_set_source',
     '_tb710fu_live_log_snapshot_file', '_tb710fu_live_log_snapshot_single_file',
+)
+CHECKPOINT_DISPLAY_IMPORTS = (
+    '_tb_live_display_checkpoint_qr', '_tb_live_display_scroll_log',
+    '_tb_live_display_checkpoint_status',
 )
 DISABLED_CAPTURE_CALLERS = {'_tb710fu_live_capture_disabled', '_console_write',
                            '_console_write_unbuffered', '__cnputs',
@@ -164,6 +191,17 @@ def dual_source_evidence(integration, report):
         import_branch_evidence(imports['_tb710fu_ramoops_putc'], '_tb710fu_ramoops_putc')
 
 
+def checkpoint_display_evidence(integration):
+    calls = integration.get('checkpoint_display_calls', {})
+    require(set(calls) == set(CHECKPOINT_DISPLAY_IMPORTS),
+            'Incomplete synchronous checkpoint display-call evidence')
+    callers = {name: import_branch_evidence(calls[name], name) for name in CHECKPOINT_DISPLAY_IMPORTS}
+    require('_checkpoint_publish' in callers['_tb_live_display_scroll_log'] and
+            '_checkpoint_publish' in callers['_tb_live_display_checkpoint_qr'] and
+            callers['_tb_live_display_checkpoint_status'] & {'_checkpoint_status', '_checkpoint_publish'},
+            'Synchronous log, bottom-right QR and status do not have their real checkpoint callers')
+
+
 def _verify(integration_bytes, report_bytes, archive, kernel, official, build, storage):
     integration = json.loads(integration_bytes)
     report = json.loads(report_bytes)
@@ -200,6 +238,7 @@ def _verify(integration_bytes, report_bytes, archive, kernel, official, build, s
             force_load_count(integration['linkarchives'], report['archive']) == 1,
             'Live-log archive was not force-loaded exactly once')
     dual_source_evidence(integration, report)
+    checkpoint_display_evidence(integration)
     audit = load_audit()
     member_list = [(name, data) for name, data in audit.ar_members(archive)
                    if not name.startswith('__.SYMDEF')]

@@ -12,13 +12,18 @@ typedef uint8_t UINT8;
 #include "Font.h"
 
 #define DISPLAY_MARGIN 16U
+#define DISPLAY_GAP 16U
+#define CHECKPOINT_LOG_MIN_COLUMNS 8U
 #define GLYPH_WIDTH 8U
 #define GLYPH_HEIGHT 19U
 
+static char scroll_lines[TB_LIVE_SCROLL_MAX_ROWS][TB_LIVE_SCROLL_MAX_COLUMNS];
+
 static int valid(const TB_LIVE_DISPLAY *d)
 {
-    size_t frame, band, first_row, status_y;
-    uint32_t dual, horizontal;
+    size_t frame, band, first_row, status_y, checkpoint_size;
+    uint32_t dual, horizontal, checkpoint_scale, checkpoint_x, checkpoint_y;
+    uint32_t log_width, log_height, log_columns, log_rows, checkpoint_status_y;
     if (!d || !d->Base || ((uintptr_t)d->Base & 3U) ||
         d->Width < TB_LIVE_QR_SIDE + DISPLAY_MARGIN * 2U ||
         d->Width > 8192U || d->Height < 240U || d->Height > 8192U ||
@@ -47,6 +52,37 @@ static int valid(const TB_LIVE_DISPLAY *d)
     if (d->StatusY != status_y ||
         status_y + GLYPH_HEIGHT * d->TextScale > d->Height)
         return 0;
+    checkpoint_scale = d->CheckpointQrScale;
+    if (!checkpoint_scale) {
+        return !d->CheckpointQrX && !d->CheckpointQrY && !d->LogX &&
+               !d->LogY && !d->LogWidth && !d->LogHeight &&
+               !d->LogColumns && !d->LogRows && !d->CheckpointStatusY;
+    }
+    if (checkpoint_scale > 8U)
+        return 0;
+    checkpoint_size = (size_t)TB_LIVE_QR_SIDE * checkpoint_scale;
+    checkpoint_x = d->Width - DISPLAY_MARGIN - (uint32_t)checkpoint_size;
+    checkpoint_y = d->Height - DISPLAY_MARGIN - (uint32_t)checkpoint_size;
+    checkpoint_status_y = d->Height - DISPLAY_MARGIN - GLYPH_HEIGHT * d->TextScale;
+    if (checkpoint_y < first_row + 8U ||
+        checkpoint_x < DISPLAY_MARGIN + DISPLAY_GAP + GLYPH_WIDTH * d->TextScale ||
+        d->CheckpointQrX != checkpoint_x || d->CheckpointQrY != checkpoint_y ||
+        d->LogX != DISPLAY_MARGIN ||
+        d->LogWidth != checkpoint_x - DISPLAY_MARGIN - DISPLAY_GAP ||
+        d->LogY != first_row + 8U || checkpoint_status_y <= d->LogY + 8U ||
+        d->CheckpointStatusY != checkpoint_status_y)
+        return 0;
+    log_width = d->LogWidth;
+    log_height = checkpoint_status_y - d->LogY - 8U;
+    log_columns = log_width / (GLYPH_WIDTH * d->TextScale);
+    log_rows = log_height / (GLYPH_HEIGHT * d->TextScale);
+    if (log_columns > TB_LIVE_SCROLL_MAX_COLUMNS)
+        log_columns = TB_LIVE_SCROLL_MAX_COLUMNS;
+    if (log_rows > TB_LIVE_SCROLL_MAX_ROWS)
+        log_rows = TB_LIVE_SCROLL_MAX_ROWS;
+    if (!log_columns || !log_rows || d->LogHeight != log_height ||
+        d->LogColumns != log_columns || d->LogRows != log_rows)
+        return 0;
     return 1;
 }
 
@@ -54,8 +90,8 @@ int tb_live_display_bind(TB_LIVE_DISPLAY *d, void *base, size_t bytes,
                          uint32_t width, uint32_t height, uint32_t stride_bytes)
 {
     TB_LIVE_DISPLAY empty = {0};
-    size_t first_row;
-    uint32_t horizontal;
+    size_t first_row, log_min_width, checkpoint_vertical;
+    uint32_t horizontal, checkpoint_scale, checkpoint_horizontal;
     if (!d)
         return 0;
     *d = empty;
@@ -95,6 +131,41 @@ int tb_live_display_bind(TB_LIVE_DISPLAY *d, void *base, size_t bytes,
         d->QrScale = 8U;
     d->QrSecondX = d->DualQr ? width - DISPLAY_MARGIN - TB_LIVE_QR_SIDE * d->QrScale : d->QrX;
     d->StatusY = d->QrY + TB_LIVE_QR_SIDE * d->QrScale + 8U;
+    log_min_width = (size_t)GLYPH_WIDTH * d->TextScale * CHECKPOINT_LOG_MIN_COLUMNS;
+    if (width > DISPLAY_MARGIN * 3U + DISPLAY_GAP + log_min_width) {
+        checkpoint_horizontal = (uint32_t)((width - DISPLAY_MARGIN * 3U -
+            log_min_width) / TB_LIVE_QR_SIDE);
+        checkpoint_vertical = height - DISPLAY_MARGIN - (first_row + 8U);
+        checkpoint_scale = (uint32_t)(checkpoint_vertical / TB_LIVE_QR_SIDE);
+        if (checkpoint_scale > checkpoint_horizontal)
+            checkpoint_scale = checkpoint_horizontal;
+        if (checkpoint_scale > 8U)
+            checkpoint_scale = 8U;
+        if (checkpoint_scale) {
+            uint32_t qr_size = TB_LIVE_QR_SIDE * checkpoint_scale;
+            uint32_t checkpoint_status_y = height - DISPLAY_MARGIN - GLYPH_HEIGHT * d->TextScale;
+            d->CheckpointQrScale = checkpoint_scale;
+            d->CheckpointQrX = width - DISPLAY_MARGIN - qr_size;
+            d->CheckpointQrY = height - DISPLAY_MARGIN - qr_size;
+            d->LogX = DISPLAY_MARGIN;
+            d->LogY = (uint32_t)first_row + 8U;
+            d->LogWidth = d->CheckpointQrX - DISPLAY_MARGIN - DISPLAY_GAP;
+            d->CheckpointStatusY = checkpoint_status_y;
+            if (checkpoint_status_y > d->LogY + 8U) {
+                d->LogHeight = checkpoint_status_y - d->LogY - 8U;
+                d->LogColumns = d->LogWidth / (GLYPH_WIDTH * d->TextScale);
+                d->LogRows = d->LogHeight / (GLYPH_HEIGHT * d->TextScale);
+                if (d->LogColumns > TB_LIVE_SCROLL_MAX_COLUMNS)
+                    d->LogColumns = TB_LIVE_SCROLL_MAX_COLUMNS;
+                if (d->LogRows > TB_LIVE_SCROLL_MAX_ROWS)
+                    d->LogRows = TB_LIVE_SCROLL_MAX_ROWS;
+            } else {
+                d->CheckpointQrScale = d->CheckpointQrX = d->CheckpointQrY = 0;
+                d->LogX = d->LogY = d->LogWidth = d->LogHeight = 0;
+                d->LogColumns = d->LogRows = d->CheckpointStatusY = 0;
+            }
+        }
+    }
     if (!valid(d)) {
         *d = empty;
         return 0;
@@ -149,6 +220,164 @@ int tb_live_display_qr_slot(TB_LIVE_DISPLAY *d, const uint32_t *bgra,
     return 1;
 }
 
+int tb_live_display_checkpoint_qr(TB_LIVE_DISPLAY *d, const uint32_t *bgra,
+                                  size_t pixels, uint32_t side)
+{
+    uint32_t x, y, xx, yy;
+    if (!valid(d) || !d->CheckpointQrScale || !bgra || ((uintptr_t)bgra & 3U) ||
+        side != TB_LIVE_QR_SIDE || pixels < (size_t)TB_LIVE_QR_SIDE * TB_LIVE_QR_SIDE)
+        return 0;
+    for (y = 0; y < side; ++y)
+        for (x = 0; x < side; ++x) {
+            uint32_t color = UINT32_C(0xff000000) | (bgra[(size_t)y * side + x] & UINT32_C(0x00ffffff));
+            for (yy = 0; yy < d->CheckpointQrScale; ++yy)
+                for (xx = 0; xx < d->CheckpointQrScale; ++xx)
+                    pixel(d, d->CheckpointQrX + x * d->CheckpointQrScale + xx,
+                          d->CheckpointQrY + y * d->CheckpointQrScale + yy, color);
+        }
+    return 1;
+}
+
+static void draw_character(TB_LIVE_DISPLAY *d, uint32_t x, uint32_t y,
+                           uint8_t c, uint32_t scale, uint32_t color)
+{
+    uint32_t gx, gy, xx, yy;
+    if (c < 32U || c > 126U)
+        c = '?';
+    for (gy = 0; gy < GLYPH_HEIGHT; ++gy)
+        for (gx = 0; gx < GLYPH_WIDTH; ++gx) {
+            if (!(mEarlyFont[c - 32U][gy] & (128U >> gx)))
+                continue;
+            for (yy = 0; yy < scale; ++yy)
+                for (xx = 0; xx < scale; ++xx)
+                    pixel(d, x + gx * scale + xx, y + gy * scale + yy, color);
+        }
+}
+
+static void clear_scroll_row(TB_LIVE_DISPLAY *d, uint32_t logical_row)
+{
+    uint32_t line_height = GLYPH_HEIGHT * d->TextScale;
+    uint32_t y = d->LogY + logical_row * line_height;
+    for (uint32_t row = 0; row < line_height; ++row)
+        for (uint32_t x = d->LogX; x < d->LogX + d->LogWidth; ++x)
+            pixel(d, x, y + row, UINT32_C(0xff000000));
+}
+
+static void scroll_panel_up(TB_LIVE_DISPLAY *d)
+{
+    uint32_t line_height = GLYPH_HEIGHT * d->TextScale;
+    uint32_t visible_height = d->LogRows * line_height;
+    for (uint32_t row = 0; row + line_height < visible_height; ++row)
+        for (uint32_t x = d->LogX; x < d->LogX + d->LogWidth; ++x) {
+            volatile uint32_t *destination = (volatile uint32_t *)(d->Base +
+                (size_t)(d->LogY + row) * d->StrideBytes + (size_t)x * 4U);
+            volatile uint32_t *source = (volatile uint32_t *)(d->Base +
+                (size_t)(d->LogY + row + line_height) * d->StrideBytes + (size_t)x * 4U);
+            *destination = *source;
+        }
+}
+
+static void scroll_next_line(TB_LIVE_DISPLAY *d)
+{
+    uint32_t current;
+    if (d->LogCount < d->LogRows) {
+        current = (d->LogHead + d->LogCount) % d->LogRows;
+        ++d->LogCount;
+    } else {
+        scroll_panel_up(d);
+        d->LogHead = (d->LogHead + 1U) % d->LogRows;
+        current = (d->LogHead + d->LogCount - 1U) % d->LogRows;
+    }
+    for (uint32_t i = 0; i < TB_LIVE_SCROLL_MAX_COLUMNS; ++i)
+        scroll_lines[current][i] = '\0';
+    clear_scroll_row(d, d->LogCount - 1U);
+    d->LogColumn = 0;
+}
+
+static void scroll_character(TB_LIVE_DISPLAY *d, uint8_t c)
+{
+    uint32_t current, line_height, x, y;
+    if (d->LogColumn >= d->LogColumns)
+        scroll_next_line(d);
+    current = (d->LogHead + d->LogCount - 1U) % d->LogRows;
+    scroll_lines[current][d->LogColumn] = (char)c;
+    line_height = GLYPH_HEIGHT * d->TextScale;
+    x = d->LogX + d->LogColumn * GLYPH_WIDTH * d->TextScale;
+    y = d->LogY + (d->LogCount - 1U) * line_height;
+    draw_character(d, x, y, c, d->TextScale, UINT32_C(0xffeeeeee));
+    ++d->LogColumn;
+}
+
+static void scroll_append(TB_LIVE_DISPLAY *d, uint8_t c)
+{
+    if (c == '\r')
+        return;
+    if (c == '\n') {
+        scroll_next_line(d);
+        return;
+    }
+    if (c == '\t') {
+        uint32_t spaces = 4U - (d->LogColumn & 3U);
+        while (spaces--)
+            scroll_character(d, ' ');
+        return;
+    }
+    if (c < 32U || c > 126U)
+        c = '?';
+    scroll_character(d, c);
+}
+
+int tb_live_display_scroll_log(TB_LIVE_DISPLAY *d, const char *text, size_t bytes,
+                               uint64_t start, uint64_t end)
+{
+    if (!valid(d) || !d->CheckpointQrScale || (!text && bytes) || end < start ||
+        end - start != bytes)
+        return 0;
+    if (!d->LogInitialized) {
+        for (uint32_t row = 0; row < TB_LIVE_SCROLL_MAX_ROWS; ++row)
+            for (uint32_t col = 0; col < TB_LIVE_SCROLL_MAX_COLUMNS; ++col)
+                scroll_lines[row][col] = '\0';
+        for (uint32_t y = d->LogY; y < d->LogY + d->LogHeight; ++y)
+            for (uint32_t x = d->LogX; x < d->LogX + d->LogWidth; ++x)
+                pixel(d, x, y, UINT32_C(0xff000000));
+        d->LogHead = 0;
+        d->LogCount = 1;
+        d->LogColumn = 0;
+        d->LogEnd = start;
+        d->LogInitialized = 1;
+    }
+    if (end <= d->LogEnd)
+        return 1;
+    if (start > d->LogEnd) {
+        static const char gap[] = "[LOG GAP]\n";
+        for (size_t i = 0; i < sizeof(gap) - 1U; ++i)
+            scroll_append(d, (uint8_t)gap[i]);
+    }
+    size_t offset = d->LogEnd > start ? (size_t)(d->LogEnd - start) : 0U;
+    if (offset > bytes)
+        return 0;
+    for (size_t i = offset; i < bytes; ++i)
+        scroll_append(d, (uint8_t)text[i]);
+    d->LogEnd = end;
+    return 1;
+}
+
+int tb_live_display_checkpoint_status(TB_LIVE_DISPLAY *d, const char *text)
+{
+    uint32_t index, x, y, maximum;
+    if (!valid(d) || !d->CheckpointQrScale || !text)
+        return 0;
+    for (y = 0; y < GLYPH_HEIGHT * d->TextScale; ++y)
+        for (x = d->LogX; x < d->LogX + d->LogWidth; ++x)
+            pixel(d, x, d->CheckpointStatusY + y, UINT32_C(0xff000000));
+    maximum = d->LogColumns;
+    for (index = 0; index < maximum && text[index]; ++index)
+        draw_character(d, d->LogX + index * GLYPH_WIDTH * d->TextScale,
+                       d->CheckpointStatusY, (uint8_t)text[index], d->TextScale,
+                       UINT32_C(0xffeeeeee));
+    return 1;
+}
+
 int tb_live_display_status(TB_LIVE_DISPLAY *d, const char *text)
 {
     uint32_t x, y, index, maximum, scale;
@@ -163,16 +392,8 @@ int tb_live_display_status(TB_LIVE_DISPLAY *d, const char *text)
         uint8_t c = (uint8_t)text[index];
         if (c < 32U || c > 126U)
             c = '?';
-        for (y = 0; y < GLYPH_HEIGHT; ++y)
-            for (x = 0; x < GLYPH_WIDTH; ++x) {
-                uint32_t xx, yy;
-                if (!(mEarlyFont[c - 32U][y] & (128U >> x)))
-                    continue;
-                for (yy = 0; yy < scale; ++yy)
-                    for (xx = 0; xx < scale; ++xx)
-                        pixel(d, DISPLAY_MARGIN + index * GLYPH_WIDTH * scale + x * scale + xx,
-                              d->StatusY + y * scale + yy, UINT32_C(0xffeeeeee));
-            }
+        draw_character(d, DISPLAY_MARGIN + index * GLYPH_WIDTH * scale,
+                       d->StatusY, c, scale, UINT32_C(0xffeeeeee));
     }
     return 1;
 }

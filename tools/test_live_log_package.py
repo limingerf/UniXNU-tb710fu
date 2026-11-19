@@ -60,6 +60,10 @@ def fixture():
         'adapter_source_calls': {name: call_evidence('_tb710fu_live_log_putc' if name ==
             '_tb710fu_live_capture_putc' else '_tb710fu_live_log_poll')
             for name in live.ADAPTER_SOURCE_IMPORTS},
+        'checkpoint_display_calls': {
+            name: call_evidence('_checkpoint_status' if name == '_tb_live_display_checkpoint_status'
+                                else '_checkpoint_publish')
+            for name in live.CHECKPOINT_DISPLAY_IMPORTS},
         'hook_objects': {
             'osfmk/DEVELOPMENT/serial_console.o': {
                 'object_sha256': 'd' * 64, 'compile_record_sha256': 'e' * 64,
@@ -138,6 +142,17 @@ class LiveLogPackaging(unittest.TestCase):
                         elif mutation == 'unaligned': branch['section_offset'] = '0x1'
                         elif mutation == 'negative': branch['section_offset'] = '-0x4'
                         else: branch['section'] = '__data'
+                    with self.assertRaises(ValueError): check(value)
+
+    def test_checkpoint_display_calls_must_use_live_scroll_qr_and_status_paths(self):
+        for symbol in live.CHECKPOINT_DISPLAY_IMPORTS:
+            for mutation in ('missing', 'no_branch', 'wrong_caller'):
+                with self.subTest(symbol=symbol, mutation=mutation):
+                    value = fixture()
+                    calls = value['integration']['checkpoint_display_calls']
+                    if mutation == 'missing': calls.pop(symbol)
+                    elif mutation == 'no_branch': calls[symbol]['branches'] = []
+                    else: calls[symbol]['branches'][0]['caller'] = '_other'
                     with self.assertRaises(ValueError): check(value)
 
     def test_each_console_path_and_both_source_providers_are_required(self):

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "build": {
+    "run_id": 44538544326,
+    "run_attempt": 1,
+    "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44538544326",
+    "workflow": ".github/workflows/macos-kernel.yml",
+    "runner_stage": "ufs-integrated",
+    "run_status": "success",
+    "device_commit": "4cf79a8422da4d1e46c472c6421f2c39f5be8ea7",
+    "framework_revision": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+    "xnu_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+    "patch": {
+      "path": "patches/xnu/0027-tb710fu-prelink-rnx-edge-checkpoints.patch",
+      "sha256": "49aa11bd13e0356ff9ec326cb7168cdc9ffc0dcf40889e904c31850b8a2e2baa"
+    },
+    "native_sha256": "467408dec8eed913810b764ce013959a6bdeb206ee203aea58d9ebb686971490",
+    "prelinked_sha256": "feb58a85b7f7e786601ccf4458a76083ba2e66f0ffb4ee731cb32ff4a26bad03",
+    "prelinked_bytes": 142835712,
+    "production_parser": "PASS",
+    "live_log_integration_report_sha256": "6403602c5ba993904a31391f2971511bf64f254db7decf92f1f1e3de82d216c3",
+    "native_kernel_step": "success",
+    "strict_prelink_step": "success",
+    "production_parser_step": "success",
+    "runtime_qualified": false,
+    "hardware_boot_verified": false,
+    "device_operations": false
+  },
+  "artifact": {
+    "id": 14539106331,
+    "name": "tb710fu-ufs-integrated-44538544326",
+    "bytes": 39167082,
+    "sha256": "c28889f89505e749fb676d0a6ac79801834a4c70e6c4f241a599b1d7e55e2188",
+    "github_digest_verified": true
+  }
+}

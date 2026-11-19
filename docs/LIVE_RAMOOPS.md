@@ -5,13 +5,13 @@
 也不承诺强制重启后保留；Android pstore 跨重启恢复需要另行实现固件和
 加载器内存预留。
 
-本组件替换逐检查点两秒回放。两个二维码读取本次启动的实际日志；
+本组件替换逐检查点两秒回放。普通双通道模式的两个二维码读取本次启动的实际日志；
 屏幕顶部保留固定官方 UniXNU 的绿、蓝、品红三条，每条占
 `((rowBytes * height) >> 4) & ~7` 字节。
 
 ## 显示与接收
 
-TB710FU 的 3200×2000 帧缓冲并排显示两个实时二维码：
+TB710FU 的 3200×2000 帧缓冲在普通双通道模式下并排显示两个实时二维码：
 
 - 左侧 XNU：直接读取独立的 64 KiB XNU 输出环形缓冲。每份文件都带有
   `machine_startup` 前冻结的最多 512 字节早期备份，以及当前最近最多
@@ -66,12 +66,18 @@ ramoops 是当前启动的内核缓冲副本，因此两侧文本可能重叠。
 日志范围。定位故障指令还需要 panic、异常寄存器或其他直接证据。
 
 `tb710fu-live-checkpoints=1` 须与 `tb710fu-live-log=1` 同时启用。该模式由
-startup/kalloc 调用点发布单帧 XNU 文件，替代后台线程和 250ms 双通道轮询。
+startup/kalloc/VM 调用点发布单帧 XNU 文件，替代后台线程和 250ms 双通道轮询。
 `0024` 将 startup callback 入口和返回、kalloc 内层进度和组循环的二维码发布
 限制为距上一次尝试结束至少约 250ms。每个调用点仍先把事件写入日志环。
 kalloc 初始化、fixed/variable views 的入口和结束、startup phase、bootstrap
 操作及显示刷新立即尝试发布。每个已绘制的检查点有独立 OneSend session。
 接收器重置旧 session 后可从一帧恢复本次快照。
+
+同步检查点模式下，屏幕左侧绘制当前 XNU 环形缓冲的滚动文本尾部，二维码固定在
+右下角，状态行位于文本窗格底部；二维码之外仍保留顶部官方色带。日志在检查点
+捕获完成后重绘，最多 64 行、每行 256 个 ASCII 字符，长行折行，非 ASCII 控制字节
+显示为 `?`。页面停住后画面保留最后一次成功绘制的文本和二维码。非检查点的普通
+双通道模式继续使用原左右二维码布局。
 
 同步二维码只带能放进一个 systematic frame 的最新 XNU 尾部和阶段字段；
 早期备份仍标记为 deferred，不声称单帧里包含完整控制台历史。capture、编码
@@ -94,14 +100,16 @@ bootstrap 内 `early_random` 的五次调用、kernel list/post tests，以及 t
 
 检查点诊断的显式参数为 `tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1`。
 `debug=0x8` 选择现有 kprintf 输出，不设置 HALT 位。
-字符写入路径仍只做内存日志镜像，绝不编码二维码或画屏。检查点模式由
+字符写入路径仍只做内存日志镜像，绝不格式化、编码二维码或画屏。滚屏文本从
+已复制的有界日志快照绘制，不在 `kprintf` 字符回调中更新。检查点模式由
 startup/kalloc 调用点同步发布 XNU 单帧；不等待线程、轮询节流或 OneSend
 多帧收集。未提供 `tb710fu-live-checkpoints=1` 时保留旧双通道 250ms 轮询模式。
 
 渲染使用原生内核栈、内核拥有的当前启动缓冲区和非阻塞 render guard；
 不改 TTBR、TCR、SCTLR，不使用旧 reporter 的共享栈或临时地址空间。
 正常输出与图形禁用输出均保留 XNU、当前启动 ramoops 和 CDC 的内存镜像，
-只抑制覆盖诊断画面的 VC 文本。控制台重建后恢复标准条和二维码。
+只抑制覆盖诊断画面的 VC 文本；检查点模式的左侧滚屏文本由已捕获的 XNU 日志快照
+绘制。控制台重建后恢复标准条和二维码。
 实际映射、线程调度、扫描输出和缓存行为仍须实机验证。
 
 ## 来源与验证
@@ -124,6 +132,8 @@ XNU 的对象宏 DEBUG 仅在三个 QR 对象的兼容头内解除，再定义 E
 模式不启动竞争 renderer worker，并保留 callback begin/return 两侧边界。
 打包门禁要求新 boot argument 与 live-log 同时出现，native integration 检查
 startup.o 与 kalloc.o 对即时和采样两个强 provider 的实际分支。
+`0027` 为 PRELINKTEXT RNX 的首段边缘 helper 增加 L2 TTE 分支和每 64 项 PTE
+批次的即时同步检查点；文本滚动与二维码更新使用这些同一快照边界。
 
 真实生产源码、独立捕获缓冲、双通道、早期备份、固定接收器和实际 Mu
 分别经过主机检查；实际 macOS arm64e 编译、强钩子、归档、最终代码和

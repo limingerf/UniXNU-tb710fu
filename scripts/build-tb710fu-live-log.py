@@ -68,6 +68,14 @@ DUAL_SOURCE_LOG_CONTRACT = {
         'explicit_stage_boundaries_immediate': True,
         'independent_single_frame_session_per_render': True,
         'raw_tail': 'largest current XNU suffix fitting one systematic frame',
+        'display': {'checkpoint_qr_anchor': 'bottom-right',
+                    'scroll_log_region': 'left-of-checkpoint-qr',
+                    'scroll_source': 'latest-current-xnu-capture-tail',
+                    'scroll_max_rows': 64, 'scroll_max_columns': 256,
+                    'scroll_offset_model': 'absolute-range; append-unseen-suffix; mark-overwrite-gap',
+                    'scroll_refresh': 'after-synchronous-checkpoint-snapshot',
+                    'console_character_writer_draws': False,
+                    'status_location': 'footer-left-of-checkpoint-qr'},
     },
 }
 

@@ -266,11 +266,12 @@ static void checkpoint_set_stage(const char *stage)
 static void checkpoint_status(const char *result)
 {
     char text[256];
-    (void)snprintf(text, sizeof(text), "CKPT=%s N=%llu ERR=%u %.48s | %.24s",
+    (void)snprintf(text, sizeof(text), "CKPT=%s N=%llu ERR=%u LOG-END=%llu %.24s | %.24s",
         result, (unsigned long long)checkpoint_generation,
-        __atomic_load_n(&checkpoint_failures, __ATOMIC_RELAXED), checkpoint_stage,
+        __atomic_load_n(&checkpoint_failures, __ATOMIC_RELAXED),
+        (unsigned long long)display.LogEnd, checkpoint_stage,
         TB_LIVE_BUILD_LABEL);
-    (void)tb_live_display_status(&display, text);
+    (void)tb_live_display_checkpoint_status(&display, text);
     live_barrier();
 }
 
@@ -307,6 +308,9 @@ static void checkpoint_publish(const char *stage, int sampled)
         checkpoint_status(state.state == TB710FU_LIVE_CAPTURE_BUSY ? "BUSY" : "CAPTURE-ERR");
         goto done;
     }
+    uint64_t log_start = state.end - (uint64_t)copied;
+    (void)tb_live_display_scroll_log(&display, (const char *)snapshot,
+                                     (size_t)copied, log_start, state.end);
 
     uint64_t generation = checkpoint_generation + 1u;
     if (generation == 0) generation = 1u;
@@ -348,7 +352,7 @@ static void checkpoint_publish(const char *stage, int sampled)
                 goto done;
             }
             ++qr_encoded[0];
-            if (!tb_live_display_qr_slot(&display, pixels, 121u * 121u, 121u, 0u)) {
+            if (!tb_live_display_checkpoint_qr(&display, pixels, 121u * 121u, 121u)) {
                 (void)__atomic_fetch_add(&checkpoint_failures, 1u, __ATOMIC_RELAXED);
                 checkpoint_status("DRAW-ERR");
                 goto done;
@@ -432,6 +436,7 @@ void tb710fu_live_log_init(void)
     tb710fu_live_log_sender_init(&ramoops_sender);
     (void)tb710fu_live_log_set_source(&xnu_sender, TB710FU_LIVE_LOG_XNU);
     next_slot = 1u; /* First sample ramoops, but publish only after early freeze. */
+    if (checkpoint_arg && checkpoints == 1 && !display.CheckpointQrScale) return;
     __atomic_store_n(&checkpoint_mode, checkpoint_arg && checkpoints == 1, __ATOMIC_RELEASE);
     __atomic_store_n(&enabled, 1u, __ATOMIC_RELEASE);
     tb710fu_live_log_refresh();
