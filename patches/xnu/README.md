@@ -180,6 +180,15 @@ then publishes each completed 64-entry expansion or PTE batch. These immediate
 frames bypass the sampled quiet period that hid short helper progress after the
 RNX entry frame; page-table stores retain their original order.
 
+`0028-tb710fu-prelink-rnx-pte-substeps.patch` counts active PRELINKTEXT
+`update_or_defer_tte` calls and adds a text/capture checkpoint after each 16
+calls return. It reports the completed count and next index/VA; the existing
+pre-update index marker remains, allowing the final log to bracket a small
+range. The normal path does not encode a QR in the VM helper; QR encoding and
+scanout run on the independent 250 ms carousel worker after the first valid
+snapshot seeds one frame. If that worker is not scheduled, QR advancement stops;
+checkpoint text capture remains synchronous.
+
 The first native attempt, run 44112832250 at `eb1f2bc7`, exposed a missing
 internal-header export in `pe_kprintf.c`. The device patch now adds its two real
 headers to `osfmk/kern/Makefile` XNU_ONLY_EXPORTS, using the same official

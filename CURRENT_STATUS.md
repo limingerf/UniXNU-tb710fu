@@ -11,6 +11,21 @@ edge helper 的活动范围是索引 12–511，至少还有索引 384–511 共
 没有绘制更新，不能单独认定内核在 PTE 384 指令上故障。证据见
 `docs/evidence/live-checkpoints-prelink-rnx-pte-44546733725.json`。
 
+新补丁 `0028-tb710fu-prelink-rnx-pte-substeps.patch` 仅在 PRELINKTEXT 活跃范围内，
+于 `update_or_defer_tte()` 返回后计数；每完成 16 次调用记录 completed count 和
+`next-i/next-va`。这样首批按真实更新次数对齐，且不会为未更新的页表项报进度。补丁
+SHA-256 `5ddf72b81c5a148e5afe04c1d6dbc1af5e320eb01723eb620fb0b6d52c7fb9f3`；已在隔离的
+pinned-source fixture 反向检查、正向 apply-check 并重放通过；官方 integrated build 待验证。此前 sampled
+QR cadence 曾提前退出 checkpoint publisher，从而也挡住文本更新；该 gate 已移除，滚屏
+现在每个有效 capture checkpoint 都更新；首次有效快照可 seed 一帧 QR，之后由独立 worker
+以 250ms cadence 轮播，不再在 PTE 检查点中同步 fallback 编码。若 worker 未获调度，二维码
+轮播会停止，但滚屏仍随内核检查点更新。
+多帧 raw 文件按绝对范围去重：本次 `earlybackup=[0,498)`、`current=[0,662)` 时早期
+字节已完全包含在 current，导出不会重复拼接这 498 字节。用户随后提供的二维码文件记录
+`startup-phase` 和 `vm_mem_bootstrap` / phase 5 begin；其滚屏照片随后又出现 PTE 384，说明
+QR 文件可能仍是尚未达到 16 轮替换门限的旧 immutable session，不能将屏幕较新内容误认为
+已进入该 QR 文件。本版本的状态栏新增 `W/Q/B/R` 用来观察 worker、sequence、block 和轮数。
+
 本次 build 已把 CDC transport 链接，测试启动参数也含 `tb710fu-cdc=1`；但官方补丁
 `0012` 把 `tb710fu_cdc_start()` 放在 `bsd_init()`、紧邻 `vfsinit()` 之前。XNU 先执行
 `machine_lockdown()`，再进入 `bsd_init()`，当前帧仍处于 `arm_vm_prot_finalize`，因此
@@ -20,6 +35,15 @@ edge helper 的活动范围是索引 12–511，至少还有索引 384–511 共
 解释 4 KiB granule/L3 PTE；[`调试与日志`](/D:/unixnu-tb710fu-clean/.work/UniXNU/docs/zh/guide/debugging.md)
 说明早期用屏幕或 UART、USB 前须确认协议兼容。设备 CDC 限制详见
 [`USB_CDC_PORT.md`](/D:/unixnu-tb710fu-clean/docs/USB_CDC_PORT.md)。
+
+后续屏幕日志还出现 `pe_arm_map_interrupt_controller: failed to find the
+interrupt-controller` 和 `pe_arm_init_debug: failed to find cpu-debug-interface`，随后
+滚屏到 `vm_mem_bootstrap` / phase 5。pinned XNU 中前者令 `pe_arm_init_interrupts()` 返回 0
+并跳过其 `pe_arm_init_timer()`，但 `PE_init_platform()` 忽略返回值，因此不是此处的直接
+panic；后者在没有 `panic_trace`/`stop_clocks` 启动请求时只是可选调试节点日志。当前生成
+ADT 的 `/arm-io` 有 0 个硬件子节点（`docs/ADT_STATUS.md`），能解释 interrupt-controller
+查找失败；它对平台其他 GIC/timer 初始化、worker 调度及启动的影响仍未验证。这是独立的
+ADT/SoC 集成缺口，暂不根据 Linux DTS 单方面合成节点。
 
 多帧 QR 版本已由官方 integrated run [44572852316](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44572852316)
 验证成功，设备提交 `ddfd2c97d22f965caa24270dff9bf04551f453dc`。Native arm64e SHA-256

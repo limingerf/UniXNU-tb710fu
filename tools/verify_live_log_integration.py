@@ -406,6 +406,10 @@ def verify(tree, config, native_path):
     arm_immediate = hooks['osfmk/DEVELOPMENT/arm_vm_init.o']['strong_hook_imports'][immediate]['branches']
     require(sum(call['caller'] in progress_callers for call in arm_immediate) >= 12,
             'PRELINKTEXT RNX edge path needs immediate table-selection and batch checkpoints')
+    arm_helper_immediate = sum(call['caller'] == '_arm_vm_page_granular_helper'
+                               for call in arm_immediate)
+    require(arm_helper_immediate >= 8,
+            'PRELINKTEXT helper must retain table probes, bounded expansion/PTE batches and the completed-PTE substep branch')
     console_calls = hooks['osfmk/DEVELOPMENT/serial_console.o']['strong_hook_imports']
     # The normal _cnputc tap predates LiveLog and alone proves nothing about
     # acquisition's disableConsoleOutput branch. Require the live-active gate
@@ -454,5 +458,6 @@ def verify(tree, config, native_path):
             'runtime_boot_argument': 'tb710fu-live-log=1 tb710fu-live-checkpoints=1',
             'synchronous_checkpoint_sites_verified': True,
             'lockdown_checkpoint_sites': lockdown_checkpoint_sites,
+            'prelink_rnx_helper_immediate_checkpoint_branches': arm_helper_immediate,
             'runtime_qualified': False, 'hardware_boot_verified': False,
             'qr_hardware_display_verified': False}

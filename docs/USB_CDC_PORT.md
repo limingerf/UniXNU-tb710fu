@@ -19,6 +19,20 @@ recommends framebuffer or UART evidence during early kernel entry and requires
 target-protocol compatibility before using a USB terminal. The `i=384` progress
 marker is emitted before applying PTE 384; it does not identify a fault PC.
 
+The user's later screen also shows `pe_arm_map_interrupt_controller: failed to
+find the interrupt-controller` and `pe_arm_init_debug: failed to find
+cpu-debug-interface`, followed by progress into `vm_mem_bootstrap` / phase 5.
+In pinned XNU, the interrupt-controller lookup failure makes
+`pe_arm_init_interrupts()` return 0 and skip its `pe_arm_init_timer()` call, but
+`PE_init_platform()` ignores that return, so this message alone does not stop
+bootstrap. The missing CPU debug interface is optional unless `panic_trace` or
+`stop_clocks` is requested; this package does not request either. The current
+host-generated ADT's `/arm-io` has zero hardware children (`docs/ADT_STATUS.md`),
+so the interrupt-controller lookup failure is expected from that ADT and remains
+a concrete platform integration gap. Its effect on the board's other GIC/timer
+setup and worker scheduling is not yet qualified; no speculative ADT node was
+added from Linux source facts alone.
+
 ## Stage-56 hardware feedback and extended platform trace
 
 The user now reports a working QR labelled `src-503599a0-cdc-qr`, stage 56,

@@ -72,13 +72,17 @@ OneSend QR 帧，不运行普通双通道 poller。日志 capture writer 仍只�
 限制为距上一次尝试结束至少约 250ms。每个调用点仍先把事件写入日志环。
 kalloc 初始化、fixed/variable views 的入口和结束、startup phase、bootstrap
 操作及显示刷新会立即尝试更新捕获和文本；QR 单独按 250 ms cadence 推进。
+worker 未启动或超过 1 秒未推进时，下一个有日志进展的 checkpoint 会补发一帧；
+这只在内核仍执行 checkpoint 时有效，不能在 CPU 完全停止后续播。
 每份 immutable 文件最多 4096 字节，ready 时合并冻结的最多 512 字节 early backup
-和最新 XNU 尾部，由 OneSend systematic 多帧循环发送。固定 receiver 必须收齐所有
+和最新 XNU 尾部；若 current 范围已覆盖 early backup 的字节，只导出一次，不重复拼接。
+二维码 worker 独立按 OneSend systematic 多帧循环发送。固定 receiver 必须收齐所有
 block，session 更新时 reset 接收器；新文件仅在旧 sender 完成 16 轮后替换。
 
 同步检查点模式下，屏幕左侧绘制当前 XNU 环形缓冲的滚动文本尾部，二维码固定在
-右下角，状态行位于文本窗格底部；二维码之外仍保留顶部官方色带。日志在检查点
-捕获完成后重绘，最多 64 行、每行 256 个 ASCII 字符，长行折行，非 ASCII 控制字节
+右下角，状态行位于文本窗格底部；二维码之外仍保留顶部官方色带。每个有效检查点
+捕获后都推进左侧日志文本，sampled QR cadence 不限速文本；最多 64 行、每行 256 个
+ASCII 字符，长行折行，非 ASCII 控制字节
 显示为 `?`。页面停住后画面保留最后一次成功绘制的文本和二维码。非检查点的普通
 双通道模式继续使用原左右二维码布局。
 
@@ -140,6 +144,10 @@ kernel_thread_start 和 250ms timer/wait 运行路径。
 `0027` 为 PRELINKTEXT RNX 的首段边缘 helper 增加 L2 TTE 分支和每 64 项 PTE
 批次的即时同步检查点；滚屏文本在这些边界更新，多帧 OneSend QR 独立按 cadence
 轮播同一不可变快照。
+`0028` 只统计 PRELINKTEXT 活跃范围内已经返回的 `update_or_defer_tte` 调用，每 16 次
+输出 completed count 和 next-index/VA；因此首批也按实际更新数对齐，而不是页表绝对索引。
+该循环只同步更新文本/capture；首次有效快照可 seed 一帧，之后二维码由独立 worker 每 250 ms
+轮播。worker 未获调度时二维码不会前进，避免在页表修改路径反复同步执行编码和显示写入。
 
 真实生产源码、独立捕获缓冲、双通道、早期备份、固定接收器和实际 Mu
 分别经过主机检查；实际 macOS arm64e 编译、强钩子、归档、最终代码和

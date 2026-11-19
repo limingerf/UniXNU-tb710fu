@@ -115,7 +115,8 @@ class LiveLogPackaging(unittest.TestCase):
                              'oversize_tail', 'oversize_body', 'old_fixed_left', 'multiple_frames',
                              'one_round', 'long_single_frame', 'no_qr_carousel', 'short_qr_dwell',
                              'single_frame_checkpoint', 'no_early_backup', 'no_receiver_reset',
-                             'oversize_multiframe_file', 'single_frame_file_api', 'wrong_raw_layout'):
+                             'oversize_multiframe_file', 'single_frame_file_api', 'wrong_raw_layout',
+                             'missing_pte_substeps', 'wrong_pte_position', 'missing_raw_gap_metadata'):
                 with self.subTest(report=report_name, mutation=mutation):
                     value = fixture()
                     contract = value[report_name]['dual_source_log_contract']
@@ -138,6 +139,9 @@ class LiveLogPackaging(unittest.TestCase):
                     elif mutation == 'oversize_multiframe_file': contract['checkpoint_mode']['multi_frame_file_body_max_bytes'] = 8192
                     elif mutation == 'single_frame_file_api': contract['checkpoint_mode']['sender_snapshot_api'] = 'tb710fu_live_log_snapshot_single_file'
                     elif mutation == 'wrong_raw_layout': contract['checkpoint_mode']['raw_layout'] = 'current_only_single_frame'
+                    elif mutation == 'missing_pte_substeps': contract['checkpoint_mode'].pop('pte_substep_interval')
+                    elif mutation == 'wrong_pte_position': contract['checkpoint_mode']['pte_checkpoint_position'] = 'before-update'
+                    elif mutation == 'missing_raw_gap_metadata': contract['checkpoint_mode']['multiframe_raw_gap_range_metadata'] = False
                     else: contract['complete_rounds_before_replacement_min'] = 1
                     with self.assertRaisesRegex(ValueError, 'dual-source capture/export contract'):
                         check(value)

@@ -48,6 +48,31 @@
     "device_enumeration_verified": false,
     "host_capture_verified": false
   },
+  "later_screen_capture": {
+    "checkpoint_export": "startup-phase",
+    "current_start": 0,
+    "current_end_exclusive": 662,
+    "earlybackup_start": 0,
+    "earlybackup_end_exclusive": 498,
+    "raw_duplicate_overlap_bytes": 498,
+    "latest_later_logs": [
+      "pe_arm_map_interrupt_controller: failed to find the interrupt-controller",
+      "pe_arm_init_debug: failed to find cpu-debug-interface",
+      "kernel_bootstrap: vm_mem_bootstrap",
+      "TB710FU boot: phase 5 begin"
+    ],
+    "kernel_progresses_past_pe_init_messages": true,
+    "same_session_as_later_screen_scroll": "unconfirmed"
+  },
+  "adt_source_audit": {
+    "packaged_adt_sha256": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+    "root_model": "Mac17,11",
+    "compatible": ["K114cAP", "qcom,pineapple-mtp", "qcom,pineapple"],
+    "arm_io_hardware_nodes": 0,
+    "interrupt_controller_node_found_by_secure_dt": false,
+    "effect": "pe_arm_init_interrupts returns 0; PE_init_platform ignores the return; timer wrapper in that call path is skipped",
+    "hardware_irq_timer_effect_confirmed": false
+  },
   "source_docs": [
     ".work/UniXNU/docs/zh/xnu/four-k-page-tables.md",
     ".work/UniXNU/docs/zh/guide/debugging.md",
