@@ -173,6 +173,12 @@ def dual_source_evidence(integration, report):
             'XNU console provider does not call its independent capture ring')
     require(integration.get('adapter_snapshot_calls') == adapter['_tb710fu_ramoops_snapshot_copy']['branches'],
             'Ramoops snapshot-call evidence differs from the actual provider import')
+    pte = integration.get('prelink_rnx_pte_substeps', {})
+    require(isinstance(pte.get('compiled_source'), str) and pte['compiled_source'] and
+            re.fullmatch('[0-9a-f]{64}', pte.get('compiled_source_sha256', '')) and
+            pte.get('compiled_checkpoint_label_in_object') is True and
+            pte.get('checkpoint_position') == 'after-active-update-or-defer-before-next-PTE',
+            'Live-log dual-source capture/export contract lacks compiled PRELINKTEXT completed-PTE checkpoint evidence')
     hooks = integration.get('hook_objects', {})
     serial = hooks['osfmk/DEVELOPMENT/serial_console.o']
     pe = hooks['pexpert/DEVELOPMENT/pe_kprintf.o']

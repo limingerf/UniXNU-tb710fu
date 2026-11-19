@@ -15,7 +15,13 @@ edge helper 的活动范围是索引 12–511，至少还有索引 384–511 共
 于 `update_or_defer_tte()` 返回后计数；每完成 16 次调用记录 completed count 和
 `next-i/next-va`。这样首批按真实更新次数对齐，且不会为未更新的页表项报进度。补丁
 SHA-256 `5ddf72b81c5a148e5afe04c1d6dbc1af5e320eb01723eb620fb0b6d52c7fb9f3`；已在隔离的
-pinned-source fixture 反向检查、正向 apply-check 并重放通过；官方 integrated build 待验证。此前 sampled
+pinned-source fixture 反向检查、正向 apply-check 并重放通过。run `44608855873` / commit
+`832ed7e44a004fe2700b196826400a7bf43b5ad2` 完成 native arm64e link，产物 SHA-256
+`3dd1e6a814e194244d8a6a381640badafc6acf3adeaa22e0857b7ffdc19302e6`，但 run 在 post-link
+LiveLog integration verifier 失败：helper branch 计数门槛 `>=8` 高估了优化后 relocation 数；
+不是 PTE 补丁编译错误，strict prelink 未运行。已将门槛恢复为既有最小值 7，并改为检查
+实际编译源码中的 active update 位置、每 16 次 completed 计数和目标对象中的 marker。下一次
+`ufs-integrated` 待验证。此前 sampled
 QR cadence 曾提前退出 checkpoint publisher，从而也挡住文本更新；该 gate 已移除，滚屏
 现在每个有效 capture checkpoint 都更新；首次有效快照可 seed 一帧 QR，之后由独立 worker
 以 250ms cadence 轮播，不再在 PTE 检查点中同步 fallback 编码。若 worker 未获调度，二维码

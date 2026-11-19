@@ -169,6 +169,55 @@ def capture_source_evidence(command, functions):
             'provider': '_tb710fu_live_log_putc', 'function_body_sha256': bodies}
 
 
+def pte_substep_source_contract(text):
+    active_marker = 'if ((start <= va) && (va < rounded_end)) {'
+    if text.count(active_marker) != 1:
+        return False
+    active_start = text.index(active_marker)
+    brace = text.index('{', active_start)
+    depth = 0
+    active_end = None
+    for position in range(brace, len(text)):
+        if text[position] == '{':
+            depth += 1
+        elif text[position] == '}':
+            depth -= 1
+            if depth == 0:
+                active_end = position
+                break
+    if active_end is None:
+        return False
+    active_body = text[brace + 1:active_end]
+    completed_call = re.compile(
+        r'update_or_defer_tte\(&ppte\[i\],\s*ptmp,\s*pa,\s*'
+        r'\(vm_map_address_t\)ppte,\s*granule,\s*deferred_ttep_pair,\s*'
+        r'deferred_tte_pair\);\s*'
+        r'#if\s+defined\(XNU_TB710FU_LIVE_LOG\)\s*&&\s*XNU_TB710FU_LIVE_LOG\s*'
+        r'if\s*\(prelink_rnx\s*&&\s*\(\+\+prelink_rnx_completed\s*&\s*15u\)\s*==\s*0u\)\s*'
+        r'\{\s*kprintf\("TB710FU lockdown: prelink-rnx pte-done completed=%u '
+        r'next-i=%u next-va=%p\\n",\s*prelink_rnx_completed,\s*'
+        r'i\s*\+\s*1u,\s*\(void\s*\*\)\(va\s*\+\s*ARM_PGBYTES\)\);\s*'
+        r'tb710fu_live_log_checkpoint\("ld-prelink-rnx-pte-done"\);\s*\}\s*#endif',
+        re.S)
+    return text.count('unsigned prelink_rnx_completed = 0;') == 1 and \
+        completed_call.search(active_body) is not None
+
+
+def pte_substep_source_evidence(command, object_path, audit):
+    source = Path(command['file'])
+    if not source.is_absolute():
+        source = Path(command['directory']) / source
+    text = source.read_text()
+    require(pte_substep_source_contract(text),
+            'PRELINKTEXT checkpoint must count completed active updates and report the next PTE')
+    obj = audit.MachO(object_path.read_bytes())
+    require(b'ld-prelink-rnx-pte-done\0' in obj.data,
+            'Completed-PTE checkpoint label is missing from the compiled ARM64 VM object')
+    return {'compiled_source': str(source), 'compiled_source_sha256': digest(source),
+            'compiled_checkpoint_label_in_object': True,
+            'checkpoint_position': 'after-active-update-or-defer-before-next-PTE'}
+
+
 def deployment(obj):
     values = [struct.unpack_from('<II', obj.data, offset + 8)
               for command, offset, _ in obj.commands if command == 0x32]
@@ -408,8 +457,12 @@ def verify(tree, config, native_path):
             'PRELINKTEXT RNX edge path needs immediate table-selection and batch checkpoints')
     arm_helper_immediate = sum(call['caller'] == '_arm_vm_page_granular_helper'
                                for call in arm_immediate)
-    require(arm_helper_immediate >= 8,
-            'PRELINKTEXT helper must retain table probes, bounded expansion/PTE batches and the completed-PTE substep branch')
+    require(arm_helper_immediate >= 7,
+            f'PRELINKTEXT helper lost existing immediate checkpoints (found {arm_helper_immediate})')
+    arm_vm_command_path = records / 'osfmk/DEVELOPMENT/arm_vm_init.o.json'
+    arm_vm_command = json.loads(arm_vm_command_path.read_text().strip().rstrip(','))
+    pte_substeps = pte_substep_source_evidence(
+        arm_vm_command, records / 'osfmk/DEVELOPMENT/arm_vm_init.o', audit)
     console_calls = hooks['osfmk/DEVELOPMENT/serial_console.o']['strong_hook_imports']
     # The normal _cnputc tap predates LiveLog and alone proves nothing about
     # acquisition's disableConsoleOutput branch. Require the live-active gate
@@ -459,5 +512,6 @@ def verify(tree, config, native_path):
             'synchronous_checkpoint_sites_verified': True,
             'lockdown_checkpoint_sites': lockdown_checkpoint_sites,
             'prelink_rnx_helper_immediate_checkpoint_branches': arm_helper_immediate,
+            'prelink_rnx_pte_substeps': pte_substeps,
             'runtime_qualified': False, 'hardware_boot_verified': False,
             'qr_hardware_display_verified': False}

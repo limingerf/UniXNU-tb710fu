@@ -55,6 +55,10 @@ def fixture():
         'live_log_sources_compiled': True, 'synchronous_checkpoint_sites_verified': True,
         'runtime_boot_argument': 'tb710fu-live-log=1 tb710fu-live-checkpoints=1',
         'runtime_qualified': False, 'qr_hardware_display_verified': False, 'hardware_boot_verified': False,
+        'prelink_rnx_pte_substeps': {
+            'compiled_source': '/ci/tree/.cache/xnu-work/osfmk/arm64/arm_vm_init.c',
+            'compiled_source_sha256': '6' * 64, 'compiled_checkpoint_label_in_object': True,
+            'checkpoint_position': 'after-active-update-or-defer-before-next-PTE'},
         'linkarchives': link, 'linkarchives_sha256': live.sha(link.encode()),
         'dual_source_log_contract': deepcopy(live.DUAL_SOURCE_LOG_CONTRACT),
         'adapter_source_calls': {name: call_evidence('_tb710fu_live_log_putc' if name ==
@@ -116,7 +120,8 @@ class LiveLogPackaging(unittest.TestCase):
                              'one_round', 'long_single_frame', 'no_qr_carousel', 'short_qr_dwell',
                              'single_frame_checkpoint', 'no_early_backup', 'no_receiver_reset',
                              'oversize_multiframe_file', 'single_frame_file_api', 'wrong_raw_layout',
-                             'missing_pte_substeps', 'wrong_pte_position', 'missing_raw_gap_metadata'):
+                             'missing_pte_substeps', 'wrong_pte_position', 'missing_raw_gap_metadata',
+                             'missing_pte_source_evidence', 'wrong_pte_source_position'):
                 with self.subTest(report=report_name, mutation=mutation):
                     value = fixture()
                     contract = value[report_name]['dual_source_log_contract']
@@ -142,6 +147,8 @@ class LiveLogPackaging(unittest.TestCase):
                     elif mutation == 'missing_pte_substeps': contract['checkpoint_mode'].pop('pte_substep_interval')
                     elif mutation == 'wrong_pte_position': contract['checkpoint_mode']['pte_checkpoint_position'] = 'before-update'
                     elif mutation == 'missing_raw_gap_metadata': contract['checkpoint_mode']['multiframe_raw_gap_range_metadata'] = False
+                    elif mutation == 'missing_pte_source_evidence': value['integration'].pop('prelink_rnx_pte_substeps')
+                    elif mutation == 'wrong_pte_source_position': value['integration']['prelink_rnx_pte_substeps']['checkpoint_position'] = 'before-update'
                     else: contract['complete_rounds_before_replacement_min'] = 1
                     with self.assertRaisesRegex(ValueError, 'dual-source capture/export contract'):
                         check(value)
