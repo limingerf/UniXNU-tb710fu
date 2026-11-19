@@ -1,5 +1,47 @@
 # Current status · 2026-11-19
 
+## 同步单帧停点诊断已构建 · 2026-11-19
+
+用户指出内核停住后二维码本身不再刷新。停住后的代码无法更新 framebuffer；
+因此新模式改为在每个目标操作开始前同步生成并绘制检查点 QR，让最后一个
+成功的 begin 阶段在随后停住时留屏，而不把它误报成 fault PC。
+
+新增显式启动参数 `tb710fu-live-checkpoints=1`，须与 `tb710fu-live-log=1`
+同时使用。该模式不启动竞争 renderer worker，普通 250ms poll 不会覆盖检查点；
+每次 callback/kalloc/既有 bootstrap 检查点都会创建独立 OneSend 单帧 XNU 文件，
+以最新可容纳尾部、阶段字段和准确 `[start,end)` 范围同步编码绘制。每个检查点
+为新 session；接收器需 reset 旧 session。早期备份保留在 RAM 并标记 deferred，
+单帧不声称包含完整历史。未设置新参数时，旧双通道限流轮询行为不变。
+
+XNU patch `0022-tb710fu-synchronous-live-checkpoints.patch` 接在 `0021` 后，
+在 startup callback 前/返回后以及现有 kalloc/bootstrap markers 上调用强 provider。
+强 API 声明由 `0014` 导出。包校验要求两个 runtime boot arguments 同时存在；
+native integration verifier 还检查 startup.o 与 kalloc.o 对 checkpoint provider
+存在直接 branch relocation。patch 0022 SHA-256：
+`efad3fb1804f24e9a5804b1bde88ee40a2fda51c85788e91a6a806c3bf7398bc`。
+
+本机验证：13 组 LiveXnu adapter ASan/UBSan 测试、实际 Mu QR 编码、固定 OneSend
+浏览器接收器互操作、display renderer、live-log packaging 和 source-storage 参数
+边界测试均通过；patch 0022 对 pinned startup/kalloc fixtures 的应用检查通过。
+本机 Clang sanitizer runtime 不可用，因此 adapter sanitizer 用 GCC 执行；正式
+native 编译由受支持的 macOS runner 完成。
+
+GitHub macOS `ufs-integrated` run `44474773580`，提交
+`bf0d580f41448b24064be576f24370c299523bba`，结论 success。Native arm64e SHA-256：
+`250685f51793fda2dbac6b7e7e74bf974616df57269149a4e64b605b6bad52d3`。
+Strict prelink candidate 为 142,819,328 字节，SHA-256：
+`86b673b35f0ca73ace367f467331ba4c1429a2cbc158bb9bcb9b677563816909`；生产
+DarwinBoot parser 通过，`mapping_complete=true`、`missing={}`、`stubbed={}`，但
+`runtime_qualified=false`、`loadable=false`、`hardware_boot_verified=false`。
+Integration build label 为 `src-bf0d580f-ramoops`，报告已验证 runtime 参数及
+startup 64 个、kalloc 106 个 checkpoint 直接调用分支。
+
+Runner artifact ID `14506516154`，ZIP SHA-256
+`79dac44d6d8c4b00eeb9f3bd8e5991205b80bb549de2a19fe0e0fce31a6ddf4a`；本地回读与
+GitHub digest 一致。遵循 clean cloud-build 边界，本轮未签名或打包 flashable
+image，未刷写、重启或改动设备。二维码/面板实机可读性与硬件启动仍未验证；
+运行成功不代表内核已能启动到 userspace。
+
 ## 最新实机帧确认越过 kalloc，SYSCTL rank 1 正在返回 · 2026-11-19
 
 用户提供 build label `src-8968159c-ramoops`，对应 kernel run `44462593602`，
