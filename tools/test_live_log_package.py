@@ -61,8 +61,10 @@ def fixture():
             '_tb710fu_live_capture_putc' else '_tb710fu_live_log_poll')
             for name in live.ADAPTER_SOURCE_IMPORTS},
         'checkpoint_display_calls': {
-            name: call_evidence('_checkpoint_status' if name == '_tb_live_display_checkpoint_status'
-                                else '_checkpoint_publish')
+            name: call_evidence(
+                '_checkpoint_status' if name == '_tb_live_display_checkpoint_status' else
+                '_checkpoint_qr_advance_locked' if name == '_tb_live_display_checkpoint_qr' else
+                '_checkpoint_publish')
             for name in live.CHECKPOINT_DISPLAY_IMPORTS},
         'checkpoint_worker_calls': {
             name: call_evidence('_live_start_worker' if name == '_kernel_thread_start'

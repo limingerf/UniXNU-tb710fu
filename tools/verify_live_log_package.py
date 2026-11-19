@@ -208,7 +208,7 @@ def checkpoint_display_evidence(integration):
             'Incomplete synchronous checkpoint display-call evidence')
     callers = {name: import_branch_evidence(calls[name], name) for name in CHECKPOINT_DISPLAY_IMPORTS}
     require('_checkpoint_publish' in callers['_tb_live_display_scroll_log'] and
-            '_checkpoint_publish' in callers['_tb_live_display_checkpoint_qr'] and
+            '_checkpoint_qr_advance_locked' in callers['_tb_live_display_checkpoint_qr'] and
             callers['_tb_live_display_checkpoint_status'] & {'_checkpoint_status', '_checkpoint_publish'},
             'Synchronous log, bottom-right QR and status do not have their real checkpoint callers')
     worker = integration.get('checkpoint_worker_calls', {})

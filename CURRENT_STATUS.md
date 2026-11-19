@@ -27,7 +27,14 @@ systematic 帧，完成 16 个文件轮次后才允许替换 session。当前用
 `synchronous_single_frame` 镜像，所以仅含 252 字节当前尾部，不能把它归因于新循环实现。
 主机验证已通过 LiveXnu 16 组 ASan/UBSan adapter、协议 C/ASan/UBSan 与固定 OneSend
 browser receiver、多帧 early-backup fixture、显示 ASan/UBSan 及 13 项 package verifier。
-新官方 native/prelink 集成构建尚待运行；`44546733725` 签名包是之前的单帧二维码版，
+官方 integrated run `44569060786`（提交 `208e93d51df6565cacbc15eefbceaa79214d4f61`）
+完成 runner 的 native-only 编译产物 `ef411d823e88ae7450f2d433bfea769891cab5ad517411564bbb3abbb7dedf8e`，
+但在 native integration verifier 中失败，因为 verifier 把二维码 provider caller 误设为
+`_checkpoint_publish`，实际新 helper `_checkpoint_qr_advance_locked`。从该次实际
+`LiveXnu.o` 的 branch relocations 已确认 QR、scroll、worker start 和 timer/wait 调用都在；
+按这些实际 caller 修复 verifier 后，严格 prelink 尚待同目标重跑。该 run 的 bootstrap
+pass 还出现一次不带 LiveLog archive 的中间链接缺符号日志，但后续 native-only 产物确实
+生成；不把该中间日志混作最终 linker 结论。`44546733725` 签名包仍是上一版单帧 QR，
 本轮没有刷写或重启设备。
 
 ## PRELINKTEXT 滚屏日志诊断包已签出 · 2026-11-19

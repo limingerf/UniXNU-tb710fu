@@ -328,7 +328,7 @@ def verify(tree, config, native_path):
     require(any(call['caller'] == '_checkpoint_publish' for call in
                 checkpoint_display_calls['_tb_live_display_scroll_log']['branches']),
             'Synchronous checkpoint renderer must draw the captured scrollback')
-    require(any(call['caller'] == '_checkpoint_publish' for call in
+    require(any(call['caller'] == '_checkpoint_qr_advance_locked' for call in
                 checkpoint_display_calls['_tb_live_display_checkpoint_qr']['branches']),
             'Synchronous checkpoint QR must use the bottom-right layout')
     require(any(call['caller'] in {'_checkpoint_status', '_checkpoint_publish'} for call in
