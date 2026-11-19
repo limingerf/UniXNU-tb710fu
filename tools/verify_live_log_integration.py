@@ -370,6 +370,9 @@ def verify(tree, config, native_path):
     arm_active = hooks['osfmk/DEVELOPMENT/arm_vm_init.o']['strong_hook_imports']['_tb710fu_live_log_active']['branches']
     require(any(call['caller'] in progress_callers for call in arm_active),
             'PRELINKTEXT RNX progress must retain the live-log runtime gate')
+    arm_immediate = hooks['osfmk/DEVELOPMENT/arm_vm_init.o']['strong_hook_imports'][immediate]['branches']
+    require(sum(call['caller'] in progress_callers for call in arm_immediate) >= 12,
+            'PRELINKTEXT RNX edge path needs immediate table-selection and batch checkpoints')
     console_calls = hooks['osfmk/DEVELOPMENT/serial_console.o']['strong_hook_imports']
     # The normal _cnputc tap predates LiveLog and alone proves nothing about
     # acquisition's disableConsoleOutput branch. Require the live-active gate

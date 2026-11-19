@@ -1,0 +1,103 @@
+From: TB710FU clean board
+Subject: [PATCH] Trace PRELINKTEXT edge page-table updates
+
+Source: XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f after device patch 0026.
+
+Reason: the device reaches the PRELINKTEXT RNX entry but does not reach the
+head-edge completion marker. The edge helper's sampled QR updates can be
+suppressed by the 250 ms quiet period immediately after the entry frame. Add
+immediate markers around L2 lookup/table selection and after each completed
+64-entry batch. Page protection stores and their order remain unchanged.
+
+Verification: apply after 0026 on the pinned XNU fixture; verify immediate
+provider branches from the compiled ARM64 VM object and run the official
+integrated macOS kernel/prelink/parser workflow.
+
+diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
+index 6a72d347961ade49b4b6b9e1d151b236cec72f81..5cfd7d2d24d6e90f8b5aa5e138a14ef6745e67a3 100644
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -1316,21 +1316,45 @@ arm_vm_page_granular_helper(vm_offset_t start, vm_offset_t _end, vm_offset_t va,
+ 		if (pa >= real_avail_end) {
+ 			return;
+ 		}
+ 
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++		if (prelink_rnx) {
++			kprintf("TB710FU lockdown: prelink-rnx edge tte-lookup va=%p pa=%llx\n", (void *)va, (unsigned long long)pa);
++			tb710fu_live_log_checkpoint("ld-prelink-rnx-edge-tte-lookup");
++		}
++#endif
+ 		tte2 = arm_kva_to_tte(va);
+ 
+ 		assert(_end >= va);
+ 		tmplate = *tte2;
+ 
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++		if (prelink_rnx) {
++			kprintf("TB710FU lockdown: prelink-rnx edge tte=%llx\n", (unsigned long long)tmplate);
++			tb710fu_live_log_checkpoint("ld-prelink-rnx-edge-tte-read");
++		}
++#endif
+ 		if (ARM_TTE_TYPE_TABLE == (tmplate & ARM_TTE_TYPE_MASK)) {
+ 			/* pick up the existing page table. */
+ 			ppte = (pt_entry_t *)phystokv((tmplate & ARM_TTE_TABLE_MASK));
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++			if (prelink_rnx) {
++				kprintf("TB710FU lockdown: prelink-rnx edge existing-table pte=%p\n", ppte);
++				tb710fu_live_log_checkpoint("ld-prelink-rnx-edge-existing-table");
++			}
++#endif
+ 		} else {
+ 			// TTE must be reincarnated with page level mappings.
+ 
+ 			// ... but we don't want to break up blocks on live
+ 			// translation tables.
+ 			assert(!kva_active);
+ 
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++			if (prelink_rnx) {
++				kprintf("TB710FU lockdown: prelink-rnx edge allocate-table\n");
++				tb710fu_live_log_checkpoint("ld-prelink-rnx-edge-allocate-table");
++			}
++#endif
+ 			ppte = (pt_entry_t*)alloc_ptpage(pa_offset == 0);
+ 			bzero(ppte, ARM_PGBYTES);
+@@ -1346,18 +1370,24 @@ arm_vm_page_granular_helper(vm_offset_t start, vm_offset_t _end, vm_offset_t va,
+ 				pmap_paddr_t block_pa = tmplate & ARM_TTE_BLOCK_L2_MASK;
+ 				pt_entry_t attributes = tmplate & ~(ARM_TTE_BLOCK_L2_MASK | ARM_PTE_HINT_MASK | ARM_PTE_TYPE_VALID);
+ 				for (i = 0; i <= (ARM_TT_L3_INDEX_MASK >> ARM_TT_L3_SHIFT); i++) {
+ #if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
+-					if (prelink_rnx && (i & 63u) == 0u) {
++					if (prelink_rnx && i != 0u && (i & 63u) == 0u) {
+ 						kprintf("TB710FU lockdown: prelink-rnx expand i=%u va=%p\n", i, (void *)va);
+-						tb710fu_live_log_checkpoint_sampled("ld-prelink-rnx-expand");
++						tb710fu_live_log_checkpoint("ld-prelink-rnx-expand");
+ 					}
+ #endif
+ 					ppte[i] = (block_pa + ((pmap_paddr_t)i << ARM_TT_L3_SHIFT)) | attributes | ARM_PTE_TYPE_VALID;
+ 				}
+ 			}
+ 			ppte_phys = kvtophys((vm_offset_t)ppte);
+ 
+ 			*tte2 = pa_to_tte(ppte_phys) | ARM_TTE_TYPE_TABLE | ARM_TTE_VALID;
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++			if (prelink_rnx) {
++				kprintf("TB710FU lockdown: prelink-rnx edge table-installed pte=%p\n", ppte);
++				tb710fu_live_log_checkpoint("ld-prelink-rnx-edge-table-installed");
++			}
++#endif
+ 		}
+ 
+ 		vm_offset_t len = _end - va;
+@@ -1374,8 +1408,8 @@ arm_vm_page_granular_helper(vm_offset_t start, vm_offset_t _end, vm_offset_t va,
+ 		/* Apply the desired protections to the specified page range */
+ 		for (i = 0; i <= (ARM_TT_L3_INDEX_MASK >> ARM_TT_L3_SHIFT); i++) {
+ #if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
+-			if (prelink_rnx && (i & 63u) == 0u) {
++			if (prelink_rnx && i != 0u && (i & 63u) == 0u) {
+ 				kprintf("TB710FU lockdown: prelink-rnx pte i=%u va=%p\n", i, (void *)va);
+-				tb710fu_live_log_checkpoint_sampled("ld-prelink-rnx-pte");
++				tb710fu_live_log_checkpoint("ld-prelink-rnx-pte");
+ 			}
+ #endif

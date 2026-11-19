@@ -1,5 +1,53 @@
 # Current status · 2026-11-19
 
+## PRELINKTEXT 首段边缘页表检查点待构建 · 2026-11-19
+
+实机回传帧对应 run `44524596920`、设备提交
+`4abefb367d219908a9ebb3ebc2fdf830547e7e2d`，build label
+`src-4abefb36-ramoops`。单帧范围 `[1502918,1503168)` 共 250 字节，
+`dropped=0`；备份 `[0,498)` 共 498 字节并延后多帧导出。帧到达
+`checkpoint=ld-prelink-rnx-enter`，随后记录 PRELINKTEXT 范围
+`0xfffffff00700c000`、大小 `14385152`、结束地址 `0xfffffff007dc4000`，尚未到
+`ld-prelink-rnx-head-done`。该边缘调用覆盖对齐后的首个 L2 区域，约 500 个有效
+4 KiB PTE。0026 的 sampled 检查点会被入口 QR 后的 250 ms quiet period 抑制，
+因此该帧还不能区分 TTE 查找/表选择和首批 PTE 更新。
+
+新增补丁 `0027-tb710fu-prelink-rnx-edge-checkpoints.patch`，SHA-256
+`49aa11bd13e0356ff9ec326cb7168cdc9ffc0dcf40889e904c31850b8a2e2baa`，接在 0026 后。
+在边缘 helper 的 L2 TTE 查找、读取、已有表或新表分支加即时检查点；块展开与
+PTE 循环每完成 64 项立即发布一次，以避免 sampled quiet period 隐藏短进度。
+页表赋值顺序未改变。隔离 pinned-source fixture 的标准 `git apply --check` 通过；
+macOS 集成构建及实际对象分支检查待运行。
+
+## PRELINKTEXT RNX 可刷写测试包已签出 · 2026-11-19
+
+用户要求为 run `44524596920` 打包可刷写镜像。内核来自设备提交
+`4abefb367d219908a9ebb3ebc2fdf830547e7e2d`，build label
+`src-4abefb36-ramoops`，严格 prelink SHA-256
+`f7e39da1b4869b40174200d53236af213753193e7b5f97d73d116ae8ccf5f1ed`。
+沿用官方 standard-band 变换后，Mach-O SHA-256
+`1f6511a050d884f3f4b8555ac08a8628faf05e059af6d4117177f9a13b2e394b`；6 个
+修改 span、3 个 compact probe 和 production parser 均通过，其他 kernel 字节和
+segments 未变。启动项保留 `tb710fu-live-log=1`、`tb710fu-live-checkpoints=1`
+和 `kc-segment-release=0`。
+
+签名测试包为 `out/live-checkpoints-44524596920-prelink-rnx-signed.zip`，
+35,565,598 字节，SHA-256
+`8a5772404ac1a1eed3b7634c117c1a9c5f68a232287b1a11c09e0a6275deca11`。
+`vendor_boot.img` 为 100,663,296 字节，SHA-256
+`373f213c39402097342c85209078f21805084d44b456ae237440a2b5f6ad93d5`；`vbmeta.img`
+为 8,000 字节，SHA-256
+`838cd3a69b4bd89103ffddf5c7321bd644fc48a7a40d5352a5249c8214de2b71`；沿用已验证
+`boot.img`，SHA-256 `a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`。
+AVB RSA-4096 回读、boot-chain key、vendor salted hash 通过；vbmeta header、公钥和
+另外 22 个 descriptor 未变。FAT 有 66,512 clusters，LZMA、kernel、ADT、root-policy
+及 ZIP 内 SHA256SUMS 回读通过。
+
+完整记录见 `docs/evidence/live-checkpoints-prelink-rnx-signed-44524596920.json`。
+这是可用于实机诊断的签名测试包，不代表硬件启动或根因修复；本轮没有刷写、重启
+或其他设备操作。`runtime_qualified=false`、`hardware_boot_verified=false`、
+`device_operations=false`。
+
 ## PRELINKTEXT RNX 进度检查点已构建 · 2026-11-19
 
 实机回传帧对应 `src-8252efb9-ramoops`，run `44516717448`、提交

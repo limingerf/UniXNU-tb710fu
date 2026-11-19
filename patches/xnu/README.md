@@ -169,6 +169,12 @@ deferred-TTE/TLB completion. The existing live-checkpoint argument gates the
 instrumentation; it does not alter permission updates or establish a faulting
 PC.
 
+`0027-tb710fu-prelink-rnx-edge-checkpoints.patch` adds immediate checkpoints
+around the first PRELINKTEXT edge helper's L2 lookup and page-table selection,
+then publishes each completed 64-entry expansion or PTE batch. These immediate
+frames bypass the sampled quiet period that hid short helper progress after the
+RNX entry frame; page-table stores retain their original order.
+
 The first native attempt, run 44112832250 at `eb1f2bc7`, exposed a missing
 internal-header export in `pe_kprintf.c`. The device patch now adds its two real
 headers to `osfmk/kern/Makefile` XNU_ONLY_EXPORTS, using the same official

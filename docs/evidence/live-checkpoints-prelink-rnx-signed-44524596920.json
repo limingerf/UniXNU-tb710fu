@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "stage": "signed-prelink-rnx-checkpoint-package",
+  "user_authorized_signing": true,
+  "kernel": {
+    "run_id": 44524596920,
+    "run_attempt": 1,
+    "device_commit": "4abefb367d219908a9ebb3ebc2fdf830547e7e2d",
+    "build_label": "src-4abefb36-ramoops",
+    "prelinked_sha256": "f7e39da1b4869b40174200d53236af213753193e7b5f97d73d116ae8ccf5f1ed",
+    "standard_band_sha256": "1f6511a050d884f3f4b8555ac08a8628faf05e059af6d4117177f9a13b2e394b",
+    "standard_band_bytes": 142835712,
+    "standard_band_transform": {
+      "result": "PASS",
+      "patch_spans_verified": 6,
+      "compact_probes_verified": 3,
+      "other_bytes_unchanged": true,
+      "segments_unchanged": true,
+      "production_parser": "PASS"
+    },
+    "prelink_rnx_patch_sha256": "b4a602ca20189eada378d948a084179f0c1984a0bb31d7c4fbd359c95f4c988a"
+  },
+  "carrier": {
+    "source_run_id": 44502932009,
+    "unsigned_vendor_sha256": "80971eb20a54acc68bce8519e03381659e0e2a3ac99b0b12e6b4a5faf2046c15",
+    "boot_arguments": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1 kc-segment-release=0"
+  },
+  "unsigned_vendor_boot_sha256": "0bcfa44a5e3818b755d57fe6b02fc360e62507d2c6cdeb069afde9cf88b7858d",
+  "signed_images": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "373f213c39402097342c85209078f21805084d44b456ae237440a2b5f6ad93d5"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "838cd3a69b4bd89103ffddf5c7321bd644fc48a7a40d5352a5249c8214de2b71"
+    }
+  },
+  "avb_verification": {
+    "signature_checks": "PASS",
+    "boot_chain_key_matches": true,
+    "vendor_boot_salted_hash_matches": true,
+    "unchanged_other_raw_descriptors": 22,
+    "vbmeta_header_unchanged": true,
+    "public_key_unchanged": true,
+    "unsigned_vendor_body_preserved": true
+  },
+  "payload_readback": {
+    "FAT_clusters": 66512,
+    "FAT_mountable": true,
+    "LZMA_roundtrip": "PASS",
+    "kernel_sha256": "1f6511a050d884f3f4b8555ac08a8628faf05e059af6d4117177f9a13b2e394b",
+    "adt_sha256": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+    "root_policy_sha256": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+    "checkpoint_boot_argument_readback": true
+  },
+  "bundle": {
+    "path": "out/live-checkpoints-44524596920-prelink-rnx-signed.zip",
+    "bytes": 35565598,
+    "sha256": "8a5772404ac1a1eed3b7634c117c1a9c5f68a232287b1a11c09e0a6275deca11",
+    "zip_crc": "PASS",
+    "sha256sums_readback": "PASS"
+  },
+  "runtime_qualified": false,
+  "loadable": false,
+  "hardware_boot_verified": false,
+  "device_operations": false
+}

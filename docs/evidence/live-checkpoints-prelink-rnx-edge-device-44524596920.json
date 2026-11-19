@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "source": "User-pasted single-frame QR export",
+  "observation": {
+    "run_id": 44524596920,
+    "device_commit": "4abefb367d219908a9ebb3ebc2fdf830547e7e2d",
+    "build_label": "src-4abefb36-ramoops",
+    "checkpoint": "ld-prelink-rnx-enter",
+    "checkpoint_mode": "synchronous_single_frame",
+    "earlybackup": {
+      "state": "ready",
+      "start": 0,
+      "end_exclusive": 498,
+      "bytes": 498,
+      "export": "deferred_multi_frame"
+    },
+    "current": {
+      "start": 1502918,
+      "end_exclusive": 1503168,
+      "bytes": 250,
+      "dropped": 0,
+      "raw_layout": "current_only_single_frame"
+    },
+    "raw_tail": [
+      "&#x20;machine-lockdown begin",
+      "TB710FU lockdown: ld-vm-enter",
+      "TB710FU lockdown: kc-segment-release=0",
+      "TB710FU lockdown: ld-prefix-free",
+      "TB710FU lockdown: ld-prelink-ro",
+      "TB710FU lockdown: prelink-rnx start=0xfffffff00700c000 size=14385152 end=0xfffffff007dc4000"
+    ],
+    "next_operation": "arm_vm_page_granular_helper(start=0xfffffff00700c000, end=0xfffffff007200000, va=0xfffffff00700c000)",
+    "edge_pte_range": {
+      "l2_base": "0xfffffff007000000",
+      "first_index": 12,
+      "last_index_inclusive": 511,
+      "active_pte_count": 500,
+      "page_bytes": 4096
+    },
+    "head_done_observed": false,
+    "root_cause_confirmed": false,
+    "faulting_pc_confirmed": false
+  },
+  "followup_patch": {
+    "path": "patches/xnu/0027-tb710fu-prelink-rnx-edge-checkpoints.patch",
+    "sha256": "49aa11bd13e0356ff9ec326cb7168cdc9ffc0dcf40889e904c31850b8a2e2baa",
+    "series_predecessor": "0026-tb710fu-prelink-rnx-progress.patch"
+  }
+}
