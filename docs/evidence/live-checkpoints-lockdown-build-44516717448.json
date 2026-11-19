@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "build": {
+    "schema_version": 1,
+    "stage": "verified-prelinked-lockdown-diagnostics",
+    "run_id": 44516717448,
+    "run_attempt": 1,
+    "runner_stage": "ufs-integrated",
+    "run_status": "success",
+    "device_commit": "8252efb9d6dfd901fa2a981e8a30ecb8b7e0c84f",
+    "display_build_label": "src-8252efb9-ramoops",
+    "framework_revision": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+    "xnu_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+    "patch": {
+      "path": "patches/xnu/0025-tb710fu-lockdown-checkpoints.patch",
+      "sha256": "52e2eb073b57457ff8a5fcc23439d95d6fa4388a6563f11f23191672db90081e"
+    },
+    "artifact": {
+      "id": 14525614395,
+      "sha256": "521e09c2e26ee58ac77d414c3ffd853949161ad27b1bba5053f5b3280b93ba88",
+      "bytes": 39165956,
+      "github_digest_verified": true
+    },
+    "native_sha256": "1c3690215b989e8b5538baf41d4edf88714f952941911d05cb8bfd49f241fe42",
+    "prelinked_sha256": "8f33d835564a1798aed62df76ca552dfc3f2738b925f6bc83ac46eb811516e24",
+    "prelinked_bytes": 142835712,
+    "kernel_path": "out/kernel-44516717448/kernel.macho",
+    "lockdown_checkpoint_sites": {
+      "_arm_vm_prot_finalize": 10,
+      "_machine_lockdown": 5
+    },
+    "production_parser": "PASS",
+    "local_production_parser_readback": "PASS",
+    "mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "allow_missing": false,
+    "runtime_qualified": false,
+    "loadable": false,
+    "hardware_boot_verified": false,
+    "device_operations": false
+  },
+  "signed_local_package": {
+    "zip": {
+      "path": "out/live-checkpoints-44516717448-lockdown-signed.zip",
+      "bytes": 35565452,
+      "sha256": "ad5237b8b797784877d843df4ffee889832572bc95bb823c0c2569916f042f6a",
+      "zip_readback": "PASS"
+    },
+    "files": {
+      "boot.img": {
+        "bytes": 100663296,
+        "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+      },
+      "vendor_boot.img": {
+        "bytes": 100663296,
+        "sha256": "1b78ac8c997d11f81f91722caf6060c7997d47e0407ee9c9835a80ff11dbb349"
+      },
+      "vbmeta.img": {
+        "bytes": 8000,
+        "sha256": "bf4010487ebc07163643f71310e6913fce8c0d67a0e0166e2b8d0e69fcaf94d7"
+      }
+    },
+    "standard_kernel_sha256": "4aadf486fccd5cd33aeddb451409f181e5d8da9112a25734c2d172b157213932",
+    "boot_arguments": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1 kc-segment-release=0",
+    "avb_readback": {
+      "path": "/mnt/d/avbtool/tools/avbtool.py",
+      "openssl_backend": "/usr/bin/openssl",
+      "boot_footer_signature": "PASS",
+      "vendor_boot_footer_signature": "PASS",
+      "vbmeta_signature": "PASS",
+      "boot_chain_key_matches": true,
+      "vendor_boot_salted_hash_matches": true,
+      "unchanged_other_raw_descriptors": 22,
+      "vbmeta_header_unchanged": true,
+      "public_key_unchanged": true,
+      "exact_unsigned_vendor_body_preserved": true
+    },
+    "payload_readback": {
+      "FAT_clusters": 66512,
+      "FAT_mountable": true,
+      "LZMA_roundtrip": "PASS",
+      "kernel_readback_sha256": "4aadf486fccd5cd33aeddb451409f181e5d8da9112a25734c2d172b157213932",
+      "ADT_readback_sha256": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+      "root_policy_readback_sha256": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+      "checkpoint_boot_argument_readback": true
+    }
+  },
+  "root_cause_confirmed": false,
+  "hardware_boot_verified": false,
+  "device_operations": false
+}

@@ -1,5 +1,31 @@
 # Current status · 2026-11-19
 
+## machine_lockdown 内部检查点镜像 · 2026-11-19
+
+补丁 0025 的 macOS run 44516717448 attempt 1 成功，源码提交
+8252efb9d6dfd901fa2a981e8a30ecb8b7e0c84f，二维码构建标识
+src-8252efb9-ramoops。原生 arm64e SHA-256
+1c3690215b989e8b5538baf41d4edf88714f952941911d05cb8bfd49f241fe42。
+严格预链接内核共 142,835,712 字节，SHA-256
+8f33d835564a1798aed62df76ca552dfc3f2738b925f6bc83ac46eb811516e24。
+生产 DarwinBoot parser 在 runner 和本地均通过，mapping_complete=true，
+missing={}、stubbed={}、allow_missing=false。核验 arm_vm_prot_finalize 的
+10 个检查点分支和 machine_lockdown 的 5 个分支。
+Runner artifact 14525614395 SHA-256
+521e09c2e26ee58ac77d414c3ffd853949161ad27b1bba5053f5b3280b93ba88，
+与发布 digest 一致。
+
+本地签名测试包 out/live-checkpoints-44516717448-lockdown-signed.zip 为
+35,565,452 字节，SHA-256
+ad5237b8b797784877d843df4ffee889832572bc95bb823c0c2569916f042f6a。
+沿用对照包的 kc-segment-release=0，内核标准色带版 SHA-256
+4aadf486fccd5cd33aeddb451409f181e5d8da9112a25734c2d172b157213932。
+AVB 镜像配对、FAT 启动参数、LZMA 内核和 ZIP 回读通过。镜像哈希见
+docs/evidence/live-checkpoints-lockdown-build-44516717448.json。
+实机根因待定位。下次采集 src-8252efb9-ramoops 的最后一帧，必要时记录
+ld-prefix-free 的回收设置。runtime_qualified=false、loadable=false、
+hardware_boot_verified=false、device_operations=false。
+
 ## 实机再次到达 machine_lockdown 调用前检查点 · 2026-11-19
 
 实机回传 `src-9ac805c2-ramoops` 的单帧覆盖 `[1502335,1502589)`，
