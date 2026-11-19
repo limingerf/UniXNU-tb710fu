@@ -1,0 +1,145 @@
+From f46b6565de5b70499817a8ba3359a9850987279b Mon Sep 17 00:00:00 2001
+From: TB710FU clean board <tb710fu@localhost>
+Date: Thu, 19 Nov 2026 12:58:37 +0800
+Subject: [PATCH] Trace fixed kalloc zone group returns
+
+Reason: the current device frame ends after the final inner fixed-type-zone done marker, but it does not identify the enclosing size class or signature group and has no explicit marker after the helper returns. Add group/class identity and paired markers around fallback assignments, signature shuffles, and fixed-zone assignments.
+
+Source: pinned XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f with device patches 0018 and 0019 already applied. Diagnostics are live-log gated; allocator operations, random choices and loop order are unchanged.
+
+Verification: isolated pinned XNU fixture passes diff whitespace and the added call boundaries are balanced. Native arm64e, strict prelink and production parser must pass in the next single macOS run.
+---
+ osfmk/kern/kalloc.c | 40 +++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 39 insertions(+), 1 deletion(-)
+
+diff --git a/osfmk/kern/kalloc.c b/osfmk/kern/kalloc.c
+index 630a283..8d6369c 100644
+--- a/osfmk/kern/kalloc.c
++++ b/osfmk/kern/kalloc.c
+@@ -128,11 +128,33 @@
+ 			tb710fu_live_log_poll(); \
+ 		} \
+ 	} while (0)
++#define TB710FU_KALLOC_GROUP(event, class_idx, group_idx, group_total, \
++	    view_start, view_end) \
++	do { \
++		if (tb710fu_live_log_active()) { \
++			kprintf("TB710FU kalloc: fixed-group %s class=%u group=%u/%u views=%u..%u\n", \
++			    event, (uint32_t)(class_idx), (uint32_t)(group_idx), \
++			    (uint32_t)(group_total), (uint32_t)(view_start), \
++			    (uint32_t)(view_end)); \
++			tb710fu_live_log_poll(); \
++		} \
++	} while (0)
++#define TB710FU_KALLOC_CLASS(event, class_idx, sig_count, type_count) \
++	do { \
++		if (tb710fu_live_log_active()) { \
++			kprintf("TB710FU kalloc: fixed-class %s class=%u signatures=%u types=%u\n", \
++			    event, (uint32_t)(class_idx), (uint32_t)(sig_count), \
++			    (uint32_t)(type_count)); \
++			tb710fu_live_log_poll(); \
++		} \
++	} while (0)
+ #else
+ #define TB710FU_KALLOC_EVENT(label, event) do { } while (0)
+ #define TB710FU_KALLOC_VALUE(label, value) do { } while (0)
+ #define TB710FU_KALLOC_PROGRESS(label, index, interval) do { } while (0)
+ #define TB710FU_KALLOC_RANGE(label, event, index, total, interval) do { } while (0)
++#define TB710FU_KALLOC_GROUP(event, class_idx, group_idx, group_total, view_start, view_end) do { } while (0)
++#define TB710FU_KALLOC_CLASS(event, class_idx, sig_count, type_count) do { } while (0)
+ #endif
+ 
+ #if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
+@@ -1818,8 +1840,10 @@ kalloc_type_distribute_zone_for_type(
+ 	kalloc_type_init_sig_eq(type_zones, n_zones, sig_zone);
+ 
+ 	if (n_zones == 0) {
++		TB710FU_KALLOC_EVENT("fixed-fallback-assign", "begin");
+ 		kalloc_type_assign_zone_fixed(start, end, sig_zone, sig_zone,
+ 		    early_zone);
++		TB710FU_KALLOC_EVENT("fixed-fallback-assign", "done");
+ 		return n_zones;
+ 	}
+ 
+@@ -1827,8 +1851,10 @@ kalloc_type_distribute_zone_for_type(
+ 	 * Don't shuffle in the sig_zone if there is only 1 type in the zone
+ 	 */
+ 	if (count == 1) {
++		TB710FU_KALLOC_EVENT("fixed-single-type-assign", "begin");
+ 		kalloc_type_assign_zone_fixed(start, end, type_zones[0], sig_zone,
+ 		    early_zone);
++		TB710FU_KALLOC_EVENT("fixed-single-type-assign", "done");
+ 		return n_zones;
+ 	}
+ 
+@@ -1848,13 +1874,17 @@ kalloc_type_distribute_zone_for_type(
+ 		TB710FU_KALLOC_RANGE("fixed-type-zone", "begin", i + 1, count, 256);
+ 
+ 		if (zidx == 0) {
++			TB710FU_KALLOC_RANGE("fixed-type-shuffle", "begin", i + 1, count, 256);
+ 			kmem_shuffle(shuffle_buf, n_zones);
++			TB710FU_KALLOC_RANGE("fixed-type-shuffle", "done", i + 1, count, 256);
+ 		}
+ 
+ 		shuffled_zidx = shuffle_buf[zidx];
+ 		zone = shuffled_zidx == 0 ? sig_zone : type_zones[shuffled_zidx - 1];
++		TB710FU_KALLOC_RANGE("fixed-type-assign", "begin", i + 1, count, 256);
+ 		kalloc_type_assign_zone_fixed(kt_type_start, kt_type_end, zone, sig_zone,
+ 		    early_zone);
++		TB710FU_KALLOC_RANGE("fixed-type-assign", "done", i + 1, count, 256);
+ 		TB710FU_KALLOC_RANGE("fixed-type-zone", "done", i + 1, count, 256);
+ 	}
+ 
+@@ -1885,7 +1915,6 @@ kalloc_type_create_zones_fixed(
+ 	TB710FU_KALLOC_EVENT("fixed-zone-policy", "done");
+ 
+ 	for (uint16_t i = 0; i < MAX_K_ZONE(kt_zone_cfg); i++) {
+-		TB710FU_KALLOC_PROGRESS("fixed-zone-class", i, 16);
+ 		uint16_t n_unique_sig = kt_freq_list[i];
+ 		vm_size_t z_size = kt_zone_cfg[i];
+ 		uint16_t n_zones_sig = kt_zones_sig[i];
+@@ -1894,8 +1923,10 @@ kalloc_type_create_zones_fixed(
+ 		uint16_t type_zones_used = 0;
+ 
+ 		if (n_unique_sig == 0) {
++			TB710FU_KALLOC_CLASS("empty", i, n_unique_sig, total_types);
+ 			continue;
+ 		}
++		TB710FU_KALLOC_CLASS("begin", i, n_unique_sig, total_types);
+ 
+ 		zone_carry = 0;
+ 		assert(n_zones_sig + n_zones_type + 1 <= KT_ZONES_FOR_SIZE_SIZE);
+@@ -1917,7 +1948,9 @@ kalloc_type_create_zones_fixed(
+ 		 */
+ 		*kt_shuffle_buf = 0;
+ 		if (n_unique_sig > 1) {
++			TB710FU_KALLOC_CLASS("signature-shuffle-begin", i, n_unique_sig, total_types);
+ 			kmem_shuffle(kt_shuffle_buf, n_unique_sig);
++			TB710FU_KALLOC_CLASS("signature-shuffle-done", i, n_unique_sig, total_types);
+ 		}
+ 
+ 		for (uint16_t j = 0; j < n_zones_sig; j++) {
+@@ -1939,15 +1972,20 @@ kalloc_type_create_zones_fixed(
+ 			bool last_sig;
+ 
+ 			last_sig = (j == (n_unique_sig - 1)) ? true : false;
++			TB710FU_KALLOC_GROUP("begin", i, j + 1, n_unique_sig, cur, end);
++			TB710FU_KALLOC_CLASS("group-helper-begin", i, j + 1, n_unique_sig);
+ 			type_zones_used += kalloc_type_distribute_zone_for_type(
+ 				&kt_buffer[cur].ktv_fixed,
+ 				&kt_buffer[end].ktv_fixed, last_sig,
+ 				n_zones_type, total_types + n_unique_sig,
+ 				&kt_shuffle_buf[n_unique_sig], kt_zones_for_size,
+ 				n_zones_sig + type_zones_used, zone, early_zone);
++			TB710FU_KALLOC_CLASS("group-helper-returned", i, j + 1, n_unique_sig);
++			TB710FU_KALLOC_GROUP("done", i, j + 1, n_unique_sig, cur, end);
+ 		}
+ 		assert(type_zones_used <= n_zones_type);
+ 		p_j += n_unique_sig;
++		TB710FU_KALLOC_CLASS("done", i, n_unique_sig, total_types);
+ 	}
+ }
+ 
+-- 
+2.56.0.windows.4
+

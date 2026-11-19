@@ -1,5 +1,22 @@
 # Current status · 2026-11-19
 
+## 最新单帧边界仍在 fixed kalloc zone 内层循环 · 2026-11-19
+
+用户随后两次粘贴的二维码文本完全相同，均标识 `src-0e3190ab-ramoops`，对应
+`ufs-integrated` run `44426482407`、提交 `0e3190abc54f60bc98014f2e816802643fe7ad7e`。
+current-only 帧范围 `[92329,92662)`，333 字节，`dropped=0`；没有原始附件或日志
+hash，因此两次粘贴应视为同一帧，不是两个连续时刻。帧末完整显示
+`fixed-type-zone begin/done index=4 total=4`，表示该次 helper 内层 4 项迭代完成；
+后续没有 `fixed-group returned` 等记录。它把当前可见边界收窄到 fixed-zone 分配
+循环附近，但不是故障 PC，也不能证明 kalloc callback 没有继续执行。
+
+新 patch `0021-tb710fu-kalloc-zone-loop-checkpoints.patch` 紧跟 `0020`，补 size-class
+及 signature-group 索引、helper 返回、shuffle 和 zone assignment 前后事件，并覆盖
+fallback/single-type 提前返回。allocator 调用、随机选择和循环顺序不变。隔离 pinned
+XNU fixture 按 `0018`、`0019`、`0021` 顺序应用，`git diff --check` 通过。计划将它与
+`0020` 一起纳入下一次且仅一次 `ufs-integrated` 构建，避免之后再按单个循环边界逐次
+编译。设备帧记录见 `docs/evidence/live-ramoops-device-44426482407-kalloc.json`。
+
 ## SYSCTL 到 pageout 全路径检查点与单次构建 · 2026-11-19
 
 用户提供 build label `src-5016bd2f-ramoops`，对应 kernel run `44401178047`、

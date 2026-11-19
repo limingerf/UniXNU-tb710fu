@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "stage": "user-supplied-live-xnu-kalloc-fixed-zone-boundary",
+  "observation_date": "2026-11-19",
+  "source": "User pasted the same QR payload twice; no raw log attachment or log hash was supplied.",
+  "device_build": {
+    "label": "src-0e3190ab-ramoops",
+    "run_id": 44426482407,
+    "commit": "0e3190abc54f60bc98014f2e816802643fe7ad7e",
+    "prelinked_sha256": "5a5ee24fd1d1f128dd54d99379d04cf24eb590ab18dc7fbe35eb7356b4652dcc",
+    "packaged_kernel_sha256": "7529040226f707f7afd4de24629ea5ff1c7a59895e1955616956f137ce9ee776"
+  },
+  "export": {
+    "current_start": 92329,
+    "current_end": 92662,
+    "current_bytes": 333,
+    "dropped": 0,
+    "raw_layout": "current_only_single_frame",
+    "duplicate_paste_count": 2,
+    "last_visible_complete_event": "TB710FU kalloc: fixed-type-zone done index=4 total=4",
+    "visible_events": [
+      "TB710FU kalloc: fixed-type-skip-list begin/done",
+      "TB710FU kalloc: fixed-type-zone begin index=1 total=4",
+      "TB710FU kalloc: fixed-type-zone done index=1 total=4",
+      "TB710FU kalloc: fixed-type-zone begin index=4 total=4",
+      "TB710FU kalloc: fixed-type-zone done index=4 total=4"
+    ]
+  },
+  "interpretation": {
+    "duplicate_qrs_are_distinct_frames": false,
+    "inner_fixed_type_iteration_reached_final_index": true,
+    "kalloc_init_return_proven": false,
+    "last_record_is_fault_pc": false,
+    "stopped_in_fixed_type_zone_proven": false,
+    "root_cause_confirmed": false,
+    "notes": [
+      "The inner type loop emitted its final done marker, but the frame does not show the enclosing signature-group return or later fixed-zone completion markers.",
+      "A current-only 333-byte range is not a complete boot trace; omitted later messages cannot be treated as a stop point.",
+      "The follow-up patch adds class/group identity and helper-return boundaries to the same fixed-zone path."
+    ]
+  },
+  "next_build_patch": "patches/xnu/0021-tb710fu-kalloc-zone-loop-checkpoints.patch",
+  "device_operations": false,
+  "hardware_boot_verified": false
+}

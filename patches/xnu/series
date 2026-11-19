@@ -18,3 +18,4 @@
 0018-tb710fu-kalloc-init-substage-markers.patch
 0019-tb710fu-kalloc-full-diagnostic-trace.patch
 0020-tb710fu-bootstrap-phase-checkpoints.patch
+0021-tb710fu-kalloc-zone-loop-checkpoints.patch
