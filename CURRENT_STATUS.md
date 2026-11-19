@@ -21,7 +21,16 @@ pinned-source fixture 反向检查、正向 apply-check 并重放通过。run `4
 LiveLog integration verifier 失败：helper branch 计数门槛 `>=8` 高估了优化后 relocation 数；
 不是 PTE 补丁编译错误，strict prelink 未运行。已将门槛恢复为既有最小值 7，并改为检查
 实际编译源码中的 active update 位置、每 16 次 completed 计数和目标对象中的 marker。下一次
-`ufs-integrated` 待验证。此前 sampled
+`ufs-integrated` run [44612581308](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44612581308)
+已在设备提交 `6d82bbe50780b8fb84e383c00b609db555f23432` 成功。pinned framework
+`0c1bac3d51a3009dca1708b15a5198f4b43d057a`、XNU `ac9718fb1af618d5ce8678d0dc6e8a58f252216f`；
+native arm64e SHA-256 `194ea250b0fab2d35ad6f473a87be8b642329d5eb2e80e39262729f634128c19`。
+严格预链接 fileset 为 142,835,712 字节，SHA-256
+`a6d93191e64c3d8e4cad63d23bcb24fa4e34ff433d6fac6d4331040c43fcb999`；production DarwinBoot
+parser PASS，`mapping_complete=true`、`missing={}`、`stubbed={}`、`allow_missing=false`。
+对象的 helper immediate relocation 数为 7；编译源码和对象 marker 的专门检查确认 completed-PTE
+子步已编入。生产 package verifier 本地复核 6 个 archive objects、23 个强定义通过。完整记录见
+`docs/evidence/live-checkpoints-prelink-rnx-substeps-44612581308.json`。此前 sampled
 QR cadence 曾提前退出 checkpoint publisher，从而也挡住文本更新；该 gate 已移除，滚屏
 现在每个有效 capture checkpoint 都更新；首次有效快照可 seed 一帧 QR，之后由独立 worker
 以 250ms cadence 轮播，不再在 PTE 检查点中同步 fallback 编码。若 worker 未获调度，二维码
