@@ -63,8 +63,10 @@ DUAL_SOURCE_LOG_CONTRACT = {
         'requires': 'tb710fu-live-log=1',
         'provider': 'tb710fu_live_log_checkpoint',
         'background_worker_disabled': True,
-        'poll_throttle_bypassed': True,
-        'independent_single_frame_session_per_checkpoint': True,
+        'sampled_provider': 'tb710fu_live_log_checkpoint_sampled',
+        'sampled_quiet_period_ms_after_attempt': 250,
+        'explicit_stage_boundaries_immediate': True,
+        'independent_single_frame_session_per_render': True,
         'raw_tail': 'largest current XNU suffix fitting one systematic frame',
     },
 }

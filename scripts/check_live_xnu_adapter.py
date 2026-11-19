@@ -49,7 +49,8 @@ def main():
         # Build the ABI header by applying actual patches, rather than maintaining
         # a second hand-written copy in the host shim.
         for name in ('0004-tb710fu-ramoops-console.patch', '0013-tb710fu-ramoops-snapshot.patch',
-                     '0014-tb710fu-native-live-log.patch'):
+                     '0014-tb710fu-native-live-log.patch',
+                     '0024-tb710fu-pace-hot-startup-checkpoints.patch'):
             run(['git', '-C', str(scratch), 'apply',
                  '--include=osfmk/kern/tb710fu_ramoops.h',
                  '--include=osfmk/kern/tb710fu_live_log.h', str(ROOT / 'patches/xnu' / name)])
@@ -72,6 +73,7 @@ def main():
                  'patches/xnu/0021-tb710fu-kalloc-zone-loop-checkpoints.patch',
                  'patches/xnu/0022-tb710fu-synchronous-live-checkpoints.patch',
                  'patches/xnu/0023-tb710fu-bootstrap-suboperation-checkpoints.patch',
+                 'patches/xnu/0024-tb710fu-pace-hot-startup-checkpoints.patch',
                  'package/Tb710fuLiveLog/LiveXnu.c', 'package/Tb710fuLiveLog/LiveProtocol.c',
                  'package/Tb710fuLiveLog/LiveProtocol.h', 'package/Tb710fuLiveLog/LiveDisplay.c',
                  'package/Tb710fuLiveLog/LiveDisplay.h', 'diagnostics/early-report/Font.h']
@@ -79,7 +81,7 @@ def main():
             'schema_version': 1,
             'stage': 'native-live-xnu-adapter-host-check',
             'result': 'PASS',
-            'groups': 13,
+            'groups': 14,
             'invalid_video_cases': 15,
             'sanitizers': ['address', 'undefined'],
             'source_sha256': {name: sha(ROOT / name) for name in names},
@@ -115,6 +117,9 @@ def main():
                 'checkpoint_replaces_single_frame_session_without_dwell': True,
                 'checkpoint_contains_stage_and_current_xnu_tail': True,
                 'checkpoint_contention_is_nonblocking_and_counted': True,
+                'hot_checkpoints_keep_capture_and_pace_render_attempts': True,
+                'hot_checkpoint_quiet_period_follows_slow_or_failed_attempt': True,
+                'outer_stage_checkpoint_publishes_during_hot_loop_quiet_period': True,
             },
             'limits': 'Host XNU-service simulation; native ABI, real scheduling/MMU/caches and device behavior unverified.',
             'device_operations': False,

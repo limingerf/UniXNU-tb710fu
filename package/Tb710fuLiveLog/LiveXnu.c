@@ -36,7 +36,7 @@ static unsigned checkpoint_mode, checkpoint_guard, checkpoint_failures, checkpoi
 static unsigned qr_encoded[2], qr_drawn[2];
 static unsigned next_slot;
 static uint64_t frequency, next_frame, poll_count, xnu_generation, ramoops_generation;
-static uint64_t checkpoint_generation, xnu_last_dropped;
+static uint64_t checkpoint_generation, checkpoint_last_attempt_end, xnu_last_dropped;
 static char checkpoint_stage[49];
 
 /* This strong writer is capture only: no framebuffer, encoding, allocation,
@@ -275,7 +275,7 @@ static void checkpoint_status(const char *result)
 }
 
 /* A fresh one-block sender makes the current stage independently scannable. */
-void tb710fu_live_log_checkpoint(const char *stage)
+static void checkpoint_publish(const char *stage, int sampled)
 {
     if (!tb710fu_live_log_active()) return;
     if (!__atomic_load_n(&checkpoint_mode, __ATOMIC_ACQUIRE)) {
@@ -286,6 +286,11 @@ void tb710fu_live_log_checkpoint(const char *stage)
         (void)__atomic_fetch_add(&checkpoint_failures, 1u, __ATOMIC_RELAXED);
         return;
     }
+
+    /* Measure the quiet period from the end of the last attempt so a slow
+     * encoder or framebuffer does not make the next hot-loop marker eligible. */
+    if (sampled && live_ticks() - checkpoint_last_attempt_end < frequency / 4u)
+        goto unlock;
 
     checkpoint_set_stage(stage);
     struct tb710fu_live_capture_info state = {0};
@@ -364,7 +369,19 @@ void tb710fu_live_log_checkpoint(const char *stage)
     }
 
 done:
+    checkpoint_last_attempt_end = live_ticks();
+unlock:
     __atomic_store_n(&checkpoint_guard, 0u, __ATOMIC_RELEASE);
+}
+
+void tb710fu_live_log_checkpoint(const char *stage)
+{
+    checkpoint_publish(stage, 0);
+}
+
+void tb710fu_live_log_checkpoint_sampled(const char *stage)
+{
+    checkpoint_publish(stage, 1);
 }
 
 /* Preserve precisely this pre-machine_startup boundary once. A busy/empty

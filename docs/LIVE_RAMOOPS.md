@@ -62,19 +62,16 @@ ramoops 是当前启动的内核缓冲副本，因此两侧文本可能重叠。
 
 ## 停住时的可读性
 
-每一帧都由内核实际执行到 `tb710fu_live_log_poll()` 时推进，因此画面完全
-静止就说明没有代码再执行到该函数，而不是渲染故障；一张定格照片能反映的
-只是最后一次成功发布的快照。
+静止画面只反映最后一次成功绘制的快照。一次扫码可确定该帧中的阶段和
+日志范围。定位故障指令还需要 panic、异常寄存器或其他直接证据。
 
-新停点诊断参数为 `tb710fu-live-checkpoints=1`，必须与 `tb710fu-live-log=1`
-同时提供。此模式不启动后台渲染线程，也不让普通 250ms poll 覆盖二维码。
-每个显式 startup/kalloc 检查点会先写日志，再同步编码并绘制一个新的 XNU
-单帧 OneSend 文件；callback 在调用前和返回后都发布检查点。独立单帧会话
-绕过普通快照的 2/16 轮替换门限，因此阶段推进时最后一次成功的 begin QR
-会留在 framebuffer 上。若随后内核停住，扫码得到的是停住前的最后成功阶段，
-不是停住后的新日志，也不是故障 PC。
-每个检查点都是新的 OneSend session；接收器必须先结束或 reset 旧 session，
-再接收停住后留在屏幕上的单帧。
+`tb710fu-live-checkpoints=1` 须与 `tb710fu-live-log=1` 同时启用。该模式由
+startup/kalloc 调用点发布单帧 XNU 文件，替代后台线程和 250ms 双通道轮询。
+`0024` 将 startup callback 入口和返回、kalloc 内层进度和组循环的二维码发布
+限制为距上一次尝试结束至少约 250ms。每个调用点仍先把事件写入日志环。
+kalloc 初始化、fixed/variable views 的入口和结束、startup phase、bootstrap
+操作及显示刷新立即尝试发布。每个已绘制的检查点有独立 OneSend session。
+接收器重置旧 session 后可从一帧恢复本次快照。
 
 同步二维码只带能放进一个 systematic frame 的最新 XNU 尾部和阶段字段；
 早期备份仍标记为 deferred，不声称单帧里包含完整控制台历史。capture、编码
@@ -126,8 +123,7 @@ XNU 的对象宏 DEBUG 仅在三个 QR 对象的兼容头内解除，再定义 E
 新补丁 `0022` 将 startup callback 与 kalloc 检查点改为同步单帧发布；检查点
 模式不启动竞争 renderer worker，并保留 callback begin/return 两侧边界。
 打包门禁要求新 boot argument 与 live-log 同时出现，native integration 检查
-startup.o 与 kalloc.o 对强 provider 的实际分支。此设置把停点前最近阶段留在
-屏幕上，但仍不提供内核停住后的后台刷新。
+startup.o 与 kalloc.o 对即时和采样两个强 provider 的实际分支。
 
 真实生产源码、独立捕获缓冲、双通道、早期备份、固定接收器和实际 Mu
 分别经过主机检查；实际 macOS arm64e 编译、强钩子、归档、最终代码和

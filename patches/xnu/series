@@ -21,3 +21,4 @@
 0021-tb710fu-kalloc-zone-loop-checkpoints.patch
 0022-tb710fu-synchronous-live-checkpoints.patch
 0023-tb710fu-bootstrap-suboperation-checkpoints.patch
+0024-tb710fu-pace-hot-startup-checkpoints.patch

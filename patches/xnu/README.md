@@ -156,6 +156,12 @@ grouped direct operations in `kernel_bootstrap_thread`: each of its five
 cluster power resume now have their own begin/done frames. It preserves the broad
 parent markers and does not reorder or alter the operations.
 
+`0024-tb710fu-pace-hot-startup-checkpoints.patch` paces QR renders in the
+kalloc inner loops and across startup callback entries and returns. Each marker
+still enters the capture ring. The adapter enforces a quarter-second quiet
+period after the last render attempt. Outer kalloc boundaries, startup phases,
+bootstrap events and console refresh still attempt an immediate QR.
+
 The first native attempt, run 44112832250 at `eb1f2bc7`, exposed a missing
 internal-header export in `pe_kprintf.c`. The device patch now adds its two real
 headers to `osfmk/kern/Makefile` XNU_ONLY_EXPORTS, using the same official

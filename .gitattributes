@@ -6,6 +6,7 @@ patches/xnu/0011-tb710fu-source-storage-start.patch whitespace=-space-before-tab
 patches/xnu/0012-tb710fu-cdc-start.patch whitespace=-space-before-tab,-blank-at-eol
 patches/xnu/0013-tb710fu-ramoops-snapshot.patch whitespace=-space-before-tab,-blank-at-eol
 patches/xnu/0014-tb710fu-native-live-log.patch whitespace=-space-before-tab,-blank-at-eol,-blank-at-eof
+patches/xnu/0024-tb710fu-pace-hot-startup-checkpoints.patch whitespace=-space-before-tab,-blank-at-eol
 *.sh text eol=lf
 *.py text eol=lf
 *.toml text eol=lf
