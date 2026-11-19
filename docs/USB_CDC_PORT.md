@@ -1,5 +1,24 @@
 # TB710FU USB CDC port · 2026-11-17
 
+## Current PRELINKTEXT checkpoint · 2026-11-20
+
+The latest user QR is from `src-45d347f6-ramoops`, run `44546733725`, and is still
+inside `machine_lockdown()` / `arm_vm_prot_finalize()` while changing PRELINKTEXT
+PTEs. This is before `kernel_bootstrap_thread()` calls `bsd_init()`. Patch 0012
+starts `tb710fu_cdc_start()` in `bsd_init()` immediately before `vfsinit()`, so
+the CDC worker has not reached its startup call at this checkpoint. Its absence
+from USB logs here is expected and does not show a port fault. The current build
+links the provider and its test boot arguments enable `tb710fu-cdc=1`, but the
+runtime start has not occurred. Real TB710FU enumeration and captured bytes
+remain unverified.
+
+The pinned UniXNU [4 KiB page-table guide](/D:/unixnu-tb710fu-clean/.work/UniXNU/docs/zh/xnu/four-k-page-tables.md)
+describes the native 4 KiB granule/PTE geometry. The pinned
+[debugging guide](/D:/unixnu-tb710fu-clean/.work/UniXNU/docs/zh/guide/debugging.md)
+recommends framebuffer or UART evidence during early kernel entry and requires
+target-protocol compatibility before using a USB terminal. The `i=384` progress
+marker is emitted before applying PTE 384; it does not identify a fault PC.
+
 ## Stage-56 hardware feedback and extended platform trace
 
 The user now reports a working QR labelled `src-503599a0-cdc-qr`, stage 56,

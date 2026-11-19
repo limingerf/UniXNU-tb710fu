@@ -144,11 +144,16 @@ not a compressor sizing or runtime fix.
 and kalloc markers through `tb710fu_live_log_checkpoint`, adds a callback-entry
 marker before every startup callback, and retains callback-return markers. The
 new `tb710fu-live-checkpoints=1` runtime option publishes an independent
-single-frame XNU QR synchronously and skips the background renderer; without it,
-the original throttled dual-stream polling behavior remains. The package gate
-requires this option alongside `tb710fu-live-log=1`. This leaves the last
-successfully rendered pre-operation frame visible if a later operation stops,
-but cannot refresh after execution stops or establish the faulting PC.
+XNU QR snapshot synchronously and replaces the ordinary dual-stream poller with
+a QR-only carousel worker. The writer still only captures bytes. Checkpoint
+calls refresh bounded framebuffer text immediately and publish an immutable
+file containing the frozen early backup and current XNU tail; the worker loops
+its systematic OneSend frames every 250 ms and a new session replaces it only
+after 16 complete rounds. Without the option, the original throttled dual-stream
+polling behavior remains. The package gate requires it alongside
+`tb710fu-live-log=1`. The last successfully rendered text and QR stay visible if
+execution stops; in that case the in-kernel carousel also stops and cannot prove
+a faulting PC.
 
 `0023-tb710fu-bootstrap-suboperation-checkpoints.patch` splits the remaining
 grouped direct operations in `kernel_bootstrap_thread`: each of its five

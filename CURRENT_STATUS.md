@@ -1,4 +1,34 @@
-# Current status · 2026-11-19
+# Current status · 2026-11-20
+
+## PRELINKTEXT PTE 进度与 USB 启动边界 · 2026-11-20
+
+实机帧来自 `src-45d347f6-ramoops` / run `44546733725`。当前 `[1502250,1502502)`
+共 252 字节、`dropped=0`，尾部连续记录 `ld-prelink-rnx-pte` 的索引
+192、256、320、384。checkpoint 打印发生在对应 `update_or_defer_tte` 之前，因此
+索引 320 的批次已完成；索引 384 是下一个待更新项，不是已确认 fault PC。首个
+edge helper 的活动范围是索引 12–511，至少还有索引 384–511 共 128 项待处理，之后
+还需完成 edge helper 和整个剩余 PRELINKTEXT/lockdown 路径。屏幕日志停在该标记只表明
+没有绘制更新，不能单独认定内核在 PTE 384 指令上故障。证据见
+`docs/evidence/live-checkpoints-prelink-rnx-pte-44546733725.json`。
+
+本次 build 已把 CDC transport 链接，测试启动参数也含 `tb710fu-cdc=1`；但官方补丁
+`0012` 把 `tb710fu_cdc_start()` 放在 `bsd_init()`、紧邻 `vfsinit()` 之前。XNU 先执行
+`machine_lockdown()`，再进入 `bsd_init()`，当前帧仍处于 `arm_vm_prot_finalize`，因此
+尚未到 USB CDC 启动点。此时没有 USB port 属于阶段尚未到达，不能作为端口集成失败
+证据。真实 USB 枚举和 CDC 主机收字节依旧未验证。固定 UniXNU 文档
+[`4 KiB 页表`](/D:/unixnu-tb710fu-clean/.work/UniXNU/docs/zh/xnu/four-k-page-tables.md)
+解释 4 KiB granule/L3 PTE；[`调试与日志`](/D:/unixnu-tb710fu-clean/.work/UniXNU/docs/zh/guide/debugging.md)
+说明早期用屏幕或 UART、USB 前须确认协议兼容。设备 CDC 限制详见
+[`USB_CDC_PORT.md`](/D:/unixnu-tb710fu-clean/docs/USB_CDC_PORT.md)。
+
+二维码更新正在切换为循环多帧 OneSend。新 sender 先合并 ready 的 498-byte early
+backup 和最多 3072-byte 当前尾部，文件体限制 4096 字节；worker 每 250 ms 发送下一
+systematic 帧，完成 16 个文件轮次后才允许替换 session。当前用户这张图来自旧
+`synchronous_single_frame` 镜像，所以仅含 252 字节当前尾部，不能把它归因于新循环实现。
+主机验证已通过 LiveXnu 16 组 ASan/UBSan adapter、协议 C/ASan/UBSan 与固定 OneSend
+browser receiver、多帧 early-backup fixture、显示 ASan/UBSan 及 13 项 package verifier。
+新官方 native/prelink 集成构建尚待运行；`44546733725` 签名包是之前的单帧二维码版，
+本轮没有刷写或重启设备。
 
 ## PRELINKTEXT 滚屏日志诊断包已签出 · 2026-11-19
 

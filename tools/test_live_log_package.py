@@ -64,6 +64,10 @@ def fixture():
             name: call_evidence('_checkpoint_status' if name == '_tb_live_display_checkpoint_status'
                                 else '_checkpoint_publish')
             for name in live.CHECKPOINT_DISPLAY_IMPORTS},
+        'checkpoint_worker_calls': {
+            name: call_evidence('_live_start_worker' if name == '_kernel_thread_start'
+                                else '_live_worker')
+            for name in live.CHECKPOINT_WORKER_IMPORTS},
         'hook_objects': {
             'osfmk/DEVELOPMENT/serial_console.o': {
                 'object_sha256': 'd' * 64, 'compile_record_sha256': 'e' * 64,
@@ -107,7 +111,9 @@ class LiveLogPackaging(unittest.TestCase):
         for report_name in ('report', 'integration'):
             for mutation in ('missing', 'swapped_sources', 'shared_capture', 'lost_early_backup',
                              'oversize_tail', 'oversize_body', 'old_fixed_left', 'multiple_frames',
-                             'one_round', 'long_single_frame'):
+                             'one_round', 'long_single_frame', 'no_qr_carousel', 'short_qr_dwell',
+                             'single_frame_checkpoint', 'no_early_backup', 'no_receiver_reset',
+                             'oversize_multiframe_file', 'single_frame_file_api', 'wrong_raw_layout'):
                 with self.subTest(report=report_name, mutation=mutation):
                     value = fixture()
                     contract = value[report_name]['dual_source_log_contract']
@@ -122,6 +128,14 @@ class LiveLogPackaging(unittest.TestCase):
                     elif mutation == 'multiple_frames': contract['frames_per_poll_max'] = 2
                     elif mutation == 'long_single_frame':
                         contract['single_frame_rounds_before_replacement'] = 16
+                    elif mutation == 'no_qr_carousel': contract['checkpoint_mode']['background_worker_role'] = 'disabled'
+                    elif mutation == 'short_qr_dwell': contract['checkpoint_mode']['qr_frame_interval_ms'] = 1
+                    elif mutation == 'single_frame_checkpoint': contract['checkpoint_mode']['minimum_complete_rounds_before_replacement'] = 1
+                    elif mutation == 'no_early_backup': contract['checkpoint_mode']['early_backup'] = 'omitted'
+                    elif mutation == 'no_receiver_reset': contract['checkpoint_mode']['qr_session_reset_required_on_generation_change'] = False
+                    elif mutation == 'oversize_multiframe_file': contract['checkpoint_mode']['multi_frame_file_body_max_bytes'] = 8192
+                    elif mutation == 'single_frame_file_api': contract['checkpoint_mode']['sender_snapshot_api'] = 'tb710fu_live_log_snapshot_single_file'
+                    elif mutation == 'wrong_raw_layout': contract['checkpoint_mode']['raw_layout'] = 'current_only_single_frame'
                     else: contract['complete_rounds_before_replacement_min'] = 1
                     with self.assertRaisesRegex(ValueError, 'dual-source capture/export contract'):
                         check(value)
@@ -154,6 +168,13 @@ class LiveLogPackaging(unittest.TestCase):
                     elif mutation == 'no_branch': calls[symbol]['branches'] = []
                     else: calls[symbol]['branches'][0]['caller'] = '_other'
                     with self.assertRaises(ValueError): check(value)
+
+    def test_multiframe_qr_carousel_worker_must_be_real_and_timer_driven(self):
+        for symbol in live.CHECKPOINT_WORKER_IMPORTS:
+            with self.subTest(symbol=symbol):
+                value = fixture()
+                value['integration']['checkpoint_worker_calls'][symbol]['branches'][0]['caller'] = '_other'
+                with self.assertRaises(ValueError): check(value)
 
     def test_each_console_path_and_both_source_providers_are_required(self):
         for mutation in ('normal', 'disabled', 'gate', 'pe_normal', 'pe_crlf', 'capture_provider',

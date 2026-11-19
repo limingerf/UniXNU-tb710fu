@@ -64,6 +64,10 @@ CHECKPOINT_DISPLAY_IMPORTS = (
     '_tb_live_display_checkpoint_qr', '_tb_live_display_scroll_log',
     '_tb_live_display_checkpoint_status',
 )
+CHECKPOINT_WORKER_IMPORTS = (
+    '_kernel_thread_start', '_clock_interval_to_deadline',
+    '_assert_wait_deadline', '_thread_block',
+)
 DISABLED_CAPTURE_CALLERS = {'_tb710fu_live_capture_disabled', '_console_write',
                            '_console_write_unbuffered', '__cnputs',
                            '_console_ring_try_empty', '_console_ring_try_empty_locked'}
@@ -333,6 +337,15 @@ def verify(tree, config, native_path):
     display = audit.MachO(members['LiveDisplay.o'])
     for name in CHECKPOINT_DISPLAY_IMPORTS:
         strong_definition(display, name)
+    checkpoint_worker_calls = {name: {'symbol': strong_import(live_xnu, name),
+                                      'branches': branch_relocations(live_xnu, name)}
+                               for name in CHECKPOINT_WORKER_IMPORTS}
+    require(any(call['caller'] == '_live_start_worker' for call in
+                checkpoint_worker_calls['_kernel_thread_start']['branches']) and
+            all(any(call['caller'] == '_live_worker' for call in
+                    checkpoint_worker_calls[name]['branches'])
+                for name in CHECKPOINT_WORKER_IMPORTS[1:]),
+            'Checkpoint QR carousel worker must be created and use the bounded timer wait path')
     adapter_snapshot_calls = adapter_source_calls['_tb710fu_ramoops_snapshot_copy']['branches']
     require(any(call['caller'] == '_tb710fu_live_log_putc' for call in
                 adapter_source_calls['_tb710fu_live_capture_putc']['branches']),
@@ -432,6 +445,7 @@ def verify(tree, config, native_path):
             'adapter_snapshot_calls': adapter_snapshot_calls, 'native_definitions': definitions,
             'adapter_source_calls': adapter_source_calls,
             'checkpoint_display_calls': checkpoint_display_calls,
+            'checkpoint_worker_calls': checkpoint_worker_calls,
             'dual_source_log_contract': builder.DUAL_SOURCE_LOG_CONTRACT,
             'object_instruction_checks': instruction_checks,
             'linkarchives_sha256': digest(link), 'linkarchives': link_text,

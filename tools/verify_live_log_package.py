@@ -58,12 +58,19 @@ DUAL_SOURCE_LOG_CONTRACT = {
         'argument': 'tb710fu-live-checkpoints=1',
         'requires': 'tb710fu-live-log=1',
         'provider': 'tb710fu_live_log_checkpoint',
-        'background_worker_disabled': True,
+        'worker_role': 'QR-only immutable-snapshot carousel; no dual-source polling',
         'sampled_provider': 'tb710fu_live_log_checkpoint_sampled',
-        'sampled_quiet_period_ms_after_attempt': 250,
-        'explicit_stage_boundaries_immediate': True,
-        'independent_single_frame_session_per_render': True,
-        'raw_tail': 'largest current XNU suffix fitting one systematic frame',
+        'text_refresh': 'immediate at every accepted checkpoint snapshot',
+        'qr_frame_interval_ms': 250,
+        'multi_frame_file_body_max_bytes': 4096,
+        'early_backup': 'include frozen ready 512-byte prefix in immutable file',
+        'raw_layout': 'earlybackup_then_current',
+        'minimum_complete_rounds_before_replacement': 16,
+        'sender_snapshot_api': 'tb710fu_live_log_snapshot_file',
+        'sender_frame_api': 'tb710fu_live_log_next_frame',
+        'qr_session_reset_required_on_generation_change': True,
+        'halt_limit': 'carousel freezes if kernel execution or worker scheduling stops',
+        'single_frame_after_early_freeze': False,
         'display': {'checkpoint_qr_anchor': 'bottom-right',
                     'scroll_log_region': 'left-of-checkpoint-qr',
                     'scroll_source': 'latest-current-xnu-capture-tail',
@@ -82,6 +89,10 @@ ADAPTER_SOURCE_IMPORTS = (
 CHECKPOINT_DISPLAY_IMPORTS = (
     '_tb_live_display_checkpoint_qr', '_tb_live_display_scroll_log',
     '_tb_live_display_checkpoint_status',
+)
+CHECKPOINT_WORKER_IMPORTS = (
+    '_kernel_thread_start', '_clock_interval_to_deadline',
+    '_assert_wait_deadline', '_thread_block',
 )
 DISABLED_CAPTURE_CALLERS = {'_tb710fu_live_capture_disabled', '_console_write',
                            '_console_write_unbuffered', '__cnputs',
@@ -200,6 +211,14 @@ def checkpoint_display_evidence(integration):
             '_checkpoint_publish' in callers['_tb_live_display_checkpoint_qr'] and
             callers['_tb_live_display_checkpoint_status'] & {'_checkpoint_status', '_checkpoint_publish'},
             'Synchronous log, bottom-right QR and status do not have their real checkpoint callers')
+    worker = integration.get('checkpoint_worker_calls', {})
+    require(set(worker) == set(CHECKPOINT_WORKER_IMPORTS),
+            'Incomplete immutable QR carousel worker-call evidence')
+    worker_callers = {name: import_branch_evidence(worker[name], name)
+                      for name in CHECKPOINT_WORKER_IMPORTS}
+    require('_live_start_worker' in worker_callers['_kernel_thread_start'] and
+            all('_live_worker' in worker_callers[name] for name in CHECKPOINT_WORKER_IMPORTS[1:]),
+            'Immutable QR carousel worker lacks its real creation/timer/wait path')
 
 
 def _verify(integration_bytes, report_bytes, archive, kernel, official, build, storage):

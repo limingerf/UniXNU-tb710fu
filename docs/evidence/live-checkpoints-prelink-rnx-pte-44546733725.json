@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "source": "User-pasted QR export and screen observation",
+  "run_id": 44546733725,
+  "device_commit": "45d347f631516edf7a59df97da387caece4d1cbb",
+  "build_label": "src-45d347f6-ramoops",
+  "checkpoint": "ld-prelink-rnx-pte",
+  "checkpoint_mode": "synchronous_single_frame",
+  "earlybackup": {
+    "state": "ready",
+    "start": 0,
+    "end_exclusive": 498,
+    "bytes": 498,
+    "export": "deferred_multi_frame"
+  },
+  "current": {
+    "start": 1502250,
+    "end_exclusive": 1502502,
+    "bytes": 252,
+    "dropped": 0,
+    "raw_layout": "current_only_single_frame"
+  },
+  "raw_tail": [
+    "000",
+    "TB710FU lockdown: prelink-rnx pte i=192 va=0xfffffff0070c0000",
+    "TB710FU lockdown: prelink-rnx pte i=256 va=0xfffffff007100000",
+    "TB710FU lockdown: prelink-rnx pte i=320 va=0xfffffff007140000",
+    "TB710FU lockdown: prelink-rnx pte i=384 va=0xfffffff007180000"
+  ],
+  "pte_checkpoint_semantics": {
+    "checkpoint_print_position": "before update_or_defer_tte for the indexed entry",
+    "last_completed_batch_index": 320,
+    "current_marker_index": 384,
+    "next_entry_va": "0xfffffff007180000",
+    "active_edge_range_first_index": 12,
+    "active_edge_range_last_index_inclusive": 511,
+    "entries_before_current_index_processed": 372,
+    "active_entries_remaining_including_current": 128,
+    "faulting_instruction_confirmed": false,
+    "root_cause_confirmed": false
+  },
+  "usb_cdc_boundary": {
+    "provider_linked_in_build_44546733725": true,
+    "boot_argument_present_in_test_package": true,
+    "start_call": "bsd_init immediately before vfsinit",
+    "observed_frame_is_inside": "machine_lockdown before bsd_init",
+    "cdc_start_reached": false,
+    "device_enumeration_verified": false,
+    "host_capture_verified": false
+  },
+  "source_docs": [
+    ".work/UniXNU/docs/zh/xnu/four-k-page-tables.md",
+    ".work/UniXNU/docs/zh/guide/debugging.md",
+    "docs/USB_CDC_PORT.md"
+  ]
+}
