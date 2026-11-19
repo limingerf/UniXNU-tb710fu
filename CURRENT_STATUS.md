@@ -1,5 +1,31 @@
 # Current status · 2026-11-19
 
+## 用户授权签名的同步检查点 AVB 包已验证 · 2026-11-19
+
+用户随后明确要求签名。用本地 AVB RSA-4096 key 对 unsigned candidate
+`de5c688cd09df32b848cd00e8738784a8fb38a259b158d4e47dcf173652fac43` 签名，基线为
+已核验 source vendor/vbmeta `a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2` /
+`3fd43a5a7adc0275eb8d241b94f1c2520b6b630ae912c3eff4a3869d76228e04`。`boot.img`
+从同一已验证签名 carrier 原样沿用，SHA-256
+`a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`。
+
+签名输出位于 `out/live-checkpoints-44479475027-signed/`：
+`vendor_boot.img` 为 100,663,296 字节，SHA-256
+`0c2274909b4b40ace56103b6e0c8093322d7c1f876735f2877f5346a8e86f454`；`vbmeta.img`
+为 8,000 字节，SHA-256
+`7c8e66e4be41f28109d2e8f2de23dc1adadcb2215feb59187c80d204eccd2d3f`。配套 ZIP
+`out/live-checkpoints-44479475027-signed.zip` SHA-256：
+`9e59c712c6ad6a660bbc975833a267890c1a8eeb805ad51b76a30e01ade6f9a6`。
+
+AVB tool 回读验证 boot/vendor_boot footer 和 vbmeta RSA-4096 签名、vendor_boot
+salted hash、boot chain key；vbmeta header、公钥和其他 22 个 raw descriptor 未变，
+unsigned vendor body 逐字节保留。FAT kernel/args/ADT/root-policy 回读、LZMA
+round trip、FAT 几何及 ZIP 内 SHA256SUMS 均通过。完整报告为该目录的
+`signing-report.json` 与 `verification-report.json`。
+
+这是签名配对，不等于硬件启动验证：`runtime_qualified=false`、`loadable=false`、
+`hardware_boot_verified=false`。没有刷写、重启或其他设备操作。
+
 ## 同步检查点 unsigned vendor_boot 已打包 · 2026-11-19
 
 用户要求打包 img。使用成功的 kernel run `44479475027` / device commit
