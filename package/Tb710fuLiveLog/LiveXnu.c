@@ -22,17 +22,22 @@
 
 static TB_LIVE_DISPLAY display;
 static struct tb710fu_live_log_sender xnu_sender, ramoops_sender;
+static struct tb710fu_live_log_sender checkpoint_sender;
 /* Zero initialization is the capture-ring initialization. Never clear this in
  * display init: PE/console output can arrive before VM and LiveLog init. */
 static struct tb710fu_live_capture xnu_capture;
 static struct tb710fu_live_capture_info early_state, xnu_state;
 static struct tb710fu_ramoops_snapshot ramoops_state;
 static uint8_t snapshot[TB710FU_LIVE_LOG_MAX_BYTES];
-static uint8_t xnu_file[TB710FU_LIVE_LOG_MAX_BYTES], early_bytes[512], frame[752];
+static uint8_t xnu_file[TB710FU_LIVE_LOG_MAX_BYTES], checkpoint_file[TB710FU_LIVE_LOG_MAX_BYTES];
+static uint8_t early_bytes[512], frame[752];
 static unsigned enabled, guard, redraw, worker_started, sleep_channel, early_frozen, early_once;
+static unsigned checkpoint_mode, checkpoint_guard, checkpoint_failures, checkpoint_bands_pending;
 static unsigned qr_encoded[2], qr_drawn[2];
 static unsigned next_slot;
-static uint64_t frequency, next_frame, poll_count, xnu_generation, ramoops_generation, xnu_last_dropped;
+static uint64_t frequency, next_frame, poll_count, xnu_generation, ramoops_generation;
+static uint64_t checkpoint_generation, xnu_last_dropped;
+static char checkpoint_stage[49];
 
 /* This strong writer is capture only: no framebuffer, encoding, allocation,
  * polling or logging. A contending writer records a drop and returns. */
@@ -207,6 +212,7 @@ static void snapshot_ramoops(void)
 void tb710fu_live_log_poll(void)
 {
     if (!tb710fu_live_log_active()) return;
+    if (__atomic_load_n(&checkpoint_mode, __ATOMIC_ACQUIRE)) return;
     if (__atomic_exchange_n(&guard, 1u, __ATOMIC_ACQUIRE)) return;
     uint64_t now = live_ticks();
     if (now < next_frame) goto done;
@@ -236,8 +242,129 @@ done:
 void tb710fu_live_log_refresh(void)
 {
     if (!tb710fu_live_log_active()) return;
+    if (__atomic_load_n(&checkpoint_mode, __ATOMIC_ACQUIRE)) {
+        __atomic_store_n(&checkpoint_bands_pending, 1u, __ATOMIC_RELEASE);
+        tb710fu_live_log_checkpoint("display-refresh");
+        return;
+    }
     __atomic_store_n(&redraw, 1u, __ATOMIC_RELEASE);
     tb710fu_live_log_poll();
+}
+
+static void checkpoint_set_stage(const char *stage)
+{
+    size_t index = 0;
+    if (stage == NULL) stage = "unspecified";
+    while (index < sizeof(checkpoint_stage) - 1u && stage[index] != '\0') {
+        unsigned char c = (unsigned char)stage[index];
+        checkpoint_stage[index] = c >= 32u && c <= 126u ? (char)c : '?';
+        ++index;
+    }
+    checkpoint_stage[index] = '\0';
+}
+
+static void checkpoint_status(const char *result)
+{
+    char text[256];
+    (void)snprintf(text, sizeof(text), "CKPT=%s N=%llu ERR=%u %.48s | %.24s",
+        result, (unsigned long long)checkpoint_generation,
+        __atomic_load_n(&checkpoint_failures, __ATOMIC_RELAXED), checkpoint_stage,
+        TB_LIVE_BUILD_LABEL);
+    (void)tb_live_display_status(&display, text);
+    live_barrier();
+}
+
+/* A fresh one-block sender makes the current stage independently scannable. */
+void tb710fu_live_log_checkpoint(const char *stage)
+{
+    if (!tb710fu_live_log_active()) return;
+    if (!__atomic_load_n(&checkpoint_mode, __ATOMIC_ACQUIRE)) {
+        tb710fu_live_log_poll();
+        return;
+    }
+    if (__atomic_exchange_n(&checkpoint_guard, 1u, __ATOMIC_ACQUIRE)) {
+        (void)__atomic_fetch_add(&checkpoint_failures, 1u, __ATOMIC_RELAXED);
+        return;
+    }
+
+    checkpoint_set_stage(stage);
+    struct tb710fu_live_capture_info state = {0};
+    int copied = 0;
+    for (unsigned attempt = 0; attempt < 8u; ++attempt) {
+        copied = tb710fu_live_capture_copy(&xnu_capture, snapshot, 3072u, &state);
+        if (state.state != TB710FU_LIVE_CAPTURE_BUSY) break;
+    }
+    if (__atomic_exchange_n(&checkpoint_bands_pending, 0u, __ATOMIC_ACQ_REL))
+        (void)tb_live_display_bands(&display);
+    if ((state.state != TB710FU_LIVE_CAPTURE_EMPTY &&
+        state.state != TB710FU_LIVE_CAPTURE_READY) || copied < 0) {
+        (void)__atomic_fetch_add(&checkpoint_failures, 1u, __ATOMIC_RELAXED);
+        checkpoint_status(state.state == TB710FU_LIVE_CAPTURE_BUSY ? "BUSY" : "CAPTURE-ERR");
+        goto done;
+    }
+
+    uint64_t generation = checkpoint_generation + 1u;
+    if (generation == 0) generation = 1u;
+    size_t count = (size_t)copied;
+    for (;;) {
+        uint64_t start = state.end - count;
+        size_t capacity = tb710fu_live_log_single_file_capacity(
+            TB710FU_LIVE_LOG_XNU, generation, start, state.end);
+        int header = snprintf((char *)checkpoint_file, sizeof(checkpoint_file),
+            "TB710FU XNU DEBUG EXPORT v1\nsource=xnu-debug\nbuild=%.64s\n"
+            "checkpoint=%.48s\ncheckpoint_mode=synchronous_single_frame\n"
+            "earlybackup_state=%s\nearlybackup_start=%llu\nearlybackup_end=%llu\n"
+            "earlybackup_bytes=%u\nearlybackup_export=deferred_multi_frame\n"
+            "current_start=%llu\ncurrent_end=%llu\ncurrent_bytes=%u\n"
+            "dropped=%llu\nraw_layout=current_only_single_frame\nraw_bytes_begin\n",
+            TB_LIVE_BUILD_LABEL, checkpoint_stage,
+            __atomic_load_n(&early_frozen, __ATOMIC_ACQUIRE) ? state_name(early_state.state) : "pending",
+            (unsigned long long)early_state.start, (unsigned long long)early_state.end,
+            early_state.copied, (unsigned long long)start,
+            (unsigned long long)state.end, (unsigned)count,
+            (unsigned long long)state.dropped);
+        if (header >= 0 && (size_t)header + count <= capacity) {
+            for (size_t index = 0; index < count; ++index)
+                checkpoint_file[(size_t)header + index] = snapshot[(size_t)copied - count + index];
+            tb710fu_live_log_sender_init(&checkpoint_sender);
+            if (!tb710fu_live_log_set_source(&checkpoint_sender, TB710FU_LIVE_LOG_XNU) ||
+                tb710fu_live_log_snapshot_single_file(&checkpoint_sender, checkpoint_file,
+                    (size_t)header + count, generation, start, state.end) != TB710FU_LIVE_LOG_READY ||
+                checkpoint_sender.info.block_count != 1u ||
+                !tb710fu_live_log_next_frame(&checkpoint_sender, frame)) {
+                (void)__atomic_fetch_add(&checkpoint_failures, 1u, __ATOMIC_RELAXED);
+                checkpoint_status("FRAME-ERR");
+                goto done;
+            }
+            const uint32_t *pixels = NULL;
+            if (!tb_live_qr_encode(frame, sizeof(frame), &pixels)) {
+                (void)__atomic_fetch_add(&checkpoint_failures, 1u, __ATOMIC_RELAXED);
+                checkpoint_status("ENCODE-ERR");
+                goto done;
+            }
+            ++qr_encoded[0];
+            if (!tb_live_display_qr_slot(&display, pixels, 121u * 121u, 121u, 0u)) {
+                (void)__atomic_fetch_add(&checkpoint_failures, 1u, __ATOMIC_RELAXED);
+                checkpoint_status("DRAW-ERR");
+                goto done;
+            }
+            ++qr_drawn[0];
+            checkpoint_generation = generation;
+            checkpoint_status("OK");
+            goto done;
+        }
+        if (count == 0) {
+            (void)__atomic_fetch_add(&checkpoint_failures, 1u, __ATOMIC_RELAXED);
+            checkpoint_status("SIZE-ERR");
+            goto done;
+        }
+        size_t excess = header < 0 || capacity == 0 ? count : (size_t)header + count - capacity;
+        size_t step = excess > 16u ? excess : 16u;
+        count = count > step ? count - step : 0;
+    }
+
+done:
+    __atomic_store_n(&checkpoint_guard, 0u, __ATOMIC_RELEASE);
 }
 
 /* Preserve precisely this pre-machine_startup boundary once. A busy/empty
@@ -256,6 +383,8 @@ void tb710fu_live_log_init(void)
 {
     int requested = 0;
     if (!PE_parse_boot_argn("tb710fu-live-log", &requested, sizeof(requested)) || requested != 1) return;
+    int checkpoints = 0;
+    int checkpoint_arg = PE_parse_boot_argn("tb710fu-live-checkpoints", &checkpoints, sizeof(checkpoints));
     PE_Video video = {0};
     (void)PE_current_console(&video);
     uint64_t physical = video.v_baseAddr & ~UINT64_C(3);
@@ -286,6 +415,7 @@ void tb710fu_live_log_init(void)
     tb710fu_live_log_sender_init(&ramoops_sender);
     (void)tb710fu_live_log_set_source(&xnu_sender, TB710FU_LIVE_LOG_XNU);
     next_slot = 1u; /* First sample ramoops, but publish only after early freeze. */
+    __atomic_store_n(&checkpoint_mode, checkpoint_arg && checkpoints == 1, __ATOMIC_RELEASE);
     __atomic_store_n(&enabled, 1u, __ATOMIC_RELEASE);
     tb710fu_live_log_refresh();
 }
@@ -305,7 +435,8 @@ static void live_worker(void *argument, wait_result_t result)
 
 static void live_start_worker(void)
 {
-    if (!tb710fu_live_log_active()) return;
+    if (!tb710fu_live_log_active() ||
+        __atomic_load_n(&checkpoint_mode, __ATOMIC_ACQUIRE)) return;
     thread_t worker = THREAD_NULL;
     kern_return_t result = kernel_thread_start(live_worker, NULL, &worker);
     if (result == KERN_SUCCESS) thread_deallocate(worker);

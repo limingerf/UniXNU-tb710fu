@@ -140,6 +140,16 @@ after the KMEM rank-0 startup callback and polls the live log, distinguishing
 callback return from the preceding trace. This is diagnostic instrumentation,
 not a compressor sizing or runtime fix.
 
+`0022-tb710fu-synchronous-live-checkpoints.patch` routes the existing startup
+and kalloc markers through `tb710fu_live_log_checkpoint`, adds a callback-entry
+marker before every startup callback, and retains callback-return markers. The
+new `tb710fu-live-checkpoints=1` runtime option publishes an independent
+single-frame XNU QR synchronously and skips the background renderer; without it,
+the original throttled dual-stream polling behavior remains. The package gate
+requires this option alongside `tb710fu-live-log=1`. This leaves the last
+successfully rendered pre-operation frame visible if a later operation stops,
+but cannot refresh after execution stops or establish the faulting PC.
+
 The first native attempt, run 44112832250 at `eb1f2bc7`, exposed a missing
 internal-header export in `pe_kprintf.c`. The device patch now adds its two real
 headers to `osfmk/kern/Makefile` XNU_ONLY_EXPORTS, using the same official

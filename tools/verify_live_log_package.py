@@ -14,6 +14,7 @@ OBJECTS = {'LiveProtocol.o', 'LiveDisplay.o', 'LiveQr.o', 'LiveXnu.o',
 ORDERED_OBJECTS = ('LiveProtocol.o', 'LiveDisplay.o', 'LiveQr.o', 'LiveXnu.o',
                    'QrEncoderLib.o', 'QrEncoderTables.o')
 SYMBOLS = ('_tb710fu_live_log_init', '_tb710fu_live_log_poll',
+           '_tb710fu_live_log_checkpoint',
            '_tb710fu_live_log_refresh', '_tb710fu_live_log_active',
            '_tb710fu_live_log_freeze', '_tb710fu_ramoops_snapshot_copy',
            '_tb710fu_live_log_putc', '_tb710fu_live_capture_putc',
@@ -33,6 +34,7 @@ OBJECT_SYMBOLS = {
     'LiveDisplay.o': ('_tb_live_display_qr_slot', '_tb_live_display_bands'),
     'LiveQr.o': ('_tb_live_qr_encode',),
     'LiveXnu.o': ('_tb710fu_live_log_init', '_tb710fu_live_log_poll',
+                  '_tb710fu_live_log_checkpoint',
                   '_tb710fu_live_log_freeze', '_tb710fu_live_log_putc'),
     'QrEncoderLib.o': ('_tb_live_qr_QrEncodeData',),
     'QrEncoderTables.o': ('_tb_live_qr_InitializeLogTables',),
@@ -191,7 +193,9 @@ def _verify(integration_bytes, report_bytes, archive, kernel, official, build, s
             integration.get('archive_sha256') == report.get('archive_sha256') == sha(archive),
             'Live-log archive/compile/integration evidence differs')
     require(integration.get('archive_force_load_count') == 1 and
-            integration.get('runtime_boot_argument') == 'tb710fu-live-log=1' and
+            integration.get('runtime_boot_argument') ==
+                'tb710fu-live-log=1 tb710fu-live-checkpoints=1' and
+            integration.get('synchronous_checkpoint_sites_verified') is True and
             sha(integration.get('linkarchives', '').encode()) == integration.get('linkarchives_sha256') and
             force_load_count(integration['linkarchives'], report['archive']) == 1,
             'Live-log archive was not force-loaded exactly once')
@@ -247,7 +251,7 @@ def _verify(integration_bytes, report_bytes, archive, kernel, official, build, s
             'integration_report_sha256': sha(integration_bytes),
             'compile_report_sha256': sha(report_bytes),
             'strong_definitions_verified': len(SYMBOLS),
-            'runtime_boot_argument': 'tb710fu-live-log=1',
+            'runtime_boot_argument': 'tb710fu-live-log=1 tb710fu-live-checkpoints=1',
             'dual_source_log_contract': DUAL_SOURCE_LOG_CONTRACT,
             'independent_xnu_capture_and_actual_ramoops_calls_verified': True,
             'runtime_qualified': False, 'qr_hardware_display_verified': False}

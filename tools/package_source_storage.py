@@ -111,19 +111,21 @@ def validate_args(text):
     # This is deliberately a minimal reviewed set. No Sheng hardware/probe
     # parameters, root-device overrides, memory disk or old physical ramoops PA.
     allowed = {'-v', 'serial', 'native-source-storage', 'native-ufs-root',
-               'tb710fu-cdc', 'tb710fu-live-log', 'debug', '-enable_kprintf_spam', 'startup_debug',
+               'tb710fu-cdc', 'tb710fu-live-log', 'tb710fu-live-checkpoints',
+               'debug', '-enable_kprintf_spam', 'startup_debug',
                'ramoops_size', 'ramoops_ecc', 'ramoops_panic_delay', 'ramoops_reset_after'}
     require(set(values) <= allowed, 'Unsupported boot arguments: ' + ', '.join(sorted(set(values) - allowed)))
     require('-v' not in values or values['-v'] is None, '-v takes no value')
     if 'tb710fu-cdc' in values:
         require(values['tb710fu-cdc'] == '1', 'tb710fu-cdc must be exactly 1 when supplied')
     if 'tb710fu-live-log' in values:
-        require(values['tb710fu-live-log'] == '1' and values.get('debug') == '0x8' and
+        require(values['tb710fu-live-log'] == '1' and values.get('tb710fu-live-checkpoints') == '1' and
+                values.get('debug') == '0x8' and
                 values.get('startup_debug') == '1' and '-enable_kprintf_spam' in values and
                 values['-enable_kprintf_spam'] is None,
-                'Live log requires exact non-halting kprintf/startup verbosity arguments')
+                'Live log checkpoints require exact checkpoint and non-halting kprintf/startup arguments')
     else:
-        require(not {'debug', '-enable_kprintf_spam', 'startup_debug'} & set(values),
+        require(not {'tb710fu-live-checkpoints', 'debug', '-enable_kprintf_spam', 'startup_debug'} & set(values),
                 'Verbose live-log arguments require the native live-log integration')
     for key, expected in (('serial', 3), ('ramoops_size', 0x40000), ('ramoops_reset_after', 0)):
         if key in values:

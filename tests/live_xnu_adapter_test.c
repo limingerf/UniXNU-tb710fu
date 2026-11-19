@@ -43,7 +43,8 @@ static void thread_block(void *);
 #include "package/Tb710fuLiveLog/LiveXnu.c"
 
 static PE_Video video_input;
-static unsigned arg_present, arg_value, map_fail, reenter_encoder;
+static unsigned arg_present, arg_value, checkpoint_arg_present, checkpoint_arg_value;
+static unsigned map_fail, reenter_encoder;
 static int qr_encode_fail_slot;
 static unsigned map_calls, snapshot_calls, qr_calls, wait_calls, block_calls;
 static unsigned create_calls, deallocate_calls, deadline_calls, reentries, encoded_by_source[2];
@@ -67,8 +68,13 @@ static void tb_live_host_status(const char *text)
 { snprintf(last_status, sizeof(last_status), "%s", text); }
 static int PE_parse_boot_argn(const char *name, void *output, int bytes)
 {
-    assert(strcmp(name, "tb710fu-live-log") == 0 && bytes == (int)sizeof(int));
-    *(int *)output = (int)arg_value; return (int)arg_present;
+    assert(bytes == (int)sizeof(int));
+    if (strcmp(name, "tb710fu-live-log") == 0) {
+        *(int *)output = (int)arg_value; return (int)arg_present;
+    }
+    assert(strcmp(name, "tb710fu-live-checkpoints") == 0);
+    *(int *)output = (int)checkpoint_arg_value;
+    return (int)checkpoint_arg_present;
 }
 static int PE_current_console(PE_Video *output) { *output = video_input; return 0; }
 static vm_offset_t ml_io_map(uint64_t physical, vm_size_t bytes)
@@ -90,8 +96,9 @@ int tb710fu_ramoops_snapshot_copy(uint8_t *output, size_t capacity, struct tb710
 int tb_live_qr_encode(const uint8_t *input, size_t bytes, const uint32_t **pixels)
 {
     ++qr_calls; assert(bytes == TB710FU_LIVE_LOG_FRAME_BYTES);
-    unsigned slot = next_slot ^ 1u;
-    const struct tb710fu_live_log_sender *s = slot == 0 ? &xnu_sender : &ramoops_sender;
+    unsigned slot = checkpoint_mode ? 0u : next_slot ^ 1u;
+    const struct tb710fu_live_log_sender *s = checkpoint_mode ? &checkpoint_sender :
+        (slot == 0 ? &xnu_sender : &ramoops_sender);
     assert(s->valid && le32(input + 4) == s->info.session_id && le32(input + 24) == s->info.payload_checksum);
     assert(s->info.source == (slot == 0 ? TB710FU_LIVE_LOG_XNU : TB710FU_LIVE_LOG_RAMOOPS));
     /* Actual emitted payload must belong to this slot's immutable source file. */
@@ -107,8 +114,11 @@ int tb_live_qr_encode(const uint8_t *input, size_t bytes, const uint32_t **pixel
         qr_pixels[i] = slot == 0 ? 0xff112233u : 0xffaabbccu;
     *pixels = qr_pixels;
     if (reenter_encoder) {
-        unsigned old_qr = qr_calls, old_snap = snapshot_calls; assert(guard == 1u); ++reentries;
-        tb710fu_live_log_poll(); assert(snapshot_calls == old_snap && qr_calls == old_qr);
+        unsigned old_qr = qr_calls, old_snap = snapshot_calls;
+        assert(checkpoint_mode ? checkpoint_guard == 1u : guard == 1u); ++reentries;
+        if (checkpoint_mode) tb710fu_live_log_checkpoint("encoder-reentry");
+        else tb710fu_live_log_poll();
+        assert(snapshot_calls == old_snap && qr_calls == old_qr);
     }
     return 1;
 }
@@ -136,13 +146,18 @@ static void reset_fixture(void)
     frame_allocation = malloc(frame_bytes + 128); assert(frame_allocation);
     memset(frame_allocation, 0xa5, frame_bytes + 128); display = (TB_LIVE_DISPLAY){0};
     memset(&xnu_sender, 0, sizeof(xnu_sender)); memset(&ramoops_sender, 0, sizeof(ramoops_sender));
+    memset(&checkpoint_sender, 0, sizeof(checkpoint_sender));
     memset(&xnu_capture, 0, sizeof(xnu_capture));
     early_state = (struct tb710fu_live_capture_info){0}; xnu_state = early_state;
     ramoops_state = (struct tb710fu_ramoops_snapshot){0}; memset(early_bytes, 0, sizeof(early_bytes));
     enabled = guard = redraw = worker_started = sleep_channel = early_frozen = early_once = next_slot = 0;
+    checkpoint_mode = checkpoint_guard = checkpoint_failures = checkpoint_bands_pending = 0;
+    checkpoint_generation = 0;
+    checkpoint_stage[0] = '\0';
     qr_encoded[0] = qr_encoded[1] = qr_drawn[0] = qr_drawn[1] = 0;
     frequency = next_frame = xnu_generation = ramoops_generation = xnu_last_dropped = 0;
-    arg_present = arg_value = 1; map_fail = reenter_encoder = 0;
+    arg_present = arg_value = 1; checkpoint_arg_present = checkpoint_arg_value = 0;
+    map_fail = reenter_encoder = 0;
     qr_encode_fail_slot = -1;
     map_calls = snapshot_calls = qr_calls = wait_calls = block_calls = 0;
     create_calls = deallocate_calls = deadline_calls = reentries = 0;
@@ -204,6 +219,27 @@ static void assert_xnu_body(size_t count, const uint8_t *backup, size_t backup_l
     assert(strstr((const char *)file, expected));
     assert(strstr(xnu_sender.info.filename, "TB710FU-xnu-live-") == xnu_sender.info.filename);
     assert(xnu_sender.info.source == TB710FU_LIVE_LOG_XNU);
+}
+static void assert_checkpoint_body(const char *stage)
+{
+    const uint8_t *file = body(&checkpoint_sender);
+    const char *marker = strstr((const char *)file, "raw_bytes_begin\n");
+    assert(marker && (const uint8_t *)marker - file < 512);
+    size_t header = (size_t)((const uint8_t *)marker - file) + strlen("raw_bytes_begin\n");
+    unsigned current = 0;
+    assert(sscanf(strstr((const char *)file, "current_bytes="),
+                  "current_bytes=%u", &current) == 1);
+    assert(strstr((const char *)file, "TB710FU XNU DEBUG EXPORT v1\n"));
+    assert(strstr((const char *)file, "checkpoint_mode=synchronous_single_frame\n"));
+    char expected[96];
+    snprintf(expected, sizeof(expected), "checkpoint=%s\n", stage);
+    assert(strstr((const char *)file, expected));
+    assert(checkpoint_sender.info.source == TB710FU_LIVE_LOG_XNU);
+    assert(checkpoint_sender.info.block_count == 1 && checkpoint_sender.info.bytes == header + current);
+    assert(checkpoint_sender.info.end == xnu_written && checkpoint_sender.info.start == xnu_written - current);
+    assert(strstr(checkpoint_sender.info.filename, "TB710FU-xnu-live-") == checkpoint_sender.info.filename);
+    for (size_t i = 0; i < current; ++i)
+        assert(file[header + i] == xnu_byte(xnu_written - current + i));
 }
 static void test_disabled_and_preinit_capture(void)
 {
@@ -311,6 +347,45 @@ static void test_worker_requires_actual_execution(void)
     assert(strstr(last_status, "R=ready:4096B "));
     assert(wait_calls == 1 && block_calls == 1 && create_calls == 1);
 }
+static uint32_t slot_pixel(unsigned slot);
+static void test_synchronous_checkpoints_bypass_worker_and_dwell(void)
+{
+    reset_fixture(); feed_xnu(1500);
+    checkpoint_arg_present = checkpoint_arg_value = 1;
+    tb710fu_live_log_init();
+    assert(enabled && checkpoint_mode && !create_calls && !worker_started);
+    assert(checkpoint_generation == 1 && qr_calls == 1 && encoded_by_source[0] == 1);
+    assert(!xnu_sender.valid && !ramoops_sender.valid && !snapshot_calls);
+    assert_checkpoint_body("display-refresh");
+    assert(slot_pixel(0) == 0xff112233u);
+
+    tb710fu_live_log_freeze(); feed_xnu(37);
+    unsigned old_qr = qr_calls;
+    tb710fu_live_log_checkpoint("phase16-begin");
+    assert(qr_calls == old_qr + 1 && checkpoint_generation == 2);
+    assert_checkpoint_body("phase16-begin");
+    tick();
+    assert(qr_calls == old_qr + 1 && !snapshot_calls && !create_calls);
+
+    checkpoint_guard = 1;
+    tb710fu_live_log_checkpoint("contended-renderer");
+    checkpoint_guard = 0;
+    assert(qr_calls == old_qr + 1 && checkpoint_failures == 1);
+    xnu_capture.guard = 1;
+    tb710fu_live_log_checkpoint("contended-capture");
+    xnu_capture.guard = 0;
+    assert(qr_calls == old_qr + 1 && checkpoint_failures == 2);
+
+    tb710fu_live_log_checkpoint("phase16-rank1-return");
+    assert(qr_calls == old_qr + 2 && checkpoint_generation == 3);
+    assert_checkpoint_body("phase16-rank1-return");
+    assert(slot_pixel(0) == 0xff112233u);
+    feed_xnu(70000);
+    tb710fu_live_log_checkpoint("wrapped-log-tail");
+    assert(qr_calls == old_qr + 3 && checkpoint_generation == 4);
+    assert_checkpoint_body("wrapped-log-tail");
+    guards();
+}
 static uint32_t slot_pixel(unsigned slot)
 {
     unsigned x = slot ? display.QrSecondX : display.QrX;
@@ -379,5 +454,6 @@ int main(void)
     test_dual_slots_do_not_clear_each_other(); test_small_screen_alternates_one_rectangle();
     test_ready_stream_reports_qr_encode_failure(); test_ready_stream_reports_qr_draw_failure();
     test_freeze_busy_and_empty_are_honest(); test_ramoops_failure_does_not_replace_xnu();
-    free(frame_allocation); puts("PASS: 12 dual-stream LiveXnu adapter groups (15 invalid video cases)"); return 0;
+    test_synchronous_checkpoints_bypass_worker_and_dwell();
+    free(frame_allocation); puts("PASS: 13 dual/live-checkpoint LiveXnu adapter groups (15 invalid video cases)"); return 0;
 }

@@ -1,0 +1,137 @@
+From: TB710FU clean board
+Subject: [PATCH] Publish synchronous single-frame startup checkpoints
+
+Source: pinned XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f after device
+patches 0014 through 0021. Reason: a throttled worker poll may leave a stale QR
+when a later startup operation stops progressing. Route explicit startup and
+kalloc markers through the opt-in synchronous checkpoint provider and record
+callback entry as well as return. Checkpoint mode disables the competing worker;
+the normal live-log mode keeps its original bounded poll behavior.
+
+Verification: applies after 0021 to the pinned startup.c and kalloc.c fixtures.
+Host adapter, actual QR encoder, native arm64e, strict prelink and production
+DarwinBoot parser checks are required before a hardware trial. This is diagnostic
+instrumentation only; it does not establish the faulting instruction or change
+allocator/startup control flow.
+---
+ osfmk/kern/kalloc.c  | 12 ++++++------
+ osfmk/kern/startup.c | 13 ++++++++++---
+ 2 files changed, 16 insertions(+), 9 deletions(-)
+
+diff --git a/osfmk/kern/startup.c b/osfmk/kern/startup.c
+--- a/osfmk/kern/startup.c
++++ b/osfmk/kern/startup.c
+@@ -181,14 +181,14 @@
+ #define TB710FU_BOOT_EVENT(stage, event) \
+ 	do { \
+ 		if (tb710fu_live_log_active()) { \
+ 			kprintf("TB710FU boot: %s %s\n", stage, event); \
+-			tb710fu_live_log_poll(); \
++			tb710fu_live_log_checkpoint(stage); \
+ 		} \
+ 	} while (0)
+ #define TB710FU_BOOT_PHASE(event, phase) \
+ 	do { \
+ 		if (tb710fu_live_log_active()) { \
+ 			kprintf("TB710FU boot: phase %u %s\n", (unsigned)(phase), event); \
+-			tb710fu_live_log_poll(); \
++			tb710fu_live_log_checkpoint("startup-phase"); \
+ 		} \
+ 	} while (0)
+@@ -515,11 +515,18 @@ kernel_startup_initialize_upto(startup_subsystem_id_t upto)
+ 		startup_phase = cur->subsystem - 1;
+ 		kernel_startup_log(cur->subsystem);
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++		if (tb710fu_live_log_active()) {
++			kprintf("TB710FU live log: startup callback begin [%u, rank %d] %p\n",
++			    cur->subsystem, cur->rank, cur->arg);
++			tb710fu_live_log_checkpoint("startup-callback-begin");
++		}
++#endif
+ 		cur->func(cur->arg);
+ #if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
+ 		if (tb710fu_live_log_active()) {
+ 			kprintf("TB710FU live log: startup callback returned [%u, rank %d] %p\n",
+ 			    cur->subsystem, cur->rank, cur->arg);
+-			tb710fu_live_log_poll();
++			tb710fu_live_log_checkpoint("startup-callback-return");
+ 		}
+ #endif
+ 		startup_entry_cur = ++cur;
+diff --git a/osfmk/kern/kalloc.c b/osfmk/kern/kalloc.c
+--- a/osfmk/kern/kalloc.c
++++ b/osfmk/kern/kalloc.c
+@@ -90,7 +90,7 @@
+ #define TB710FU_KALLOC_EVENT(label, event) \
+ 	do { \
+ 		if (tb710fu_live_log_active()) { \
+ 			kprintf("TB710FU kalloc: %s %s\n", label, event); \
+-			tb710fu_live_log_poll(); \
++			tb710fu_live_log_checkpoint(label); \
+ 		} \
+ 	} while (0)
+@@ -97,8 +97,8 @@
+ #define TB710FU_KALLOC_VALUE(label, value) \
+ 	do { \
+ 		if (tb710fu_live_log_active()) { \
+ 			kprintf("TB710FU kalloc: %s value=%u\n", label, \
+ 			    (uint32_t)(value)); \
+-			tb710fu_live_log_poll(); \
++			tb710fu_live_log_checkpoint(label); \
+ 		} \
+ 	} while (0)
+@@ -105,12 +105,12 @@
+ #define TB710FU_KALLOC_PROGRESS(label, index, interval) \
+ 	do { \
+ 		uint32_t tb710fu_progress_index = (uint32_t)(index); \
+ 		uint32_t tb710fu_progress_interval = (uint32_t)(interval); \
+ 		if (tb710fu_progress_index != 0 && tb710fu_progress_interval != 0 && \
+ 		    tb710fu_progress_index % tb710fu_progress_interval == 0 && \
+ 		    tb710fu_live_log_active()) { \
+ 			kprintf("TB710FU kalloc: %s index=%u\n", label, \
+ 			    tb710fu_progress_index); \
+-			tb710fu_live_log_poll(); \
++			tb710fu_live_log_checkpoint(label); \
+ 		} \
+ 	} while (0)
+@@ -117,14 +117,14 @@
+ #define TB710FU_KALLOC_RANGE(label, event, index, total, interval) \
+ 	do { \
+ 		uint32_t tb710fu_range_index = (uint32_t)(index); \
+ 		uint32_t tb710fu_range_total = (uint32_t)(total); \
+ 		uint32_t tb710fu_range_interval = (uint32_t)(interval); \
+ 		if ((tb710fu_range_index == 1 || tb710fu_range_index == tb710fu_range_total || \
+ 		    (tb710fu_range_interval != 0 && \
+ 		    tb710fu_range_index % tb710fu_range_interval == 0)) && \
+ 		    tb710fu_live_log_active()) { \
+ 			kprintf("TB710FU kalloc: %s %s index=%u total=%u\n", label, event, \
+ 			    tb710fu_range_index, tb710fu_range_total); \
+-			tb710fu_live_log_poll(); \
++			tb710fu_live_log_checkpoint(label); \
+ 		} \
+ 	} while (0)
+@@ -131,11 +131,11 @@
+ #define TB710FU_KALLOC_GROUP(event, class_idx, group_idx, group_total, \
+ 	    view_start, view_end) \
+ 	do { \
+ 		if (tb710fu_live_log_active()) { \
+ 			kprintf("TB710FU kalloc: fixed-group %s class=%u group=%u/%u views=%u..%u\n", \
+ 			    event, (uint32_t)(class_idx), (uint32_t)(group_idx), \
+ 			    (uint32_t)(group_total), (uint32_t)(view_start), \
+ 			    (uint32_t)(view_end)); \
+-			tb710fu_live_log_poll(); \
++			tb710fu_live_log_checkpoint("fixed-group"); \
+ 		} \
+ 	} while (0)
+@@ -142,9 +142,9 @@
+ #define TB710FU_KALLOC_CLASS(event, class_idx, sig_count, type_count) \
+ 	do { \
+ 		if (tb710fu_live_log_active()) { \
+ 			kprintf("TB710FU kalloc: fixed-class %s class=%u signatures=%u types=%u\n", \
+ 			    event, (uint32_t)(class_idx), (uint32_t)(sig_count), \
+ 			    (uint32_t)(type_count)); \
+-			tb710fu_live_log_poll(); \
++			tb710fu_live_log_checkpoint("fixed-class"); \
+ 		} \
+ 	} while (0)
+*** End Patch

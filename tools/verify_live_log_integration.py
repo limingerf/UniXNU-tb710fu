@@ -23,7 +23,7 @@ SOURCES = ('LiveProtocol', 'LiveDisplay', 'LiveQr', 'LiveXnu',
 QR_OBJECTS = ('LiveQr', 'QrEncoderLib', 'QrEncoderTables')
 FINAL_SYMBOLS = (
     '_tb710fu_live_log_init', '_tb710fu_live_log_freeze',
-    '_tb710fu_live_log_putc', '_tb710fu_live_capture_putc',
+    '_tb710fu_live_log_putc', '_tb710fu_live_log_checkpoint', '_tb710fu_live_capture_putc',
     '_tb710fu_live_capture_copy', '_tb710fu_live_log_set_source',
     '_tb710fu_live_log_snapshot_file',
     '_tb710fu_live_log_snapshot_single_file',
@@ -39,7 +39,8 @@ FINAL_SYMBOLS = (
 )
 HOOK_OBJECTS = {
     'osfmk/DEVELOPMENT/arm_init.o': ('_tb710fu_live_log_init', '_tb710fu_live_log_freeze'),
-    'osfmk/DEVELOPMENT/startup.o': ('_tb710fu_live_log_poll',),
+    'osfmk/DEVELOPMENT/startup.o': ('_tb710fu_live_log_poll', '_tb710fu_live_log_checkpoint'),
+    'osfmk/DEVELOPMENT/kalloc.o': ('_tb710fu_live_log_checkpoint',),
     'osfmk/DEVELOPMENT/video_console.o': ('_tb710fu_live_log_active', '_tb710fu_live_log_refresh'),
     'osfmk/DEVELOPMENT/serial_console.o': (
         '_tb710fu_live_log_active', '_tb710fu_live_log_putc',
@@ -332,6 +333,12 @@ def verify(tree, config, native_path):
     require(all(any(call['caller'] == '_arm_init' for call in arm_calls[name]['branches'])
                 for name in ('_tb710fu_live_log_init', '_tb710fu_live_log_freeze')),
             'Live-log init/freeze branches must be in actual arm_init')
+    startup_checkpoint_calls = hooks['osfmk/DEVELOPMENT/startup.o']['strong_hook_imports'][
+        '_tb710fu_live_log_checkpoint']['branches']
+    kalloc_checkpoint_calls = hooks['osfmk/DEVELOPMENT/kalloc.o']['strong_hook_imports'][
+        '_tb710fu_live_log_checkpoint']['branches']
+    require(startup_checkpoint_calls and kalloc_checkpoint_calls,
+            'Synchronous checkpoint provider needs direct startup and kalloc call sites')
     console_calls = hooks['osfmk/DEVELOPMENT/serial_console.o']['strong_hook_imports']
     # The normal _cnputc tap predates LiveLog and alone proves nothing about
     # acquisition's disableConsoleOutput branch. Require the live-active gate
@@ -374,6 +381,8 @@ def verify(tree, config, native_path):
             'object_instruction_checks': instruction_checks,
             'linkarchives_sha256': digest(link), 'linkarchives': link_text,
             'archive_force_load_count': 1, 'linked_into_kernel': True,
-            'live_log_sources_compiled': True, 'runtime_boot_argument': 'tb710fu-live-log=1',
+            'live_log_sources_compiled': True,
+            'runtime_boot_argument': 'tb710fu-live-log=1 tb710fu-live-checkpoints=1',
+            'synchronous_checkpoint_sites_verified': True,
             'runtime_qualified': False, 'hardware_boot_verified': False,
             'qr_hardware_display_verified': False}

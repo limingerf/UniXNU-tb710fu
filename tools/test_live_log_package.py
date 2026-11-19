@@ -52,7 +52,8 @@ def fixture():
         'framework_revision': live.LOCK['unixnu']['commit'], 'xnu_revision': live.LOCK['xnu_commit'],
         'native_kernel_sha256': 'b' * 64, 'archive_sha256': live.sha(archive),
         'archive_force_load_count': 1, 'linked_into_kernel': True,
-        'live_log_sources_compiled': True, 'runtime_boot_argument': 'tb710fu-live-log=1',
+        'live_log_sources_compiled': True, 'synchronous_checkpoint_sites_verified': True,
+        'runtime_boot_argument': 'tb710fu-live-log=1 tb710fu-live-checkpoints=1',
         'runtime_qualified': False, 'qr_hardware_display_verified': False, 'hardware_boot_verified': False,
         'linkarchives': link, 'linkarchives_sha256': live.sha(link.encode()),
         'dual_source_log_contract': deepcopy(live.DUAL_SOURCE_LOG_CONTRACT),
@@ -203,10 +204,12 @@ class LiveLogPackaging(unittest.TestCase):
 
     def test_verbose_args_are_bounded(self):
         base = '-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1'
-        suffix = ' tb710fu-live-log=1 debug=0x8 -enable_kprintf_spam startup_debug=1'
+        suffix = ' tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1'
         self.assertEqual(pack.validate_args(base + suffix)['debug'], '0x8')
         for bad in (suffix.replace('0x8', '0x9'), suffix.replace('startup_debug=1', 'startup_debug=2'),
-                    suffix.replace('tb710fu-live-log=1 ', ''), suffix.replace('-enable_kprintf_spam ', '')):
+                    suffix.replace('tb710fu-live-log=1 ', ''),
+                    suffix.replace('tb710fu-live-checkpoints=1 ', ''),
+                    suffix.replace('-enable_kprintf_spam ', '')):
             with self.subTest(bad=bad):
                 with self.assertRaises(ValueError): pack.validate_args(base + bad)
 
@@ -284,7 +287,8 @@ class LiveLogPackaging(unittest.TestCase):
                 files[name] = {'path': path.name, 'sha256': pack.sha(path.read_bytes())}
             manifest = {'schema_version': 1, 'profile': pack.LOCK['os_profile'], 'framework': str(root),
                         'boot_args': 'native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 '
-                                     'tb710fu-live-log=1 debug=0x8 -enable_kprintf_spam startup_debug=1',
+                                     'tb710fu-live-log=1 tb710fu-live-checkpoints=1 '
+                                     'debug=0x8 -enable_kprintf_spam startup_debug=1',
                         'files': {name: files[name] for name in all_names}}
             path = root / 'inputs.json'
 

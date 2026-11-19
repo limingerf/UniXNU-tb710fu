@@ -384,7 +384,7 @@ class PackagingBoundaries(unittest.TestCase):
         config = read('unixnu.toml')
         kernel = read('Payloads/kernel.macho')
         policies = read('Payloads/kernel.macho.vroot')
-        args = '-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 debug=0x8 -enable_kprintf_spam startup_debug=1'
+        args = '-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1'
         tree, unchanged_config, report = pack.reuse_root_payload(
             adt, config, kernel, policies, real_bundle(), args, serializer, profile)
         self.assertEqual(tree, adt)

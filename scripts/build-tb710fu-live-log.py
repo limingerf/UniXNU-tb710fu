@@ -58,6 +58,15 @@ DUAL_SOURCE_LOG_CONTRACT = {
     # photograph; its dwell is deliberately short so the newest boot text is
     # published before an early halt can freeze the display.
     'single_frame_rounds_before_replacement': 2,
+    'checkpoint_mode': {
+        'argument': 'tb710fu-live-checkpoints=1',
+        'requires': 'tb710fu-live-log=1',
+        'provider': 'tb710fu_live_log_checkpoint',
+        'background_worker_disabled': True,
+        'poll_throttle_bypassed': True,
+        'independent_single_frame_session_per_checkpoint': True,
+        'raw_tail': 'largest current XNU suffix fitting one systematic frame',
+    },
 }
 
 

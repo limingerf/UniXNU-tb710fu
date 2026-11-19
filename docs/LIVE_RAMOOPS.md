@@ -66,6 +66,21 @@ ramoops 是当前启动的内核缓冲副本，因此两侧文本可能重叠。
 静止就说明没有代码再执行到该函数，而不是渲染故障；一张定格照片能反映的
 只是最后一次成功发布的快照。
 
+新停点诊断参数为 `tb710fu-live-checkpoints=1`，必须与 `tb710fu-live-log=1`
+同时提供。此模式不启动后台渲染线程，也不让普通 250ms poll 覆盖二维码。
+每个显式 startup/kalloc 检查点会先写日志，再同步编码并绘制一个新的 XNU
+单帧 OneSend 文件；callback 在调用前和返回后都发布检查点。独立单帧会话
+绕过普通快照的 2/16 轮替换门限，因此阶段推进时最后一次成功的 begin QR
+会留在 framebuffer 上。若随后内核停住，扫码得到的是停住前的最后成功阶段，
+不是停住后的新日志，也不是故障 PC。
+每个检查点都是新的 OneSend session；接收器必须先结束或 reset 旧 session，
+再接收停住后留在屏幕上的单帧。
+
+同步二维码只带能放进一个 systematic frame 的最新 XNU 尾部和阶段字段；
+早期备份仍标记为 deferred，不声称单帧里包含完整控制台历史。capture、编码
+或 framebuffer 写入失败时会保留上一帧并计入错误状态。静态主机测试能验证
+帧内容与调用边界，不能验证实机面板扫描输出、相机可读性或设备启动结果。
+
 ## 保留与覆盖
 
 短日志通常不容易写满 64 KiB 环形缓冲，但密集循环输出仍可能覆盖
@@ -78,13 +93,11 @@ ramoops 是当前启动的内核缓冲副本，因此两侧文本可能重叠。
 
 ## 原生边界
 
-显式参数为 `tb710fu-live-log=1 debug=0x8 -enable_kprintf_spam startup_debug=1`。
+检查点诊断的显式参数为 `tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1`。
 `debug=0x8` 选择现有 kprintf 输出，不设置 HALT 位。
-字符写入路径只做内存日志镜像，绝不编码二维码或画屏。每次启动 poll
-最多处理一帧，两个通道交替；全局显示节奏约 250ms 一帧，每路约 500ms
-推进一帧。EARLY_BOOT 线程每次睡眠 250ms，实际运行后才扩大当前尾部
-大小。屏幕状态行在两枚二维码下方，显示 worker、poll 计数、左右路状态、
-字节数和分块轮数。没有检查点等待。
+字符写入路径仍只做内存日志镜像，绝不编码二维码或画屏。检查点模式由
+startup/kalloc 调用点同步发布 XNU 单帧；不等待线程、轮询节流或 OneSend
+多帧收集。未提供 `tb710fu-live-checkpoints=1` 时保留旧双通道 250ms 轮询模式。
 
 渲染使用原生内核栈、内核拥有的当前启动缓冲区和非阻塞 render guard；
 不改 TTBR、TCR、SCTLR，不使用旧 reporter 的共享栈或临时地址空间。
@@ -108,6 +121,12 @@ XNU 的对象宏 DEBUG 仅在三个 QR 对象的兼容头内解除，再定义 E
 状态行还显示每路二维码编码成功数和 framebuffer 写入成功数。`ready` 只表示
 源快照与传输帧可用，并不证明编码或显示写入成功，也不证明面板扫描输出或
 相机解码正常。补丁 `0016` 曾只记录 KMEM rank-0 返回；新版 `0017` 在 live-log 启用时为每个 startup callback 记录 subsystem、rank、arg 的返回 marker，并调用受 250ms 全局节流限制的轮询。这样一次构建即可覆盖任意启动阶段，不再逐阶段增加 marker；不修改 callback、顺序或 compressor 容量策略。
+新补丁 `0022` 将 startup callback 与 kalloc 检查点改为同步单帧发布；检查点
+模式不启动竞争 renderer worker，并保留 callback begin/return 两侧边界。
+打包门禁要求新 boot argument 与 live-log 同时出现，native integration 检查
+startup.o 与 kalloc.o 对强 provider 的实际分支。此设置把停点前最近阶段留在
+屏幕上，但仍不提供内核停住后的后台刷新。
+
 真实生产源码、独立捕获缓冲、双通道、早期备份、固定接收器和实际 Mu
 分别经过主机检查；实际 macOS arm64e 编译、强钩子、归档、最终代码和
 预链接另由 CI 验证。上述结果不等于 CDC 已枚举、实机日志已接收、
