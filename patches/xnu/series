@@ -17,3 +17,4 @@
 0017-tb710fu-startup-callback-return-all-marker.patch
 0018-tb710fu-kalloc-init-substage-markers.patch
 0019-tb710fu-kalloc-full-diagnostic-trace.patch
+0020-tb710fu-bootstrap-phase-checkpoints.patch

@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "stage": "live-ramoops-signed-package",
+  "run_id": 44401178047,
+  "source_commit": "5016bd2fdb2f993776314954fc09689a14fc32da",
+  "native_sha256": "c74c0cd1485ae99d2c2620c5aaa609a3d8a6cc5ab05af4474f89157ae9a1ac94",
+  "prelinked_sha256": "49f49f5855d8ff828c3281f289f7c4cd91c0118b7133cd54b5770c29c9afac93",
+  "packaged_kernel_sha256": "35b564b2229e2b7cb816e06af32ee25ed03e43c52bb21896bbd7b8082d996521",
+  "packaged_kernel_bytes": 142819328,
+  "unsigned_vendor_sha256": "4e8994820ca870ecdede767d5cf395324369864e34a1d083f409d3d00834cc39",
+  "images": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "ca65f55faf764a9547cc15c3ee79ab376ed8c6ed6b4b4d8840267023cb76e847"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "98e5ef3fcad3c9fcb7ed18b03604f0e18cbfb4d46773c6c1dd559dcb6ee71822"
+    }
+  },
+  "zip": {
+    "path": "out/tb710fu-live-ramoops-44401178047-signed.zip",
+    "bytes": 35578921,
+    "sha256": "b4aece41fea867cb5aa0879dcf406b7e5cdfd71125e8d7b45970bb1f9e99b66b"
+  },
+  "verification": {
+    "schema_version": 1,
+    "stage": "signed-native-live-ramoops-bundle-independently-verified",
+    "kernel_run_id": 44401178047,
+    "kernel_source_commit": "5016bd2fdb2f993776314954fc09689a14fc32da",
+    "native_sha256": "c74c0cd1485ae99d2c2620c5aaa609a3d8a6cc5ab05af4474f89157ae9a1ac94",
+    "prelinked_sha256": "49f49f5855d8ff828c3281f289f7c4cd91c0118b7133cd54b5770c29c9afac93",
+    "standard_kernel_sha256": "35b564b2229e2b7cb816e06af32ee25ed03e43c52bb21896bbd7b8082d996521",
+    "files": {
+      "boot.img": {
+        "bytes": 100663296,
+        "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+      },
+      "vendor_boot.img": {
+        "bytes": 100663296,
+        "sha256": "ca65f55faf764a9547cc15c3ee79ab376ed8c6ed6b4b4d8840267023cb76e847"
+      },
+      "vbmeta.img": {
+        "bytes": 8000,
+        "sha256": "98e5ef3fcad3c9fcb7ed18b03604f0e18cbfb4d46773c6c1dd559dcb6ee71822"
+      }
+    },
+    "unsigned_vendor_sha256": "4e8994820ca870ecdede767d5cf395324369864e34a1d083f409d3d00834cc39",
+    "source_vendor_sha256": "a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2",
+    "source_vbmeta_sha256": "3fd43a5a7adc0275eb8d241b94f1c2520b6b630ae912c3eff4a3869d76228e04",
+    "rsa4096_pkcs1_sha256_independent_checks": {
+      "vendor_boot_footer": "PASS",
+      "vbmeta": "PASS",
+      "boot_footer": "PASS"
+    },
+    "salted_image_hash_checks": {
+      "vendor_boot": "PASS",
+      "boot": "PASS"
+    },
+    "unchanged_other_raw_descriptors": 22,
+    "identical_vbmeta_header": true,
+    "public_key_unchanged": true,
+    "boot_chain_public_key_matches": true,
+    "payload_fat_clusters": 66512,
+    "payload_sha256": "0a8f81b7be0582829797ee9e075b9cd6b68baec9ab74a12776d305c2819f62d4",
+    "file_readback_sha256": {
+      "unixnu.toml": "ea386850fa2a39822d33c2a992d13b34fec1f8f6cade88c2e00ea803699966d3",
+      "Payloads/kernel.macho": "0059176d5d653e23c5730d3f083057ec631c9666cfa6b846cf7b42169e6e1fed",
+      "Payloads/kernel.macho.adt": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+      "Payloads/kernel.macho.vroot": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68"
+    },
+    "packaged_kernel_bytes": 142819328,
+    "packaged_kernel_sha256": "35b564b2229e2b7cb816e06af32ee25ed03e43c52bb21896bbd7b8082d996521",
+    "mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "allow_missing": false,
+    "runtime_qualified": false,
+    "loadable": false,
+    "device_operations": false,
+    "hardware_boot_verified": false,
+    "kalloc_init_diagnostics": {
+      "patch": "patches/xnu/0019-tb710fu-kalloc-full-diagnostic-trace.patch",
+      "patch_sha256": "7275366be7c7a7fbae5fa76b1eb9c2f46fb891e6d5f9f68d13c6b7c36e57d644",
+      "marker_strings_in_packaged_kernel": true,
+      "allocator_behavior_changed": false,
+      "root_cause_confirmed": false
+    },
+    "limits": [
+      "Native/prelink/parser and host verification do not prove hardware boot.",
+      "No device reboot, flash, partition or filesystem operation was performed.",
+      "The ramoops buffer is current-boot volatile memory and does not survive reset."
+    ]
+  },
+  "device_operations": false,
+  "hardware_boot_verified": false
+}

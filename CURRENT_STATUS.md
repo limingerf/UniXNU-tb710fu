@@ -1,5 +1,30 @@
 # Current status · 2026-11-19
 
+## 新实机日志已越过 kalloc，抵达 SYSCTL rank-last · 2026-11-19
+
+用户提供 build label `src-5016bd2f-ramoops`，对应 kernel run `44401178047`、
+提交 `5016bd2fdb2f993776314954fc09689a14fc32da`。XNU DEBUG export 当前只有
+单帧 `[65032,65365)`，333 字节，`dropped=0`；原始附件/hash 未提供。可见日志含
+fixed type-zone 进度、FIPSPOST `all tests PASSED (58 ms)`、
+`corecrypto_kext_start completed successfully`，以及
+`startup callback returned [16, rank -1] 0`。
+
+精确源码 `startup.h` 映射 `16` 为 `STARTUP_SUB_SYSCTL`，`STARTUP_RANK_LAST` 为
+`0xffffffff`，由 callback-return marker 的 `%d` 显示成 `-1`。`startup.c` 在
+`cur->func(cur->arg)` 返回后才输出该 marker。因此新证据确认执行已越过 phase 7
+`kalloc_init` 并进入 SYSCTL 的 rank-last callback；该行是 callback 返回记录，不是
+fault PC，也不能单独证明停在 SYSCTL。当前 single-frame 导出没有给出随后 callback
+或 `EARLY_BOOT` 记录，缺失不能当作停点证据。
+
+用户要求补更多检查点后，新 patch `0020-tb710fu-bootstrap-phase-checkpoints.patch`
+紧跟 `0019`，新增每个 `kernel_startup_initialize_upto()` 完整返回标记，并在
+SYSCTL 后的地址随机化、IOKit、EARLY_BOOT、开中断、屏幕/commpage、lockdown、BSD
+及 pageout 交接等同步初始化操作前后发出配对事件。只做 live-log 诊断，不改变任何
+调用或顺序。隔离 fixture 按官方 `zzz-boot-progress`、设备 `0014/0016/0017`、新
+`0020` 顺序实际应用通过；事件配对与 `git diff --check` 通过。现准备只派发一次
+macOS `ufs-integrated` 构建，随后打包同一候选，不按观察边界逐轮编译。此前设备
+boundary 记录见 `docs/evidence/live-ramoops-device-44401178047-sysctl.json`。
+
 ## 一次性 kalloc_init 全路径诊断 · 2026-11-19
 
 用户提供的 `src-02eed84f-ramoops`（run `44383673876`）当前帧最后显示
@@ -18,8 +43,20 @@ prelink SHA-256 `49f49f58…c9afac93`，生产 DarwinBoot parser PASS；runner �
 中的 `0019` patch SHA-256 与本地一致。完整构建 artifact SHA-256
 `c4d50282…7d8d1285`。证据见
 `docs/evidence/live-ramoops-image-44401178047-kalloc-full-diagnostics.json`。
-此候选仍为 `runtime_qualified=false`、`loadable=false`；没有制作签名/可刷写镜像，
-没有重启或操作设备，根因仍待设备返回新 live-log 帧确认。
+随后已完成本地 AVB 镜像打包。内嵌 standard-band kernel SHA-256
+`35b564b2229e2b7cb816e06af32ee25ed03e43c52bb21896bbd7b8082d996521`；配套镜像为
+`out/live-ramoops-44401178047-signed/{boot.img,vendor_boot.img,vbmeta.img}`，
+对应 SHA-256 分别为 `a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`、
+`ca65f55faf764a9547cc15c3ee79ab376ed8c6ed6b4b4d8840267023cb76e847`、
+`98e5ef3fcad3c9fcb7ed18b03604f0e18cbfb4d46773c6c1dd559dcb6ee71822`。交付 ZIP
+`out/tb710fu-live-ramoops-44401178047-signed.zip` 大小 35,578,921 字节，SHA-256
+`b4aece41fea867cb5aa0879dcf406b7e5cdfd71125e8d7b45970bb1f9e99b66b`。RSA/AVB、
+salted boot/vendor hash、FAT/LZMA 回读通过；其余 22 个 AVB 描述符、vbmeta header
+和公钥未变。完整签名包证据见
+`docs/evidence/live-ramoops-image-44401178047.json`。
+
+包仍标记 `runtime_qualified=false`、`loadable=false`、`hardware_boot_verified=false`；
+没有刷写、重启或执行设备操作。kalloc 根因仍待设备返回新 live-log 帧确认。
 
 ## 实机停在 kalloc_init 入口与子阶段诊断包 · 2026-11-19
 

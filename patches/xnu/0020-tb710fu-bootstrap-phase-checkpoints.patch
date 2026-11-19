@@ -1,0 +1,309 @@
+From 4fd6a89545d49779af6eada57490551b2f4991e7 Mon Sep 17 00:00:00 2001
+From: TB710FU clean board <tb710fu@localhost>
+Date: Thu, 19 Nov 2026 08:03:03 +0800
+Subject: [PATCH] Add post-SYSCTL bootstrap checkpoints
+
+Reason: the latest frame contains a returned SYSCTL rank-last callback, but the previous diagnostics do not mark completion of the whole startup range or the synchronous work that follows. Add bounded begin/done markers from SYSCTL through EARLY_BOOT, interrupt enable, screen/commpage, lockdown, BSD startup, and the pageout handoff.
+
+Source: pinned XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f after the selected official boot-progress patch and device patches 0014, 0016 and 0017. All output is live-log gated; allocator and startup control flow are unchanged.
+
+Verification: applies to an isolated startup.c fixture after the selected ordered patches; diff whitespace and begin/done pairing checks pass. Native arm64e, strict prelink and production DarwinBoot parser remain required in the one follow-up macOS run.
+---
+ osfmk/kern/startup.c | 90 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 90 insertions(+)
+
+diff --git a/osfmk/kern/startup.c b/osfmk/kern/startup.c
+index 75e3311..2349278 100644
+--- a/osfmk/kern/startup.c
++++ b/osfmk/kern/startup.c
+@@ -176,6 +176,26 @@ extern void vnguard_policy_init(void);
+ #include <san/kasan.h>
+ 
+ #include <i386/pmCPU.h>
++
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++#define TB710FU_BOOT_EVENT(stage, event) \
++	do { \
++		if (tb710fu_live_log_active()) { \
++			kprintf("TB710FU boot: %s %s\n", stage, event); \
++			tb710fu_live_log_poll(); \
++		} \
++	} while (0)
++#define TB710FU_BOOT_PHASE(event, phase) \
++	do { \
++		if (tb710fu_live_log_active()) { \
++			kprintf("TB710FU boot: phase %u %s\n", (unsigned)(phase), event); \
++			tb710fu_live_log_poll(); \
++		} \
++	} while (0)
++#else
++#define TB710FU_BOOT_EVENT(stage, event) do { } while (0)
++#define TB710FU_BOOT_PHASE(event, phase) do { } while (0)
++#endif
+ static void             kernel_bootstrap_thread(void);
+ 
+ static void             load_context(
+@@ -471,6 +491,7 @@ __startup_func
+ void
+ kernel_startup_initialize_upto(startup_subsystem_id_t upto)
+ {
++	TB710FU_BOOT_PHASE("begin", upto);
+ 	struct startup_entry *cur = startup_entry_cur;
+ 
+ 	assert(startup_phase < upto);
+@@ -510,6 +531,7 @@ kernel_startup_initialize_upto(startup_subsystem_id_t upto)
+ 		kprintf("%s: reached phase %d\n", __func__, upto);
+ 	}
+ 	startup_phase = upto;
++	TB710FU_BOOT_PHASE("complete", upto);
+ #if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
+ 	tb710fu_live_log_poll();
+ #endif
+@@ -730,6 +752,7 @@ static void
+ kernel_bootstrap_thread(void)
+ {
+ 	processor_t processor = current_processor();
++	TB710FU_BOOT_EVENT("bootstrap-thread", "entered");
+ 
+ #if HAS_UPSI_FAILURE_INJECTION
+ 	check_for_failure_injection(XNU_STAGE_SCHEDULER_START);
+@@ -809,7 +832,9 @@ kernel_bootstrap_thread(void)
+ 	hv_support_init();
+ #endif
+ 
++	TB710FU_BOOT_EVENT("sysctl-range", "begin");
+ 	kernel_startup_initialize_upto(STARTUP_SUB_SYSCTL);
++	TB710FU_BOOT_EVENT("sysctl-range", "done");
+ 
+ 	/*
+ 	 * Initialize the globals used for permuting kernel
+@@ -818,59 +843,85 @@ kernel_bootstrap_thread(void)
+ 	 * Force the random number to be odd to avoid mapping a non-zero
+ 	 * word-aligned address to zero via addition.
+ 	 */
++	TB710FU_BOOT_EVENT("address-permutation", "begin");
+ 	vm_kernel_addrperm = (vm_offset_t)(early_random() | 1);
+ 	buf_kernel_addrperm = (vm_offset_t)(early_random() | 1);
+ 	vm_kernel_addrperm_ext = (vm_offset_t)(early_random() | 1);
+ 	vm_kernel_addrhash_salt = early_random();
+ 	vm_kernel_addrhash_salt_ext = early_random();
++	TB710FU_BOOT_EVENT("address-permutation", "done");
+ 
+ #ifdef  IOKIT
+ 	kernel_bootstrap_log("PE_init_iokit");
++	TB710FU_BOOT_EVENT("iokit-init", "begin");
+ 	PE_init_iokit();
++	TB710FU_BOOT_EVENT("iokit-init", "done");
+ #endif
+ 
++	TB710FU_BOOT_EVENT("interrupts-disabled-check", "begin");
+ 	assert(ml_get_interrupts_enabled() == FALSE);
++	TB710FU_BOOT_EVENT("interrupts-disabled-check", "done");
+ 
+ 	/*
+ 	 * Past this point, kernel subsystems that expect to operate with
+ 	 * interrupts or preemption enabled may begin enforcement.
+ 	 */
++	TB710FU_BOOT_EVENT("early-boot-range", "begin");
+ 	kernel_startup_initialize_upto(STARTUP_SUB_EARLY_BOOT);
++	TB710FU_BOOT_EVENT("early-boot-range", "done");
+ 
+ #if SCHED_HYGIENE_DEBUG
+ 	// Reset interrupts masked timeout before we enable interrupts
+ 	ml_spin_debug_clear_self();
+ #endif
++	TB710FU_BOOT_EVENT("enable-interrupts", "begin");
+ 	(void) spllo();         /* Allow interruptions */
++	TB710FU_BOOT_EVENT("enable-interrupts", "done");
+ 
+ 	/*
+ 	 * This will start displaying progress to the user, start as early as possible
+ 	 */
++	TB710FU_BOOT_EVENT("screen-init", "begin");
+ 	initialize_screen(NULL, kPEAcquireScreen);
++	TB710FU_BOOT_EVENT("screen-init", "done");
+ 
+ 	/*
+ 	 *	Initialize the shared region module.
+ 	 */
++	TB710FU_BOOT_EVENT("commpage-init", "begin");
+ 	vm_commpage_init();
++	TB710FU_BOOT_EVENT("commpage-init", "done");
++	TB710FU_BOOT_EVENT("commpage-text-init", "begin");
+ 	vm_commpage_text_init();
++	TB710FU_BOOT_EVENT("commpage-text-init", "done");
+ 
+ #if CONFIG_MACF
+ 	kernel_bootstrap_log("mac_policy_initmach");
++	TB710FU_BOOT_EVENT("mac-policy-initmach", "begin");
+ 	mac_policy_initmach();
++	TB710FU_BOOT_EVENT("mac-policy-initmach", "done");
+ #if CONFIG_VNGUARD
+ 	kernel_bootstrap_log("vnguard_policy_init");
++	TB710FU_BOOT_EVENT("vnguard-policy-init", "begin");
+ 	vnguard_policy_init();
++	TB710FU_BOOT_EVENT("vnguard-policy-init", "done");
+ #endif
+ #endif
+ 
+ #if CONFIG_DTRACE
+ 	kernel_bootstrap_log("dtrace_early_init");
++	TB710FU_BOOT_EVENT("dtrace-early-init", "begin");
+ 	dtrace_early_init();
++	TB710FU_BOOT_EVENT("dtrace-early-init", "done");
++	TB710FU_BOOT_EVENT("sdt-early-init", "begin");
+ 	sdt_early_init();
++	TB710FU_BOOT_EVENT("sdt-early-init", "done");
+ #endif
+ 
+ #if CONFIG_EXCLAVES
++	TB710FU_BOOT_EVENT("exclaves-early-init", "begin");
+ 	exclaves_early_init();
++	TB710FU_BOOT_EVENT("exclaves-early-init", "done");
+ #endif
+ 
+ #if CODE_SIGNING_MONITOR
+@@ -880,23 +931,33 @@ kernel_bootstrap_thread(void)
+ 	 * pass it to the code-signing-monitor if required.
+ 	 */
+ 	kernel_bootstrap_log("code-signing-monitor lockdown mode");
++	TB710FU_BOOT_EVENT("csm-lockdown-check", "begin");
+ 	csm_check_lockdown_mode();
++	TB710FU_BOOT_EVENT("csm-lockdown-check", "done");
+ #endif
+ 
+ #if CODE_SIGNING_MONITOR
+ 	kernel_bootstrap_log("provisioning_profile_init");
++	TB710FU_BOOT_EVENT("provisioning-profile", "begin");
+ 	csm_initialize_provisioning_profiles();
++	TB710FU_BOOT_EVENT("provisioning-profile", "done");
+ #endif
+ 
+ 	kernel_bootstrap_log("trust_cache_init");
+ 
+ 	/* Initialize the runtime for the trust cache interface */
++	TB710FU_BOOT_EVENT("trust-cache-runtime", "begin");
+ 	trust_cache_runtime_init();
++	TB710FU_BOOT_EVENT("trust-cache-runtime", "done");
+ 
+ 	/* Load the static and engineering trust caches */
++	TB710FU_BOOT_EVENT("static-trust-cache", "begin");
+ 	load_static_trust_cache();
++	TB710FU_BOOT_EVENT("static-trust-cache", "done");
+ 
++	TB710FU_BOOT_EVENT("lockdown-range", "begin");
+ 	kernel_startup_initialize_upto(STARTUP_SUB_LOCKDOWN);
++	TB710FU_BOOT_EVENT("lockdown-range", "done");
+ 
+ 	/*
+ 	 * Get rid of segments used to bootstrap kext loading. This removes
+@@ -905,62 +966,86 @@ kernel_bootstrap_thread(void)
+ 	 * the static KVA mappings used for the jettisoned bootstrap segments.
+ 	 */
+ 	kernel_bootstrap_log("OSKextRemoveKextBootstrap");
++	TB710FU_BOOT_EVENT("kext-bootstrap-remove", "begin");
+ 	OSKextRemoveKextBootstrap();
++	TB710FU_BOOT_EVENT("kext-bootstrap-remove", "done");
+ 
+ #if SOCKETS
+ 	/*
+ 	 * Initialize callback table before machine lockdown
+ 	 */
++	TB710FU_BOOT_EVENT("mbuf-tag-init", "begin");
+ 	mbuf_tag_init();
++	TB710FU_BOOT_EVENT("mbuf-tag-init", "done");
+ #endif
+ 
+ 	/* No changes to kernel text and rodata beyond this point. */
+ 	kernel_bootstrap_log("machine_lockdown");
++	TB710FU_BOOT_EVENT("machine-lockdown", "begin");
+ 	machine_lockdown();
++	TB710FU_BOOT_EVENT("machine-lockdown", "done");
+ 
+ #ifdef CONFIG_XNUPOST
++	TB710FU_BOOT_EVENT("kernel-post-tests", "begin");
+ 	kern_return_t result = kernel_list_tests();
+ 	result = kernel_do_post();
+ 	if (result != KERN_SUCCESS) {
+ 		panic("kernel_do_post: Tests failed with result = 0x%08x", result);
+ 	}
+ 	kernel_bootstrap_log("kernel_do_post - done");
++	TB710FU_BOOT_EVENT("kernel-post-tests", "done");
+ #endif /* CONFIG_XNUPOST */
+ 
+ #ifdef  IOKIT
+ 	kernel_bootstrap_log("PE_lockdown_iokit");
++	TB710FU_BOOT_EVENT("iokit-lockdown", "begin");
+ 	PE_lockdown_iokit();
++	TB710FU_BOOT_EVENT("iokit-lockdown", "done");
+ #endif
+ 	/*
+ 	 * max_cpus must be nailed down by the time PE_lockdown_iokit() finishes,
+ 	 * at the latest
+ 	 */
++	TB710FU_BOOT_EVENT("vm-set-restrictions", "begin");
+ 	vm_set_restrictions(machine_info.max_cpus);
++	TB710FU_BOOT_EVENT("vm-set-restrictions", "done");
+ 
+ 
+ #if KPERF
++	TB710FU_BOOT_EVENT("kperf-init-early", "begin");
+ 	kperf_init_early();
++	TB710FU_BOOT_EVENT("kperf-init-early", "done");
+ #endif
+ 
+ 	/*
+ 	 *	Start the user bootstrap.
+ 	 */
+ #ifdef  MACH_BSD
++	TB710FU_BOOT_EVENT("bsd-init", "begin");
+ 	bsd_init();
++	TB710FU_BOOT_EVENT("bsd-init", "done");
+ #endif
+ 
+ 
+ 	/*
+ 	 * Get rid of pages used for early boot tracing.
+ 	 */
++	TB710FU_BOOT_EVENT("kdebug-free-early", "begin");
+ 	kdebug_free_early_buf();
++	TB710FU_BOOT_EVENT("kdebug-free-early", "done");
+ 
++	TB710FU_BOOT_EVENT("serial-keyboard-init", "begin");
+ 	serial_keyboard_init();         /* Start serial keyboard if wanted */
++	TB710FU_BOOT_EVENT("serial-keyboard-init", "done");
+ 
++	TB710FU_BOOT_EVENT("vm-page-local-queue", "begin");
+ 	vm_page_init_local_q(machine_info.max_cpus);
++	TB710FU_BOOT_EVENT("vm-page-local-queue", "done");
+ 
++	TB710FU_BOOT_EVENT("cluster-resume", "begin");
+ 	thread_bind(PROCESSOR_NULL);
+ 	resume_cluster_powerdown();
++	TB710FU_BOOT_EVENT("cluster-resume", "done");
+ 
+ #if XNU_VM_HAS_DELAYED_PAGES
+ 	/*
+@@ -968,14 +1053,19 @@ kernel_bootstrap_thread(void)
+ 	 * a background thread. Take this opportunity to initialize and free
+ 	 * any remaining vm_pages that were delayed earlier by pmap_startup().
+ 	 */
++	TB710FU_BOOT_EVENT("vm-free-delayed-pages", "begin");
+ 	vm_free_delayed_pages();
++	TB710FU_BOOT_EVENT("vm-free-delayed-pages", "done");
+ #endif /* XNU_VM_HAS_DELAYED_PAGES */
+ 
++	TB710FU_BOOT_EVENT("vm-pages-array-finalize", "begin");
+ 	vm_pages_array_finalize();
++	TB710FU_BOOT_EVENT("vm-pages-array-finalize", "done");
+ 
+ 	/*
+ 	 *	Become the pageout daemon.
+ 	 */
++	TB710FU_BOOT_EVENT("vm-pageout", "enter");
+ 	vm_pageout();
+ 	/*NOTREACHED*/
+ }
+-- 
+2.56.0.windows.4
+
