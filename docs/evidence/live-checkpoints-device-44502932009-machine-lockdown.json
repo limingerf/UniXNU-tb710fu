@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "stage": "device-machine-lockdown-checkpoint-and-reclaim-control",
+  "observation_date": "2026-11-19",
+  "source": "User-pasted single-frame QR export",
+  "hardware_observation": {
+    "build_label": "src-9ac805c2-ramoops",
+    "kernel_run_id": 44502932009,
+    "source_commit": "9ac805c2b5b968580a93c1a642ec26e09c26979f",
+    "packaged_kernel_sha256": "d6dea82b08c73db409f27df1a939086b1dce38361bf3b9a21980e019927ed5ce",
+    "baseline_signed_vendor_boot_sha256": "8455aa9d3c915bc4b689e245d7fdc5f0a158ebf0436714a6c3c3d25049db1b67",
+    "checkpoint": "machine-lockdown",
+    "checkpoint_mode": "synchronous_single_frame",
+    "earlybackup_state": "ready",
+    "earlybackup_start": 0,
+    "earlybackup_end": 498,
+    "earlybackup_bytes": 498,
+    "earlybackup_export": "deferred_multi_frame",
+    "current_start": 1503573,
+    "current_end": 1503827,
+    "current_bytes": 254,
+    "dropped": 0,
+    "raw_layout": "current_only_single_frame",
+    "visible_lines": [
+      "trap: OSKextRemoveKextBootstrap",
+      "TB710FU boot: kext-bootstrap-remove begin",
+      "TB710FU boot: kext-bootstrap-remove done",
+      "TB710FU boot: mbuf-tag-init begin",
+      "TB710FU boot: mbuf-tag-init done",
+      "kernel_bootstrap: machine_lockdown",
+      "TB710FU boot: machine-lockdown begin"
+    ],
+    "highest_observed_stage": "machine-lockdown begin",
+    "machine_lockdown_return_observed": false,
+    "fault_instruction_observed": false
+  },
+  "lockdown_instruction_audit": {
+    "method": "Bounded ARM64 instruction model with segment values from the exact Mach-O and an illustrative aperture address",
+    "prelinked_sha256": "2cdc4d3acba2af3bd41f9b242bb23710e3ef2eec1d58f13aec4279a778257946",
+    "matching_bootarg_parsing_call": "0xfffffff00bb8a664",
+    "lockdown_calls": {
+      "outer_begin_render": "0xfffffff00c281130",
+      "machine_lockdown": "0xfffffff00c281134",
+      "outer_done_render": "0xfffffff00c281148",
+      "vm_protection_finalize": "0xfffffff00bb99c80",
+      "release_deferred_list": "0xfffffff00bb99c90",
+      "replace_exception_stack": "0xfffffff00bb8af0c",
+      "bootdata_release": "0xfffffff00bb8af34",
+      "tighten_data_const": "0xfffffff00bb8af5c",
+      "invalidate_tlb": "0xfffffff00bb8af64"
+    },
+    "admission": {
+      "__LINKEDIT": {
+        "address": "0xfffffff00cd40000",
+        "bytes": 40189952,
+        "kc-segment-release=1": "admitted",
+        "kc-segment-release=0": "retained"
+      },
+      "__BOOTDATA": {
+        "address": "0xfffffff00f764000",
+        "bytes": 868352,
+        "kc-segment-release=1": "admitted",
+        "kc-segment-release=0": "retained"
+      },
+      "__KLD": {
+        "address": "0xfffffff00c338000",
+        "bytes": 16384,
+        "kc-segment-release=1": "admitted",
+        "kc-segment-release=0": "retained"
+      },
+      "__KLDDATA": {
+        "address": "0xfffffff00f75c000",
+        "bytes": 32768,
+        "kc-segment-release=1": "admitted",
+        "kc-segment-release=0": "retained"
+      },
+      "image_tail": {
+        "kc-segment-release=0": "admitted",
+        "kc-segment-release=1": "admitted"
+      },
+      "aperture": {
+        "kc-segment-release=0": "admitted",
+        "kc-segment-release=1": "admitted"
+      }
+    },
+    "collection_segment_bytes_max_retained": 41107456,
+    "runtime_qualified": false,
+    "hardware_boot_verified": false
+  },
+  "controlled_test": {
+    "purpose": "Test whether optional collection segment reclamation contributes to the observed lockdown boundary",
+    "runtime_argument": "kc-segment-release=0",
+    "only_fat_file_content_change": "EFI/UniXNU/unixnu.toml",
+    "previous_config_sha256": "5fe1ab82ee26d3d01b5282d4ab994fa7103ca2be6b456adee84f95cb2ec645d3",
+    "updated_config_sha256": "074deeb2edef452c7f4a31e5e7732d868c5f32512c093f747de56bddad78bebb",
+    "upstream_patch": "profiles/os/macos-27.3-26C5035r/patches/xnu-12377/memwired-kc-segment-release.patch",
+    "upstream_patch_sha256": "c2fa78ec97d6c0cd812d781ef9b8a95f356ca728c9ba86834c494aaffd0b69c0",
+    "packaged_kernel_sha256": "d6dea82b08c73db409f27df1a939086b1dce38361bf3b9a21980e019927ed5ce",
+    "zip": {
+      "path": "out/live-checkpoints-44502932009-kc-release0-signed.zip",
+      "bytes": 35565208,
+      "sha256": "1c4ba38c796241e660ec28c8bef9e2f969b27f6904cbf7830feee98e5d5c04c0",
+      "entry_crc_and_sha256_readback": "PASS"
+    },
+    "images": {
+      "boot.img": {
+        "bytes": 100663296,
+        "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+      },
+      "vendor_boot.img": {
+        "bytes": 100663296,
+        "sha256": "a5fcf3735a0308f0237c0975b33a968af1514bb51493beabbc57248563310a0f"
+      },
+      "vbmeta.img": {
+        "bytes": 8000,
+        "sha256": "88ee76ecef77245d1921ed3c65e1d3ddce9e3c0e37af811159eec918bd175073"
+      }
+    },
+    "unsigned_vendor_sha256": "80971eb20a54acc68bce8519e03381659e0e2a3ac99b0b12e6b4a5faf2046c15",
+    "avb_host_verification": {
+      "path": "/mnt/d/avbtool/tools/avbtool.py",
+      "openssl_backend": "/usr/bin/openssl",
+      "boot_footer_signature": "PASS",
+      "vendor_boot_footer_signature": "PASS",
+      "vbmeta_signature": "PASS",
+      "boot_chain_key_matches": true,
+      "vendor_boot_salted_hash_matches": true,
+      "unchanged_other_raw_descriptors": 22,
+      "vbmeta_header_unchanged": true,
+      "public_key_unchanged": true,
+      "exact_unsigned_vendor_body_preserved": true
+    },
+    "next_device_evidence": "machine-lockdown done, a later checkpoint, or the last frozen frame from the test package"
+  },
+  "root_cause_confirmed": false,
+  "runtime_qualified": false,
+  "hardware_boot_verified": false,
+  "device_operations": false
+}

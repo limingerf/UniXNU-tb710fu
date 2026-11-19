@@ -1,0 +1,134 @@
+From: TB710FU clean board
+Subject: [PATCH] Trace machine lockdown suboperations on arm64
+
+Source: XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f with pinned UniXNU
+0c1bac3d51a3009dca1708b15a5198f4b43d057a and device patches through 0024.
+
+Reason: two distinct log tails ended at the outer machine-lockdown begin
+marker. Use the existing synchronous provider at the ARM64 VM, stack
+replacement, TLB and deferred page release boundaries. Log the parsed
+kc-segment-release setting so future observations identify the active policy.
+Separate the TLB barrier sequence from the diagnostic work.
+
+Verification: replay the archived build manifest on an isolated fixture and
+apply this patch in series. Require native checkpoint branch relocations
+from arm_vm_prot_finalize and machine_lockdown.
+
+diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
+index c1bf8f9a4a57145dbf4dfd0ca010c6cf6fa9cc53..e7534c1319e3dfbf8a2d6a99d5fe36c9290c86a4 100644
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -31,6 +31,7 @@
+ 
+ #include <kern/assert.h>
+ #include <kern/misc_protos.h>
++#include <kern/tb710fu_live_log.h>
+ #include <kern/monotonic.h>
+ #include <mach/vm_types.h>
+ #include <mach/vm_param.h>
+@@ -2087,6 +2088,12 @@ arm_vm_prot_finalize(boot_args * args __unused)
+ 	 * should be immediately followed by XNU's TEXT segment
+ 	 */
+ 
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	if (tb710fu_live_log_active()) {
++		kprintf("TB710FU lockdown: kc-segment-release=%u\n", kc_segment_release);
++	}
++#endif
++	TB710FU_LOCKDOWN_CHECKPOINT("ld-prefix-free");
+ 	ml_static_mfree(phystokv(gPhysBase), segLOWEST - gVirtBase);
+ 
+ 	/*
+@@ -2095,15 +2102,21 @@ arm_vm_prot_finalize(boot_args * args __unused)
+ 	 */
+ 	if (!segSizePLKDATACONST && !segSizePLKTEXTEXEC && segSizePRELINKTEXT) {
+ 		/* If new segments not present, PRELINK_TEXT is not dynamically sized, free DRAM between it and xnu TEXT */
++		TB710FU_LOCKDOWN_CHECKPOINT("ld-prelink-gap-free");
+ 		ml_static_mfree(segPRELINKTEXTB + segSizePRELINKTEXT, segTEXTB - (segPRELINKTEXTB + segSizePRELINKTEXT));
+ 	}
+ 
+ 	/* tighten permissions on kext read only data and code */
++	TB710FU_LOCKDOWN_CHECKPOINT("ld-prelink-ro");
+ 	arm_vm_page_granular_RNX(segPRELINKTEXTB, segSizePRELINKTEXT, ARM64_GRANULE_ALLOW_BLOCK);
++	TB710FU_LOCKDOWN_CHECKPOINT("ld-kext-data-ro");
+ 	arm_vm_page_granular_RNX(segPLKDATACONSTB, segSizePLKDATACONST, ARM64_GRANULE_ALLOW_BLOCK);
+ 
++	TB710FU_LOCKDOWN_CHECKPOINT("ld-stack-alloc");
+ 	cpu_stack_alloc(&BootCpuData);
++	TB710FU_LOCKDOWN_CHECKPOINT("ld-stack-switch");
+ 	arm64_replace_bootstack(&BootCpuData);
++	TB710FU_LOCKDOWN_CHECKPOINT("ld-bootdata-free");
+ 	ml_static_mfree(phystokv(segBOOTDATAB - gVirtBase + gPhysBase), segSizeBOOTDATA);
+ 
+ #if __ARM_KERNEL_PROTECT__
+@@ -2170,10 +2183,13 @@ arm_vm_prot_finalize(boot_args * args __unused)
+ 	 */
+ #endif
+ 
++	TB710FU_LOCKDOWN_CHECKPOINT("ld-data-const-ro");
+ 	arm_vm_page_granular_RNX(segDATACONSTB, segSizeDATACONST, ARM64_GRANULE_ALLOW_BLOCK);
+ 
++	TB710FU_LOCKDOWN_CHECKPOINT("ld-tlb-flush");
+ 	__builtin_arm_dsb(DSB_ISH);
+ 	flush_mmu_tlb();
++	TB710FU_LOCKDOWN_CHECKPOINT("ld-tlb-done");
+ }
+ 
+ /*
+diff --git a/osfmk/arm64/machine_routines.c b/osfmk/arm64/machine_routines.c
+index aad27788ab6974cea5af3b4ae6f7b7a8fd793d38..9253b51092383e969c0b31522f964745ddfd201a 100644
+--- a/osfmk/arm64/machine_routines.c
++++ b/osfmk/arm64/machine_routines.c
+@@ -43,6 +43,7 @@
+ #include <console/serial_protos.h>
+ #include <kern/machine.h>
+ #include <kern/misc_protos.h>
++#include <kern/tb710fu_live_log.h>
+ #include <prng/random.h>
+ #include <kern/startup.h>
+ #include <kern/thread.h>
+@@ -628,8 +629,11 @@ machine_lockdown(void)
+ #else
+ #endif
+ 
++	TB710FU_LOCKDOWN_CHECKPOINT("ld-vm-enter");
+ 	arm_vm_prot_finalize(PE_state.bootArgs);
++	TB710FU_LOCKDOWN_CHECKPOINT("ld-deferred-free");
+ 	ml_release_deferred_pages();
++	TB710FU_LOCKDOWN_CHECKPOINT("ld-deferred-done");
+ 
+ #if CONFIG_KERNEL_INTEGRITY
+ #if KERNEL_INTEGRITY_WT
+@@ -699,10 +703,12 @@ machine_lockdown(void)
+ 	 */
+ 	if (NULL != invalidate_hmac_function) {
+ #if !defined(CONFIG_SPTM)
++		TB710FU_LOCKDOWN_CHECKPOINT("ld-hmac");
+ 		invalidate_hmac_function();
+ #endif /* !defined(CONFIG_SPTM) */
+ 	}
+ 
++	TB710FU_LOCKDOWN_CHECKPOINT("ld-complete-flag");
+ 	lockdown_done = 1;
+ }
+ 
+diff --git a/osfmk/kern/tb710fu_live_log.h b/osfmk/kern/tb710fu_live_log.h
+index 9d9dc82daaa49f8c19a7f688170ed038c8fa76b7..a94a872eee8c00a0c8a0127c57e8a07fea3032d9 100644
+--- a/osfmk/kern/tb710fu_live_log.h
++++ b/osfmk/kern/tb710fu_live_log.h
+@@ -12,5 +12,15 @@ void tb710fu_live_log_checkpoint_sampled(const char *stage);
+ void tb710fu_live_log_refresh(void);
+ void tb710fu_live_log_freeze(void);
+ int tb710fu_live_log_active(void);
++
++#define TB710FU_LOCKDOWN_CHECKPOINT(stage) \
++	do { \
++		if (tb710fu_live_log_active()) { \
++			kprintf("TB710FU lockdown: %s\n", stage); \
++			tb710fu_live_log_checkpoint(stage); \
++		} \
++	} while (0)
++#else
++#define TB710FU_LOCKDOWN_CHECKPOINT(stage) do { } while (0)
+ #endif
+ #endif

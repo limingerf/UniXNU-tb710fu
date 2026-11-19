@@ -12,3 +12,4 @@ patches/xnu/0024-tb710fu-pace-hot-startup-checkpoints.patch whitespace=-space-be
 *.toml text eol=lf
 *.yml text eol=lf
 *.json text eol=lf
+patches/xnu/0025-tb710fu-lockdown-checkpoints.patch whitespace=-space-before-tab,-blank-at-eol

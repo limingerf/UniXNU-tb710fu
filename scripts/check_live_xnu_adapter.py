@@ -50,7 +50,8 @@ def main():
         # a second hand-written copy in the host shim.
         for name in ('0004-tb710fu-ramoops-console.patch', '0013-tb710fu-ramoops-snapshot.patch',
                      '0014-tb710fu-native-live-log.patch',
-                     '0024-tb710fu-pace-hot-startup-checkpoints.patch'):
+                     '0024-tb710fu-pace-hot-startup-checkpoints.patch',
+                     '0025-tb710fu-lockdown-checkpoints.patch'):
             run(['git', '-C', str(scratch), 'apply',
                  '--include=osfmk/kern/tb710fu_ramoops.h',
                  '--include=osfmk/kern/tb710fu_live_log.h', str(ROOT / 'patches/xnu' / name)])
@@ -74,6 +75,7 @@ def main():
                  'patches/xnu/0022-tb710fu-synchronous-live-checkpoints.patch',
                  'patches/xnu/0023-tb710fu-bootstrap-suboperation-checkpoints.patch',
                  'patches/xnu/0024-tb710fu-pace-hot-startup-checkpoints.patch',
+                 'patches/xnu/0025-tb710fu-lockdown-checkpoints.patch',
                  'package/Tb710fuLiveLog/LiveXnu.c', 'package/Tb710fuLiveLog/LiveProtocol.c',
                  'package/Tb710fuLiveLog/LiveProtocol.h', 'package/Tb710fuLiveLog/LiveDisplay.c',
                  'package/Tb710fuLiveLog/LiveDisplay.h', 'diagnostics/early-report/Font.h']

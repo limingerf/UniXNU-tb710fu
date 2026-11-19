@@ -40,6 +40,8 @@ FINAL_SYMBOLS = (
 )
 HOOK_OBJECTS = {
     'osfmk/DEVELOPMENT/arm_init.o': ('_tb710fu_live_log_init', '_tb710fu_live_log_freeze'),
+    'osfmk/DEVELOPMENT/arm_vm_init.o': ('_tb710fu_live_log_checkpoint',),
+    'osfmk/DEVELOPMENT/machine_routines.o': ('_tb710fu_live_log_checkpoint',),
     'osfmk/DEVELOPMENT/startup.o': ('_tb710fu_live_log_poll', '_tb710fu_live_log_checkpoint',
                                     '_tb710fu_live_log_checkpoint_sampled'),
     'osfmk/DEVELOPMENT/kalloc.o': ('_tb710fu_live_log_checkpoint',
@@ -348,6 +350,15 @@ def verify(tree, config, native_path):
     require(not any(call['caller'] == '_kalloc_type_distribute_zone_for_type'
                     for call in kalloc_checkpoint_calls[immediate]['branches']),
             'The fixed kalloc helper must not bypass checkpoint pacing')
+    lockdown_checkpoint_sites = {}
+    for relative, caller, minimum in (
+        ('osfmk/DEVELOPMENT/arm_vm_init.o', '_arm_vm_prot_finalize', 8),
+        ('osfmk/DEVELOPMENT/machine_routines.o', '_machine_lockdown', 4),
+    ):
+        imports = hooks[relative]['strong_hook_imports']
+        count = sum(call['caller'] == caller for call in imports[immediate]['branches'])
+        require(count >= minimum, 'Missing inner lockdown checkpoint branches: ' + caller)
+        lockdown_checkpoint_sites[caller] = count
     console_calls = hooks['osfmk/DEVELOPMENT/serial_console.o']['strong_hook_imports']
     # The normal _cnputc tap predates LiveLog and alone proves nothing about
     # acquisition's disableConsoleOutput branch. Require the live-active gate
@@ -393,5 +404,6 @@ def verify(tree, config, native_path):
             'live_log_sources_compiled': True,
             'runtime_boot_argument': 'tb710fu-live-log=1 tb710fu-live-checkpoints=1',
             'synchronous_checkpoint_sites_verified': True,
+            'lockdown_checkpoint_sites': lockdown_checkpoint_sites,
             'runtime_qualified': False, 'hardware_boot_verified': False,
             'qr_hardware_display_verified': False}

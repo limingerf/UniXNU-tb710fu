@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "observation_date": "2026-11-19",
+  "source": "User-pasted follow-up QR export. No original log file or image hash supplied.",
+  "hardware_observation": {
+    "build_label": "src-9ac805c2-ramoops",
+    "kernel_run_id": 44502932009,
+    "source_commit": "9ac805c2b5b968580a93c1a642ec26e09c26979f",
+    "packaged_kernel_sha256": "d6dea82b08c73db409f27df1a939086b1dce38361bf3b9a21980e019927ed5ce",
+    "checkpoint": "machine-lockdown",
+    "checkpoint_mode": "synchronous_single_frame",
+    "earlybackup_state": "ready",
+    "earlybackup_start": 0,
+    "earlybackup_end": 498,
+    "earlybackup_bytes": 498,
+    "earlybackup_export": "deferred_multi_frame",
+    "current_start": 1502335,
+    "current_end": 1502589,
+    "current_bytes": 254,
+    "dropped": 0,
+    "raw_layout": "current_only_single_frame",
+    "visible_lines": [
+      "trap: OSKextRemoveKextBootstrap",
+      "TB710FU boot: kext-bootstrap-remove begin",
+      "TB710FU boot: kext-bootstrap-remove done",
+      "TB710FU boot: mbuf-tag-init begin",
+      "TB710FU boot: mbuf-tag-init done",
+      "kernel_bootstrap: machine_lockdown",
+      "TB710FU boot: machine-lockdown begin"
+    ],
+    "highest_observed_stage": "machine-lockdown begin",
+    "machine_lockdown_return_observed": false,
+    "fault_instruction_observed": false
+  },
+  "previous_frame_current_range": [
+    1503573,
+    1503827
+  ],
+  "controlled_test_context": {
+    "intended_boot_argument": "kc-segment-release=0",
+    "candidate_vendor_boot_sha256": "a5fcf3735a0308f0237c0975b33a968af1514bb51493beabbc57248563310a0f",
+    "candidate_zip": {
+      "path": "out/live-checkpoints-44502932009-kc-release0-signed.zip",
+      "bytes": 35565208,
+      "sha256": "1c4ba38c796241e660ec28c8bef9e2f969b27f6904cbf7830feee98e5d5c04c0",
+      "entry_crc_and_sha256_readback": "PASS"
+    },
+    "armed_policy_confirmed_by_frame": false
+  },
+  "interpretation": {
+    "same_visible_stage_different_offsets": true,
+    "frame_confirms_actual_entry_into_machine_lockdown": false,
+    "root_cause_confirmed": false,
+    "note": "The outer checkpoint is published immediately before the call. If the variant was used, segment retention did not advance the visible boundary."
+  },
+  "followup_patch": {
+    "path": "patches/xnu/0025-tb710fu-lockdown-checkpoints.patch",
+    "sha256": "52e2eb073b57457ff8a5fcc23439d95d6fa4388a6563f11f23191672db90081e"
+  },
+  "hardware_boot_verified": false
+}

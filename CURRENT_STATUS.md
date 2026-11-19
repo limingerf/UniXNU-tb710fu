@@ -1,5 +1,75 @@
 # Current status · 2026-11-19
 
+## 实机再次到达 machine_lockdown 调用前检查点 · 2026-11-19
+
+实机回传 `src-9ac805c2-ramoops` 的单帧覆盖 `[1502335,1502589)`，
+254 字节，`dropped=0`。上一次的范围是 `[1503573,1503827)`。两帧均记录
+`mbuf-tag-init done`，随后以调用前的 `machine-lockdown begin` 结束。
+两个测试包使用同一内核和 build label，帧中缺少 `kc-segment-release` 的
+实际取值。即使本次用了参数对照包，可见边界仍停留在原处。
+见 `docs/evidence/live-checkpoints-device-44502932009-lockdown-repeat.json`。
+
+补丁 `0025` 在 ARM64 VM 收尾和页释放路径加入同步检查点，并在
+`ld-prefix-free` 帧前打印已解析的 `kc-segment-release`。检查点覆盖
+页权限修改、异常栈分配与切换、`__BOOTDATA` 回收、TLB 刷新和延迟页释放。
+Patch SHA-256 为 `52e2eb073b57457ff8a5fcc23439d95d6fa4388a6563f11f23191672db90081e`。按 run `44502932009` 的输入清单和哈希重放
+相关补丁后，独立 fixture 应用与 14 组 adapter 主机测试已通过。
+
+## 实机到达 machine_lockdown 入口 · 2026-11-19
+
+`src-9ac805c2-ramoops` 交付镜像的实机单帧覆盖 `[1503573,1503827)`，共
+254 字节，`dropped=0`。`OSKextRemoveKextBootstrap` 和 `mbuf_tag_init` 的
+`done` 已出现，随后发布了 `machine-lockdown begin`。该帧对应
+run `44502932009` 的 `0xfffffff00c281130` 检查点调用，下一条指令
+`0xfffffff00c281134` 调用 `machine_lockdown`。实机确认通过此前的 kalloc
+和 SYSCTL 阶段。`machine_lockdown` 的返回与卡点指令仍待捕获。
+
+打包同一构建的参数对照镜像，XNU 启动项追加 `kc-segment-release=0`。
+这是固定 UniXNU `memwired-kc-segment-release.patch` 提供的可选段回收开关，
+其 SHA-256 为 `c2fa78ec97d6c0cd812d781ef9b8a95f356ca728c9ba86834c494aaffd0b69c0`。
+对实际 Mach-O 的 ARM64 指令模型验证了 `ml_static_mfree` 的准入分支，覆盖
+`__BOOTDATA`、`__LINKEDIT`、`__KLD`、`__KLDDATA`、镜像尾部和物理 aperture。
+四个集合段最多保留 41,107,456 字节，约 39.2 MiB。这个参数保留 `machine_lockdown`
+及其页权限收紧路径，用于实机隔离可选段回收的影响。
+
+签名包 `out/live-checkpoints-44502932009-kc-release0-signed.zip` 为 35,565,208 字节，
+SHA-256 `1c4ba38c796241e660ec28c8bef9e2f969b27f6904cbf7830feee98e5d5c04c0`。
+包内 `vendor_boot.img` SHA-256 为 `a5fcf3735a0308f0237c0975b33a968af1514bb51493beabbc57248563310a0f`，
+`vbmeta.img` SHA-256 为 `88ee76ecef77245d1921ed3c65e1d3ddce9e3c0e37af811159eec918bd175073`，
+内嵌标准内核仍为 `d6dea82b08c73db409f27df1a939086b1dce38361bf3b9a21980e019927ed5ce`。
+AVB 签名、FAT 参数、LZMA 字节和 ZIP 回读通过。证据见
+`docs/evidence/live-checkpoints-device-44502932009-machine-lockdown.json`。
+下次实机采集 `machine-lockdown done`、后续阶段或最后一帧。
+
+## 限速检查点签名镜像包 · 2026-11-19
+
+应用户要求制作刷机测试包 `out/live-checkpoints-44502932009-signed.zip`，
+大小 35,564,913 字节，SHA-256
+`5929a5a57ed4a888dcf6e3256a4c72534a29cf8a33adfccbdc7f9c0758311e2a`。
+内核来自 run `44502932009` attempt 1、提交 `9ac805c2b5b968580a93c1a642ec26e09c26979f`，
+build label `src-9ac805c2-ramoops`。生产 DarwinBoot parser 通过，标准色带版
+内核 SHA-256 为 `d6dea82b08c73db409f27df1a939086b1dce38361bf3b9a21980e019927ed5ce`。
+内置启动参数包含 `tb710fu-live-log=1 tb710fu-live-checkpoints=1`。
+
+镜像位于 `out/live-checkpoints-44502932009-signed/`。
+
+- `vendor_boot.img`，100,663,296 字节，SHA-256
+  `8455aa9d3c915bc4b689e245d7fdc5f0a158ebf0436714a6c3c3d25049db1b67`。
+- `vbmeta.img`，8,000 字节，SHA-256
+  `408028c7f0fac2961b857ab0f31c25e1de7f598d42130c34d6731c935450c245`。
+- `boot.img` 沿用签名基线，100,663,296 字节，SHA-256
+  `a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`。
+
+在 run `44479475027` 的已核验 unsigned carrier 中仅替换 FAT 内的 LZMA 内核，
+FAT 其余文件与基线逐字节比对通过。unsigned vendor SHA-256 为
+`5156edd6ddb11e0cf9680e46cf6e140d0e725fc2482ab7982d869cf7cbf353e6`。
+沿用本地 AVB RSA-4096 签名基线 run `44124706860`。主机核验 AVB 签名、
+`vendor_boot` salted hash、boot chain key、vbmeta header 与 22 项其他描述符，
+以及 FAT、ADT、根卷策略、LZMA 和 ZIP 内 SHA256SUMS 回读均通过。
+详细证据在镜像目录的 `packaging-report.json`、`signing-report.json` 和
+`verification-report.json`。`runtime_qualified=false`、`loadable=false`、
+`hardware_boot_verified=false`、`device_operations=false`。
+
 ## 实机 fallback 分配记录与检查点限速 · 2026-11-19
 
 实机转录 `src-5b689373-ramoops` 对应 run `44479475027`、提交
