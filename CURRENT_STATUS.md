@@ -1,5 +1,36 @@
 # Current status · 2026-11-19
 
+## 同步检查点 unsigned vendor_boot 已打包 · 2026-11-19
+
+用户要求打包 img。使用成功的 kernel run `44479475027` / device commit
+`5b6893730575efa0ed7c43a964ee7a4182438739`，prelink SHA-256
+`57717219eab8934bde402ce6b438807af109cbe7a73073729880b8c488482409`，生成标准
+early-band 变体并独立验证 6 个允许改动 spans、3 个 compact probes，其余 kernel
+字节和 segments 未改。标准 kernel SHA-256：
+`eab0b717bf61830595fcc80a0f37c34600269d1cfd0ebf7e681b7d143526dd20`。
+
+打包沿用已验证 unsigned carrier `out/live-ramoops-44462593602/`，其 unsigned
+vendor_boot SHA-256 为
+`cbfdae23a53cd6f4a67ad47b5444e8fd438dd7f9688b02cf9da4408412aa653a`、payload SHA-256
+为 `a0ae8a83a1bea436544d762814323dec4e4325146cb6e3e6711a61d9fa2bee40`，源签名基线
+vendor/vbmeta 分别为 `a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2` 与
+`3fd43a5a7adc0275eb8d241b94f1c2520b6b630ae912c3eff4a3869d76228e04`。LZMA-Alone
+使用项目固定的 8 MiB dictionary、`lc=3 lp=0 pb=2 preset=6`；decoded kernel 与
+标准变体逐字节一致。`unixnu.toml` 的 XNU entry 增加
+`tb710fu-live-checkpoints=1`，其他菜单、默认项、ADT 和 root policy 保持原值。
+FAT32 有 66,512 clusters；配置、LZMA kernel、ADT、root policy 都做了 FAT 回读。
+
+unsigned vendor_boot 为 37,859,328 字节，SHA-256
+`de5c688cd09df32b848cd00e8738784a8fb38a259b158d4e47dcf173652fac43`；经独立范围
+比较，ramdisk/payload 外所有字节与 carrier 完全相同。完整 bundle 为
+`out/live-checkpoints-44479475027-unsigned.zip`，SHA-256
+`a1fec3dfebd0f044b20819a7b595891ddd3fc77a97056150ffcc45fd7105da98`；包内
+`SHA256SUMS` 全部回读通过，详细记录见同目录 `packaging-report.json`。
+
+遵循 clean cloud-build 指示，本次没有签名，也没有生成/附带匹配的 vbmeta，
+所以这是 unsigned packaging candidate，**不可直接刷写**。没有执行任何设备操作；
+`runtime_qualified=false`、`hardware_boot_verified=false` 继续成立。
+
 ## Bootstrap 子操作检查点扩展已构建 · 2026-11-19
 
 用户要求再增加检查点以减少逐轮编译。本轮在 `0022` 已覆盖的全 startup callback
