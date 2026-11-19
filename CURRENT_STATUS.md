@@ -21,21 +21,24 @@ edge helper 的活动范围是索引 12–511，至少还有索引 384–511 共
 说明早期用屏幕或 UART、USB 前须确认协议兼容。设备 CDC 限制详见
 [`USB_CDC_PORT.md`](/D:/unixnu-tb710fu-clean/docs/USB_CDC_PORT.md)。
 
-二维码更新正在切换为循环多帧 OneSend。新 sender 先合并 ready 的 498-byte early
-backup 和最多 3072-byte 当前尾部，文件体限制 4096 字节；worker 每 250 ms 发送下一
-systematic 帧，完成 16 个文件轮次后才允许替换 session。当前用户这张图来自旧
-`synchronous_single_frame` 镜像，所以仅含 252 字节当前尾部，不能把它归因于新循环实现。
-主机验证已通过 LiveXnu 16 组 ASan/UBSan adapter、协议 C/ASan/UBSan 与固定 OneSend
-browser receiver、多帧 early-backup fixture、显示 ASan/UBSan 及 13 项 package verifier。
-官方 integrated run `44569060786`（提交 `208e93d51df6565cacbc15eefbceaa79214d4f61`）
-完成 runner 的 native-only 编译产物 `ef411d823e88ae7450f2d433bfea769891cab5ad517411564bbb3abbb7dedf8e`，
-但在 native integration verifier 中失败，因为 verifier 把二维码 provider caller 误设为
-`_checkpoint_publish`，实际新 helper `_checkpoint_qr_advance_locked`。从该次实际
-`LiveXnu.o` 的 branch relocations 已确认 QR、scroll、worker start 和 timer/wait 调用都在；
-按这些实际 caller 修复 verifier 后，严格 prelink 尚待同目标重跑。该 run 的 bootstrap
-pass 还出现一次不带 LiveLog archive 的中间链接缺符号日志，但后续 native-only 产物确实
-生成；不把该中间日志混作最终 linker 结论。`44546733725` 签名包仍是上一版单帧 QR，
-本轮没有刷写或重启设备。
+多帧 QR 版本已由官方 integrated run [44572852316](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44572852316)
+验证成功，设备提交 `ddfd2c97d22f965caa24270dff9bf04551f453dc`。Native arm64e SHA-256
+`8a7e5056bece5922ca530ceb0c44f6dfda9d35c286a0c0677b890971e5eaf577`；严格 prelink
+142,835,712 字节，SHA-256 `02253bed245a3f15b78b03821f2d8cd7f78c464023414ea09d390ad26da2a6b2`，
+DarwinBoot parser PASS，mapping complete 且没有 missing/stubbed。
+
+签名多帧测试包为 `out/live-checkpoints-44572852316-multiframe-signed.zip`，35,566,530
+字节，SHA-256 `2f0bf32df81a143b661851ba4137adda005ada235c401114aeba27bbfdf835a7`。
+`vendor_boot.img` SHA-256 `5b2a0e17e351c3decfe09ff6e9affa362f4c7186550f6aab57508352b925a208`；
+`vbmeta.img` SHA-256 `a49690d95c470c548701b61ddb3304141a9defedf0bfbf2ed55ac6bd0e1ae770`；
+沿用基线 `boot.img`。AVB RSA-4096、boot chain/salted hash、其他 22 个 descriptor、FAT/LZMA、
+启动参数及 ZIP 校验通过。package report 确认每份二维码 session 是不可变多帧日志，
+带 ready early backup，16 轮后才替换；协议互操作样本为 3693 字节、6 帧。完整记录见
+`docs/evidence/live-checkpoints-multiframe-signed-44572852316.json`。
+
+这是最新签名诊断包，不表示根因已修复；多帧采集需要 receiver 收齐每个 session 的块并在
+session 变化时 reset，若内核或 worker 停止，二维码循环也会停止。未刷写或重启设备；
+`runtime_qualified=false`、`hardware_boot_verified=false`、`device_operations=false`。
 
 ## PRELINKTEXT 滚屏日志诊断包已签出 · 2026-11-19
 

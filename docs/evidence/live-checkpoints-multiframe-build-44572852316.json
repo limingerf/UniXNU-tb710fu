@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "stage": "verified-prelinked-multiframe-checkpoint-diagnostics",
+  "build": {
+    "run_id": 44572852316,
+    "run_attempt": 1,
+    "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44572852316",
+    "runner_stage": "ufs-integrated",
+    "run_status": "success",
+    "device_commit": "ddfd2c97d22f965caa24270dff9bf04551f453dc",
+    "display_build_label": "src-ddfd2c9-ramoops",
+    "framework_revision": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+    "xnu_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+    "patch": {
+      "path": "patches/xnu/0027-tb710fu-prelink-rnx-edge-checkpoints.patch",
+      "sha256": "49aa11bd13e0356ff9ec326cb7168cdc9ffc0dcf40889e904c31850b8a2e2baa",
+      "xnu_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f"
+    },
+    "native_sha256": "8a7e5056bece5922ca530ceb0c44f6dfda9d35c286a0c0677b890971e5eaf577",
+    "prelinked_sha256": "02253bed245a3f15b78b03821f2d8cd7f78c464023414ea09d390ad26da2a6b2",
+    "prelinked_bytes": 142835712,
+    "production_parser": "PASS",
+    "fileset_entries": 79,
+    "closure_entries": 86,
+    "mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "allow_missing": false,
+    "live_log_integration_report_sha256": "4517fac18575c82454cb1667354a19ff4c7a1b344c842737afe53ac1c64c44ac",
+    "prelink_rnx_immediate_checkpoint_branches": {
+      "count": 16,
+      "callers": [
+        "_arm_vm_page_granular_helper",
+        "_arm_vm_page_granular_prot"
+      ]
+    },
+    "checkpoint_display_calls": {
+      "_tb_live_display_checkpoint_qr": {
+        "branch_count": 1,
+        "callers": ["_checkpoint_qr_advance_locked"]
+      },
+      "_tb_live_display_scroll_log": {
+        "branch_count": 1,
+        "callers": ["_checkpoint_publish"]
+      },
+      "_tb_live_display_checkpoint_status": {
+        "branch_count": 10,
+        "callers": ["_checkpoint_publish", "_checkpoint_qr_advance_locked", "_checkpoint_status"]
+      }
+    },
+    "checkpoint_worker_calls": {
+      "_kernel_thread_start": {
+        "callers": ["_live_start_worker"]
+      },
+      "_clock_interval_to_deadline": {
+        "callers": ["_live_worker"]
+      },
+      "_assert_wait_deadline": {
+        "callers": ["_live_worker"]
+      },
+      "_thread_block": {
+        "callers": ["_live_worker"]
+      }
+    },
+    "runtime_qualified": false,
+    "hardware_boot_verified": false,
+    "device_operations": false
+  },
+  "artifact": {
+    "id": 14555732066,
+    "name": "tb710fu-ufs-integrated-44572852316",
+    "bytes": 39178195,
+    "sha256": "879d5626c6c0c66829102da94486cdb67af2387895cde7e323960969d1c0fd16",
+    "github_digest_verified": true,
+    "local_download_matches_digest": true
+  },
+  "display_contract": {
+    "checkpoint_qr_anchor": "bottom-right",
+    "scroll_log_region": "left-of-checkpoint-qr",
+    "scroll_source": "latest-current-xnu-capture-tail",
+    "scroll_offset_model": "absolute-range; append-unseen-suffix; mark-overwrite-gap",
+    "scroll_max_rows": 64,
+    "scroll_max_columns": 256,
+    "console_character_writer_draws": false
+  },
+  "qr_transfer": {
+    "protocol": "OneSend profile 0 systematic multi-frame",
+    "immutable_file_body_max_bytes": 4096,
+    "early_backup_bytes_max": 512,
+    "current_xnu_tail_bytes_max": 3072,
+    "frame_interval_ms": 250,
+    "complete_rounds_before_session_replacement": 16,
+    "receiver_reset_required_on_session_change": true,
+    "carousel_requires_kernel_or_worker_scheduling": true
+  }
+}

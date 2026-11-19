@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "stage": "signed-multiframe-prelink-rnx-checkpoint-package",
+  "user_authorized_signing": true,
+  "build": {
+    "run_id": 44572852316,
+    "run_attempt": 1,
+    "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44572852316",
+    "device_commit": "ddfd2c97d22f965caa24270dff9bf04551f453dc",
+    "build_label": "src-ddfd2c97-ramoops",
+    "native_sha256": "8a7e5056bece5922ca530ceb0c44f6dfda9d35c286a0c0677b890971e5eaf577",
+    "prelinked_sha256": "02253bed245a3f15b78b03821f2d8cd7f78c464023414ea09d390ad26da2a6b2",
+    "prelinked_bytes": 142835712,
+    "prelink_rnx_patch_sha256": "49aa11bd13e0356ff9ec326cb7168cdc9ffc0dcf40889e904c31850b8a2e2baa",
+    "production_parser": "PASS",
+    "fileset_entries": 79,
+    "closure_entries": 86,
+    "mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "allow_missing": false,
+    "prelink_rnx_immediate_checkpoint_branches": 16,
+    "live_log_integration_report_sha256": "4517fac18575c82454cb1667354a19ff4c7a1b344c842737afe53ac1c64c44ac",
+    "checkpoint_display_calls": {
+      "_tb_live_display_checkpoint_qr": ["_checkpoint_qr_advance_locked"],
+      "_tb_live_display_scroll_log": ["_checkpoint_publish"],
+      "_tb_live_display_checkpoint_status": [
+        "_checkpoint_publish",
+        "_checkpoint_qr_advance_locked",
+        "_checkpoint_status"
+      ]
+    },
+    "checkpoint_qr_worker_calls": {
+      "_kernel_thread_start": ["_live_start_worker"],
+      "_clock_interval_to_deadline": ["_live_worker"],
+      "_assert_wait_deadline": ["_live_worker"],
+      "_thread_block": ["_live_worker"]
+    },
+    "runtime_qualified": false,
+    "hardware_boot_verified": false,
+    "device_operations": false
+  },
+  "runner_artifact": {
+    "id": 14555732066,
+    "name": "tb710fu-ufs-integrated-44572852316",
+    "bytes": 39178195,
+    "sha256": "879d5626c6c0c66829102da94486cdb67af2387895cde7e323960969d1c0fd16",
+    "github_digest_verified": true,
+    "local_download_matches_digest": true
+  },
+  "standard_band_derivative": {
+    "sha256": "430973ec9642da3b9e9915c209fafd34a96f3255536117870114c44e8293d415",
+    "bytes": 142835712,
+    "result": "PASS",
+    "patch_spans_verified": 6,
+    "compact_probes_verified": 3,
+    "other_bytes_unchanged": true,
+    "segments_unchanged": true,
+    "production_parser": "PASS"
+  },
+  "qr_transfer": {
+    "protocol": "Pinned OneSend profile 0 systematic multi-frame",
+    "protocol_receiver_interop": "PASS",
+    "immutable_file_body_max_bytes": 4096,
+    "early_backup_bytes": 498,
+    "current_xnu_tail_max_bytes": 3072,
+    "fixture_body_bytes": 3693,
+    "fixture_block_count": 6,
+    "frame_interval_ms": 250,
+    "complete_rounds_before_replacement": 16,
+    "receiver_reset_required_on_session_change": true,
+    "carousel_requires_kernel_or_worker_scheduling": true
+  },
+  "display": {
+    "checkpoint_qr_anchor": "bottom-right",
+    "scroll_log_region": "left-of-checkpoint-qr",
+    "scroll_offset_model": "absolute-range; append-unseen-suffix; mark-overwrite-gap",
+    "display_asub_ubsan": "PASS",
+    "live_xnu_adapter_groups": 16,
+    "live_log_package_tests": 13
+  },
+  "carrier": {
+    "source_run_id": 44502932009,
+    "unsigned_vendor_sha256": "80971eb20a54acc68bce8519e03381659e0e2a3ac99b0b12e6b4a5faf2046c15",
+    "boot_arguments": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1 kc-segment-release=0"
+  },
+  "unsigned_vendor_sha256": "aec46050a0862d7b1f8975990c7c622420a1535be8a845a9def99c7bd1d3fd63",
+  "signed_images": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "5b2a0e17e351c3decfe09ff6e9affa362f4c7186550f6aab57508352b925a208"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "a49690d95c470c548701b61ddb3304141a9defedf0bfbf2ed55ac6bd0e1ae770"
+    }
+  },
+  "avb_verification": {
+    "rsa4096_signatures": "PASS",
+    "boot_chain_key_matches": true,
+    "vendor_boot_salted_hash_matches": true,
+    "unchanged_other_raw_descriptors": 22,
+    "vbmeta_header_unchanged": true,
+    "public_key_unchanged": true,
+    "unsigned_vendor_body_preserved": true
+  },
+  "payload_readback": {
+    "FAT_clusters": 66512,
+    "FAT_mountable": true,
+    "LZMA_roundtrip": "PASS",
+    "kernel_sha256": "430973ec9642da3b9e9915c209fafd34a96f3255536117870114c44e8293d415",
+    "adt_sha256": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+    "root_policy_sha256": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+    "checkpoint_boot_argument_readback": true
+  },
+  "bundle": {
+    "path": "out/live-checkpoints-44572852316-multiframe-signed.zip",
+    "bytes": 35566530,
+    "sha256": "2f0bf32df81a143b661851ba4137adda005ada235c401114aeba27bbfdf835a7",
+    "zip_crc": "PASS",
+    "sha256sums_readback": "PASS"
+  },
+  "runtime_qualified": false,
+  "loadable": false,
+  "hardware_boot_verified": false,
+  "device_operations": false
+}
