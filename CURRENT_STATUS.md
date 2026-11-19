@@ -1,5 +1,32 @@
 # Current status · 2026-11-19
 
+## Bootstrap 子操作检查点扩展已构建 · 2026-11-19
+
+用户要求再增加检查点以减少逐轮编译。本轮在 `0022` 已覆盖的全 startup callback
+begin/return、完整 kalloc 路径和 SYSCTL 后 bootstrap 阶段上，继续拆分
+`kernel_bootstrap_thread` 内的五次 `early_random()`、`kernel_list_tests()`、
+`kernel_do_post()`、`thread_bind()` 与 `resume_cluster_powerdown()`；每个操作有
+独立 begin/done QR。XNU patch `0023-tb710fu-bootstrap-suboperation-checkpoints.patch`
+接在 `0022` 后，只增加 gated logging/QR 调用，不改操作顺序、参数或返回值。
+patch SHA-256：`6faf8482e64642f3cad6d4360dc13e5e74ff2cad1f0761fc20899019089d4a4f`。
+
+按 `0022 → 0023` 顺序应用到 startup fixture 通过。Adapter 13 组 ASan/UBSan、
+固定 OneSend 接收器互操作、真实 Mu QR 编码、display 与 live-log/package 参数测试
+通过。单次 macOS `ufs-integrated` run `44479475027`，代码提交
+`5b6893730575efa0ed7c43a964ee7a4182438739`，结论 success；native arm64e SHA-256：
+`6ac3639d1b89a5af59a60fe821ae0e4036791a74fec19d0836f8c43c223203b3`。Strict
+prelink candidate 为 142,819,328 字节，SHA-256：
+`57717219eab8934bde402ce6b438807af109cbe7a73073729880b8c488482409`；生产
+DarwinBoot parser 通过，`mapping_complete=true`、`missing={}`、`stubbed={}`，但
+`runtime_qualified=false`、`loadable=false`、`hardware_boot_verified=false`。
+集成报告确认 startup.o 有 82 个、kalloc.o 有 106 个 checkpoint 直接分支；build
+label 为 `src-5b689373-ramoops`。
+
+Runner artifact ID `14507674751`，ZIP SHA-256
+`658be95848b9fcc28505dc5a602fd66d4d937c0cb01fec84072b7f52889c5f68`，与 GitHub
+digest 一致。未签名或打包 flashable image，未刷写、重启或改动设备。它扩大了
+可见阶段范围，但仍不是故障 PC；硬件启动与二维码面板/相机可读性未验证。
+
 ## 同步单帧停点诊断已构建 · 2026-11-19
 
 用户指出内核停住后二维码本身不再刷新。停住后的代码无法更新 framebuffer；
