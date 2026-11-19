@@ -112,7 +112,7 @@ def validate_args(text):
     # parameters, root-device overrides, memory disk or old physical ramoops PA.
     allowed = {'-v', 'serial', 'native-source-storage', 'native-ufs-root',
                'tb710fu-cdc', 'tb710fu-live-log', 'tb710fu-live-checkpoints',
-               'debug', '-enable_kprintf_spam', 'startup_debug',
+               'debug', '-enable_kprintf_spam', 'startup_debug', 'kc-segment-release',
                'ramoops_size', 'ramoops_ecc', 'ramoops_panic_delay', 'ramoops_reset_after'}
     require(set(values) <= allowed, 'Unsupported boot arguments: ' + ', '.join(sorted(set(values) - allowed)))
     require('-v' not in values or values['-v'] is None, '-v takes no value')
@@ -137,6 +137,9 @@ def validate_args(text):
     if 'ramoops_panic_delay' in values:
         require(values['ramoops_panic_delay'] is not None and 0 <= int(values['ramoops_panic_delay'], 0) <= 300,
                 'ramoops_panic_delay must be between 0 and 300 seconds')
+    if 'kc-segment-release' in values:
+        require(values['kc-segment-release'] == '0',
+                'kc-segment-release must be exactly 0 for the reviewed checkpoint image')
     return values
 
 
@@ -508,11 +511,12 @@ def reuse_root_adt(data, serializer, profile):
 
 
 def reuse_root_payload(adt, config, old_kernel, old_policies, policies, args, serializer, profile):
+    validate_args(args)
     require(sha(old_kernel) == ROOTED_KERNEL, 'Rooted baseline kernel differs from the reviewed payload')
     require(sha(config) == ROOTED_CONFIG, 'Rooted baseline config differs from the reviewed payload')
     require(old_policies == policies and sha(old_policies) == POLICIES,
             'Rooted baseline policies differ from the selected verified policy bundle')
-    require(update_config(config, args) == config, 'Rooted baseline boot configuration must remain unchanged')
+    config = update_config(config, args)
     tree, report = reuse_root_adt(adt, serializer, profile)
     return tree, config, report
 
@@ -768,6 +772,8 @@ def package(manifest_path, manifest_sha, output):
         expected_files = {'Payloads/kernel.macho': encoded, 'Payloads/kernel.macho.adt': tree,
                           'Payloads/kernel.macho.vroot': policies, 'unixnu.toml': config}
         updates = {'Payloads/kernel.macho': encoded} if rooted else expected_files
+        if rooted and config != before_config:
+            updates['unixnu.toml'] = config
         for index, (name, content) in enumerate(updates.items()):
             local = work / f'payload-input-{index}'
             local.write_bytes(content)

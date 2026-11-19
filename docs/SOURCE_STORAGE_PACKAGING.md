@@ -137,7 +137,12 @@ The currently reviewed optional argument set is deliberately small: `-v`,
 `serial=3`, `tb710fu-cdc=1` with the evidence above,
 `ramoops_size=0x40000`, `ramoops_ecc=0` or `16`,
 `ramoops_panic_delay` from 0 to 300, and `ramoops_reset_after=0`. Omitting the
-reset argument uses the reviewed patch's default zero. Duplicate arguments,
+reset argument uses the reviewed patch's default zero. The checkpoint diagnostic
+image may also carry the source-recorded `kc-segment-release=0`; other values are
+refused. When reusing the rooted signed baseline, the packager still verifies the
+exact ADT, kernel, RootPolicies and baseline configuration identity, then replaces
+only the XNU entry's `args` field with this validated string; all other menu and
+boot fields remain identical. Duplicate arguments,
 `rd`/`rootdev`/other root overrides, physical `ramoops` addresses, nonzero
 automatic reset, probes, switch/report markers, Sheng hardware arguments and
 all other arguments are refused. Further options require a source-backed

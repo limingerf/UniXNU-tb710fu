@@ -280,10 +280,11 @@ class PackagingBoundaries(unittest.TestCase):
                 verify_cdc_fixture(fixture)
 
     def test_complete_args_do_not_inherit_diagnostics(self):
-        args = '-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 ramoops_reset_after=0'
+        args = '-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 ramoops_reset_after=0 kc-segment-release=0'
         values = pack.validate_args(args)
         self.assertEqual(values['ramoops_reset_after'], '0')
         self.assertEqual(values['tb710fu-cdc'], '1')
+        self.assertEqual(values['kc-segment-release'], '0')
         self.assertNotIn('rd', values)
         self.assertNotIn('TB710FU_SWITCH_MARKS', values)
 
@@ -292,7 +293,8 @@ class PackagingBoundaries(unittest.TestCase):
         for suffix in ('native-ufs-root=0', 'native-ufs-root=1', 'rd=md0', 'rootdev=disk0',
                        'ramoops_reset_after=120', 'native-ufs-probe=10', 'sheng-wifi=2',
                        'TB710FU_SWITCH_MARKS=1', 'ramoops=0xac340000', 'ramoops_ecc', '-v=1',
-                       'tb710fu-cdc=0', 'tb710fu-cdc=2', 'tb710fu-cdc', 'tb710fu-cdc=0x1'):
+                       'tb710fu-cdc=0', 'tb710fu-cdc=2', 'tb710fu-cdc', 'tb710fu-cdc=0x1',
+                       'kc-segment-release=1', 'kc-segment-release', 'kc-segment-release=0x0'):
             with self.subTest(suffix=suffix), self.assertRaises(ValueError):
                 pack.validate_args(base + ' ' + suffix)
         with self.assertRaises(ValueError):
@@ -384,12 +386,20 @@ class PackagingBoundaries(unittest.TestCase):
         config = read('unixnu.toml')
         kernel = read('Payloads/kernel.macho')
         policies = read('Payloads/kernel.macho.vroot')
-        args = '-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1'
-        tree, unchanged_config, report = pack.reuse_root_payload(
+        original_args = '-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 debug=0x8 -enable_kprintf_spam startup_debug=1'
+        self.assertEqual(pack.update_config(config, original_args), config)
+        args = ('-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 '
+                'tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 '
+                '-enable_kprintf_spam startup_debug=1 kc-segment-release=0')
+        tree, updated_config, report = pack.reuse_root_payload(
             adt, config, kernel, policies, real_bundle(), args, serializer, profile)
         self.assertEqual(tree, adt)
-        self.assertEqual(unchanged_config, config)
         self.assertEqual(report['only_change'], 'none; existing reviewed RootPolicies preserved')
+        before = pack.tomllib.loads(config.decode())
+        after = pack.tomllib.loads(updated_config.decode())
+        self.assertEqual(after['boot'], before['boot'])
+        self.assertEqual(after['entry'][0]['args'], args)
+        self.assertEqual(after['entry'][1:], before['entry'][1:])
         for index, value in enumerate((adt, config, kernel, policies)):
             changed = bytearray(value)
             changed[-1] ^= 1
@@ -397,9 +407,10 @@ class PackagingBoundaries(unittest.TestCase):
             inputs[index] = bytes(changed)
             with self.subTest(input=index), self.assertRaises(ValueError):
                 pack.reuse_root_payload(*inputs, real_bundle(), args, serializer, profile)
-        with self.assertRaisesRegex(ValueError, 'configuration must remain unchanged'):
+        with self.assertRaisesRegex(ValueError, 'Require exactly native-ufs-root=1'):
             pack.reuse_root_payload(adt, config, kernel, policies, real_bundle(),
-                                    args.replace('serial=3 ', ''), serializer, profile)
+                                    args.replace('native-ufs-root=1', 'native-ufs-root=0'),
+                                    serializer, profile)
 
 
 if __name__ == '__main__':

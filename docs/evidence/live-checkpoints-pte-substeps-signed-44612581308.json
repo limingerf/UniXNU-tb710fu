@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "stage": "signed-live-checkpoint-test-image-set",
+  "user_authorized_local_signing": true,
+  "kernel_run_id": 44612581308,
+  "kernel_run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44612581308",
+  "device_commit": "6d82bbe50780b8fb84e383c00b609db555f23432",
+  "profile": "macos-27.3-26C5035r",
+  "native_kernel_sha256": "194ea250b0fab2d35ad6f473a87be8b642329d5eb2e80e39262729f634128c19",
+  "prelinked_kernel": {
+    "bytes": 142835712,
+    "sha256": "a6d93191e64c3d8e4cad63d23bcb24fa4e34ff433d6fac6d4331040c43fcb999",
+    "mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "production_parser": "PASS"
+  },
+  "standard_band_derivative": {
+    "sha256": "9e115655b4211f7e3dd581f65255e5051f555fcfc1ec33ef3d7671331aa24626",
+    "patch_spans_verified": 6,
+    "compact_probes_verified": 3,
+    "other_bytes_unchanged": true,
+    "segments_unchanged": true
+  },
+  "boot_args": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1 kc-segment-release=0",
+  "source_baseline": {
+    "vendor_boot_sha256": "a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2",
+    "vbmeta_sha256": "3fd43a5a7adc0275eb8d241b94f1c2520b6b630ae912c3eff4a3869d76228e04",
+    "boot_sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+  },
+  "unsigned_vendor_boot": {
+    "bytes": 37859328,
+    "sha256": "b225f1af15d95cd2794f8fd7d5cee262e8fa44ce7f6e2a3097916e37da7ece37",
+    "manifest_sha256": "d7a72a0e00223a19dc2a7f6d8d0cd8442d36e19cad1ee8533c82db71e7aa4a49",
+    "outer_vendor_fields_preserved": true
+  },
+  "signed_images": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83",
+      "unchanged": true
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "ea146f0a8c4093f8ff7581a3e1c3b2f613561918c8337cecee4134b2dcb8e13b"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "e60d8177b34387ea6a381463d6b0bd061852d2a5fdb63bdb191d3119441804ca"
+    }
+  },
+  "signing_verification": {
+    "algorithm": "SHA256_RSA4096",
+    "signature_checks": "PASS",
+    "vendor_boot_salted_hash": "PASS",
+    "boot_chain_key_matches": true,
+    "unsigned_vendor_body_preserved": true,
+    "vbmeta_header_unchanged": true,
+    "public_key_unchanged": true,
+    "unchanged_other_raw_descriptors": 22
+  },
+  "payload_verification": {
+    "fat_mountable": true,
+    "fat_clusters": 66512,
+    "lzma_raw_roundtrip": "PASS",
+    "ADT_identity": "PASS",
+    "RootPolicies_sha256": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+    "production_DarwinBoot_parser": "PASS"
+  },
+  "tests": {
+    "source_storage": "17 passed, 2 skipped",
+    "live_log_package": "13 passed",
+    "zip_crc": "PASS",
+    "sha256sums_readback": "PASS"
+  },
+  "bundle": {
+    "path": "out/live-checkpoints-44612581308-pte-substeps-signed.zip",
+    "bytes": 35652235,
+    "sha256": "07573785b8adc466200746d52e66463bdf7fe362ae7fbb83c5e0cae7d89b4b7a",
+    "members": 13
+  },
+  "runtime_qualified": false,
+  "hardware_boot_verified": false,
+  "device_operations": false
+}

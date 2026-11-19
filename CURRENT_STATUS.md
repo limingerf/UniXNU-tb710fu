@@ -1,5 +1,35 @@
 # Current status · 2026-11-20
 
+## PTE substep signed test images · 2026-11-20
+
+用户要求将 run `44612581308` 产物打包为可刷写测试镜像。保留原 bootloader，使用
+设备提交 `6d82bbe50780b8fb84e383c00b609db555f23432` 的预链接内核，并生成 standard-band
+derivative（3 个 probe，6 个 span，其余内核字节及 segments 未变）。完整 20-input manifest
+经 `tools/package_source_storage.py` 验证：UFS/source-storage、RootPolicies、CDC、LiveLog、
+loader provenance、ADT、FAT 与启动参数均绑定到同一 build。签名沿用已授权的本地 AVB
+RSA-4096 baseline pair，仅更新 vendor_boot descriptor；没有把密钥放入仓库或镜像包。
+
+输出目录 `out/live-checkpoints-44612581308-pte-substeps-signed/`，bundle
+`out/live-checkpoints-44612581308-pte-substeps-signed.zip`（35,652,235 字节，SHA-256
+`07573785b8adc466200746d52e66463bdf7fe362ae7fbb83c5e0cae7d89b4b7a`）：
+
+- `boot.img`：100,663,296 字节，沿用已验证 baseline，SHA-256
+  `a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`。
+- `vendor_boot.img`：100,663,296 字节，SHA-256
+  `ea146f0a8c4093f8ff7581a3e1c3b2f613561918c8337cecee4134b2dcb8e13b`。
+- `vbmeta.img`：8,000 字节，SHA-256
+  `e60d8177b34387ea6a381463d6b0bd061852d2a5fdb63bdb191d3119441804ca`。
+
+RSA-4096 AVB 签名、vendor salted hash、boot chain key、未变的 22 个 descriptor、
+vbmeta header/public key 和 unsigned vendor body 回读通过。FAT 为 66,512 clusters，LZMA、
+kernel/ADT/RootPolicies/TOML 回读及 production DarwinBoot parser 均通过；bundle 13 个成员的
+CRC 和 SHA256SUMS 回读通过。source-storage 主机测试 17 项通过（2 项历史输入测试跳过），
+LiveLog package 测试 13 项通过。完整证据见
+`docs/evidence/live-checkpoints-pte-substeps-signed-44612581308.json`。
+
+这是签名的 A/B 诊断测试包，不是实机验收：未刷写、未重启，也未操作分区或设备文件系统；
+`runtime_qualified=false`、`hardware_boot_verified=false`、`device_operations=false`。
+
 ## PRELINKTEXT PTE 进度与 USB 启动边界 · 2026-11-20
 
 实机帧来自 `src-45d347f6-ramoops` / run `44546733725`。当前 `[1502250,1502502)`
