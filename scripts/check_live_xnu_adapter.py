@@ -71,6 +71,7 @@ def main():
                  'patches/xnu/0020-tb710fu-bootstrap-phase-checkpoints.patch',
                  'patches/xnu/0021-tb710fu-kalloc-zone-loop-checkpoints.patch',
                  'patches/xnu/0022-tb710fu-synchronous-live-checkpoints.patch',
+                 'patches/xnu/0023-tb710fu-bootstrap-suboperation-checkpoints.patch',
                  'package/Tb710fuLiveLog/LiveXnu.c', 'package/Tb710fuLiveLog/LiveProtocol.c',
                  'package/Tb710fuLiveLog/LiveProtocol.h', 'package/Tb710fuLiveLog/LiveDisplay.c',
                  'package/Tb710fuLiveLog/LiveDisplay.h', 'diagnostics/early-report/Font.h']

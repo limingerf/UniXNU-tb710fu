@@ -80,6 +80,8 @@ ramoops 是当前启动的内核缓冲副本，因此两侧文本可能重叠。
 早期备份仍标记为 deferred，不声称单帧里包含完整控制台历史。capture、编码
 或 framebuffer 写入失败时会保留上一帧并计入错误状态。静态主机测试能验证
 帧内容与调用边界，不能验证实机面板扫描输出、相机可读性或设备启动结果。
+bootstrap 内 `early_random` 的五次调用、kernel list/post tests，以及 thread bind
+与 cluster resume 也分别有 begin/done 标记，避免这些相邻子操作仍共用一个边界。
 
 ## 保留与覆盖
 

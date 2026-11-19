@@ -1,0 +1,59 @@
+From: TB710FU clean board
+Subject: [PATCH] Split remaining bootstrap operation checkpoints
+
+Source: pinned XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f after device
+patches 0014 through 0022. Reason: the broad bootstrap brackets still grouped
+five early_random calls, kernel_list_tests with kernel_do_post, and thread_bind
+with resume_cluster_powerdown. Split those boundaries so one scan identifies the
+last completed operation without another build after observing the next QR.
+
+Verification: applies after 0022 to the pinned startup.c fixture. All additions
+are live-log gated through the existing event macro; call order, arguments,
+randomness and error handling remain unchanged. Native arm64e, strict prelink
+and production DarwinBoot parser remain required before hardware use.
+---
+ osfmk/kern/startup.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/osfmk/kern/startup.c b/osfmk/kern/startup.c
+--- a/osfmk/kern/startup.c
++++ b/osfmk/kern/startup.c
+@@ -853,7 +853,17 @@ kernel_bootstrap_thread(void)
+ 	TB710FU_BOOT_EVENT("address-permutation", "begin");
++	TB710FU_BOOT_EVENT("early-random-1", "begin");
+ 	vm_kernel_addrperm = (vm_offset_t)(early_random() | 1);
++	TB710FU_BOOT_EVENT("early-random-1", "done");
++	TB710FU_BOOT_EVENT("early-random-2", "begin");
+ 	buf_kernel_addrperm = (vm_offset_t)(early_random() | 1);
++	TB710FU_BOOT_EVENT("early-random-2", "done");
++	TB710FU_BOOT_EVENT("early-random-3", "begin");
+ 	vm_kernel_addrperm_ext = (vm_offset_t)(early_random() | 1);
++	TB710FU_BOOT_EVENT("early-random-3", "done");
++	TB710FU_BOOT_EVENT("early-random-4", "begin");
+ 	vm_kernel_addrhash_salt = early_random();
++	TB710FU_BOOT_EVENT("early-random-4", "done");
++	TB710FU_BOOT_EVENT("early-random-5", "begin");
+ 	vm_kernel_addrhash_salt_ext = early_random();
++	TB710FU_BOOT_EVENT("early-random-5", "done");
+ 	TB710FU_BOOT_EVENT("address-permutation", "done");
+@@ -995,6 +995,10 @@ kernel_bootstrap_thread(void)
+ 	TB710FU_BOOT_EVENT("kernel-post-tests", "begin");
++	TB710FU_BOOT_EVENT("kernel-list-tests", "begin");
+ 	kern_return_t result = kernel_list_tests();
++	TB710FU_BOOT_EVENT("kernel-list-tests", "done");
++	TB710FU_BOOT_EVENT("kernel-do-post", "begin");
+ 	result = kernel_do_post();
++	TB710FU_BOOT_EVENT("kernel-do-post", "done");
+ 	if (result != KERN_SUCCESS) {
+ 		panic("kernel_do_post: Tests failed with result = 0x%08x", result);
+ 	}
+@@ -1052,4 +1052,8 @@ kernel_bootstrap_thread(void)
+ 	TB710FU_BOOT_EVENT("cluster-resume", "begin");
++	TB710FU_BOOT_EVENT("thread-bind", "begin");
+ 	thread_bind(PROCESSOR_NULL);
++	TB710FU_BOOT_EVENT("thread-bind", "done");
++	TB710FU_BOOT_EVENT("cluster-power-resume", "begin");
+ 	resume_cluster_powerdown();
++	TB710FU_BOOT_EVENT("cluster-power-resume", "done");
+ 	TB710FU_BOOT_EVENT("cluster-resume", "done");
+*** End Patch

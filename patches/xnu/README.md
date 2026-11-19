@@ -150,6 +150,12 @@ requires this option alongside `tb710fu-live-log=1`. This leaves the last
 successfully rendered pre-operation frame visible if a later operation stops,
 but cannot refresh after execution stops or establish the faulting PC.
 
+`0023-tb710fu-bootstrap-suboperation-checkpoints.patch` splits the remaining
+grouped direct operations in `kernel_bootstrap_thread`: each of its five
+`early_random` calls, the kernel-list/post-test calls, and thread binding versus
+cluster power resume now have their own begin/done frames. It preserves the broad
+parent markers and does not reorder or alter the operations.
+
 The first native attempt, run 44112832250 at `eb1f2bc7`, exposed a missing
 internal-header export in `pe_kprintf.c`. The device patch now adds its two real
 headers to `osfmk/kern/Makefile` XNU_ONLY_EXPORTS, using the same official
