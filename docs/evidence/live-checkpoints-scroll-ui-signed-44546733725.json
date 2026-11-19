@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "stage": "signed-prelink-rnx-scroll-ui-test-package",
+  "user_authorized_signing": true,
+  "build": {
+    "run_id": 44546733725,
+    "run_attempt": 1,
+    "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44546733725",
+    "device_commit": "45d347f631516edf7a59df97da387caece4d1cbb",
+    "build_label": "src-45d347f6-ramoops",
+    "native_sha256": "a1a4639e04483a832a620f4a2b1b14bb042d64ecfb11820ae99d2f9e4939accb",
+    "prelinked_sha256": "fe056e7669aebf981dae73f7a7c55826a22acc81a67da1a197c1ce3776e7075b",
+    "prelinked_bytes": 142835712,
+    "prelink_rnx_patch_sha256": "49aa11bd13e0356ff9ec326cb7168cdc9ffc0dcf40889e904c31850b8a2e2baa",
+    "production_parser": "PASS",
+    "fileset_entries": 79,
+    "closure_entries": 86,
+    "mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "allow_missing": false,
+    "prelink_rnx_immediate_checkpoint_branches": {
+      "count": 16,
+      "callers": [
+        "_arm_vm_page_granular_helper",
+        "_arm_vm_page_granular_prot"
+      ]
+    },
+    "checkpoint_display_calls": {
+      "_tb_live_display_checkpoint_qr": {
+        "branch_count": 1,
+        "callers": ["_checkpoint_publish"]
+      },
+      "_tb_live_display_scroll_log": {
+        "branch_count": 1,
+        "callers": ["_checkpoint_publish"]
+      },
+      "_tb_live_display_checkpoint_status": {
+        "branch_count": 6,
+        "callers": ["_checkpoint_publish"]
+      }
+    },
+    "runtime_qualified": false,
+    "hardware_boot_verified": false,
+    "device_operations": false
+  },
+  "runner_artifact": {
+    "id": 14542795366,
+    "name": "tb710fu-ufs-integrated-44546733725",
+    "bytes": 39176271,
+    "sha256": "f15d87bb853db004f895e1095fd6fb5155a0e53d4f1720eea3242ec572b0168e",
+    "github_digest_verified": true,
+    "local_download_matches_digest": true
+  },
+  "standard_band_derivative": {
+    "sha256": "192d919aae4a3e107df6cd6f8b9971a6781f619f7b50ac7b83e96ec6c78ce3a8",
+    "bytes": 142835712,
+    "result": "PASS",
+    "patch_spans_verified": 6,
+    "compact_probes_verified": 3,
+    "other_bytes_unchanged": true,
+    "segments_unchanged": true,
+    "production_parser": "PASS"
+  },
+  "display": {
+    "checkpoint_qr_anchor": "bottom-right",
+    "scroll_log_region": "left-of-checkpoint-qr",
+    "scroll_source": "latest-current-xnu-capture-tail",
+    "scroll_offset_model": "absolute-range; append-unseen-suffix; mark-overwrite-gap",
+    "scroll_max_rows": 64,
+    "scroll_max_columns": 256,
+    "console_character_writer_draws": false,
+    "display_asub_ubsan": "PASS",
+    "live_xnu_adapter_groups": 15,
+    "live_log_package_tests": 12
+  },
+  "carrier": {
+    "source_run_id": 44502932009,
+    "unsigned_vendor_sha256": "80971eb20a54acc68bce8519e03381659e0e2a3ac99b0b12e6b4a5faf2046c15",
+    "boot_arguments": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1 kc-segment-release=0"
+  },
+  "unsigned_vendor_boot_sha256": "936896522cbdc711cb1d3bb89caf83df5cd5226d2c554c5b7c668d2eb3502371",
+  "signed_images": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "1e52d7c9ec16484e64a04ffc6d9b54806045bc9bed9f7d8e7bedb6b505a8ffd4"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "63f6d92c4b7e5f4c53d450d88acf8399937c3b36fb7793b14c2c738fd0bad988"
+    }
+  },
+  "avb_verification": {
+    "signature_checks": "PASS",
+    "boot_chain_key_matches": true,
+    "vendor_boot_salted_hash_matches": true,
+    "unchanged_other_raw_descriptors": 22,
+    "vbmeta_header_unchanged": true,
+    "public_key_unchanged": true,
+    "unsigned_vendor_body_preserved": true
+  },
+  "payload_readback": {
+    "FAT_clusters": 66512,
+    "FAT_mountable": true,
+    "LZMA_roundtrip": "PASS",
+    "kernel_sha256": "192d919aae4a3e107df6cd6f8b9971a6781f619f7b50ac7b83e96ec6c78ce3a8",
+    "adt_sha256": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+    "root_policy_sha256": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+    "checkpoint_boot_argument_readback": true
+  },
+  "bundle": {
+    "path": "out/live-checkpoints-44546733725-scroll-ui-signed.zip",
+    "bytes": 35565495,
+    "sha256": "786b0bb6c5a4c0b601548261d8554d6c12978b766dc9c34ddcef72d15829b604",
+    "zip_crc": "PASS",
+    "sha256sums_readback": "PASS"
+  },
+  "runtime_qualified": false,
+  "loadable": false,
+  "hardware_boot_verified": false,
+  "device_operations": false
+}

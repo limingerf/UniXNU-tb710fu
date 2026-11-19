@@ -1,6 +1,6 @@
 # Current status · 2026-11-19
 
-## PRELINKTEXT 首段边缘页表检查点已构建，滚屏布局待构建 · 2026-11-19
+## PRELINKTEXT 滚屏日志诊断包已签出 · 2026-11-19
 
 实机回传帧对应 run `44524596920`、设备提交
 `4abefb367d219908a9ebb3ebc2fdf830547e7e2d`，build label
@@ -29,10 +29,25 @@ DarwinBoot parser PASS。Runner artifact 14539106331，39,167,082 字节，GitHu
 用户要求保留二维码、移到右下角并开启滚屏日志。检查点模式现将最近 XNU capture
 tail 显示在左侧有界 ASCII 文本区，检查点 QR 固定在右下角；日志按绝对字节范围
 增量更新，检测到缓冲覆盖时显示 `[LOG GAP]`，字符采集回调保持纯内存写。顶部官方
-色带和非检查点双通道布局保留。显示
-ASan/UBSan、LiveXnu 15 组 adapter ASan/UBSan 和 live-log package 12 项主机测试通过；
-集成构建与新 arm64e display API branch verifier 待运行。二维码面板、相机可读性
-和实机停点仍未验证。
+色带和非检查点双通道布局保留。显示 ASan/UBSan、LiveXnu 15 组 adapter ASan/UBSan
+和 live-log package 12 项主机测试通过。官方 `ufs-integrated` run [44546733725](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44546733725)
+success；runner 报告 1 个真实滚屏分支、1 个右下二维码分支、6 个状态栏分支均从同步
+checkpoint 发布路径调用。严格预链接 SHA-256
+`fe056e7669aebf981dae73f7a7c55826a22acc81a67da1a197c1ce3776e7075b`，production
+parser PASS，`mapping_complete=true`、`missing={}`、`stubbed={}`。
+
+签名测试包为 `out/live-checkpoints-44546733725-scroll-ui-signed.zip`，35,565,495
+字节，SHA-256 `786b0bb6c5a4c0b601548261d8554d6c12978b766dc9c34ddcef72d15829b604`。
+`vendor_boot.img` SHA-256
+`1e52d7c9ec16484e64a04ffc6d9b54806045bc9bed9f7d8e7bedb6b505a8ffd4`；`vbmeta.img`
+SHA-256 `63f6d92c4b7e5f4c53d450d88acf8399937c3b36fb7793b14c2c738fd0bad988`；`boot.img`
+沿用已验证基线。RSA-4096、boot-chain key、salted hash、FAT/LZMA 回读和 ZIP
+SHA256SUMS 均通过；其他 22 个 descriptor 未变。完整证据见
+`docs/evidence/live-checkpoints-scroll-ui-signed-44546733725.json`。
+
+该包用于下一轮实机显示和 PRELINKTEXT 边缘页表进度验证；当前没有设备屏幕或相机
+反馈，硬件启动、二维码可读性和原始故障指令仍未验证。本轮没有刷写或重启。
+`runtime_qualified=false`、`hardware_boot_verified=false`、`device_operations=false`。
 
 ## PRELINKTEXT RNX 可刷写测试包已签出 · 2026-11-19
 
