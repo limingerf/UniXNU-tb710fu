@@ -1,5 +1,40 @@
 # Current status · 2026-11-19
 
+## 实机 fallback 分配记录与检查点限速 · 2026-11-19
+
+实机转录 `src-5b689373-ramoops` 对应 run `44479475027`、提交
+`5b6893730575efa0ed7c43a964ee7a4182438739`。该同步单帧带有 `[212979,213230)`
+共 251 字节，`dropped=0`，可见 class 6 第 109/109 组的 `fixed-fallback-assign done`。
+核对该 run 的 prelink 文件和指令后，分配函数的返回已确认。`done` 写入后调用
+`tb710fu_live_log_checkpoint`，外层 helper 随后通过 `retab` 返回。这次转录的最后
+可见记录在 helper 返回之前，实机根因待定位。转录和指令地址见
+`docs/evidence/live-checkpoints-device-44479475027-fixed-fallback.json`。
+
+原同步模式的每个签名组至少请求八次完整 QR 更新。较早的限速构建 run
+`44462593602` 在实机上走到了 SYSCTL rank 1。设备 patch `0024` 给 kalloc 循环与
+startup callback 的二维码尝试增加约 250ms 间隔，从上一次尝试结束计时。
+组内事件继续写入 XNU 日志缓冲。kalloc 及 fixed/variable views 的入口和结束、
+startup phase、bootstrap 子阶段和画面刷新即时尝试绘制。Patch SHA-256 为
+`3fbd3de50a554522b4f7f8e7b720020af17bf9cdc1819206dc684e41a1547716`。
+
+按 pinned series 顺序实际应用通过。主机验证通过 14 组 ASan/UBSan adapter 测试、
+真实 pinned Mu 编码、固定 OneSend 接收器、显示边界和 11 组打包参数测试。
+macOS `ufs-integrated` run `44502932009` attempt 1 结论 success，提交为
+`9ac805c2b5b968580a93c1a642ec26e09c26979f`，build label `src-9ac805c2-ramoops`。
+Native arm64e SHA-256 为 `d14a29e1af778744c4d3db34d8a8a88e54329c7da224d4d82c3b6c52423f5fea`。
+Strict prelink 文件 `out/kernel-44502932009/kernel.macho` 为 142,819,328 字节，
+SHA-256 `2cdc4d3acba2af3bd41f9b242bb23710e3ef2eec1d58f13aec4279a778257946`。
+生产 DarwinBoot parser 在 runner 和本地回读均通过，`mapping_complete=true`、
+`missing={}`、`stubbed={}`、`allow_missing=false`。startup.o 核验 2 个采样分支
+和 80 个即时分支，kalloc.o 核验 100 个采样分支和 6 个即时分支。
+
+Runner artifact ID `14518218866`，ZIP SHA-256
+`2e3cde57f0f5782d21ed54d80774fd3955a4a7ba04ecba1921e190e4ed792dc3`，与 GitHub
+发布 digest 一致。完整验证记录见 `docs/evidence/live-checkpoints-paced-build-44502932009.json`。
+本次交付为预链接 Mach-O，`runtime_qualified=false`、`loadable=false`、
+`hardware_boot_verified=false`。下一次实机验证观察 `fixed-views done`、
+`kalloc-init done` 或更晚的启动阶段。
+
 ## 用户授权签名的同步检查点 AVB 包已验证 · 2026-11-19
 
 用户随后明确要求签名。用本地 AVB RSA-4096 key 对 unsigned candidate

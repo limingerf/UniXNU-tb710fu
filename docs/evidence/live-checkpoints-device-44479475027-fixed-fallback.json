@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "stage": "user-supplied-synchronous-kalloc-fallback-checkpoint",
+  "observation_date": "2026-11-19",
+  "source": "User-pasted QR export text. Raw log attachment and hash were not supplied.",
+  "device_build": {
+    "label": "src-5b689373-ramoops",
+    "run_id": 44479475027,
+    "commit": "5b6893730575efa0ed7c43a964ee7a4182438739",
+    "prelinked_sha256": "57717219eab8934bde402ce6b438807af109cbe7a73073729880b8c488482409",
+    "packaged_kernel_sha256": "eab0b717bf61830595fcc80a0f37c34600269d1cfd0ebf7e681b7d143526dd20",
+    "signed_vendor_boot_sha256": "0c2274909b4b40ace56103b6e0c8093322d7c1f876735f2877f5346a8e86f454"
+  },
+  "export": {
+    "checkpoint": "fixed-fallback-assign",
+    "checkpoint_mode": "synchronous_single_frame",
+    "current_start": 212979,
+    "current_end": 213230,
+    "current_bytes": 251,
+    "dropped": 0,
+    "raw_layout": "current_only_single_frame",
+    "earlybackup_state": "ready",
+    "earlybackup_start": 0,
+    "earlybackup_end": 498,
+    "earlybackup_bytes": 498,
+    "earlybackup_export": "deferred_multi_frame",
+    "visible_lines": [
+      "B710FU kalloc: fixed-class group-helper-begin class=6 signatures=109 types=109",
+      "TB710FU kalloc: fixed-type-skip-list begin",
+      "TB710FU kalloc: fixed-type-skip-list done",
+      "TB710FU kalloc: fixed-fallback-assign begin",
+      "TB710FU kalloc: fixed-fallback-assign done"
+    ]
+  },
+  "source_correlation": {
+    "xnu_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+    "class_index": 6,
+    "group_index_one_based": 109,
+    "group_count": 109,
+    "fallback_extra_type_zones": 0,
+    "method": "llvm-nm and llvm-objdump on the verified prelinked Mach-O with direct branch and string-literal cross-checks.",
+    "assignment_call": "0xfffffff00c274ff4",
+    "done_kprintf_call": "0xfffffff00c27501c",
+    "done_qr_provider_call": "0xfffffff00c275024",
+    "helper_retab": "0xfffffff00c275340",
+    "caller_helper_call": "0xfffffff00c275764",
+    "caller_return_marker_kprintf_call": "0xfffffff00c275794",
+    "caller_group_budget_check_branch": "0xfffffff00c275808",
+    "class_helper_marker_fields": "In 0021 the helper marker passes j+1 and n_unique_sig to the generic fields labelled signatures and types."
+  },
+  "interpretation": {
+    "fixed_assignment_return_observed": true,
+    "fixed_group_helper_return_observed": false,
+    "kalloc_init_return_observed": false,
+    "root_cause_confirmed": false,
+    "earlier_sysctl_observation_run_id": 44462593602,
+    "hot_loop_render_attempts_per_group_at_least": 8,
+    "class6_render_attempts_if_all_109_groups_execute_at_least": 872,
+    "notes": [
+      "The done log is written after kalloc_type_assign_zone_fixed returns. Checkpoint rendering is still on the stack before the helper epilogue.",
+      "An older rate-limited candidate reached SYSCTL on the device. Differences across builds prevent a controlled attribution of the hang.",
+      "The old synchronous loop requested multiple complete encodes and framebuffer draws per group."
+    ]
+  },
+  "followup": {
+    "patch": "patches/xnu/0024-tb710fu-pace-hot-startup-checkpoints.patch",
+    "patch_sha256": "3fbd3de50a554522b4f7f8e7b720020af17bf9cdc1819206dc684e41a1547716",
+    "source_commit": "9ac805c2b5b968580a93c1a642ec26e09c26979f",
+    "kernel_run_id": 44502932009,
+    "stage": "ufs-integrated",
+    "device_validation": "Look for fixed-views done, kalloc-init done, or a later startup phase from this new build."
+  },
+  "hardware_boot_verified": false,
+  "device_operations": false
+}

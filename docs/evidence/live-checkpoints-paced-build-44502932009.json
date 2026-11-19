@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "stage": "verified-prelinked-head",
+  "run_id": 44502932009,
+  "run_attempt": 1,
+  "runner_stage": "ufs-integrated",
+  "run_status": "success",
+  "device_commit": "9ac805c2b5b968580a93c1a642ec26e09c26979f",
+  "display_build_label": "src-9ac805c2-ramoops",
+  "framework_revision": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+  "xnu_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+  "patch": {
+    "path": "patches/xnu/0024-tb710fu-pace-hot-startup-checkpoints.patch",
+    "sha256": "3fbd3de50a554522b4f7f8e7b720020af17bf9cdc1819206dc684e41a1547716"
+  },
+  "artifact": {
+    "id": 14518218866,
+    "bytes": 39164240,
+    "sha256": "2e3cde57f0f5782d21ed54d80774fd3955a4a7ba04ecba1921e190e4ed792dc3",
+    "github_digest_verified": true
+  },
+  "native_sha256": "d14a29e1af778744c4d3db34d8a8a88e54329c7da224d4d82c3b6c52423f5fea",
+  "prelinked_sha256": "2cdc4d3acba2af3bd41f9b242bb23710e3ef2eec1d58f13aec4279a778257946",
+  "prelinked_bytes": 142819328,
+  "saved_kernel": "out/kernel-44502932009/kernel.macho",
+  "native_branch_sites": {
+    "startup": {
+      "sampled": 2,
+      "immediate": 80
+    },
+    "kalloc": {
+      "sampled": 100,
+      "immediate": 6
+    }
+  },
+  "production_parser": "PASS",
+  "adapter_sanitizer_test_groups": 14,
+  "mapping_complete": true,
+  "missing": {},
+  "stubbed": {},
+  "allow_missing": false,
+  "runtime_qualified": false,
+  "loadable": false,
+  "hardware_boot_verified": false,
+  "device_operations": false,
+  "local_production_parser_readback": "PASS"
+}
