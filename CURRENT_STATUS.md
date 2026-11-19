@@ -1,6 +1,6 @@
 # Current status · 2026-11-19
 
-## 新实机日志已越过 kalloc，抵达 SYSCTL rank-last · 2026-11-19
+## SYSCTL 到 pageout 全路径检查点与单次构建 · 2026-11-19
 
 用户提供 build label `src-5016bd2f-ramoops`，对应 kernel run `44401178047`、
 提交 `5016bd2fdb2f993776314954fc09689a14fc32da`。XNU DEBUG export 当前只有
@@ -16,14 +16,33 @@ fixed type-zone 进度、FIPSPOST `all tests PASSED (58 ms)`、
 fault PC，也不能单独证明停在 SYSCTL。当前 single-frame 导出没有给出随后 callback
 或 `EARLY_BOOT` 记录，缺失不能当作停点证据。
 
-用户要求补更多检查点后，新 patch `0020-tb710fu-bootstrap-phase-checkpoints.patch`
+用户要求直接补检查点后，新 patch `0020-tb710fu-bootstrap-phase-checkpoints.patch`
 紧跟 `0019`，新增每个 `kernel_startup_initialize_upto()` 完整返回标记，并在
 SYSCTL 后的地址随机化、IOKit、EARLY_BOOT、开中断、屏幕/commpage、lockdown、BSD
 及 pageout 交接等同步初始化操作前后发出配对事件。只做 live-log 诊断，不改变任何
 调用或顺序。隔离 fixture 按官方 `zzz-boot-progress`、设备 `0014/0016/0017`、新
-`0020` 顺序实际应用通过；事件配对与 `git diff --check` 通过。现准备只派发一次
-macOS `ufs-integrated` 构建，随后打包同一候选，不按观察边界逐轮编译。此前设备
-boundary 记录见 `docs/evidence/live-ramoops-device-44401178047-sysctl.json`。
+`0020` 顺序实际应用通过；33 组 begin/done 配对、两个非返回边界和 `git diff --check`
+均验证通过。
+
+唯一一次 macOS `ufs-integrated` run `44426482407` attempt 1 成功，head
+`0e3190abc54f60bc98014f2e816802643fe7ad7e`。native SHA-256
+`e2c7a64a810f9b0a706607679fd16773dee1577e4c85cad7288a0c2a5a03ccaf`，strict prelink
+SHA-256 `5a5ee24fd1d1f128dd54d99379d04cf24eb590ab18dc7fbe35eb7356b4652dcc`，
+production parser PASS；runner manifest 中 `0020` patch hash 与提交文件一致。
+artifact `tb710fu-ufs-integrated-44426482407` (ID `14485097215`) SHA-256
+`7bce3b7f6076cf07b878c3b7dcad986af1f4ead89ba7816e212f9e0412de8171`。
+
+新签名包为 `out/tb710fu-live-ramoops-44426482407-signed.zip`，35,579,217 字节，
+SHA-256 `ef5be5d3f5c285010ecedbc8d96a9ed07677cede3c49e620f4ae340ca0532dfa`。内嵌
+standard-band kernel SHA-256 `7529040226f707f7afd4de24629ea5ff1c7a59895e1955616956f137ce9ee776`。
+签名/AVB、FAT/LZMA 回读通过，其他 22 个描述符、vbmeta header 和公钥不变；包内
+`0019` 与 `0020` 标记均已确认。详细证据见
+`docs/evidence/live-ramoops-image-44426482407.json`。
+
+包仍为 `runtime_qualified=false`、`loadable=false`、`hardware_boot_verified=false`；
+没有刷写或重启设备。SYSCTL rank-last callback 已返回，但具体后续停点仍要依此包的
+后续 XNU 帧判断。此前设备 boundary 见
+`docs/evidence/live-ramoops-device-44401178047-sysctl.json`。
 
 ## 一次性 kalloc_init 全路径诊断 · 2026-11-19
 

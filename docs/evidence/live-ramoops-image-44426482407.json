@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "stage": "live-ramoops-signed-package",
+  "run_id": 44426482407,
+  "source_commit": "0e3190abc54f60bc98014f2e816802643fe7ad7e",
+  "build_artifact": {
+    "id": 14485097215,
+    "name": "tb710fu-ufs-integrated-44426482407",
+    "bytes": 39154936,
+    "sha256": "7bce3b7f6076cf07b878c3b7dcad986af1f4ead89ba7816e212f9e0412de8171"
+  },
+  "native_sha256": "e2c7a64a810f9b0a706607679fd16773dee1577e4c85cad7288a0c2a5a03ccaf",
+  "prelinked_sha256": "5a5ee24fd1d1f128dd54d99379d04cf24eb590ab18dc7fbe35eb7356b4652dcc",
+  "packaged_kernel_sha256": "7529040226f707f7afd4de24629ea5ff1c7a59895e1955616956f137ce9ee776",
+  "packaged_kernel_bytes": 142819328,
+  "unsigned_vendor_sha256": "88537eb5e67c789efd2222846fd27058ae30685b88d0af393c9554091f15bc5f",
+  "images": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "a516565e54ea57e072f870dc2001d5283e4aa0b3e222733c9521dc2e6061d52f"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "b5fcd6ecedca2d0bc94962c6023e32537a5abd45632b19d23314e353597427fc"
+    }
+  },
+  "zip": {
+    "path": "out/tb710fu-live-ramoops-44426482407-signed.zip",
+    "bytes": 35579217,
+    "sha256": "ef5be5d3f5c285010ecedbc8d96a9ed07677cede3c49e620f4ae340ca0532dfa"
+  },
+  "verification": {
+    "schema_version": 1,
+    "stage": "signed-native-live-ramoops-bundle-independently-verified",
+    "kernel_run_id": 44426482407,
+    "kernel_source_commit": "0e3190abc54f60bc98014f2e816802643fe7ad7e",
+    "native_sha256": "e2c7a64a810f9b0a706607679fd16773dee1577e4c85cad7288a0c2a5a03ccaf",
+    "prelinked_sha256": "5a5ee24fd1d1f128dd54d99379d04cf24eb590ab18dc7fbe35eb7356b4652dcc",
+    "standard_kernel_sha256": "7529040226f707f7afd4de24629ea5ff1c7a59895e1955616956f137ce9ee776",
+    "files": {
+      "boot.img": {
+        "bytes": 100663296,
+        "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+      },
+      "vendor_boot.img": {
+        "bytes": 100663296,
+        "sha256": "a516565e54ea57e072f870dc2001d5283e4aa0b3e222733c9521dc2e6061d52f"
+      },
+      "vbmeta.img": {
+        "bytes": 8000,
+        "sha256": "b5fcd6ecedca2d0bc94962c6023e32537a5abd45632b19d23314e353597427fc"
+      }
+    },
+    "unsigned_vendor_sha256": "88537eb5e67c789efd2222846fd27058ae30685b88d0af393c9554091f15bc5f",
+    "source_vendor_sha256": "a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2",
+    "source_vbmeta_sha256": "3fd43a5a7adc0275eb8d241b94f1c2520b6b630ae912c3eff4a3869d76228e04",
+    "rsa4096_pkcs1_sha256_independent_checks": {
+      "vendor_boot_footer": "PASS",
+      "vbmeta": "PASS",
+      "boot_footer": "PASS"
+    },
+    "salted_image_hash_checks": {
+      "vendor_boot": "PASS",
+      "boot": "PASS"
+    },
+    "unchanged_other_raw_descriptors": 22,
+    "identical_vbmeta_header": true,
+    "public_key_unchanged": true,
+    "boot_chain_public_key_matches": true,
+    "payload_fat_clusters": 66512,
+    "payload_sha256": "65b97b45d0948b083e2b3b602310a462fb28496e665fe0d182e8919533c15c9b",
+    "file_readback_sha256": {
+      "unixnu.toml": "ea386850fa2a39822d33c2a992d13b34fec1f8f6cade88c2e00ea803699966d3",
+      "Payloads/kernel.macho": "ad95abcdc11be6dd8b4265bf9cad736266e85ef83e89c3af3d0b0d3ecef904db",
+      "Payloads/kernel.macho.adt": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+      "Payloads/kernel.macho.vroot": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68"
+    },
+    "packaged_kernel_bytes": 142819328,
+    "packaged_kernel_sha256": "7529040226f707f7afd4de24629ea5ff1c7a59895e1955616956f137ce9ee776",
+    "mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "allow_missing": false,
+    "runtime_qualified": false,
+    "loadable": false,
+    "device_operations": false,
+    "hardware_boot_verified": false,
+    "kalloc_init_diagnostics": {
+      "patch": "patches/xnu/0019-tb710fu-kalloc-full-diagnostic-trace.patch",
+      "patch_sha256": "7275366be7c7a7fbae5fa76b1eb9c2f46fb891e6d5f9f68d13c6b7c36e57d644",
+      "marker_strings_in_packaged_kernel": true,
+      "allocator_behavior_changed": false,
+      "root_cause_confirmed": false
+    },
+    "bootstrap_phase_diagnostics": {
+      "patch": "patches/xnu/0020-tb710fu-bootstrap-phase-checkpoints.patch",
+      "patch_sha256": "39475edf1ba8e4e940d192587741d291fb1f2b3d97a5bcec4fe02268144a07ba",
+      "marker_strings_in_packaged_kernel": true,
+      "startup_phase_completion_markers": true,
+      "paired_post_sysctl_event_groups": 33,
+      "pageout_entry_marker": true,
+      "startup_control_flow_changed": false,
+      "root_cause_confirmed": false
+    },
+    "limits": [
+      "Native/prelink/parser and host verification do not prove hardware boot.",
+      "No device reboot, flash, partition or filesystem operation was performed.",
+      "The ramoops buffer is current-boot volatile memory and does not survive reset."
+    ]
+  },
+  "device_operations": false,
+  "hardware_boot_verified": false
+}
