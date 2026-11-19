@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "device_frame": {
+    "source_run_id": 44516717448,
+    "source_commit": "8252efb9d6dfd901fa2a981e8a30ecb8b7e0c84f",
+    "build_label": "src-8252efb9-ramoops",
+    "checkpoint": "ld-prelink-ro",
+    "checkpoint_mode": "synchronous_single_frame",
+    "earlybackup": {
+      "state": "ready",
+      "start": 0,
+      "end_exclusive": 498,
+      "bytes": 498,
+      "export": "deferred_multi_frame"
+    },
+    "current": {
+      "start": 1503598,
+      "end_exclusive": 1503855,
+      "bytes": 257,
+      "dropped": 0,
+      "raw_layout": "current_only_single_frame"
+    },
+    "raw_tail": [
+      "uf-tag-init begin",
+      "TB710FU boot: mbuf-tag-init done",
+      "kernel_bootstrap: machine_lockdown",
+      "TB710FU boot: machine-lockdown begin",
+      "TB710FU lockdown: ld-vm-enter",
+      "TB710FU lockdown: kc-segment-release=0",
+      "TB710FU lockdown: ld-prefix-free",
+      "TB710FU lockdown: ld-prelink-ro"
+    ],
+    "next_operation": "arm_vm_page_granular_RNX(segPRELINKTEXTB, segSizePRELINKTEXT, ARM64_GRANULE_ALLOW_BLOCK)",
+    "faulting_pc_confirmed": false,
+    "root_cause_confirmed": false
+  },
+  "patch": {
+    "path": "patches/xnu/0026-tb710fu-prelink-rnx-progress.patch",
+    "sha256": "b4a602ca20189eada378d948a084179f0c1984a0bb31d7c4fbd359c95f4c988a",
+    "device_commit": "4abefb367d219908a9ebb3ebc2fdf830547e7e2d",
+    "xnu_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f"
+  },
+  "build": {
+    "run_id": 44524596920,
+    "run_attempt": 1,
+    "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44524596920",
+    "run_status": "success",
+    "device_commit": "4abefb367d219908a9ebb3ebc2fdf830547e7e2d",
+    "framework_revision": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+    "xnu_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+    "native_sha256": "968ca464c7ede034e295ac3ec2603a847766ee2ff5134f1a0531ce140d4b1da6",
+    "prelinked_sha256": "f7e39da1b4869b40174200d53236af213753193e7b5f97d73d116ae8ccf5f1ed",
+    "prelinked_bytes": 142835712,
+    "production_parser": "PASS",
+    "fileset_entries": 79,
+    "mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "allow_missing": false,
+    "live_log_integration_report_sha256": "9b5b67807f6469b461b3d2034237e58a064d07e4a5f0d97be8a7180e2ad02955",
+    "lockdown_checkpoint_sites": {
+      "_arm_vm_prot_finalize": 10,
+      "_machine_lockdown": 5
+    },
+    "prelink_rnx_sampled_checkpoint_branches": {
+      "count": 3,
+      "callers": [
+        "_arm_vm_page_granular_helper",
+        "_arm_vm_page_granular_prot"
+      ]
+    },
+    "runtime_qualified": false,
+    "hardware_boot_verified": false,
+    "device_operations": false
+  },
+  "artifact": {
+    "id": 14530166050,
+    "name": "tb710fu-ufs-integrated-44524596920",
+    "bytes": 39166481,
+    "sha256": "18d6a577d1a81ebc02263df63e56d0a75e5c2ae28ec0ea1e3e0fd809b3de1e4a",
+    "github_digest_verified": true,
+    "local_download_matches_digest": true
+  }
+}

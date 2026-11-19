@@ -1,5 +1,41 @@
 # Current status · 2026-11-19
 
+## PRELINKTEXT RNX 进度检查点已构建 · 2026-11-19
+
+实机回传帧对应 `src-8252efb9-ramoops`，run `44516717448`、提交
+`8252efb9d6dfd901fa2a981e8a30ecb8b7e0c84f`。当前单帧范围为
+`[1503598,1503855)`，257 字节，`dropped=0`；备份帧为 `[0,498)`，498 字节，
+仍标记 `deferred_multi_frame`。尾部依次有 `mbuf-tag-init done`、
+`machine_lockdown`、`ld-vm-enter`、`kc-segment-release=0`、`ld-prefix-free`，
+最后为 `ld-prelink-ro`。该检查点在
+`arm_vm_page_granular_RNX(segPRELINKTEXTB, segSizePRELINKTEXT, ARM64_GRANULE_ALLOW_BLOCK)`
+之前；它把范围缩到 PRELINKTEXT 权限更新，未确认 fault PC 或根因。
+
+新增设备补丁 `0026-tb710fu-prelink-rnx-progress.patch`，SHA-256
+`b4a602ca20189eada378d948a084179f0c1984a0bb31d7c4fbd359c95f4c988a`，按序接在
+0025 后。仅当 live-log runtime gate 打开且该精确 PRELINKTEXT 范围正在处理时，
+记录 L2 地址、边缘 PTE 批次和 deferred-TTE/TLB 边界；不改权限更新顺序、参数或
+页表写入。对象验证实际包含 `_arm_vm_page_granular_prot` 与
+`_arm_vm_page_granular_helper` 的 sampled checkpoint 分支。
+
+官方 macOS 26 `ufs-integrated` run [44524596920](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44524596920)
+attempt 1 success，设备提交 `4abefb367d219908a9ebb3ebc2fdf830547e7e2d`，框架
+`0c1bac3d51a3009dca1708b15a5198f4b43d057a`，XNU
+`ac9718fb1af618d5ce8678d0dc6e8a58f252216f`。Native arm64e SHA-256
+`968ca464c7ede034e295ac3ec2603a847766ee2ff5134f1a0531ce140d4b1da6`；严格预链接
+Mach-O 为 142,835,712 字节，SHA-256
+`f7e39da1b4869b40174200d53236af213753193e7b5f97d73d116ae8ccf5f1ed`。生产
+DarwinBoot parser PASS，79 个 fileset entries，`mapping_complete=true`、
+`missing={}`、`stubbed={}`、`allow_missing=false`。检查点调用数为
+`arm_vm_prot_finalize=10`、`machine_lockdown=5`。Runner artifact 14530166050，
+39,166,481 字节；本地下载 SHA-256 与 GitHub digest 均为
+`18d6a577d1a81ebc02263df63e56d0a75e5c2ae28ec0ea1e3e0fd809b3de1e4a`。
+
+完整机器记录见 `docs/evidence/live-checkpoints-prelink-rnx-build-44524596920.json`。
+此结果是 native+prelink 构建，不是实机启动验证；本轮没有签名或打包刷机镜像，
+也没有设备操作。`runtime_qualified=false`、`hardware_boot_verified=false`、
+`device_operations=false`。
+
 ## machine_lockdown 内部检查点镜像 · 2026-11-19
 
 补丁 0025 的 macOS run 44516717448 attempt 1 成功，源码提交
