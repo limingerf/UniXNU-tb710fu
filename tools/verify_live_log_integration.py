@@ -40,7 +40,9 @@ FINAL_SYMBOLS = (
 )
 HOOK_OBJECTS = {
     'osfmk/DEVELOPMENT/arm_init.o': ('_tb710fu_live_log_init', '_tb710fu_live_log_freeze'),
-    'osfmk/DEVELOPMENT/arm_vm_init.o': ('_tb710fu_live_log_checkpoint',),
+    'osfmk/DEVELOPMENT/arm_vm_init.o': ('_tb710fu_live_log_active',
+                                        '_tb710fu_live_log_checkpoint',
+                                        '_tb710fu_live_log_checkpoint_sampled'),
     'osfmk/DEVELOPMENT/machine_routines.o': ('_tb710fu_live_log_checkpoint',),
     'osfmk/DEVELOPMENT/startup.o': ('_tb710fu_live_log_poll', '_tb710fu_live_log_checkpoint',
                                     '_tb710fu_live_log_checkpoint_sampled'),
@@ -359,6 +361,15 @@ def verify(tree, config, native_path):
         count = sum(call['caller'] == caller for call in imports[immediate]['branches'])
         require(count >= minimum, 'Missing inner lockdown checkpoint branches: ' + caller)
         lockdown_checkpoint_sites[caller] = count
+    arm_sampled = hooks['osfmk/DEVELOPMENT/arm_vm_init.o']['strong_hook_imports'][sampled]['branches']
+    progress_callers = {'_arm_vm_prot_finalize', '_arm_vm_page_granular_prot',
+                        '_arm_vm_page_granular_helper'}
+    require(any(call['caller'] in progress_callers
+                for call in arm_sampled),
+            'PRELINKTEXT RNX progress needs an actual sampled checkpoint branch')
+    arm_active = hooks['osfmk/DEVELOPMENT/arm_vm_init.o']['strong_hook_imports']['_tb710fu_live_log_active']['branches']
+    require(any(call['caller'] in progress_callers for call in arm_active),
+            'PRELINKTEXT RNX progress must retain the live-log runtime gate')
     console_calls = hooks['osfmk/DEVELOPMENT/serial_console.o']['strong_hook_imports']
     # The normal _cnputc tap predates LiveLog and alone proves nothing about
     # acquisition's disableConsoleOutput branch. Require the live-active gate

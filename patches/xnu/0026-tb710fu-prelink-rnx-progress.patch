@@ -1,0 +1,148 @@
+From: TB710FU clean board
+Subject: [PATCH] Trace PRELINKTEXT page-protection progress
+
+Source: XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f after device patch 0025.
+
+Reason: the synchronous `ld-prelink-ro` frame precedes the PRELINKTEXT RNX
+operation. Add bounded, sampled progress only when that exact range is being
+processed, so the last frame identifies its 2 MiB L2 or 4 KiB edge-page batch.
+The permission-update order, inputs and page-table stores are unchanged.
+
+Verification: apply after 0025 to the pinned XNU fixture; require sampled
+checkpoint relocations from arm_vm_init.o and run the official integrated
+macOS kernel/prelink/parser workflow.
+
+diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
+index e7534c1319e3dfbf8a2d6a99d5fe36c9290c86a4..6a72d347961ade49b4b6b9e1d151b236cec72f81 100644
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -1302,4 +1302,9 @@ arm_vm_page_granular_helper(vm_offset_t start, vm_offset_t _end, vm_offset_t va,
+ {
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	const int prelink_rnx = tb710fu_live_log_active() &&
++	    start >= segPRELINKTEXTB &&
++	    _end <= segPRELINKTEXTB + segSizePRELINKTEXT;
++#endif
+ 	if (va & ARM_TT_L2_OFFMASK) { /* ragged edge hanging over a ARM_TT_L2_SIZE  boundary */
+ 		tt_entry_t *tte2;
+ 		tt_entry_t tmplate;
+@@ -1343,4 +1348,10 @@ arm_vm_page_granular_helper(vm_offset_t start, vm_offset_t _end, vm_offset_t va,
+ 				pt_entry_t attributes = tmplate & ~(ARM_TTE_BLOCK_L2_MASK | ARM_PTE_HINT_MASK | ARM_PTE_TYPE_VALID);
+ 				for (i = 0; i <= (ARM_TT_L3_INDEX_MASK >> ARM_TT_L3_SHIFT); i++) {
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++					if (prelink_rnx && (i & 63u) == 0u) {
++						kprintf("TB710FU lockdown: prelink-rnx expand i=%u va=%p\n", i, (void *)va);
++						tb710fu_live_log_checkpoint_sampled("ld-prelink-rnx-expand");
++					}
++#endif
+ 					ppte[i] = (block_pa + ((pmap_paddr_t)i << ARM_TT_L3_SHIFT)) | attributes | ARM_PTE_TYPE_VALID;
+ 				}
+@@ -1362,5 +1373,11 @@ arm_vm_page_granular_helper(vm_offset_t start, vm_offset_t _end, vm_offset_t va,
+ 		vm_offset_t rounded_end = round_page(_end);
+ 		/* Apply the desired protections to the specified page range */
+ 		for (i = 0; i <= (ARM_TT_L3_INDEX_MASK >> ARM_TT_L3_SHIFT); i++) {
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++			if (prelink_rnx && (i & 63u) == 0u) {
++				kprintf("TB710FU lockdown: prelink-rnx pte i=%u va=%p\n", i, (void *)va);
++				tb710fu_live_log_checkpoint_sampled("ld-prelink-rnx-pte");
++			}
++#endif
+ 			if ((start <= va) && (va < rounded_end)) {
+ 				ptmp = pa | ARM_PTE_AF | ARM_PTE_SH(SH_OUTER_MEMORY) | ARM_PTE_TYPE_VALID;
+@@ -1433,15 +1450,35 @@ arm_vm_page_granular_prot(vm_offset_t start, unsigned long size, pmap_paddr_t pa_offset,
+ 	vm_offset_t align_start = (start + ARM_TT_L2_OFFMASK) & ~ARM_TT_L2_OFFMASK;
+ 
+ 	if (size == 0x0UL) {
+ 		return;
+ 	}
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	const int prelink_rnx = tb710fu_live_log_active() && start == segPRELINKTEXTB && size == segSizePRELINKTEXT;
++#endif
+ 
+ 	if (align_start > _end) {
+ 		align_start = _end;
+ 	}
+ 
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	if (prelink_rnx) {
++		kprintf("TB710FU lockdown: prelink-rnx start=%p size=%lu end=%p\n", (void *)start, size, (void *)_end);
++		tb710fu_live_log_checkpoint("ld-prelink-rnx-enter");
++	}
++#endif
+ 	arm_vm_page_granular_helper(start, align_start, start, pa_offset, pte_prot_APX, pte_prot_XN, granule, guarded, deferred_ttep_pair, deferred_tte_pair);
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	if (prelink_rnx) {
++		tb710fu_live_log_checkpoint("ld-prelink-rnx-head-done");
++	}
++#endif
+ 
+ 	while ((_end - align_start) >= ARM_TT_L2_SIZE) {
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++		if (prelink_rnx) {
++			kprintf("TB710FU lockdown: prelink-rnx l2 va=%p\n", (void *)align_start);
++			tb710fu_live_log_checkpoint_sampled("ld-prelink-rnx-l2");
++		}
++#endif
+ 		if (!(granule & ARM64_GRANULE_ALLOW_BLOCK)) {
+ 			arm_vm_page_granular_helper(align_start, align_start + ARM_TT_L2_SIZE, align_start + 1, pa_offset,
+@@ -1474,9 +1511,30 @@ arm_vm_page_granular_prot(vm_offset_t start, unsigned long size, pmap_paddr_t pa_offset,
+ 		align_start += ARM_TT_L2_SIZE;
+ 	}
+ 
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	if (prelink_rnx) {
++		tb710fu_live_log_checkpoint("ld-prelink-rnx-l2-done");
++	}
++#endif
+ 	if (align_start < _end) {
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++		if (prelink_rnx) {
++			kprintf("TB710FU lockdown: prelink-rnx tail va=%p end=%p\n", (void *)align_start, (void *)_end);
++			tb710fu_live_log_checkpoint("ld-prelink-rnx-tail-begin");
++		}
++#endif
+ 		arm_vm_page_granular_helper(align_start, _end, _end, pa_offset, pte_prot_APX, pte_prot_XN, granule, guarded, deferred_ttep_pair, deferred_tte_pair);
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++		if (prelink_rnx) {
++			tb710fu_live_log_checkpoint("ld-prelink-rnx-tail-done");
++		}
++#endif
+ 	}
+ 
+ 	if (deferred_ttep_pair[0] != NULL) {
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++		if (prelink_rnx) {
++			tb710fu_live_log_checkpoint("ld-prelink-rnx-deferred-enter");
++		}
++#endif
+ #if DEBUG || DEVELOPMENT
+@@ -1481,4 +1539,14 @@ arm_vm_page_granular_prot(vm_offset_t start, unsigned long size, pmap_paddr_t pa_offset,
+ 		 * Note that we always flush the TLB at the end of arm_vm_prot_finalize().
+ 		 */
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++		if (prelink_rnx) {
++			tb710fu_live_log_checkpoint("ld-prelink-rnx-tlb-begin");
++		}
++#endif
+ 		flush_mmu_tlb();
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++		if (prelink_rnx) {
++			tb710fu_live_log_checkpoint("ld-prelink-rnx-tlb-done");
++		}
++#endif
+ #endif
+@@ -1494,4 +1562,14 @@ arm_vm_page_granular_prot(vm_offset_t start, unsigned long size, pmap_paddr_t pa_offset,
+ 		}
+ 		os_atomic_store(deferred_ttep_pair[0], deferred_tte_pair[0], release);
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++		if (prelink_rnx) {
++			tb710fu_live_log_checkpoint("ld-prelink-rnx-deferred-done");
++		}
++#endif
+ 	}
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	if (prelink_rnx) {
++		tb710fu_live_log_checkpoint("ld-prelink-rnx-done");
++	}
++#endif
+ }

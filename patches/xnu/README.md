@@ -162,6 +162,13 @@ still enters the capture ring. The adapter enforces a quarter-second quiet
 period after the last render attempt. Outer kalloc boundaries, startup phases,
 bootstrap events and console refresh still attempt an immediate QR.
 
+`0026-tb710fu-prelink-rnx-progress.patch` scopes progress markers to the
+PRELINKTEXT RNX operation in `arm_vm_page_granular_prot`. It records the
+aligned 2 MiB L2 address, samples 4 KiB edge-page batches, and brackets the
+deferred-TTE/TLB completion. The existing live-checkpoint argument gates the
+instrumentation; it does not alter permission updates or establish a faulting
+PC.
+
 The first native attempt, run 44112832250 at `eb1f2bc7`, exposed a missing
 internal-header export in `pe_kprintf.c`. The device patch now adds its two real
 headers to `osfmk/kern/Makefile` XNU_ONLY_EXPORTS, using the same official
