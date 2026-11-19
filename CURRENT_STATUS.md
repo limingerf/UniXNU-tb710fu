@@ -1,5 +1,32 @@
 # Current status · 2026-11-19
 
+## 最新实机帧确认越过 kalloc，SYSCTL rank 1 正在返回 · 2026-11-19
+
+用户提供 build label `src-8968159c-ramoops`，对应 kernel run `44462593602`，
+内嵌 standard-band kernel SHA-256
+`74e45d659e8df44590f172809a511e03b1073ece2c7fb6128d124b698a6a9494`。当前导出是
+current-only 单帧 `[1187799,1188124)`，325 字节、`dropped=0`；未提供原始附件或
+log hash。
+
+用 run `44462593602` 的精确 fileset 做 `llvm-nm -n` 符号映射，通用 callback 函数
+地址低 32 位 `0x0c2df010` 对应 `_sysctl_register_oid_early`。可见 arg 地址对应
+`_sysctl__security_mac_labelvnodes`（转录仅残留地址尾）、
+`_sysctl__security_mac_vnode_label_count`、
+`_sysctl__security_mac_device_enforce`、
+`_sysctl__net_inet_ipsec_ah_cleartos`、
+`_sysctl__net_inet_ipsec_ah_offsetmask`、
+`_sysctl__net_inet_ipsec_dfbit`、
+`_sysctl__net_inet_ipsec_ecn`。这些是 phase 16 / SYSCTL / rank 1；源码中 rank 1
+为 `STARTUP_RANK_SECOND`。完整显示的 callback-return 行证明相应 OID 注册回调已返回。
+
+这确认执行已经越过 `kalloc_init` 并进入 SYSCTL rank 1 注册；它不是 fault PC，也不
+证明 SYSCTL 整个 phase 完成或内核停在其中。帧末的完整可见记录是
+`...ipsec_ecn` callback 返回，前后有截断片段；当前帧不含 phase-complete / 后续
+EARLY_BOOT 结果。最新候选已含 `0019` kalloc、`0020` bootstrap 和 `0021` fixed-zone
+group 检查点，不需要为这份 SYSCTL 日志再编译。下一步应继续用同一包读取后续帧。
+地址映射和边界记录见
+`docs/evidence/live-ramoops-device-44462593602-sysctl-rank1.json`。
+
 ## fixed kalloc group 边界与最终一次补充构建 · 2026-11-19
 
 用户随后两次粘贴的二维码文本完全相同，均标识 `src-0e3190ab-ramoops`，对应

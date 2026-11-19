@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "stage": "user-supplied-live-xnu-sysctl-rank1-callbacks",
+  "observation_date": "2026-11-19",
+  "source": "User-pasted TB710FU XNU DEBUG EXPORT; raw log attachment and hash not supplied.",
+  "device_build": {
+    "label": "src-8968159c-ramoops",
+    "run_id": 44462593602,
+    "commit": "8968159c3be1c93222d6f3131ca7d9f38e729781",
+    "prelinked_sha256": "dc4a8ae160cf8433e48057cc481a4204c9ed626dcfc70fa6890c649781cde941",
+    "packaged_kernel_sha256": "74e45d659e8df44590f172809a511e03b1073ece2c7fb6128d124b698a6a9494"
+  },
+  "export": {
+    "current_start": 1187799,
+    "current_end": 1188124,
+    "current_bytes": 325,
+    "dropped": 0,
+    "raw_layout": "current_only_single_frame",
+    "last_complete_callback_return_arg": "0xfffffff007e05518"
+  },
+  "source_correlation": {
+    "xnu_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+    "phase": 16,
+    "phase_name": "STARTUP_SUB_SYSCTL",
+    "rank": 1,
+    "rank_name": "STARTUP_RANK_SECOND",
+    "callback_function": "_sysctl_register_oid_early",
+    "callback_function_address": "0xfffffff00c2df010",
+    "method": "llvm-nm -n on the exact run 44462593602 prelinked fileset",
+    "callback_arguments": [
+      {"address": "0xfffffff007e967a8", "symbol": "_sysctl__security_mac_labelvnodes", "line_context": "address suffix only; surrounding callback line is truncated"},
+      {"address": "0xfffffff007e967f8", "symbol": "_sysctl__security_mac_vnode_label_count", "callback_return_visible": true},
+      {"address": "0xfffffff007e96848", "symbol": "_sysctl__security_mac_device_enforce", "callback_return_visible": true},
+      {"address": "0xfffffff007e05428", "symbol": "_sysctl__net_inet_ipsec_ah_cleartos", "line_context": "partial callback-return line; callback entry is not fully visible"},
+      {"address": "0xfffffff007e05478", "symbol": "_sysctl__net_inet_ipsec_ah_offsetmask", "callback_return_visible": true},
+      {"address": "0xfffffff007e054c8", "symbol": "_sysctl__net_inet_ipsec_dfbit", "callback_return_visible": true},
+      {"address": "0xfffffff007e05518", "symbol": "_sysctl__net_inet_ipsec_ecn", "callback_return_visible": true}
+    ]
+  },
+  "interpretation": {
+    "kalloc_init_returned": true,
+    "entered_sysctl_rank1": true,
+    "visible_rank1_callbacks_returned": true,
+    "sysctl_phase_complete_visible": false,
+    "last_record_is_fault_pc": false,
+    "stopped_in_sysctl_proven": false,
+    "root_cause_confirmed": false,
+    "notes": [
+      "STARTUP callbacks are run in increasing subsystem order, so reaching SYSCTL proves earlier ZALLOC callbacks, including kalloc_init, returned.",
+      "Callback-return records prove only that the named registration callback returned; the current-only frame does not establish SYSCTL batch completion or a fault location.",
+      "The signed run 44462593602 candidate already contains whole-phase, post-SYSCTL and fixed-zone group checkpoints; no new build is needed for this frame."
+    ]
+  },
+  "next_evidence": "Continue capturing subsequent current XNU frames from the same run 44462593602 package and look for SYSCTL phase completion, phase 17/18, or the paired post-SYSCTL events.",
+  "device_operations": false,
+  "hardware_boot_verified": false
+}
