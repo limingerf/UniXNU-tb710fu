@@ -1,6 +1,6 @@
 # Current status · 2026-11-19
 
-## 最新单帧边界仍在 fixed kalloc zone 内层循环 · 2026-11-19
+## fixed kalloc group 边界与最终一次补充构建 · 2026-11-19
 
 用户随后两次粘贴的二维码文本完全相同，均标识 `src-0e3190ab-ramoops`，对应
 `ufs-integrated` run `44426482407`、提交 `0e3190abc54f60bc98014f2e816802643fe7ad7e`。
@@ -13,9 +13,28 @@ hash，因此两次粘贴应视为同一帧，不是两个连续时刻。帧末�
 新 patch `0021-tb710fu-kalloc-zone-loop-checkpoints.patch` 紧跟 `0020`，补 size-class
 及 signature-group 索引、helper 返回、shuffle 和 zone assignment 前后事件，并覆盖
 fallback/single-type 提前返回。allocator 调用、随机选择和循环顺序不变。隔离 pinned
-XNU fixture 按 `0018`、`0019`、`0021` 顺序应用，`git diff --check` 通过。计划将它与
-`0020` 一起纳入下一次且仅一次 `ufs-integrated` 构建，避免之后再按单个循环边界逐次
-编译。设备帧记录见 `docs/evidence/live-ramoops-device-44426482407-kalloc.json`。
+XNU fixture 按 `0018`、`0019`、`0021` 应用通过；与独立的 `0020` startup fixture 合并后，
+完整目标文件都按 series 顺序实际应用成功。
+
+唯一一次最终补充 macOS `ufs-integrated` run `44462593602` attempt 1 成功，head
+`8968159c3be1c93222d6f3131ca7d9f38e729781`。native SHA-256
+`5051c65e77bc3550408f357a5f68f696ecbaadc21eb6ac2e15aaaaabba436111`，strict prelink
+SHA-256 `dc4a8ae160cf8433e48057cc481a4204c9ed626dcfc70fa6890c649781cde941`，
+production DarwinBoot parser PASS。runner artifact ID `14501435971`，SHA-256
+`0e1a1ddf3e5ec60159c78e2b6a51436fd2f7653a5172cdab672d3d0bd32965b1`；`0019/0020/0021`
+三个 patch hash 均与 runner inputs manifest 一致。
+
+最终包 `out/tb710fu-live-ramoops-44462593602-signed.zip` 大小 35,579,443 字节，
+SHA-256 `95f02eea63b1d67ac80eb15872718930c3ddbedd96c008ec77f3cffabe66e355`。内嵌
+standard-band kernel SHA-256 `74e45d659e8df44590f172809a511e03b1073ece2c7fb6128d124b698a6a9494`。
+RSA/AVB、FAT/LZMA 回读通过，22 个其余描述符、vbmeta header 和公钥未变；详细记录见
+`docs/evidence/live-ramoops-image-44462593602.json`。
+
+这份包已把固定区 class/group/view 范围、helper 返回和 shuffle/assignment 子操作纳入
+同一诊断候选。设备帧记录见
+`docs/evidence/live-ramoops-device-44426482407-kalloc.json`。当前根因仍未确认；包仍为
+`runtime_qualified=false`、`loadable=false`、`hardware_boot_verified=false`。没有刷写或
+重启设备。现在需要这份新包的连续 XNU 日志，不再为已覆盖的边界追加构建。
 
 ## SYSCTL 到 pageout 全路径检查点与单次构建 · 2026-11-19
 
