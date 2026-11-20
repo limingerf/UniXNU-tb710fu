@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "stage": "signed-live-checkpoint-test-image-set",
+  "user_authorized_local_signing": true,
+  "kernel_run_id": 44685819017,
+  "kernel_run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44685819017",
+  "device_commit": "2bd0cc0502e5c841bdfb5200d4ee44667b9d6cfd",
+  "display_build_label": "src-2bd0cc05-ramoops",
+  "profile": "macos-27.3-26C5035r",
+  "native_kernel": {
+    "sha256": "bf1e2b6a885334e9c24899327b10622d8ce96c28509d5f1c15aa90db7d601491"
+  },
+  "prelinked_kernel": {
+    "path": ".work/artifacts/run-44685819017/kernel/kernel.macho",
+    "sha256": "9456d0bb9f57a35f17cb47cb463792fbcaeaf39773f58a095a2d7556b9c8ae0a",
+    "bytes": 142835712,
+    "mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "allow_missing": false,
+    "production_parser": "PASS",
+    "local_production_parser_readback": "PASS"
+  },
+  "standard_band_derivative": {
+    "stage": "verified-standard-early-bands-derivative",
+    "result": "PASS",
+    "original_prelink_sha256": "9456d0bb9f57a35f17cb47cb463792fbcaeaf39773f58a095a2d7556b9c8ae0a",
+    "kernel_sha256": "f7d7f339e7fa34def293f338a9d63eb74957814881eb3f17841c7b2bad70ad58",
+    "kernel_bytes": 142835712,
+    "patch_spans_verified": 6,
+    "compact_probes_verified": 3,
+    "other_bytes_unchanged": true,
+    "segments_unchanged": true,
+    "no_QR_reporter_or_waits": true,
+    "hardware_verified": false
+  },
+  "boot_args": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1 kc-segment-release=0",
+  "manifest_sha256": "d194686a4a0fe184ee8c56c4e71572f51c55e334e012490688dd5411f31d23eb",
+  "unsigned_vendor_boot": {
+    "bytes": 37859328,
+    "sha256": "c876f5242d58976555cada760b6be47fc7cf680dda15ab7b70b00ebf5e787524"
+  },
+  "signed_images": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "5918d744c62381b5c70ec4a81dfd4c3081ae270dacf6d1f18107643270724261"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "85d1ead5d9665967e1d85246fe071ba1f73d8878cbcdeaf2e1fd54b66a922b30"
+    }
+  },
+  "signing_verification": {
+    "algorithm": "SHA256_RSA4096",
+    "signature_checks": "PASS",
+    "vendor_boot_salted_hash": "PASS",
+    "boot_chain_key_matches": true,
+    "unsigned_vendor_body_preserved": true,
+    "vbmeta_header_unchanged": true,
+    "public_key_unchanged": true,
+    "unchanged_other_raw_descriptors": 22
+  },
+  "payload_verification": {
+    "FAT_mountable": true,
+    "FAT_clusters": 66512,
+    "FAT_readback_sha256": {
+      "Payloads/kernel.macho": "231c52317e4876b2cd50b5234d1b617994dc67f8262184f848e98e6fe8e75f1a",
+      "Payloads/kernel.macho.adt": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7",
+      "Payloads/kernel.macho.vroot": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+      "unixnu.toml": "074deeb2edef452c7f4a31e5e7732d868c5f32512c093f747de56bddad78bebb"
+    },
+    "LZMA_roundtrip": "PASS",
+    "kernel_readback_sha256": "f7d7f339e7fa34def293f338a9d63eb74957814881eb3f17841c7b2bad70ad58",
+    "production_DarwinBoot_parser": "PASS"
+  },
+  "hardware_boot_verified": false,
+  "runtime_qualified": false,
+  "device_operations": false,
+  "bundle": {
+    "path": "out/live-checkpoints-44685819017-early-qr-signed.zip",
+    "bytes": 35572134,
+    "sha256": "7c80b0c497e5049df6011f1d02bb1fbd83bde5f8d8b698d68f089764ddd415f8",
+    "members": 13,
+    "zip_crc": "PASS",
+    "sha256sums_readback": "PASS"
+  }
+}

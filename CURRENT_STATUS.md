@@ -1,5 +1,29 @@
 # Current status · 2026-11-20
 
+## 早期二维码诊断镜像已签出 · 2026-11-20
+
+按用户请求用 run [44685819017](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44685819017)
+制作可刷写的本地测试镜像。内核来自设备提交 `2bd0cc0502e5c841bdfb5200d4ee44667b9d6cfd`，
+显示标识 `src-2bd0cc05-ramoops`。严格预链接内核 SHA-256
+`9456d0bb9f57a35f17cb47cb463792fbcaeaf39773f58a095a2d7556b9c8ae0a`，打包使用的标准色带
+变体 SHA-256 `f7d7f339e7fa34def293f338a9d63eb74957814881eb3f17841c7b2bad70ad58`，
+6 个修改范围、3 个早期探针和其余内核字节、segments 已逐项验证。
+
+`out/live-checkpoints-44685819017-early-qr-signed.zip` 共 35,572,134 字节，SHA-256
+`7c80b0c497e5049df6011f1d02bb1fbd83bde5f8d8b698d68f089764ddd415f8`。三件套 SHA-256 如下。
+
+- `boot.img` `a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`，保留已验证 loader 基线。
+- `vendor_boot.img` `5918d744c62381b5c70ec4a81dfd4c3081ae270dacf6d1f18107643270724261`。
+- `vbmeta.img` `85d1ead5d9665967e1d85246fe071ba1f73d8878cbcdeaf2e1fd54b66a922b30`。
+
+完整 20-input manifest、AVB RSA-4096 签名、vendor salted hash、boot chain key、另外 22 个
+descriptor、66,512-cluster FAT、LZMA、ADT、RootPolicies、启动参数和 production DarwinBoot
+parser 验证通过。ZIP 的 13 个成员通过 CRC 和 SHA256SUMS 回读。包内 `TESTING.txt`
+记录 B 槽镜像配对和 OneSend 单帧/多帧读取方式。完整验证见
+`docs/evidence/live-checkpoints-early-qr-signed-44685819017.json`。
+实机扫码和启动仍待验证。`runtime_qualified=false`、`hardware_boot_verified=false`、
+`device_operations=false`。
+
 ## 早期二维码恢复轮播与 kalloc 滚屏减载 · 2026-11-20
 
 实机照片原文件 SHA-256 `8c99a5118d70190b7363b08c2877e8a676cc94e16a9eef806b66c40bdaa84a3b`。
