@@ -1,4 +1,56 @@
-# Current status · 2026-11-20
+# Current status · 2026-11-21
+
+## 忙等修复镜像已签出（0006）· 2026-11-21
+
+03:52 照片把停点定死在 `IOSleep (50)`：唤醒命令完整成功（`cmd-return end=0
+ocs=0 polls=1`，`rsp-head b0=21 b2=d0 b3=00` 匹配 `want=21/208/0`，
+`rsp-ok len=0`，`scsi-tail scsi=0000 resid=0 len=0`，`scsi-done status=0`），
+`host wake-done` 已打印；但 `host wake-settle-begin` 之后再无
+`wake-settle-done`，页脚停在 `ufssetl`（`ufssetd` 未出现）。`hostScsi` 返回与
+`lun-ready-begin` 之间唯一的阻塞调用就是这两处睡眠。
+
+根因：UFS 命令路径以 `IODelay` 轮询运行在屏蔽中断上下文（`RootCommands.h`
+注明命令只轮询，因此也在关中断下运行），`IOSleep` 需要调度器唤醒线程，
+在此上下文中永不被唤醒，线程不再返回，且不产生 panic。
+
+修复单独成补丁 `patches/ufs/0006-quiescent-sleep-replacement.patch`，把
+`hostBringUp` 内两处睡眠换成等时长忙等：
+
+```
+for (unsigned settle = 0; settle < 50; settle++) IODelay (1000);   // 原 IOSleep(50)
+for (unsigned pace  = 0; pace  < 10; pace++)  IODelay (1000);     // 原 IOSleep(10)
+```
+
+职责分离：0004 保持纯追踪（其"剥离追踪后与 post-0002 逐字符相同"的等价性
+证明不受影响），行为改动只落在 0006。验证器 `tools/check_ufs_bringup_trace.py`
+已扩展为应用 0006 并断言：`hostBringUp` 内无睡眠调用、两处忙等均就位、
+文件中其余睡眠未被触碰（计数先剥注释，避免把 0006 注释里提到的
+`IOSleep(50)` 误判为调用）。全套 37 项 PASS，host 测试 `-Werror` 编译 PASS。
+
+macOS `ufs-integrated` run [44809442859](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44809442859)
+在设备提交 `a25fd1c292a9dfc42b4010ad0ab3f5f0aac1871f` 成功。产物
+`14665422014` 共 39,206,909 字节。预链接内核 SHA-256
+`17a8f0c2d5a3b41ee7f97f04b4e1363a79ffb43f6829717e9d2e6c33768bf6b9`，
+`cpu_subtype` `0xc0000002`（arm64e），屏显 `src-a25fd1c2-ramoops`。内核扫描
+确认 29 个 `ufs*` checkpoint 标签与 53 条 host 阶段探针全部编入。
+
+签名三件套：`boot.img` `a3236acc…817a83`（基线），`vendor_boot.img`
+`59897e27e65ac2792fc27ada8a0139b3fc130614f609079e6175e1090ad05e4a`，
+`vbmeta.img` `9318ba88f1b4a690b73923bb46717743d34c425e7271ce50473fabcb2e23775a`。
+交付包 `out/live-checkpoints-44809442859-busywait-signed.zip` 共 35,559,324
+字节，SHA-256 `88e4f1c5abacc4da5722ddffe6f76602938eec4676f732fb92773859cc914cf7`，
+11 成员。独立复核全部通过：zip 完整性、`SHA256SUMS` 覆盖每个成员、AVB
+vbmeta 签名对内嵌公钥验证通过、vbmeta 头与公钥未变、恰好一个描述符变更
+（`vendor_boot`）、加盐哈希与签名体一致、未签名体逐字节保留、以及从 FAT
+载荷中 LZMA 解回的内核含全部 29 个标签与 10 个必需标记。证据见
+`docs/evidence/nufs-busywait-signed-44809442859.json`。
+
+尚未刷写或操作设备。`hardware_boot_verified=false`、
+`runtime_qualified=false`、`device_operations=false`。
+
+预期本次实机表现：页脚从 `ufssetl` 前进到 `ufssetd`，随后出现
+`host lun-ready-begin` 与 `host lun-ready-done attempt=N`。若页脚仍停在
+`ufssetl`，则说明忙等本身也未走通，需要另行定位。
 
 ## IOSleep 前后探针镜像已签出 · 2026-11-21
 
