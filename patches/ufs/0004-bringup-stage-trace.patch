@@ -278,7 +278,7 @@ index 20fd0c2..af72d9c 100644
    if (layout->manifestStatus != 0) {
      rootDiagnosticFailure ("root manifest rejected");
 diff --git a/RootCommands.h b/RootCommands.h
-index 2cebfac..83d44f8 100644
+index 2cebfac..9c2e598 100644
 --- a/RootCommands.h
 +++ b/RootCommands.h
 @@ -1,6 +1,19 @@
@@ -329,7 +329,32 @@ index 2cebfac..83d44f8 100644
    gRootDiagnostic.polls = state.polls;
    gRootDiagnostic.dbSeen = state.doorbellSeen;
    gRootDiagnostic.isSeen = state.interruptSeen;
-@@ -166,7 +190,15 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
+@@ -135,11 +159,20 @@ static IOReturn hostProtocolError (uint32_t reason)
+ static IOReturn hostResponseHeader (uint8_t type, uint8_t lun, uint8_t tag)
+ {
+   const uint8_t *rsp = gHost.virt + kUcdOffset + kRspOffset;
+-  if (rsp[0] != type) return hostProtocolError (1);
+-  if (rsp[3] != tag) return hostProtocolError (2);
+-  if (rsp[2] != lun) return hostProtocolError (3);
++  printf ("NativeUfs: host rsp-head b0=%02x b1=%02x b2=%02x b3=%02x "
++          "b6=%02x b7=%02x b8=%02x b10=%02x b11=%02x want=%02x/%u/%u\n",
++          rsp[0], rsp[1], rsp[2], rsp[3], rsp[6], rsp[7], rsp[8],
++          rsp[10], rsp[11], type, lun, tag);
++  tb710fuCmdCheckpoint ("ufsrsp");
++  if (rsp[0] != type) { printf ("NativeUfs: host rsp-bad type\n"); return hostProtocolError (1); }
++  if (rsp[3] != tag) { printf ("NativeUfs: host rsp-bad tag\n"); return hostProtocolError (2); }
++  if (rsp[2] != lun) { printf ("NativeUfs: host rsp-bad lun\n"); return hostProtocolError (3); }
+   unsigned length = (unsigned (rsp[10]) << 8) | rsp[11];
+-  if (rsp[8] || length > 512 - 32) return hostProtocolError (4);
++  if (rsp[8] || length > 512 - 32) {
++    printf ("NativeUfs: host rsp-bad len=%u status=%02x\n", length, rsp[8]);
++    return hostProtocolError (4);
++  }
++  printf ("NativeUfs: host rsp-ok len=%u\n", length);
+   return kIOReturnSuccess;
+ }
+ 
+@@ -166,7 +199,15 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
    *scsiStatus = 0xffff;
    if (!cdb || !cdbLength || cdbLength > 16 || dataBytes > kDataMax || direction > 2 ||
        (dataBytes & 3) || (dataBytes ? !direction : direction)) return kIOReturnBadArgument;
@@ -346,7 +371,7 @@ index 2cebfac..83d44f8 100644
    uint8_t *ucd = gHost.virt + kUcdOffset;
    ucd[0] = 0x01;                      // COMMAND UPIU
    ucd[1] = direction == 2 ? 0x40 : direction == 1 ? 0x20 : 0x00;   // R: data in, W: data out
-@@ -176,6 +208,8 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
+@@ -176,6 +217,8 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
      ucd[16 + index] = cdb[index];
    }
    uint32_t ocs = 0xf;
@@ -355,6 +380,24 @@ index 2cebfac..83d44f8 100644
    IOReturn status = hostSubmit (direction ? direction : 0U, dataBytes, timeoutUs, &ocs);
    if (status != kIOReturnSuccess) return status;
    status = hostResponseHeader (0x21, lun, 0);
+@@ -185,6 +228,8 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
+   gRootDiagnostic.scsi = *scsiStatus;
+   gRootDiagnostic.residual = loadBe32 (rsp + 12);
+   unsigned length = (unsigned (rsp[10]) << 8) | rsp[11];
++  printf ("NativeUfs: host scsi-tail scsi=%04x resid=%u len=%u\n",
++          *scsiStatus, gRootDiagnostic.residual, length);
+   if (length) {
+     unsigned senseLength = (unsigned (rsp[32]) << 8) | rsp[33];
+     if (length < 2 || senseLength > length - 2) return hostProtocolError (4);
+@@ -197,6 +242,8 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
+   if (!*scsiStatus && ((rsp[1] & 0x60) || gRootDiagnostic.residual)) return hostProtocolError (6);
+   IOReturn result = *scsiStatus == 0 ? kIOReturnSuccess : kIOReturnNotReady;
+   gRootDiagnostic.result = static_cast<uint32_t> (result);
++  printf ("NativeUfs: host scsi-done status=%d\n", (int) result);
++  tb710fuCmdCheckpoint ("ufsscsi");
+   return result;
+ }
+ 
 diff --git a/TransferPoll.h b/TransferPoll.h
 index 2f56e30..b84624c 100644
 --- a/TransferPoll.h
