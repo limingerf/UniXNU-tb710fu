@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "stage": "signed-ufs-step-checkpoint-test-image-set",
+  "user_authorized_local_signing": true,
+  "kernel_run_id": 44713622044,
+  "kernel_run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44713622044",
+  "device_commit": "a89bac585f2532eca28193aa93ba704f2f9c14e3",
+  "display_build_label": "src-a89bac58-ramoops",
+  "profile": "macos-27.3-26C5035r",
+  "native_kernel": {
+    "sha256": "9de25bffa40b3839fe823980b7d4e4f57168ce6cdb137ff7b06d33d4bbcc9314"
+  },
+  "prelinked_kernel": {
+    "path": ".work/artifacts/run-44713622044/kernel/kernel.macho",
+    "sha256": "5ec733691da609c66c0e4eef901d273d0d05d915d6c5391c8d01646edb34617d",
+    "bytes": 142835712,
+    "mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "allow_missing": false,
+    "production_parser": "PASS",
+    "local_production_parser_readback": "PASS"
+  },
+  "standard_band_derivative": {
+    "stage": "verified-standard-early-bands-derivative",
+    "result": "PASS",
+    "original_prelink_sha256": "5ec733691da609c66c0e4eef901d273d0d05d915d6c5391c8d01646edb34617d",
+    "kernel_sha256": "20096dc26596b0a834ce6ddcc981527a01c9cf308d709dabfb4448c4cd6a9414",
+    "kernel_bytes": 142835712,
+    "patch_spans_verified": 6,
+    "compact_probes_verified": 3,
+    "other_bytes_unchanged": true,
+    "segments_unchanged": true,
+    "no_QR_reporter_or_waits": true,
+    "hardware_verified": false
+  },
+  "ufs_step_checkpoint_markers_verified": 21,
+  "boot_args": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1 kc-segment-release=0",
+  "gic_adt": {
+    "sha256": "f9b955bad7f9d6b3831d95cb70aa03cd44205c8e30f647e5e5e4f0a1708dca3b",
+    "bytes": 14552,
+    "source_sha256": "bba7ae3636a43ac4c3506327212ed8378a9f043b092c45883d592124c4bc557e",
+    "source_node": "/soc/interrupt-controller@17100000",
+    "node": "/arm-io/intc",
+    "arm_io_base": 385875968,
+    "arm_io_size": 16777216,
+    "distributor": {
+      "base": 386924544,
+      "size": 65536
+    },
+    "redistributors": {
+      "base": 387448832,
+      "size": 2097152,
+      "stride": 262144
+    },
+    "rooted_adt_sha256": "61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7"
+  },
+  "manifest_sha256": "3bd261e5f9787dc10ebf76bebbaae46d631c67d9c478f696dc564bb945c08f6c",
+  "unsigned_vendor_boot": {
+    "bytes": 37859328,
+    "sha256": "05d29bd48d7500cd06085710cf3fb90c6c19d0aa6000b4de9031455ddb4b2320"
+  },
+  "signed_images": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "1070c9e41e36de8a8da548f430a934b9a1a51b14658d54158033144fde27d6f6"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "491f281e9ea198081da132d79a02bbb80fe9b196082ed63e1738764ed6c609ef"
+    }
+  },
+  "signing_verification": {
+    "algorithm": "SHA256_RSA4096",
+    "signature_checks": "PASS",
+    "vendor_boot_salted_hash": "PASS",
+    "boot_chain_key_matches": true,
+    "unsigned_vendor_body_preserved": true,
+    "vbmeta_header_unchanged": true,
+    "public_key_unchanged": true,
+    "unchanged_other_raw_descriptors": 22
+  },
+  "payload_verification": {
+    "FAT_mountable": true,
+    "FAT_clusters": 66512,
+    "FAT_readback_sha256": {
+      "Payloads/kernel.macho": "a6aa30a39897cdab81967bced18fcb3ff003ea138dbe9c51810bab9529903b0e",
+      "Payloads/kernel.macho.adt": "f9b955bad7f9d6b3831d95cb70aa03cd44205c8e30f647e5e5e4f0a1708dca3b",
+      "Payloads/kernel.macho.vroot": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+      "unixnu.toml": "074deeb2edef452c7f4a31e5e7732d868c5f32512c093f747de56bddad78bebb"
+    },
+    "LZMA_roundtrip": "PASS",
+    "kernel_readback_sha256": "20096dc26596b0a834ce6ddcc981527a01c9cf308d709dabfb4448c4cd6a9414",
+    "production_DarwinBoot_parser": "PASS"
+  },
+  "hardware_boot_verified": false,
+  "runtime_qualified": false,
+  "device_operations": false,
+  "bundle": {
+    "path": "out/live-checkpoints-44713622044-ss-steps-signed.zip",
+    "bytes": 35561830,
+    "sha256": "6fb74e7d125ec4e4a2c5672876121a1ba8f034c2c53c8a43376ad058f825ac03",
+    "members": 13,
+    "zip_crc": "PASS",
+    "sha256sums_readback": "PASS"
+  }
+}

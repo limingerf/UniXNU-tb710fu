@@ -1,5 +1,39 @@
 # Current status · 2026-11-20
 
+## 实机确认 UFS 接管停点，补上 NativeUfs 阶段追踪 · 2026-11-20
+
+新刷入 `44713622044` 镜像（`src-a89bac58-ramoops`）后，实机屏显按序走完
+`source-storage-start begin` 的全部 20 个子步骤：`gate-passed`、
+`kext-ioStorage`、`base-class-lookup`、`root-policy`（RootPolicies 认证通过）、
+`kext-apfs`（打印 `apfs-3288.60.7`）、`premodload`、`class-reg-base/ufs`、
+`postmodload`、`wait-platform`、`ufs-create`、`ufs-init`、`ufs-attach`，
+最后停在 `ufs-start-begin`，无 `ufs-start-done`、无 panic、页脚 `ERR=0`。
+页脚 `LOG=1000133 QR=997015 ... ss-ufs-s`。执行已进入
+`NativeUfs::startRoot()`，即 `hostBringUp()` 或其内部调用阻塞。
+
+照片中 `AppleARMBootPerf` / `AppleARMSFRManifest` 那串 Error 仍出现，但执行
+继续走完 `iokit-time-init done` 及后续全部阶段，因此不是停点；它是非 Apple
+固件缺少 `/chosen/secure-boot-hashes`、`boot-manifest-hash`、`/chosen/iBoot`
+的固有噪声，与镜像版本无关。
+
+`hostBringUp()` 已有 `gRootDiagnostic.stage` 字段，但仅在
+`native-ufs-diagnostics=1` 时生效，实机未传该参数。新增补丁
+`patches/ufs/0004-bringup-stage-trace.patch`（SHA-256
+`8b1f9afd3125ff79abdfb61332e30b8c9a0803ae383b168785e3d226e81c2942`）
+在各阻塞操作前无条件输出 `IOLog`：GCC 时钟/电源状态、控制器映射、DMA 分配与
+连续性、SMMU 映射、queue snapshot/stop/start、NOP OUT、电源查询、设备唤醒、
+LUN 就绪、root layout 读取，共 45 条 begin/done/failed 标记。
+
+该补丁基于 `0001+0002` 之后的源码生成（`0002` 增加了 GCC 电源检查与
+事务式队列接管）。验证：完整序列 `0001→0002→0004→0003` 在 pinned 源上
+干净应用；删除全部 IOLog 后与 post-0002 源逐字符相同；`write32`、`IOSleep`
+常量、`hostStopQueue`/`hostStartQueue`/`hostStopTakenQueue`/`restoreUfsSmmu`/
+`smmuBypassStream`/`hostNop`/`hostQueryRead`/`hostScsi` 调用数、`native_ufs_root_step`
+取值、`panic` 站点及全部 `*why` 错误串均未改变。
+
+尚未构建、签名或刷写这一版。`hardware_boot_verified=false`、
+`runtime_qualified=false`、`device_operations=false`。
+
 ## 实机越过全部 BSD 检查点，进入 UFS 接管 · 2026-11-20
 
 新照片上传预览 SHA-256 `ab83777dad20c574d3909a6644f5b114427006dd568ace0b28c950287eaf1475`，
@@ -39,9 +73,50 @@ create/init/attach/start）。provider 为 weak 条件引用，独立归档构�
 `.work/source-storage-step-equivalence.json`、
 `.work/source-storage-step-structure.json`。
 
-尚未执行 commit/push/云构建/签名/刷写。`hardware_boot_verified=false`、
-`runtime_qualified=false`、`device_operations=false`。下一张实机照片应能把
-停点定位到具体子步骤；在定位前不改动固件/DMA 逻辑。原始照片证据见
+本地改动已提交 `a89bac585f2532eca28193aa93ba704f2f9c14e3` 并推送到
+`origin/codex/ufs-transactional-handoff`；已派发 macOS `ufs-integrated` run
+[44713622044](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44713622044)
+（stage=ufs-integrated，commit `a89bac5`）已 success。该 stage 重新编译
+`SourceStorage.cpp`、链路、strict prelink 并跑 production DarwinBoot parser。
+strict 预链接内核 142,835,712 字节，SHA-256
+`5ec733691da609c66c0e4eef901d273d0d05d915d6c5391c8d01646edb34617d`，与
+build-result 一致；USB CDC / LiveLog / source-storage 三个集成报告哈希均与
+build-result 相符，production DarwinBoot parser PASS。产物 ZIP
+`14619136678` 共 39,188,735 字节，SHA-256
+`ba4a2a537cd3b0a6af1dae86f0d1dcb0778558d2b24241956628862f79a36eee`。
+source-storage 集成报告确认 `device_commit=a89bac5`、archive 已重编
+（SHA-256 `bcd7f46aac5e445d4d4d32e6d2dc119781e663557e737fb57f8164aea4768832`）、
+startup hook 选中、archive force_load 恰好一次。对内核 Mach-O 的 ASCII 扫描确认
+21 个 `ss-` 检查点标签、`_tb710fu_live_log_checkpoint_text` 符号和
+`TB710FU SourceStorage: ` 文本前缀均已编入。详见
+`docs/evidence/source-storage-step-checkpoints-build-44713622044.json`。
+
+### 签名可刷写测试镜像 · 2026-11-20
+
+按用户要求先完成 host 端实测再签名。verify 脚本核验 run 摘要、kernel 哈希、
+mapping complete、21 个新 `ss-` marker、production + local parser 与 live-log
+package（6 objects/27 strong defs），全部 PASS。standard bands 变换 PASS
+（6 spans/3 probes，其余字节不变），unsigned vendor_boot 37,859,328 B，
+SHA-256 `05d29bd48d7500cd06085710cf3fb90c6c19d0aa6000b4de9031455ddb4b2320`，
+production parser PASS。随后用本地 AVB RSA-4096 基线 key 签名，独立核验
+RSA 签名、salted hash、boot chain key、22 个未变 descriptor、FAT/LZMA 回读
+及 standard 变换后 21 个检查点 marker 全部存在，均 PASS。
+
+签名三件套：`boot.img` SHA-256
+`a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`（沿用已验证
+loader 基线），`vendor_boot.img` SHA-256
+`1070c9e41e36de8a8da548f430a934b9a1a51b14658d54158033144fde27d6f6`，
+`vbmeta.img` SHA-256 `491f281e9ea198081da132d79a02bbb80fe9b196082ed63e1738764ed6c609ef`。
+交付包 `out/live-checkpoints-44713622044-ss-steps-signed.zip` 共 35,561,830 字节，
+SHA-256 `6fb74e7d125ec4e4a2c5672876121a1ba8f034c2c53c8a43376ad058f825ac03`，
+13 个成员，ZIP CRC 与 SHA256SUMS 回读通过。详见
+`docs/evidence/ufs-step-checkpoints-signed-44713622044.json`。
+
+尚未刷写或操作设备。`hardware_boot_verified=false`、
+`runtime_qualified=false`、`device_operations=false`。刷机后下一张实机照片应显示
+`TB710FU bsd: source-storage-start begin` 之后最后一条
+`TB710FU SourceStorage: ss-<step>`，据此定位 UFS 接管的具体停点；在定位前
+不改动固件/DMA 逻辑。原始照片证据见
 `docs/evidence/live-checkpoints-source-storage-begin-device-IMG20261120171040.json`。
 
 ## BSD 初始化同步文本检查点 · 2026-11-20

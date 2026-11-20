@@ -11,11 +11,20 @@ The adapter script exports that exact commit and never edits fetched caches.
    the queue stopped and panics. W1C interrupt status is cleared after the new
    queue is ready. Legacy firmware-list adoption and Sheng Wi-Fi/DPU options
    are refused on this board.
-3. `0003-minimal-source-runtime.patch` is selected only by the complete minimal
+3. `0004-bringup-stage-trace.patch` adds unconditional `IOLog` stage lines to
+   `hostBringUp()` and the `startRoot()` entry. It is authored against the
+   post-0002 source and ordered after 0002, before 0003. `gRootDiagnostic.stage`
+   already tracked these stages but only with `native-ufs-diagnostics=1`, which
+   the device does not pass. Every added statement is an `IOLog` call plus the
+   braces needed to attach one to a previously braceless if-body; removing them
+   reproduces the post-0002 file exactly, and every `write32`, wait constant,
+   queue/SMMU call, `native_ufs_root_step` value, `*why` string and `panic`
+   site is unchanged. It exists to localize a device halt inside the takeover.
+4. `0003-minimal-source-runtime.patch` is selected only by the complete minimal
    source-storage archive builder. It disables the optional boot observer's
    declaration and call together when `TB710FU_UFS_NO_BOOT_OBSERVER=1`; it does
    not provide a no-op implementation. The isolated NativeUfs adapter still
-   uses only patches 0001 and 0002.
+   uses only patches 0001, 0002 and 0004.
 
 The controller/GCC/SID facts come from the same-device Linux commit
 `4d04410798b538fbe4b50664e3a66d9500a2ed31`, documented in

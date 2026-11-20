@@ -18,6 +18,9 @@ PIN = '99d8bcd3e43dd24fc3c8437c67b5d4cc71ab94d0'
 PATCHES = (
     ROOT / 'patches/ufs/0001-sm8650-compatible.patch',
     ROOT / 'patches/ufs/0002-transactional-handoff.patch',
+    # Unconditional host bring-up and root-layout stage trace. Ordered after the
+    # transactional handoff so it annotates the final code the device runs.
+    ROOT / 'patches/ufs/0004-bringup-stage-trace.patch',
 )
 
 

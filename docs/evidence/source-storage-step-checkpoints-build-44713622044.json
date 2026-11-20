@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "stage": "native-prelink-build-with-ufs-takeover-step-checkpoints",
+  "result": "PASS",
+  "run_id": 44713622044,
+  "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44713622044",
+  "conclusion": "success",
+  "workflow": ".github/workflows/macos-kernel.yml",
+  "stage_input": "ufs-integrated",
+  "device_commit": "a89bac585f2532eca28193aa93ba704f2f9c14e3",
+  "framework_source_commit": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+  "profile": "macos-27.3-26C5035r",
+  "download": {
+    "artifact_id": 14619136678,
+    "artifact_name": "tb710fu-ufs-integrated-44713622044",
+    "zip_bytes": 39188735,
+    "zip_sha256": "ba4a2a537cd3b0a6af1dae86f0d1dcb0778558d2b24241956628862f79a36eee"
+  },
+  "kernel": {
+    "stage": "prelinked",
+    "bytes": 142835712,
+    "sha256": "5ec733691da609c66c0e4eef901d273d0d05d915d6c5391c8d01646edb34617d",
+    "sha256_matches_build_result": true,
+    "cpu_subtype": "0xc0000002",
+    "mach_o_filetype": 12,
+    "native_kernel_sha256": "9de25bffa40b3839fe823980b7d4e4f57168ce6cdb137ff7b06d33d4bbcc9314"
+  },
+  "integration_reports": {
+    "usb_cdc": "0c1e22729af7c84134c6be88a1858f91897be94ed80cdef255d78a343c8e13fb",
+    "live_log": "7c0bf7cda45ed426ba0a45a551abaddc16f802441c660f66a4c8e303c3f02409",
+    "source_storage": "a7ce340cc23414cc4a04c3f56e2e20eec123528e39b56d6d572274517ef6cdd7",
+    "all_local_sha256_match_build_result": true
+  },
+  "source_storage": {
+    "device_commit": "a89bac585f2532eca28193aa93ba704f2f9c14e3",
+    "archive_sha256": "bcd7f46aac5e445d4d4d32e6d2dc119781e663557e737fb57f8164aea4768832",
+    "archive_compile_report_sha256": "971d9747d92d57d016e8beff0d9c305ab190101c3bf2b74e668c1652919526cb",
+    "bsd_object_sha256": "2d7827723357b5ca451729aa37f764257e5636d721e3a33ff6f5afff8133f364",
+    "startup_hook_selected": true,
+    "source_storage_selected": true,
+    "archive_force_load_count": 1
+  },
+  "darwinboot_parser": {
+    "result": "PASS",
+    "detail": "actual kernel fileset membership, arm64/arm64e capability bits and malformed ranges"
+  },
+  "checkpoint_evidence_in_kernel": {
+    "method": "ASCII string scan of the exact prelinked kernel.macho",
+    "ss_labels_found": 21,
+    "ss_labels_expected": 21,
+    "checked_labels": [
+      "ss-gate-passed", "ss-kext-ioStorage-begin", "ss-kext-ioStorage-done",
+      "ss-base-class-lookup-begin", "ss-root-policy-begin", "ss-root-policy-done",
+      "ss-kext-apfs-begin", "ss-premodload-begin", "ss-class-reg-base-begin",
+      "ss-class-reg-ufs-begin", "ss-postmodload-done", "ss-wait-platform-begin",
+      "ss-wait-platform-done", "ss-ufs-create-begin", "ss-ufs-init-begin",
+      "ss-ufs-init-done", "ss-ufs-attach-begin", "ss-ufs-attach-done",
+      "ss-ufs-start-begin", "ss-ufs-start-done", "ss-started"
+    ],
+    "provider_symbol_present": true,
+    "text_prefix_present": true
+  },
+  "local_gates": {
+    "clang_19_fsyntax_only": "PASS",
+    "control_flow_equivalence_8_cases": "PASS",
+    "source_structure_check": "PASS"
+  },
+  "limits": "This is a native+strict-prelink+parser build, not a device boot. No signing, packaging, flashing, partition or filesystem operation occurred. It does not establish a hardware UFS takeover, root mount, APFS userspace or CDC enumeration.",
+  "hardware_boot_verified": false,
+  "runtime_qualified": false,
+  "device_operations": false,
+  "next_step": "Package and sign a flashable test image for the A slot. The next device photo/QR should show the last 'ss-<step>' checkpoint before the halt, localizing the exact UFS takeover call."
+}
