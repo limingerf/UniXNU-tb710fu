@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "stage": "signed-nativeufs-busywait-test-image-set",
+  "user_authorized_local_signing": true,
+  "kernel_run_id": 44809442859,
+  "kernel_run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44809442859",
+  "device_commit": "a25fd1c292a9dfc42b4010ad0ab3f5f0aac1871f",
+  "display_build_label": "src-a25fd1c2-ramoops",
+  "profile": "macos-27.3-26C5035r",
+  "prelinked_kernel": {
+    "sha256": "17a8f0c2d5a3b41ee7f97f04b4e1363a79ffb43f6829717e9d2e6c33768bf6b9",
+    "bytes": 142835712,
+    "mapping_complete": true,
+    "production_parser": "PASS"
+  },
+  "ufs_behaviour_fix": {
+    "patch": "patches/ufs/0006-quiescent-sleep-replacement.patch",
+    "patch_sha256": "e0a08fbb20757aed5b5ab7d427690519d0e12622a97c07cb2b4d9c7646a761f7",
+    "change": "hostBringUp replaces IOSleep (50) and IOSleep (10) with bounded IODelay busy waits of the same duration",
+    "reason": "The UFS command path polls with IODelay while interrupts are masked, so IOSleep can never be woken by the scheduler. The 03:52 device run stopped inside IOSleep(50): the footer read ufssetl and wake-settle-done never printed, while the wake command itself had already succeeded (cmd-return end=0 ocs=0 polls=1, rsp-ok len=0, scsi-done status=0, wake-done printed).",
+    "markers_verified_in_packaged_kernel": 10
+  },
+  "ufs_trace": {
+    "patch": "patches/ufs/0004-bringup-stage-trace.patch",
+    "patch_sha256": "e1fe3733b45c288e0862351f41b5b675589aaedb2580583039e8336b0de8b00c",
+    "console_call": "printf",
+    "host_and_root_probes": 53
+  },
+  "standard_band_derivative": {
+    "stage": "verified-standard-early-bands-derivative",
+    "result": "PASS",
+    "original_prelink_sha256": "17a8f0c2d5a3b41ee7f97f04b4e1363a79ffb43f6829717e9d2e6c33768bf6b9",
+    "kernel_sha256": "8752f2520a52e3bad7437e231ab86371a02d2a76f037e1c0e812850088e88d60",
+    "kernel_bytes": 142835712,
+    "patch_spans_verified": 6,
+    "compact_probes_verified": 3,
+    "other_bytes_unchanged": true,
+    "segments_unchanged": true,
+    "no_QR_reporter_or_waits": true,
+    "hardware_verified": false
+  },
+  "boot_args": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1 kc-segment-release=0",
+  "manifest_sha256": "4f61e5b182f4db1547fa9de47051e226124020001af7aa7e1bfd9758833e532b",
+  "unsigned_vendor_boot": {
+    "bytes": 37859328,
+    "sha256": "158a8da3adc864212d9927a465134065e878c25ef07a0eb202696f0d87bbe5e5"
+  },
+  "signed_images": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "59897e27e65ac2792fc27ada8a0139b3fc130614f609079e6175e1090ad05e4a"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "9318ba88f1b4a690b73923bb46717743d34c425e7271ce50473fabcb2e23775a"
+    }
+  },
+  "signing_verification": {
+    "algorithm": "SHA256_RSA4096",
+    "signature_checks": "PASS",
+    "vendor_boot_salted_hash": "PASS",
+    "unsigned_vendor_body_preserved": true,
+    "vbmeta_header_unchanged": true,
+    "public_key_unchanged": true,
+    "unchanged_other_raw_descriptors": 22
+  },
+  "payload_verification": {
+    "FAT_clusters": 66512,
+    "FAT_readback_sha256": {
+      "Payloads/kernel.macho": "01cfdf4fd09d4347687212100ab5efb40f306973ead002094806122ec07f1528",
+      "Payloads/kernel.macho.adt": "f9b955bad7f9d6b3831d95cb70aa03cd44205c8e30f647e5e5e4f0a1708dca3b",
+      "Payloads/kernel.macho.vroot": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+      "unixnu.toml": "074deeb2edef452c7f4a31e5e7732d868c5f32512c093f747de56bddad78bebb"
+    },
+    "LZMA_roundtrip": "PASS",
+    "kernel_readback_sha256": "8752f2520a52e3bad7437e231ab86371a02d2a76f037e1c0e812850088e88d60",
+    "adt_sha256": "f9b955bad7f9d6b3831d95cb70aa03cd44205c8e30f647e5e5e4f0a1708dca3b",
+    "production_DarwinBoot_parser": "PASS"
+  },
+  "hardware_boot_verified": false,
+  "runtime_qualified": false,
+  "device_operations": false,
+  "bundle": {
+    "path": "out/live-checkpoints-44809442859-busywait-signed.zip",
+    "bytes": 35559324,
+    "sha256": "88e4f1c5abacc4da5722ddffe6f76602938eec4676f732fb92773859cc914cf7",
+    "members": 11,
+    "zip_crc": "PASS",
+    "sha256sums_readback": "PASS"
+  }
+}
