@@ -22,7 +22,7 @@ Verification: git apply on the pinned ShengUfs source after 0001 and 0002, with
 .work/verify-ufs-bringup-patch.py.
 ---
 diff --git a/NativeUfs.cpp b/NativeUfs.cpp
-index 20fd0c2..af72d9c 100644
+index 20fd0c2..f6bbfd3 100644
 --- a/NativeUfs.cpp
 +++ b/NativeUfs.cpp
 @@ -990,6 +990,9 @@ static void hostWrite (unsigned offset, uint32_t value)
@@ -143,7 +143,7 @@ index 20fd0c2..af72d9c 100644
    if (!hostStartQueue (why)) {
      const char *recoveryWhy = "";
      if (!hostStopTakenQueue (&recoveryWhy))
-@@ -1239,43 +1275,56 @@ static bool hostBringUp (const char **why)
+@@ -1239,50 +1275,67 @@ static bool hostBringUp (const char **why)
            __asm__ volatile ("dsb sy" ::: "memory");
          }))
        panic ("NATIVE_UFS replacement queue rollback could not restore SMMU");
@@ -187,7 +187,9 @@ index 20fd0c2..af72d9c 100644
        return false;
      }
 +    printf ("NativeUfs: host wake-done\n");
++    printf ("NativeUfs: host wake-settle-begin\n");
      IOSleep (50);
++    printf ("NativeUfs: host wake-settle-done\n");
    }
    gRootDiagnostic.stage = "LUN ready";
 +  printf ("NativeUfs: host lun-ready-begin\n");
@@ -200,7 +202,8 @@ index 20fd0c2..af72d9c 100644
        return true;
      }
      if (gHost.poisoned) break;
-@@ -1283,6 +1332,7 @@ static bool hostBringUp (const char **why)
++    printf ("NativeUfs: host tur-retry attempt=%u\n", attempt);
+     IOSleep (10);
    }
    gHost.ready = false;
    *why = "LUN 0 not ready";
@@ -208,7 +211,7 @@ index 20fd0c2..af72d9c 100644
    return false;
  }
  }
-@@ -2210,13 +2260,17 @@ static void mediaReportThread (void *, wait_result_t)
+@@ -2210,13 +2263,17 @@ static void mediaReportThread (void *, wait_result_t)
  
  bool NativeUfs::start (IOService *provider)
  {
@@ -226,7 +229,7 @@ index 20fd0c2..af72d9c 100644
      return false;
    }
    if ((probe >= 3 && probe <= 5) || probe == 9) {
-@@ -2232,10 +2286,12 @@ bool NativeUfs::start (IOService *provider)
+@@ -2232,10 +2289,12 @@ bool NativeUfs::start (IOService *provider)
        IOLog ("NativeUfs: refusing Sheng-only Wi-Fi/DPU SMMU options during TB710FU takeover\n");
        return false;
      }
@@ -239,7 +242,7 @@ index 20fd0c2..af72d9c 100644
    if (probe == 2) {
      inspect ();
    }
-@@ -2336,8 +2392,10 @@ bool NativeUfs::start (IOService *provider)
+@@ -2336,8 +2395,10 @@ bool NativeUfs::start (IOService *provider)
      return true;
    }
    if (rootMode && !probe) {
@@ -250,7 +253,7 @@ index 20fd0c2..af72d9c 100644
    return false;
  }
  
-@@ -2345,13 +2403,16 @@ bool NativeUfs::start (IOService *provider)
+@@ -2345,13 +2406,16 @@ bool NativeUfs::start (IOService *provider)
  bool NativeUfs::startRoot (IOService *provider)
  {
    const char *why = "";
@@ -267,7 +270,7 @@ index 20fd0c2..af72d9c 100644
    RootLayout *layout = static_cast<RootLayout *> (IOMalloc (sizeof (RootLayout)));
    if (!layout || !findRootLayout (layout, &why)) {
      rootDiagnosticFailure (layout ? why : "root layout allocation failed");
-@@ -2359,6 +2420,9 @@ bool NativeUfs::startRoot (IOService *provider)
+@@ -2359,6 +2423,9 @@ bool NativeUfs::startRoot (IOService *provider)
      if (layout) IOFree (layout, sizeof (RootLayout));
      return false;
    }
