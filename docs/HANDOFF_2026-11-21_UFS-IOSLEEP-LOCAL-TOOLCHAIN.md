@@ -213,17 +213,21 @@ run(['git', '-C', src, 'apply', HERE / 'llvm-ptrauth-null-values.patch'])
 不同（main 的 `HandlePtrAuthQualifier` 在 8727 行，固定 commit 在 8659 行），
 用 main 版会应用失败。
 
-### 5.5 clang 重建：当前脚本与三个坑
+### 5.5 clang 重建：当前脚本与五个坑
 
-**当前脚本**：`.work/rebuild-clang5.sh`（tarball 获取 + 打补丁 + cmake + ninja + 自动
+**当前脚本**：`.work/rebuild-clang6.sh`（tarball 获取 + 打补丁 + cmake + ninja + 自动
 验证 `__ptrauth`）。日志写 `.work/toolchain-rebuild.log`（**持久**，不要写 `/tmp`）。
+
+**源码与 build 目录都在 WSL 原生 ext4 上**：`$HOME/tb710fu-llvm-project`
+（`/opt` 需要 root，home 不需要）。`.work/llvm-project` 是指向它的符号链接，
+脚本里的路径不用改。编译产物最后才拷回 `.work/UniXNU/.linux-toolchain/llvm`。
 
 **为什么不用 `setup-toolchain.py` 直接跑**：它在 ninja 结束后执行
 `shutil.rmtree(src)`，构建一旦被中断，检出就没了，下次只能从零开始（每次约
-40-60 分钟）。现在的做法是源码树固定在 `.work/llvm-project`，直接调 ninja，
-中断只损失未编译的 .o，检出永远保留。
+40-60 分钟）。现在的做法是源码树固定保留，直接调 ninja，中断只损失未编译的
+.o，检出永远保留。
 
-**三个坑**（都实际踩过）：
+**五个坑**（都实际踩过）：
 
 1. **`/tmp` 会被 WSL 重启清空**。日志必须写 `.work/`。同理 `/tmp/pt.c` 这类
    验证文件也要放 `.work/`。
@@ -237,21 +241,35 @@ run(['git', '-C', src, 'apply', HERE / 'llvm-ptrauth-null-values.patch'])
    curl -L --http1.1 --retry 5 --connect-timeout 30 --max-time 1800 \
         -o llvm.tar.gz \
         "https://github.com/llvm/llvm-project/archive/58c46bae21181fb4240cf964461bea738d96d50e.tar.gz"
-   tar xzf llvm.tar.gz -C .work/llvm-project --strip-components=1
+   tar xzf llvm.tar.gz -C "$HOME/tb710fu-llvm-project" --strip-components=1
    ```
-   一次请求拿回整棵树。tarball 没有 `.git`，所以补丁要用 `patch -p1 -d <dir>`，
-   不能用 `git apply`。
+   一次请求拿回整棵树（280,629,308 字节，56 秒，4.7MB/s）。tarball 没有
+   `.git`，所以补丁要用 `patch -p1 -d <dir>`，不能用 `git apply`。
 
 3. **`bash script.sh | tail -N` 的退出码取自 `tail`，不是脚本**。用它判断构建
    成功会得到假的 exit 0。正确做法：脚本自己把退出码写进日志，或
    `set -o pipefail`。
 
+4. **`/mnt/d` 是 9p/DrvFS 挂载，小文件 I/O 极慢**。实测写 300 个小文件：
+   - WSL 原生 ext4（`/home`）：**0.013 秒**
+   - `/mnt/d`：**1.031 秒**（慢约 80 倍）
+
+   LLVM 有几万个文件，解压到 `/mnt/d` 花了 20 分钟还没完；同一个 tarball 解到
+   原生盘只要 **29.7 秒**。`rm -rf` 一个 2G 的小文件树在 `/mnt/d` 上同样慢到
+   看起来像卡死。
+
+   **结论：任何会产生大量小文件的操作（解压、编译、git checkout）都放原生盘**，
+   只把最终产物拷回 `/mnt/d`。大块顺序文件（tarball、镜像）放 `/mnt/d` 没问题。
+
+5. **`nohup` 在这个 WSL 里活不过调用它的 shell**。用 DSH 的后台任务机制
+   （`run_in_background`）起长任务，它会跟踪进程并在完成时通知。
+
 **重建完成后要做的**：
 1. 脚本会自动验证四参数 `__ptrauth`：
    ```bash
    .work/UniXNU/.linux-toolchain/llvm/bin/clang \
-     -target arm64e-apple-macos26.0 -c .work/llvm-project/ptrauth-check.c \
-     -o .work/llvm-project/ptrauth-check.o
+     -target arm64e-apple-macos26.0 -c "$HOME/tb710fu-llvm-project/ptrauth-check.c" \
+     -o "$HOME/tb710fu-llvm-project/ptrauth-check.o"
    ```
    期望 `ptrauth compile exit=0`。
 2. 重跑 `python3 tools/ci_kernel.py native`，看是否越过 `firehose_buffer.c`
