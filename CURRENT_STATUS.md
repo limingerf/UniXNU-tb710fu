@@ -1,5 +1,45 @@
 # Current status · 2026-11-21
 
+## 0007 实机越过 hostBringUp，停在 root manifest · 2026-11-21
+
+新照片确认 0007 生效：`host lun-ready-done attempt=0` 首次出现，随后
+`host root bring-up-done` 与 `host root layout-begin`。页脚从上次的 `ufssetl`
+前进到 `ufsscsi`，`host wake-settle-begin` 之后的停点已经不存在。TUR 第一次
+尝试即成功，UFS 传输层与 `hostBringUp()` 均已完成。
+
+`root layout-begin` 之后是三条连续的 READ(10)：`op=28 len=10 dir=2
+bytes=4096 timeout=1000000`，每条都 `cmd-return end=0 ocs=0 polls=1`、
+`rsp-head b0=21 b1=00 b2=00 b3=00 b6=00 ... want=21/0/0`、
+`rsp-ok len=0`、`scsi-done status=0`。设备 GPT 是 **32 项表**（`.work/lun_gpt.txt`），
+`(32 × 128 + 4095) / 4096 = 1`，所以这三条恰好对应 `findRootLayout()` 的三次
+`hostRead4k`：GPT 头（LBA 1）、GPT 项表（1 块）、userdata 首块（1 块）。三次
+读取全部成功，`findRootLayout()` 的 GPT 校验、CRC、分区边界与 userdata 查找
+都通过。
+
+但 `ufssuper` 没有出现。`ufssuper` 位于 `findRootLayout()` 成功之后、清单
+状态检查之后；它缺失说明 `layout->manifestStatus != 0`，即 userdata 首块不是
+有效的 `SHNGROOT` 清单。`startRoot()` 对这个分支只调用
+`rootDiagnosticFailure()` 与 `IOLog()`，后者不上文字控制台；诊断开关关闭时
+`rootDiagnosticFailure()` 也不 panic，所以屏幕静默停在 `ufsscsi`，`ERR=0`。
+这与 `docs/USERDATA_BUILD.md` 的记录一致：`userdata-root-vroot.img` 尚未写入
+设备，userdata 仍是 Android data。
+
+页脚为 `CKPT=TEXT LOG=1006471 QR=998469 W=1 N=18 Q=1 B=0/1 R=1 ERR=0
+ufsscsi`。
+
+本地待刷镜像已核对：`.work/root-policy-run-43724852936/userdata-root-vroot.img`
+共 17,603,493,888 字节，SHA-256
+`35b1c581c7074c626b4b3750af93901a988425e42671f1aaeafd7fd6e13de199`；首块
+`SHNGROOT`、version 2、6 个条目、`image_bytes` 17,603,493,888，与
+`userdata-root-vroot.json` 的三个窗口、三个 `.vroot` 对象一致。报告给出的
+刷写命令是
+`fastboot flash userdata .work/root-policy-run-43724852936/userdata-root-vroot.img`。
+
+下一步是设备侧写入 userdata；这会覆盖现有 Android data，属于设备操作，本轮
+未执行。`hardware_boot_verified=false`、`runtime_qualified=false`、
+`device_operations=false` 保持不变。若写入后仍停在同一位置，再需要一条
+`root layout-done status/magic` 的屏幕打印来区分清单解析与发布阶段。
+
 ## 计数器自旋修复镜像已签出（0007）· 2026-11-21
 
 04:59 设备照片确认 0006 仍停在同一处：最后一行 `NativeUfs: host
