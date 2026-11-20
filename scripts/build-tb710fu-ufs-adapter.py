@@ -31,6 +31,11 @@ PATCHES = (
     # wait, not a busy wait. 0007 replaces the settle and the command poll delay
     # with a bounded spin on mach_absolute_time. Behaviour fix, separate again.
     ROOT / 'patches/ufs/0007-quiescent-counter-spin.patch',
+    # 0008 makes the root-image GPT partition name a runtime value read from the
+    # tb710fu-root-partition boot argument (default "userdata"), following the
+    # official vermeer dual-system fork. This lets TB710FU keep Android's userdata
+    # and place the macOS root image in a separate "unixnu" partition.
+    ROOT / 'patches/ufs/0008-runtime-root-partition.patch',
 )
 
 

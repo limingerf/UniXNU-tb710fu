@@ -117,6 +117,7 @@ def validate_args(text):
     # parameters, root-device overrides, memory disk or old physical ramoops PA.
     allowed = {'-v', 'serial', 'native-source-storage', 'native-ufs-root',
                'tb710fu-cdc', 'tb710fu-live-log', 'tb710fu-live-checkpoints',
+               'tb710fu-root-partition',
                'debug', '-enable_kprintf_spam', 'startup_debug', 'kc-segment-release',
                'ramoops_size', 'ramoops_ecc', 'ramoops_panic_delay', 'ramoops_reset_after'}
     require(set(values) <= allowed, 'Unsupported boot arguments: ' + ', '.join(sorted(set(values) - allowed)))

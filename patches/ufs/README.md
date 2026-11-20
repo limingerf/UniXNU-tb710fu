@@ -28,11 +28,21 @@ The adapter script exports that exact commit and never edits fetched caches.
    poll delay with a bounded `mach_absolute_time` spin: in a thread without a
    registered idle latency `IODelay` is itself a timer wait. `ufsspn`/`ufssetd`
    bracket the settle and `ufstur` precedes each LUN-ready attempt.
-7. `0003-minimal-source-runtime.patch` is selected only by the complete minimal
+ 7. `0008-runtime-root-partition.patch` makes the GPT partition carrying the root
+    image a runtime value instead of the hardcoded "userdata", following the official
+    vermeer dual-system fork: `RootLayout.h` uses `extern const char *gRootPartitionName`,
+    `NativeUfs.cpp` defines it (default "userdata") and sets it from the
+    `tb710fu-root-partition` boot argument at the start of `start()`, and the two
+    RootLayout host tests define the symbol. A NUL-terminator check keeps a short
+    name from matching a longer partition. This lets TB710FU keep Android's
+    `userdata` and place the macOS root image in a separate `unixnu` partition;
+    pass `tb710fu-root-partition=unixnu` for that layout. No transport, command,
+    policy or error-string behaviour changes.
+ 8. `0003-minimal-source-runtime.patch` is selected only by the complete minimal
    source-storage archive builder. It disables the optional boot observer's
    declaration and call together when `TB710FU_UFS_NO_BOOT_OBSERVER=1`; it does
    not provide a no-op implementation. The isolated NativeUfs adapter uses
-   patches 0001, 0002, 0004, 0005, 0006 and 0007.
+   patches 0001, 0002, 0004, 0005, 0006, 0007 and 0008.
 
 The controller/GCC/SID facts come from the same-device Linux commit
 `4d04410798b538fbe4b50664e3a66d9500a2ed31`, documented in

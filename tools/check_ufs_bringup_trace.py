@@ -138,10 +138,24 @@ def main():
         subprocess.run(["git", "apply", str(PATCH_DIR / "0007-quiescent-counter-spin.patch")],
                        cwd=scratch, check=True)
         spun = source.read_text(encoding="utf-8")
+        # 0008 makes the root GPT partition name a boot-argument runtime value. It changes no
+        # transport/command behaviour and no error strings, so apply it before the 0003 check
+        # and assert its guards below alongside the other behaviour guards.
+        subprocess.run(["git", "apply", str(PATCH_DIR / "0008-runtime-root-partition.patch")],
+                       cwd=scratch, check=True)
+        partitioned = (scratch / "RootLayout.h").read_text(encoding="utf-8")
+        spun = source.read_text(encoding="utf-8")
         commands = (scratch / "RootCommands.h").read_text(encoding="utf-8")
         subprocess.run(["git", "apply", "--check", str(PATCH_DIR / "0003-minimal-source-runtime.patch")],
                        cwd=scratch, check=True)
-    report("0001 -> 0002 -> 0004 -> 0005 -> 0006 -> 0007 -> 0003 applies", True)
+    report("0001 -> 0002 -> 0004 -> 0005 -> 0006 -> 0007 -> 0008 -> 0003 applies", True)
+    report("0008 resolves the root partition name at runtime",
+           "extern const char *gRootPartitionName;" in partitioned and
+           'PE_parse_boot_arg_str ("tb710fu-root-partition"' in spun and
+           'const char *gRootPartitionName = "userdata";' in spun and
+           "static const char wanted[]" not in partitioned)
+    report("0008 keeps the NUL-terminator check on the GPT name",
+           "entry[56 + 2 * wantedLen] != 0" in partitioned)
 
     # 0006 replaces the two sleeps inside hostBringUp with busy waits. Locate the
     # function body by brace matching so the check cannot drift with line numbers.

@@ -1,0 +1,110 @@
+diff --git a/NativeUfs.cpp b/NativeUfs.cpp
+index 327f2e6..4814124 100644
+--- a/NativeUfs.cpp
++++ b/NativeUfs.cpp
+@@ -54,6 +54,13 @@ static UfsRootDiagnostics gRootDiagnostic;
+ static bool gRootDiagnosticEnabled;
+ static void rootDiagnosticFailure (const char *reason);
+ 
++// RootLayout.h reads this before its first GPT scan. "userdata" is the upstream layout, where the
++// root image was flashed over the whole userdata partition. TB710FU can keep Android's userdata
++// and store the root image in a separate partition, so the name comes from the boot argument
++// tb710fu-root-partition, read once at the start of NativeUfs::start(). The default keeps the
++// upstream behaviour unchanged when the argument is absent.
++const char *gRootPartitionName = "userdata";
++
+ extern "C" {
+ // Optional passive observer; absent in ordinary builds. It may run while a
+ // window lock is held, so its contract forbids blocking or transport access.
+@@ -2327,6 +2334,14 @@ bool NativeUfs::start (IOService *provider)
+   unsigned probe = 0, rootMode = 0;
+   PE_parse_boot_argn ("native-ufs-probe", &probe, sizeof (probe));
+   PE_parse_boot_argn ("native-ufs-root", &rootMode, sizeof (rootMode));
++  // Select the GPT partition carrying the root image. Constrain to a safe 1..31 byte name so an
++  // absent, empty or oversized argument keeps the "userdata" default; RootLayout.h reads this
++  // before its first GPT scan. Static storage keeps the pointer valid beyond this call frame.
++  static char rootPartition[32];
++  if (PE_parse_boot_arg_str ("tb710fu-root-partition", rootPartition, sizeof (rootPartition)) &&
++      rootPartition[0] != '\0') {
++    gRootPartitionName = rootPartition;
++  }
+   printf ("NativeUfs: start-args probe=%u root=%u\n", probe, rootMode);
+   ufsCheckpoint ("ufsgate");
+   native_ufs_probe_requested = probe != 0;
+diff --git a/RootLayout.h b/RootLayout.h
+index 82851d6..c19a6b6 100644
+--- a/RootLayout.h
++++ b/RootLayout.h
+@@ -2,6 +2,16 @@
+ #pragma once
+ // Shared production parser. Requires hostRead4k, SHA256, diagnostics and C memory primitives.
+ // ---- LUN 0 GPT and the root-image manifest -------------------------------------------------
++
++// The GPT partition that carries the root image. Upstream sheng compiled in "userdata" because
++// there the root image was flashed over the whole userdata partition. TB710FU can keep Android's
++// userdata and place the root image in a separate partition, so the name is a runtime value.
++// NativeUfs.cpp defines it from the tb710fu-root-partition boot argument, defaulting to
++// "userdata" so the upstream behaviour is unchanged when the argument is absent; host tests
++// define it explicitly. The terminator check below keeps a short name from matching a longer
++// partition that merely starts with it.
++extern const char *gRootPartitionName;
++
+ struct RootWindow {
+   char name[32];
+   uint64_t offset;   // bytes from the start of the userdata partition
+@@ -105,7 +115,9 @@ static bool findRootLayout (RootLayout *layout, const char **why)
+     *why = "GPT entries CRC";
+     return false;
+   }
+-  static const char wanted[] = "userdata";
++  const char *wanted = gRootPartitionName ? gRootPartitionName : "userdata";
++  size_t wantedLen = 0;
++  while (wanted[wantedLen] && wantedLen <= 31) wantedLen++;
+   bool found = false;
+   for (uint32_t index = 0; index < count; index++) {
+     const uint8_t *entry = gScratch + index * 128;
+@@ -122,13 +134,16 @@ static bool findRootLayout (RootLayout *layout, const char **why)
+         return false;
+       }
+     }
+-    bool match = true;
+-    for (unsigned c = 0; c < sizeof (wanted); c++) {
++    bool match = wantedLen > 0 && wantedLen <= 31;
++    for (unsigned c = 0; match && c < wantedLen; c++) {
+       if (entry[56 + 2 * c] != static_cast<uint8_t> (wanted[c]) || entry[57 + 2 * c] != 0) {
+         match = false;
+         break;
+       }
+     }
++    // UTF-16 name field is NUL terminated: the word right after the name must also be NUL,
++    // otherwise a short name would match a longer partition that merely starts with it.
++    if (match && entry[56 + 2 * wantedLen] != 0) match = false;
+     if (match) {
+       if (found) {
+         *why = "duplicate userdata partition";
+diff --git a/tests/RootLayout.cpp b/tests/RootLayout.cpp
+index 37fc89d..0b5cf4b 100644
+--- a/tests/RootLayout.cpp
++++ b/tests/RootLayout.cpp
+@@ -13,6 +13,8 @@ constexpr IOReturn kIOReturnSuccess=0;
+ constexpr unsigned kDataMax=131072;
+ static UfsRootDiagnostics gRootDiagnostic;
+ static uint8_t header[4096],entries[16384],manifest[4096];
++// RootLayout.h resolves the GPT partition name at runtime; the upstream fixture uses "userdata".
++const char *gRootPartitionName = "userdata";
+ static uint64_t userdata=8;
+ static unsigned reads;
+ static bool failRead;
+diff --git a/tests/RootPathBridge.cpp b/tests/RootPathBridge.cpp
+index 5a42c68..5d93cc9 100644
+--- a/tests/RootPathBridge.cpp
++++ b/tests/RootPathBridge.cpp
+@@ -10,6 +10,8 @@
+ constexpr IOReturn kIOReturnNotPrivileged=0xe00002c1;
+ #include "../RootLayout.h"
+ #include "../RootWindowRead.h"
++// RootLayout.h resolves the GPT partition name at runtime; the host path fixture uses "userdata".
++const char *gRootPartitionName = "userdata";
+ extern "C" int vr_host_open(const uint8_t *,size_t,const uint8_t *,uint64_t,vr_view *);
+ extern "C" int vr_host_block(const vr_view *,uint64_t,const void *,size_t);
+ static RootLayout layout;
