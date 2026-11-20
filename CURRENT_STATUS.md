@@ -1,5 +1,36 @@
 # Current status · 2026-11-20
 
+## SCSI 响应头探针镜像已签出 · 2026-11-21
+
+实机 `ufscret` 确认唤醒命令完成（`end=0 ocs=0 polls=1`），但 `wake-failed` 与
+`lun-ready-begin` 都未出现，停点落在 `cmd-return` 与调用方下一条语句之间。
+UCD 边界已核对：`kUcdOffset=4096` + `kRspOffset=512`，到 `kPrdtOffset=1024`
+尚有 512 字节，`rsp+34` 在范围内，不存在越界。补丁 0004 因此在
+`hostResponseHeader` 与 `hostScsiDir` 尾部增加探针：`rsp-head` 逐字节打印响应
+头与期望的 type/lun/tag，`rsp-bad type|tag|lun|len` 指明具体拒绝原因，
+`rsp-ok len=N` 表示通过，`scsi-tail` 打印 status/residual/length，
+`scsi-done status=N` 打印最终 IOReturn，并加 `ufsrsp`、`ufsscsi` 检查点强制刷屏。
+
+macOS `ufs-integrated` run [44792429573](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44792429573)
+在设备提交 `a062a6b62768b2a3d8b0694050091b607b03f140` 成功。产物
+`14658890436` 共 39,205,794 字节，SHA-256
+`abfcd7ffb61a1c7a012651154bd5b2b1dc7d3300e7a7be016fc4b8581e7e267b`。预链接
+内核 SHA-256
+`5ca480710ce2487246a8f274b839a79f1a2c7da0daca00785285d2a4032890ac`，屏显
+`src-a062a6b6-ramoops`。内核扫描确认 8 条响应头探针、2 个新检查点与既有
+cmd/poll 探针全部编入。
+
+签名三件套：`boot.img` `a3236acc…817a83`（基线），`vendor_boot.img`
+`ad32a55ee23706ec9eff840a190a8745a83cf974c3149e9e5cd713ab4c473a08`，
+`vbmeta.img` `e8df4d4cdd4b8d0ec5f0668bac9826e1e32a2cf9341b9e11d754a623c8b1c72d`。
+交付包 `out/live-checkpoints-44792429573-rsp-signed.zip` 共 35,559,142 字节，
+SHA-256
+`47e36ee11dfef429f07720a3c51e319760e1dc75be8f424a021b47fc8ddf66d8`，11 成员。
+独立复核全部通过。证据见 `docs/evidence/nufs-rsp-signed-44792429573.json`。
+
+尚未刷写或操作设备。`hardware_boot_verified=false`、
+`runtime_qualified=false`、`device_operations=false`。
+
 ## SCSI 命令每步同步屏显镜像已签出 · 2026-11-21
 
 实机页脚 `ufswake` 确认镜像生效，执行进入 `host wake-begin`。NOP 与 power-query
