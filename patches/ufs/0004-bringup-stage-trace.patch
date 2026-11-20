@@ -22,7 +22,7 @@ Verification: git apply on the pinned ShengUfs source after 0001 and 0002, with
 .work/verify-ufs-bringup-patch.py.
 ---
 diff --git a/NativeUfs.cpp b/NativeUfs.cpp
-index 20fd0c2..23fc441 100644
+index 20fd0c2..124a79a 100644
 --- a/NativeUfs.cpp
 +++ b/NativeUfs.cpp
 @@ -1004,26 +1004,39 @@ static bool hostBringUp (const char **why)
@@ -198,7 +198,49 @@ index 20fd0c2..23fc441 100644
    return false;
  }
  }
-@@ -2345,20 +2392,26 @@ bool NativeUfs::start (IOService *provider)
+@@ -2210,13 +2257,17 @@ static void mediaReportThread (void *, wait_result_t)
+ 
+ bool NativeUfs::start (IOService *provider)
+ {
++  IOLog ("NativeUfs: start-enter provider=%p\n", (void *) provider);
+   unsigned probe = 0, rootMode = 0;
+   PE_parse_boot_argn ("native-ufs-probe", &probe, sizeof (probe));
+   PE_parse_boot_argn ("native-ufs-root", &rootMode, sizeof (rootMode));
++  IOLog ("NativeUfs: start-args probe=%u root=%u cast=%u\n",
++         probe, rootMode, (unsigned) (OSDynamicCast (IOPlatformExpertDevice, provider) != nullptr));
+   native_ufs_probe_requested = probe != 0;
+   // Default: match for observability only, never touch the controller. Hardware work runs once,
+   // from the root-device personality; the ufshc nub match stays observation-only.
+   if ((!probe && !rootMode) || !OSDynamicCast (IOPlatformExpertDevice, provider)) {
++    IOLog ("NativeUfs: start-gate-return probe=%u root=%u\n", probe, rootMode);
+     return false;
+   }
+   if ((probe >= 3 && probe <= 5) || probe == 9) {
+@@ -2232,10 +2283,12 @@ bool NativeUfs::start (IOService *provider)
+       IOLog ("NativeUfs: refusing Sheng-only Wi-Fi/DPU SMMU options during TB710FU takeover\n");
+       return false;
+     }
++    IOLog ("NativeUfs: start-options-ok\n");
+   }
+   unsigned diagnostic = 0;
+   PE_parse_boot_argn ("native-ufs-diagnostics", &diagnostic, sizeof (diagnostic));
+   gRootDiagnosticEnabled = diagnostic == 1;
++  IOLog ("NativeUfs: start-diag=%u\n", diagnostic);
+   if (probe == 2) {
+     inspect ();
+   }
+@@ -2336,8 +2389,10 @@ bool NativeUfs::start (IOService *provider)
+     return true;
+   }
+   if (rootMode && !probe) {
++    IOLog ("NativeUfs: start-dispatch-root\n");
+     return startRoot (provider);
+   }
++  IOLog ("NativeUfs: start-fallthrough probe=%u root=%u\n", probe, rootMode);
+   return false;
+ }
+ 
+@@ -2345,20 +2400,26 @@ bool NativeUfs::start (IOService *provider)
  bool NativeUfs::startRoot (IOService *provider)
  {
    const char *why = "";
