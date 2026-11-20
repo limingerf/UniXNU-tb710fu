@@ -1,5 +1,40 @@
 # Current status · 2026-11-20
 
+## IOSleep 前后探针镜像已签出 · 2026-11-21
+
+03:19 照片确认唤醒命令完整成功：`rsp-head b0=21 b2=d0 b3=00` 与
+`want=21/208/0` 一致，`rsp-ok len=0`，`scsi-tail scsi=0000 resid=0 len=0`，
+`scsi-done status=0`。但 `lun-ready-begin` 仍未出现，页脚停在 `ufsscsi`。
+`hostScsi` 返回与 `lun-ready-begin` 之间唯一的阻塞调用是 `IOSleep (50)`；
+该路径以 `IODelay` 轮询运行在屏蔽中断上下文，调度器睡眠是候选原因。补丁
+0004 因此在它前后各加一条 `printf`（`wake-settle-begin` / `wake-settle-done`），
+并在 TUR 重试循环的 `IOSleep (10)` 前加 `tur-retry`，**不改动睡眠本身**，
+以便下一次实机运行显示是否进入、是否返回。
+
+期间曾尝试直接替换两处 `IOSleep` 为忙等，但那会把 0004 从纯追踪补丁变成
+行为补丁，破坏验证器基于"剥离追踪后与 post-0002 逐字符相同"的等价性证明，
+已全部回退（验证器改动同样回退）。当前 0004 仍为纯追踪：
+SHA-256 `a61af2a6ac6f378ea090170a3e4fa3a864ab7bf75b90e4644b31ca916e6a196c`。
+
+macOS `ufs-integrated` run [44798948486](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44798948486)
+在设备提交 `eb4b9e305a716f532b65fa417b74fdd492ce6195` 成功。产物
+`14660777748` 共 39,205,997 字节。预链接内核 SHA-256
+`8589b5af19a167e8d97e6e24919742d7e6a3cca321596b3721d55ebc89e8d750`，屏显
+`src-eb4b9e30-ramoops`。内核扫描确认两条 settle 探针与 `tur-retry` 编入，
+`ufssetl`/`ufssetd` 不存在。
+
+签名三件套：`boot.img` `a3236acc…817a83`（基线），`vendor_boot.img`
+`cfc07b94714e328863df7791c252741696199b0e0b74b6029ac41efc38fe7929`，
+`vbmeta.img` `fc21e65922d3f52f1211f08749ab0c21000225b9f77ead26bffe9dc4daf15251`。
+交付包 `out/live-checkpoints-44798948486-settle-signed.zip` 共 35,558,893 字节，
+SHA-256
+`39091acdb03cd826b3fa6194254a0d769071c27eae5ad25b90a655cf3db3f274`，11 成员。
+独立复核全部通过。证据见
+`docs/evidence/nufs-settle-signed-44798948486.json`。
+
+尚未刷写或操作设备。`hardware_boot_verified=false`、
+`runtime_qualified=false`、`device_operations=false`。
+
 ## SCSI 响应头探针镜像已签出 · 2026-11-21
 
 实机 `ufscret` 确认唤醒命令完成（`end=0 ocs=0 polls=1`），但 `wake-failed` 与
