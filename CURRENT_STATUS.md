@@ -1,5 +1,38 @@
 # Current status · 2026-11-20
 
+## 追踪改用 printf，避开 IOLog 在该上下文的限制 · 2026-11-20
+
+实机刷入 run `44742777160` 后仍无任何 `NativeUfs:` 行且无 panic，但
+SourceStorage 的 `printf` 行（`ss-`）正常显示。核对 XNU 源码：`IOLog` 经
+`_IOLogv`，其 `__doprnt` 受 `disable_iolog_serial_output` 保护，且函数末尾
+`assertf(interrupts_enabled || ...)`；`printf` 走 `vprintf_internal`，
+无条件调用 `__doprnt`。两者最终都到 `console_write`，但该函数在
+`!console_io_allowed()` 时静默返回。既然 `printf` 在同一上下文中已被证明
+可达 live-log 环，48 条追踪改为 `printf`（补丁 SHA-256
+`b4383ebf9f01a339d2bd3c59019ea749755465bccc1055341a4a8ee0e60a057d`）。
+
+9 个既有 `IOLog` 与 8 个既有 `snprintf` 未改动；删除追踪语句后仍与
+post-0002 源逐字符相同。验证器现同时识别 `IOLog`/`printf` 两种写法，并
+断言 7 个 `start()` 探针存在。
+
+macOS `ufs-integrated` run [44748388382](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44748388382)
+在设备提交 `2cf9f380df150a23280df4a6ffca199a44d6d3ee` 成功。产物
+`14634996232` 共 39,193,573 字节，SHA-256
+`995a4b01a6848b181bf60c94f4c933fcbd7687fc2b5a58abe2944503f507910e`。预链接
+内核 SHA-256
+`a76508900eeebe2308f9a2245f840dd4d58626f54985920fc19acf53f00522df`，屏显
+`src-2cf9f380-ramoops`。签名三件套：`boot.img` `a3236acc…817a83`（基线），
+`vendor_boot.img` `8c0007452a9bf4719b4accbdd1313a0cf6f95c7818d62bfafbf0be435dcefc61`，
+`vbmeta.img` `e79eb00a7fe8ede1a0382daf41ae07ad0e8a5376cd113ab00dabd837d8435230`。
+交付包 `out/live-checkpoints-44748388382-printf-trace-signed.zip` 共
+35,558,980 字节，SHA-256
+`acd065ab8e7c1ef3420ad038a8dc9d0428852ad1d60a784bac2c296ba233c571`，11 成员。
+独立复核全部通过。证据见
+`docs/evidence/nufs-printf-trace-signed-44748388382.json`。
+
+尚未刷写或操作设备。`hardware_boot_verified=false`、
+`runtime_qualified=false`、`device_operations=false`。
+
 ## NativeUfs::start 追踪镜像已签出 · 2026-11-20
 
 实机刷入 run `44732960980` 后，屏显在 `TB710FU SourceStorage: ufs-start-begin`
