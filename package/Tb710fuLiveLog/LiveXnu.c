@@ -38,7 +38,7 @@ static unsigned qr_encoded[2], qr_drawn[2];
 static unsigned next_slot;
 static uint64_t frequency, next_frame, poll_count, xnu_generation, ramoops_generation;
 static uint64_t checkpoint_generation, checkpoint_last_qr_attempt_end, xnu_last_dropped;
-static uint64_t checkpoint_last_text_end, checkpoint_export_dropped;
+static uint64_t checkpoint_last_text_end, checkpoint_export_dropped, checkpoint_drawn_end;
 static char checkpoint_stage[49];
 
 /* This strong writer is capture only: no framebuffer, encoding, allocation,
@@ -272,6 +272,7 @@ static __attribute__((noinline)) const char *checkpoint_qr_advance_locked(void)
     }
     ++qr_drawn[0];
     ++checkpoint_generation;
+    checkpoint_drawn_end = checkpoint_sender.info.end;
     live_barrier();
     checkpoint_last_qr_attempt_end = live_ticks();
     return "QR-LOOP";
@@ -304,23 +305,29 @@ static void checkpoint_set_stage(const char *stage)
 static void checkpoint_status(const char *result)
 {
     char text[256];
-    (void)snprintf(text, sizeof(text), "CKPT=%s W=%u N=%llu Q=%u B=%u/%u R=%u ERR=%u LOG=%llu %.8s",
+    (void)snprintf(text, sizeof(text), "CKPT=%s LOG=%llu QR=%llu W=%u N=%llu Q=%u B=%u/%u R=%u ERR=%u %.8s",
         result,
+        (unsigned long long)display.LogEnd,
+        (unsigned long long)checkpoint_drawn_end,
         __atomic_load_n(&worker_started, __ATOMIC_ACQUIRE),
         (unsigned long long)checkpoint_generation,
         checkpoint_sender.valid ? checkpoint_sender.info.next_sequence : 0u,
         checkpoint_sender.valid ? checkpoint_sender.source_in_round : 0u,
         checkpoint_sender.valid ? checkpoint_sender.info.block_count : 0u,
         checkpoint_sender.valid ? checkpoint_sender.info.rounds : 0u,
-        __atomic_load_n(&checkpoint_failures, __ATOMIC_RELAXED),
-        (unsigned long long)display.LogEnd, checkpoint_stage);
+        __atomic_load_n(&checkpoint_failures, __ATOMIC_RELAXED), checkpoint_stage);
     (void)tb_live_display_checkpoint_status(&display, text);
     live_barrier();
+#ifdef TB_LIVE_HOST_TEST
+    tb_live_host_status(text);
+#endif
 }
 
-/* Both boot checkpoints and the worker service the same paced carousel. A
- * NULL stage is a worker tick and retains the last actual checkpoint label. */
-static __attribute__((noinline)) void checkpoint_publish(const char *stage, int sampled)
+/* Both boot checkpoints and the worker service the same carousel. A NULL
+ * stage is a worker tick and retains the last actual checkpoint label.
+ * A priority boundary before the worker can immediately publish one complete
+ * frame so a stall in the following operation leaves a current QR visible. */
+static __attribute__((noinline)) void checkpoint_publish(const char *stage, int sampled, int priority)
 {
     if (!tb710fu_live_log_active()) return;
     if (!__atomic_load_n(&checkpoint_mode, __ATOMIC_ACQUIRE)) {
@@ -337,12 +344,14 @@ static __attribute__((noinline)) void checkpoint_publish(const char *stage, int 
     uint64_t now = live_ticks();
     int text_due = refresh || !sampled || !checkpoint_text_attempted ||
         now - checkpoint_last_text_end >= frequency / 4u;
-    int qr_due = !checkpoint_qr_attempted || now - checkpoint_last_qr_attempt_end >= frequency / 4u;
     int backup_frozen = __atomic_load_n(&early_frozen, __ATOMIC_ACQUIRE);
     int compact = !__atomic_load_n(&worker_started, __ATOMIC_ACQUIRE);
-    int can_replace = qr_due && backup_frozen && (checkpoint_compact ?
+    int priority_frame = priority && compact && backup_frozen;
+    int qr_due = priority_frame || !checkpoint_qr_attempted ||
+        now - checkpoint_last_qr_attempt_end >= frequency / 4u;
+    int can_replace = qr_due && backup_frozen && (priority_frame || (checkpoint_compact ?
         tb710fu_live_log_can_snapshot_single(&checkpoint_sender) :
-        tb710fu_live_log_can_snapshot(&checkpoint_sender));
+        tb710fu_live_log_can_snapshot(&checkpoint_sender)));
     if (refresh) {
         (void)tb_live_display_bands(&display);
         (void)tb_live_display_scroll_refresh(&display);
@@ -374,7 +383,7 @@ static __attribute__((noinline)) void checkpoint_publish(const char *stage, int 
     }
 
     int backup_ready = backup_frozen && early_state.state == TB710FU_LIVE_CAPTURE_READY;
-    if (can_replace && (!checkpoint_sender.valid || compact != (int)checkpoint_compact ||
+    if (can_replace && (priority_frame || !checkpoint_sender.valid || compact != (int)checkpoint_compact ||
         state.end != checkpoint_sender.info.end || state.dropped != checkpoint_export_dropped)) {
         size_t early_available = backup_ready && !compact ? early_state.copied : 0u;
         size_t current_count = compact && copied > 512 ? 512u : (size_t)copied;
@@ -431,11 +440,17 @@ static __attribute__((noinline)) void checkpoint_publish(const char *stage, int 
                     tb710fu_live_log_sender_init(&checkpoint_sender);
                     (void)tb710fu_live_log_set_source(&checkpoint_sender, TB710FU_LIVE_LOG_XNU);
                 }
-                enum tb710fu_live_log_result replaced = compact ?
-                    tb710fu_live_log_snapshot_single_file(&checkpoint_sender, checkpoint_file,
-                        offset, checkpoint_file_generation, current_start, state.end) :
-                    tb710fu_live_log_snapshot_file(&checkpoint_sender, checkpoint_file,
+                enum tb710fu_live_log_result replaced;
+                if (priority_frame) {
+                    replaced = tb710fu_live_log_replace_single_file(&checkpoint_sender, checkpoint_file,
                         offset, checkpoint_file_generation, current_start, state.end);
+                } else if (compact) {
+                    replaced = tb710fu_live_log_snapshot_single_file(&checkpoint_sender, checkpoint_file,
+                        offset, checkpoint_file_generation, current_start, state.end);
+                } else {
+                    replaced = tb710fu_live_log_snapshot_file(&checkpoint_sender, checkpoint_file,
+                        offset, checkpoint_file_generation, current_start, state.end);
+                }
                 if (replaced == TB710FU_LIVE_LOG_READY) {
                     checkpoint_compact = (unsigned)compact;
                     checkpoint_export_dropped = state.dropped;
@@ -472,12 +487,17 @@ done:
 
 void tb710fu_live_log_checkpoint(const char *stage)
 {
-    checkpoint_publish(stage == NULL ? "unspecified" : stage, 0);
+    checkpoint_publish(stage == NULL ? "unspecified" : stage, 0, 0);
 }
 
 void tb710fu_live_log_checkpoint_sampled(const char *stage)
 {
-    checkpoint_publish(stage == NULL ? "unspecified" : stage, 1);
+    checkpoint_publish(stage == NULL ? "unspecified" : stage, 1, 0);
+}
+
+void tb710fu_live_log_checkpoint_priority(const char *stage)
+{
+    checkpoint_publish(stage == NULL ? "unspecified" : stage, 0, 1);
 }
 
 /* Preserve precisely this pre-machine_startup boundary once. A busy/empty
@@ -542,7 +562,7 @@ static void live_worker(void *argument, wait_result_t result)
     __atomic_store_n(&worker_started, 1u, __ATOMIC_RELEASE);
     for (;;) {
         if (__atomic_load_n(&checkpoint_mode, __ATOMIC_ACQUIRE))
-            checkpoint_publish(NULL, 1);
+            checkpoint_publish(NULL, 1, 0);
         else
             tb710fu_live_log_poll();
         uint64_t deadline;

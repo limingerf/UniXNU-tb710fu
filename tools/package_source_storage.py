@@ -41,6 +41,11 @@ ROOTED_KERNEL = '1601b0af6d31dffba85d7e18b7fdf683531f3c7e9fc3fb924701869120ebbcc
 ROOTED_CONFIG = 'ea386850fa2a39822d33c2a992d13b34fec1f8f6cade88c2e00ea803699966d3'
 BASE_ADT = 'f4161ff940b78e777ca2a6f4cb02191ff00f5046cc4dc3302d8fc4ce00f9c1a0'
 ROOT_ADT = '61a7ef52d4375de26a4355b9531a29053c2b19f392dab4dd0d4d98f43ca443e7'
+# Read-only device FDT. Project its GIC description without copying unrelated
+# firmware properties. The two register windows are within the UEFI APSS_HM map.
+GIC_DEVICE_FDT = 'bba7ae3636a43ac4c3506327212ed8378a9f043b092c45883d592124c4bc557e'
+GIC_SOURCE_NODE = 'interrupt-controller@17100000'
+GIC_RANGES = [(0x17100000, 0x10000), (0x17180000, 0x200000)]
 POLICIES = '49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68'
 OWNER_KEY = 'c2d8d462d0a790056bef2dddc30ae60ce210dbf0ee1cd4350a21e864db3a7d7e'
 LOADER_BOOT = 'a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83'
@@ -460,6 +465,62 @@ def unique_child(node, name):
     return matches[0]
 
 
+def add_device_gic(data, fdt, devicetree):
+    require(sha(data) == ROOT_ADT, 'GIC projection requires the reviewed RootPolicies ADT')
+    require(sha(fdt) == GIC_DEVICE_FDT, 'GIC projection requires the reviewed TB710FU device FDT')
+    source = devicetree.read_fdt(fdt)
+    gic = unique_fdt_gic(source)
+    ranges = [(devicetree.physical(gic.parent, address, size), size)
+              for address, size in devicetree.registers(gic)]
+    require(ranges == GIC_RANGES, 'Device FDT GIC ranges differ from the reviewed MMIO windows')
+    handles = {entry.scalar('phandle'): entry for entry in source.walk() if 'phandle' in entry.properties}
+    base, size = devicetree.arm_io_window([gic])
+    # ArmCpu owns this controller and the architectural timer. Keep the FDT
+    # description of the controller itself, without exporting IRQ routing.
+    gic_keys = {'compatible', '#interrupt-cells', 'interrupt-controller', 'redistributor-stride', 'reg'}
+    properties = [(key, value) for key, value in devicetree.hardware_properties(gic, handles, base)
+                  if key in gic_keys]
+    decoded = dict(properties)
+    require(decoded['compatible'] == b'arm,gic-v3\0' and decoded['interrupt-controller'] == b'' and
+            decoded['#interrupt-cells'] == struct.pack('<I', 3) and
+            decoded['redistributor-stride'] == struct.pack('<Q', 0x40000),
+            'Device FDT does not meet the pinned ArmCpu GICv3 binding')
+    require(struct.unpack('<4Q', decoded['reg']) == tuple(
+        field for address, length in ranges for field in (address - base, length)),
+        'Projected GIC registers differ from the reviewed MMIO windows')
+
+    tree = read_nodes(data)
+    arm_io = unique_child(tree, 'arm-io')
+    require(not arm_io[1], 'GIC projection expects the original empty arm-io bus')
+    bus_properties = [(key, struct.pack('<QQQ', 0, base, size) if key == 'ranges' else value)
+                      for key, value in arm_io[0] if key != 'name']
+    bus = devicetree.node('arm-io', bus_properties, [devicetree.node('intc', properties)])
+
+    def encode(node, arm_io_override):
+        if node is arm_io:
+            return arm_io_override
+        return devicetree.node(name_of(node), [(key, value) for key, value in node[0] if key != 'name'],
+                               [encode(child, arm_io_override) for child in node[1]])
+
+    original_bus = devicetree.node('arm-io', [(key, value) for key, value in arm_io[0] if key != 'name'])
+    require(encode(tree, original_bus) == data, 'Pinned ADT serializer does not byte-roundtrip the rooted ADT')
+    output = encode(tree, bus)
+    projected_bus = unique_child(read_nodes(output), 'arm-io')
+    require(projected_bus == read_nodes(bus), 'GIC projection failed ADT readback')
+    return output, {'source_sha256': GIC_DEVICE_FDT, 'source_node': '/soc/' + GIC_SOURCE_NODE,
+                    'node': '/arm-io/intc', 'arm_io_base': base, 'arm_io_size': size,
+                    'distributor': {'base': ranges[0][0], 'size': ranges[0][1]},
+                    'redistributors': {'base': ranges[1][0], 'size': ranges[1][1], 'stride': 0x40000},
+                    'rooted_adt_sha256': ROOT_ADT}
+
+
+def unique_fdt_gic(source):
+    controllers = [node for node in source.walk() if node.name == GIC_SOURCE_NODE and
+                   node.parent is not None and node.parent.name == 'soc' and node.parent.parent is source]
+    require(len(controllers) == 1 and controllers[0].enabled(), 'Device FDT lacks one enabled GIC controller')
+    return controllers[0]
+
+
 def extend_adt(data, serializer, profile):
     require(sha(data) == BASE_ADT, 'ADT is not the reviewed correct-identity baseline')
     tree = read_nodes(data)
@@ -655,6 +716,8 @@ def checked_inputs(manifest_path, expected):
     if supplied & DIAGNOSTIC_INPUTS:
         expected_inputs |= DIAGNOSTIC_INPUTS | CDC_INPUTS
         require('tb710fu-cdc' in arguments, 'Reporter derivative requires tb710fu-cdc=1')
+    if 'gic_device_fdt' in supplied:
+        expected_inputs = expected_inputs | {'gic_device_fdt'}
     require(supplied == expected_inputs,
             'Manifest must name exactly these files' +
             (' for CDC transport' if expected_inputs != INPUTS else '') + ': ' + ', '.join(sorted(expected_inputs)))
@@ -671,6 +734,9 @@ def checked_inputs(manifest_path, expected):
         paths[name] = path
         records[name] = {'path': str(path), 'sha256': digest, 'bytes': path.stat().st_size}
     check_baseline_pair(records['source_vendor']['sha256'], records['source_vbmeta']['sha256'])
+    if 'gic_device_fdt' in records:
+        require(records['gic_device_fdt']['sha256'] == GIC_DEVICE_FDT,
+                'GIC projection requires the reviewed TB710FU device FDT')
     return manifest, paths, records
 
 
@@ -763,6 +829,15 @@ def package(manifest_path, manifest_sha, output):
         else:
             tree, adt_report = extend_adt(before_adt, serializer, profile)
             config = update_config(before_config, manifest['boot_args'])
+        if 'gic_device_fdt' in paths:
+            tree, gic_report = add_device_gic(tree, paths['gic_device_fdt'].read_bytes(),
+                                              importlib.import_module('unixnu.devicetree'))
+            adt_report.update(sha256=sha(tree), bytes=len(tree), gic_projection=gic_report,
+                              identity=inspect_adt(tree, profile['ipsw']['product']))
+            adt_report.pop('all_original_properties_and_random_seed_preserved')
+            adt_report['all_non_gic_properties_and_random_seed_preserved'] = True
+            adt_report['only_change'] = ('update /arm-io/ranges and add /arm-io/intc' if rooted else
+                                         'append zero16 RootPolicies, update /arm-io/ranges and add /arm-io/intc')
         options = {'id': lzma.FILTER_LZMA1, 'dict_size': 8 << 20, 'lc': 3, 'lp': 0, 'pb': 2, 'preset': 6}
         encoded = lzma.compress(kernel, format=lzma.FORMAT_ALONE, filters=[options])
         encoded = encoded[:5] + struct.pack('<Q', len(kernel)) + encoded[13:]
@@ -772,6 +847,8 @@ def package(manifest_path, manifest_sha, output):
         expected_files = {'Payloads/kernel.macho': encoded, 'Payloads/kernel.macho.adt': tree,
                           'Payloads/kernel.macho.vroot': policies, 'unixnu.toml': config}
         updates = {'Payloads/kernel.macho': encoded} if rooted else expected_files
+        if rooted and tree != before_adt:
+            updates['Payloads/kernel.macho.adt'] = tree
         if rooted and config != before_config:
             updates['unixnu.toml'] = config
         for index, (name, content) in enumerate(updates.items()):

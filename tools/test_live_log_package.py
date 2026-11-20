@@ -51,6 +51,7 @@ def fixture():
         '_tb710fu_live_capture_putc': '_tb710fu_live_log_putc',
         '_tb710fu_live_log_snapshot_single_file': '_checkpoint_publish',
         '_tb710fu_live_log_snapshot_file': '_checkpoint_publish',
+        '_tb710fu_live_log_replace_single_file': '_checkpoint_publish',
     }
     integration = {'schema_version': 1, 'profile': live.LOCK['os_profile'], 'device_commit': 'a' * 40,
         'display_build_label': 'src-aaaaaaaa-ramoops',

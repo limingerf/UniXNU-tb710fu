@@ -141,6 +141,11 @@ size_t tb710fu_live_log_single_file_capacity(enum tb710fu_live_log_source source
 enum tb710fu_live_log_result tb710fu_live_log_snapshot_single_file(
     struct tb710fu_live_log_sender *sender, const uint8_t *bytes, size_t length,
     uint64_t generation, uint64_t start, uint64_t end);
+/* Bypass dwell for a critical boot checkpoint. Both the new file and any
+ * existing session must fit one frame. */
+enum tb710fu_live_log_result tb710fu_live_log_replace_single_file(
+    struct tb710fu_live_log_sender *sender, const uint8_t *bytes, size_t length,
+    uint64_t generation, uint64_t start, uint64_t end);
 int tb710fu_live_log_next_frame(struct tb710fu_live_log_sender *sender,
     uint8_t out[TB710FU_LIVE_LOG_FRAME_BYTES]);
 int tb710fu_live_log_can_snapshot(const struct tb710fu_live_log_sender *sender);

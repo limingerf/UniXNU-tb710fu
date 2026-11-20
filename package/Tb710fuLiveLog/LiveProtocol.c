@@ -236,7 +236,7 @@ static enum tb710fu_live_log_result snapshot_after(uint32_t minimum_rounds,
     return TB710FU_LIVE_LOG_READY;
 }
 
-enum tb710fu_live_log_result tb710fu_live_log_snapshot_single_file(
+static enum tb710fu_live_log_result snapshot_single_after(uint32_t minimum_rounds,
     struct tb710fu_live_log_sender *sender, const uint8_t *bytes, size_t length,
     uint64_t generation, uint64_t start, uint64_t end)
 {
@@ -244,8 +244,24 @@ enum tb710fu_live_log_result tb710fu_live_log_snapshot_single_file(
     size_t capacity = tb710fu_live_log_single_file_capacity(sender->source,
         generation, start, end);
     if (capacity == 0 || length > capacity) return TB710FU_LIVE_LOG_INVALID;
-    return snapshot_after(TB710FU_LIVE_LOG_SINGLE_FRAME_ROUNDS, sender, bytes,
-        length, generation, start, end);
+    return snapshot_after(minimum_rounds, sender, bytes, length, generation, start, end);
+}
+
+enum tb710fu_live_log_result tb710fu_live_log_snapshot_single_file(
+    struct tb710fu_live_log_sender *sender, const uint8_t *bytes, size_t length,
+    uint64_t generation, uint64_t start, uint64_t end)
+{
+    return snapshot_single_after(TB710FU_LIVE_LOG_SINGLE_FRAME_ROUNDS,
+        sender, bytes, length, generation, start, end);
+}
+
+enum tb710fu_live_log_result tb710fu_live_log_replace_single_file(
+    struct tb710fu_live_log_sender *sender, const uint8_t *bytes, size_t length,
+    uint64_t generation, uint64_t start, uint64_t end)
+{
+    if (sender != NULL && sender->valid && sender->info.block_count != 1u)
+        return TB710FU_LIVE_LOG_BUSY;
+    return snapshot_single_after(0, sender, bytes, length, generation, start, end);
 }
 
 enum tb710fu_live_log_result tb710fu_live_log_snapshot_file(

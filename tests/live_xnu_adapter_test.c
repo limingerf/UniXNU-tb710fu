@@ -155,7 +155,7 @@ static void reset_fixture(void)
     checkpoint_mode = checkpoint_guard = checkpoint_failures = checkpoint_bands_pending = 0;
     checkpoint_generation = checkpoint_last_qr_attempt_end = 0;
     checkpoint_file_generation = checkpoint_qr_attempted = checkpoint_compact = checkpoint_text_attempted = 0;
-    checkpoint_last_text_end = checkpoint_export_dropped = 0;
+    checkpoint_last_text_end = checkpoint_export_dropped = checkpoint_drawn_end = 0;
     checkpoint_stage[0] = '\0';
     qr_encoded[0] = qr_encoded[1] = qr_drawn[0] = qr_drawn[1] = 0;
     frequency = next_frame = xnu_generation = ramoops_generation = xnu_last_dropped = 0;
@@ -540,6 +540,8 @@ static void test_checkpoint_multiframe_qr_worker_loops_without_new_snapshot(void
     unsigned old_qr = qr_calls;
 
     assert(create_calls == 1 && created_worker && worker_started);
+    tb710fu_live_log_checkpoint_priority("active-worker");
+    assert(qr_calls == old_qr && checkpoint_sender.info.session_id == session);
     carousel_tick();
     assert(wait_calls == 2 && block_calls == 2);
     assert(qr_calls == old_qr + 1 && checkpoint_sender.info.next_sequence > 1);
@@ -547,6 +549,45 @@ static void test_checkpoint_multiframe_qr_worker_loops_without_new_snapshot(void
            checkpoint_sender.info.block_count == blocks && checkpoint_sender.info.bytes == bytes);
     assert(snapshot_calls == snapshots && !xnu_sender.valid && !ramoops_sender.valid);
     assert(slot_pixel(0) == 0xff112233u);
+    guards();
+}
+static void test_priority_publishes_latest_single_frame_before_possible_stall(void)
+{
+    static const char boundary[] = "TB710FU boot: kperf-init-early begin\n";
+    reset_fixture(); feed_xnu(1500);
+    checkpoint_arg_present = checkpoint_arg_value = 1;
+    tb710fu_live_log_init();
+    tb710fu_live_log_checkpoint_priority("before-freeze");
+    assert(qr_calls == 0 && checkpoint_drawn_end == 0);
+
+    tb710fu_live_log_freeze();
+    tb710fu_live_log_checkpoint("previous-phase");
+    assert(qr_calls == 1 && checkpoint_sender.info.rounds == 1);
+    assert(checkpoint_drawn_end == 1500 && display.LogEnd == 1500);
+    uint32_t previous_session = checkpoint_sender.info.session_id;
+    for (size_t i = 0; i < sizeof(boundary) - 1u; ++i)
+        tb710fu_live_log_putc(boundary[i]);
+    tb710fu_live_log_checkpoint("ordinary-checkpoint");
+    assert(qr_calls == 1 && display.LogEnd == xnu_capture.written);
+    assert(strstr(last_status, "LOG=1537 QR=1500"));
+
+    qr_encode_fail_slot = 0;
+    tb710fu_live_log_checkpoint_priority("kperf-init-early");
+    assert(qr_calls == 2 && checkpoint_generation == 1 && checkpoint_failures == 1);
+    assert(strstr(last_status, "ENCODE-ERR LOG=1537 QR=1500"));
+
+    qr_encode_fail_slot = -1;
+    tb710fu_live_log_checkpoint_priority("kperf-init-early");
+    assert(qr_calls == 3 && checkpoint_generation == 2 && clock_now == 0 && !worker_started);
+    assert(checkpoint_sender.info.session_id != previous_session);
+    assert(checkpoint_sender.info.block_count == 1 && le32(encoded_frame + 12) == 1);
+    assert(le32(encoded_frame + 20) <= 720 && memcmp(encoded_frame + 28, "LMS1", 4) == 0);
+    const uint8_t *file = body(&checkpoint_sender);
+    assert(strstr((const char *)file, "checkpoint=kperf-init-early\n"));
+    assert(memcmp(file + checkpoint_sender.info.bytes - (sizeof(boundary) - 1u),
+                  boundary, sizeof(boundary) - 1u) == 0);
+    assert(checkpoint_drawn_end == xnu_capture.written && checkpoint_drawn_end == display.LogEnd);
+    assert(strstr(last_status, "LOG=1537 QR=1537") && slot_pixel(0) == 0xff112233u);
     guards();
 }
 static uint32_t slot_pixel(unsigned slot)
@@ -636,5 +677,6 @@ int main(void)
     test_early_checkpoint_repeats_complete_frames_without_worker();
     test_hot_checkpoints_leave_quiet_time_after_an_attempt();
     test_checkpoint_multiframe_qr_worker_loops_without_new_snapshot();
-    free(frame_allocation); puts("PASS: 17 dual/live-checkpoint LiveXnu adapter groups (15 invalid video cases)"); return 0;
+    test_priority_publishes_latest_single_frame_before_possible_stall();
+    free(frame_allocation); puts("PASS: 18 dual/live-checkpoint LiveXnu adapter groups (15 invalid video cases)"); return 0;
 }

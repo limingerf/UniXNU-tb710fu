@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "stage": "native-plus-prelinked-kernel",
+  "workflow": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44690443482",
+  "result": "success",
+  "device_commit": "c093ece95bbd66868cb5a2c7f55fb3d9d608a638",
+  "display_build_label": "src-c093ece9-ramoops",
+  "framework_revision": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+  "xnu_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+  "profile": "macos-27.3-26C5035r",
+  "patch": {
+    "path": "patches/xnu/0030-tb710fu-prelink-overlap-no-hint.patch",
+    "sha256": "27c7b65f52c17a3cbb49e9ba435c53d7927176f0f56470e6317611122de47876"
+  },
+  "compiled_arm_vm_init_source_sha256": "59a56752aa86828d8a7da268f6e62644dc0ac1fe355c31bd10eded760a6eba2e",
+  "native_kernel": {
+    "sha256": "e9ee8b6cc230fdaf8288e9eccc8355a8118387f4fb9abfdccad3bf963a1fc795"
+  },
+  "prelinked_kernel": {
+    "path": ".work/artifacts/run-44690443482/kernel/kernel.macho",
+    "sha256": "d74db5252dc26fe77719d89ff05d0d229b87490f27ed569d5fa00d0dd2ad60a8",
+    "bytes": 142835712,
+    "mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "allow_missing": false,
+    "production_parser": "PASS",
+    "local_production_parser_readback": "PASS"
+  },
+  "live_log_package_verification": {
+    "archive_sha256": "22e0300c9a9cc5b34dea24c3bbcfa1dc1f47fe11a12b46b61e1047fdb5159cb4",
+    "archive_objects_verified": 6,
+    "strong_definitions_verified": 24
+  },
+  "github_artifact": {
+    "id": 14609315374,
+    "name": "tb710fu-ufs-integrated-44690443482",
+    "sha256": "786f8123861e844c05ab63e80978dd92f9b83defb9ddcf56c33a82ecd1f613e8",
+    "bytes": 39179272,
+    "github_digest_verified": true
+  },
+  "runtime_qualified": false,
+  "hardware_boot_verified": false,
+  "device_operations": false
+}

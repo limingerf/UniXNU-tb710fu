@@ -1,5 +1,52 @@
 # Current status · 2026-11-20
 
+## 实机越过 machine_lockdown，到达 CPU 拓扑等待附近 · 2026-11-20
+
+新照片原文件 SHA-256 `01de2c9744c483ba5f4ef352e19cc4d152e63727b395365365b738c04eeef98f`。
+滚屏已越过 PRELINKTEXT RNX、`machine-lockdown done`、`iokit-lockdown done` 和
+`vm-set-restrictions done`，最后一行 `kperf-init-early begin`。页脚 `W=0 N=16 Q=2
+B=0/1 R=2 ERR=0 LOG=996516`，构建标识和二维码本身在照片范围外。设备分区未回读。
+
+固定 XNU 的 `kperf_init_early()` 首先调用 `ml_wait_max_cpus()`，等待 `ml_set_max_cpus()`
+发布启动 CPU 拓扑。此配置由 ArmCpu 的 `IOCPUInterruptController::initCPUInterruptController()`
+完成发布。上一版签名镜像内的 ADT `/arm-io` 无子节点，ArmCpu 的 `mapGic()` 需要其中的
+`intc` 才能进入后续初始化。实机是否停在等待内部仍需新检查点确认。
+
+LiveLog 新增优先检查点。工作线程开始前，关键启动点立即发布可独立扫码的最新单帧。
+页脚分别记录滚屏 `LOG=` 和最近成功绘制的二维码 `QR=` 末尾偏移。`0031` 在 kperf、
+拓扑等待及 BSD 入口调用优先检查点。常规检查点保持节流。18 组 ASan/UBSan 主机测试、
+14 项打包验证和 4 张实际 Mu 编码帧的 ZXing/OneSend 回读通过。优先帧在时钟未推进时
+独立解出 652 字节，包含最新的 `kperf-init-early begin`。
+
+本地打包可从经 SHA-256 核对的实机 FDT `bba7ae3636a43ac4c3506327212ed8378a9f043b092c45883d592124c4bc557e`
+投影 `/soc/interrupt-controller@17100000`。固定 UniXNU 生成器在 ADT 写入 `/arm-io/intc` 和
+对应总线范围。GICD 为 `0x17100000/0x10000`，GICR 为 `0x17180000/0x200000`，步长 `0x40000`。
+两段均落在设备 UEFI 的 APSS_HM MMIO 窗口，保留 RootPolicies 和现有 CPU 节点。16 项
+source-storage 打包测试通过，2 项缺少可选夹具而跳过。GIC 初始化与 CPU 发布待实机验证。
+
+## 重叠映射修复版签名测试镜像 · 2026-11-20
+
+macOS `ufs-integrated` run [44690443482](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44690443482)
+通过原生 arm64e 构建、严格预链接及 production DarwinBoot parser。设备提交
+`c093ece95bbd66868cb5a2c7f55fb3d9d608a638`，屏显 `src-c093ece9-ramoops`。GitHub artifact
+`14609315374` 下载摘要一致，`0030` 的编译源码与本地隔离夹具一致。严格预链接内核 SHA-256
+`d74db5252dc26fe77719d89ff05d0d229b87490f27ed569d5fa00d0dd2ad60a8`，标准色带变体 SHA-256
+`0ec12e43e14fcec423230caeb5f48d89caff80055aa05e1dc8863fd90b710c99`。3 个探针、6 处修改及
+其余内核字节和 segments 已逐项回读验证。
+
+签名三件套位于 `out/live-checkpoints-44690443482-prelink-overlap-signed/`。同名 ZIP
+共 35,571,937 字节，SHA-256 `4faaf759891001743799a647ec31223b184c57e88cd29dd2afed5ebb69ac6582`。
+
+- `boot.img` `a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`，沿用已验证 loader 基线。
+- `vendor_boot.img` `4fa37239074d9ac5d73012a1d38053d6f6675e90c39242c6de39c5b9325507cb`。
+- `vbmeta.img` `4a0cdc457574990e8e9b22b5c74cf6b661ef52d1fc26eaae08d353286099baa2`。
+
+20 项打包输入、AVB RSA-4096 签名、vendor salted hash、boot chain key、FAT/LZMA 内核回读、
+DarwinBoot parser 及 ZIP 13 个成员的 CRC 和 SHA256SUMS 均已验证。启动后待观察
+`ld-prelink-rnx-head-done`。`runtime_qualified=false`、`hardware_boot_verified=false`、
+`device_operations=false`。详见 `docs/evidence/prelink-overlap-no-hint-build-44690443482.json`
+和 `docs/evidence/live-checkpoints-prelink-overlap-signed-44690443482.json`。
+
 ## 实机越过 400 次 PTE 调用，修复重叠映射的 hint 冲突 · 2026-11-20
 
 用户实机扫出 `src-2bd0cc05-ramoops` 的单块日志，确认早期二维码可独立还原日志。

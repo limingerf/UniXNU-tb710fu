@@ -51,7 +51,8 @@ def main():
         for name in ('0004-tb710fu-ramoops-console.patch', '0013-tb710fu-ramoops-snapshot.patch',
                      '0014-tb710fu-native-live-log.patch',
                      '0024-tb710fu-pace-hot-startup-checkpoints.patch',
-                     '0025-tb710fu-lockdown-checkpoints.patch'):
+                     '0025-tb710fu-lockdown-checkpoints.patch',
+                     '0031-tb710fu-priority-boot-checkpoints.patch'):
             run(['git', '-C', str(scratch), 'apply',
                  '--include=osfmk/kern/tb710fu_ramoops.h',
                  '--include=osfmk/kern/tb710fu_live_log.h', str(ROOT / 'patches/xnu' / name)])
@@ -77,6 +78,7 @@ def main():
                  'patches/xnu/0024-tb710fu-pace-hot-startup-checkpoints.patch',
                  'patches/xnu/0025-tb710fu-lockdown-checkpoints.patch',
                  'patches/xnu/0029-tb710fu-bound-fixed-kalloc-progress.patch',
+                 'patches/xnu/0031-tb710fu-priority-boot-checkpoints.patch',
                  'package/Tb710fuLiveLog/LiveXnu.c', 'package/Tb710fuLiveLog/LiveProtocol.c',
                  'package/Tb710fuLiveLog/LiveProtocol.h', 'package/Tb710fuLiveLog/LiveDisplay.c',
                  'package/Tb710fuLiveLog/LiveDisplay.h', 'diagnostics/early-report/Font.h']
@@ -84,7 +86,7 @@ def main():
             'schema_version': 1,
             'stage': 'native-live-xnu-adapter-host-check',
             'result': 'PASS',
-            'groups': 17,
+            'groups': 18,
             'invalid_video_cases': 15,
             'sanitizers': ['address', 'undefined'],
             'source_sha256': {name: sha(ROOT / name) for name in names},
@@ -128,6 +130,9 @@ def main():
                 'hot_checkpoints_keep_capture_and_pace_text_and_qr_separately': True,
                 'hot_checkpoint_quiet_period_follows_slow_or_failed_attempt': True,
                 'outer_stage_checkpoint_publishes_during_hot_loop_quiet_period': True,
+                'priority_checkpoints_publish_latest_single_frame_without_waiting': True,
+                'priority_checkpoints_preserve_worker_multiframe_sessions': True,
+                'footer_qr_end_changes_only_after_successful_draw': True,
             },
             'limits': 'Host XNU-service simulation; native ABI, real scheduling/MMU/caches and device behavior unverified.',
             'device_operations': False,

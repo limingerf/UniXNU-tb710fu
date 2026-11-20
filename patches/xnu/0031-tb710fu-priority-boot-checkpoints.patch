@@ -1,0 +1,93 @@
+From: TB710FU clean board
+Subject: [PATCH] Publish current log at the CPU topology wait
+
+Source: XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f with run
+44690443482's ordered patches. The device reaches kperf_init_early with
+the QR worker still stopped. Ordinary checkpoint pacing can leave an
+older single-frame log on screen at an indefinite wait.
+
+Force a fresh compact snapshot at the kperf and BSD boundaries and show
+entry and return of ml_wait_max_cpus. Keep CPU readiness semantics.
+
+Verification: exact source forward/reverse application and native
+LiveLog adapter checks on compact and worker paths.
+---
+
+diff --git a/osfmk/kern/startup.c b/osfmk/kern/startup.c
+index 5c7109cfb7898d4991955fad7cd92f598fb5aeee..b2e1b534dc91146ce7889440e06411326d815eb6 100644
+--- a/osfmk/kern/startup.c
++++ b/osfmk/kern/startup.c
+@@ -1033,16 +1033,16 @@ kernel_bootstrap_thread(void)
+ 
+ 
+ #if KPERF
+-	TB710FU_BOOT_EVENT("kperf-init-early", "begin");
++	TB710FU_BOOT_PRIORITY("kperf-init-early", "begin");
+ 	kperf_init_early();
+-	TB710FU_BOOT_EVENT("kperf-init-early", "done");
++	TB710FU_BOOT_PRIORITY("kperf-init-early", "done");
+ #endif
+ 
+ 	/*
+ 	 *	Start the user bootstrap.
+ 	 */
+ #ifdef  MACH_BSD
+-	TB710FU_BOOT_EVENT("bsd-init", "begin");
++	TB710FU_BOOT_PRIORITY("bsd-init", "begin");
+ 	bsd_init();
+ 	TB710FU_BOOT_EVENT("bsd-init", "done");
+ #endif
+diff --git a/osfmk/kern/tb710fu_live_log.h b/osfmk/kern/tb710fu_live_log.h
+index a94a872eee8c00a0c8a0127c57e8a07fea3032d9..c72551b092c0a27b32b0c0fd0e1543af2ee5fe95 100644
+--- a/osfmk/kern/tb710fu_live_log.h
++++ b/osfmk/kern/tb710fu_live_log.h
+@@ -9,10 +9,19 @@ void tb710fu_live_log_init(void);
+ void tb710fu_live_log_poll(void);
+ void tb710fu_live_log_checkpoint(const char *stage);
+ void tb710fu_live_log_checkpoint_sampled(const char *stage);
++void tb710fu_live_log_checkpoint_priority(const char *stage);
+ void tb710fu_live_log_refresh(void);
+ void tb710fu_live_log_freeze(void);
+ int tb710fu_live_log_active(void);
+ 
++#define TB710FU_BOOT_PRIORITY(stage, event) \
++	do { \
++		if (tb710fu_live_log_active()) { \
++			kprintf("TB710FU boot: %s %s\n", stage, event); \
++			tb710fu_live_log_checkpoint_priority(stage); \
++		} \
++	} while (0)
++
+ #define TB710FU_LOCKDOWN_CHECKPOINT(stage) \
+ 	do { \
+ 		if (tb710fu_live_log_active()) { \
+@@ -21,6 +30,7 @@ int tb710fu_live_log_active(void);
+ 		} \
+ 	} while (0)
+ #else
++#define TB710FU_BOOT_PRIORITY(stage, event) do { } while (0)
+ #define TB710FU_LOCKDOWN_CHECKPOINT(stage) do { } while (0)
+ #endif
+ #endif
+diff --git a/osfmk/kperf/kperf.c b/osfmk/kperf/kperf.c
+index 3e32b82401f85a024eb029f612e04d3e4b456b5f..943a3131f2b8e4a2e487ec8d7f9dc1a0f145280f 100644
+--- a/osfmk/kperf/kperf.c
++++ b/osfmk/kperf/kperf.c
+@@ -30,6 +30,7 @@
+ #include <kern/thread.h>
+ #include <kern/machine.h>
+ #include <kern/kalloc.h>
++#include <kern/tb710fu_live_log.h>
+ #include <mach/mach_types.h>
+ #include <sys/errno.h>
+ #include <sys/ktrace.h>
+@@ -80,7 +81,9 @@ kperf_init_early(void)
+ 	 * kperf allocates based on the number of CPUs and requires them to all be
+ 	 * accounted for.
+ 	 */
++	TB710FU_BOOT_PRIORITY("kperf-topology-wait", "begin");
+ 	ml_wait_max_cpus();
++	TB710FU_BOOT_PRIORITY("kperf-topology-wait", "done");
+ 
+ 	boolean_t found_kperf = FALSE;
+ 	char kperf_config_str[64];

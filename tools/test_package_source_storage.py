@@ -1,5 +1,6 @@
 """Small host checks for refusal boundaries and real public-key authentication."""
 import argparse
+import importlib
 import json
 from pathlib import Path
 import struct
@@ -412,6 +413,35 @@ class PackagingBoundaries(unittest.TestCase):
                                     args.replace('native-ufs-root=1', 'native-ufs-root=0'),
                                     serializer, profile)
 
+    def test_device_gic_projection_only_changes_arm_io(self):
+        if not SETTINGS or not SETTINGS.rooted_baseline or not SETTINGS.gic_device_fdt:
+            self.skipTest('pass --rooted-baseline and --gic-device-fdt for actual GIC projection')
+        pack.pinned_tools(SETTINGS.framework)
+        devicetree = importlib.import_module('unixnu.devicetree')
+        image = str(SETTINGS.rooted_baseline) + '@@4096'
+        adt = subprocess.check_output(['mtype', '-i', image, '::/EFI/UniXNU/Payloads/kernel.macho.adt'])
+        fdt = SETTINGS.gic_device_fdt.read_bytes()
+        output, report = pack.add_device_gic(adt, fdt, devicetree)
+        self.assertEqual(output, pack.add_device_gic(adt, fdt, devicetree)[0])
+        before = pack.read_nodes(adt)
+        after = pack.read_nodes(output)
+        arm_io_before = pack.unique_child(before, 'arm-io')
+        arm_io_after = pack.unique_child(after, 'arm-io')
+        after[1][after[1].index(arm_io_after)] = arm_io_before
+        self.assertEqual(after, before)
+        self.assertEqual(dict(arm_io_after[0])['ranges'], struct.pack('<QQQ', 0, 0x17000000, 0x1000000))
+        (gic,) = arm_io_after[1]
+        self.assertEqual(dict(gic[0]), {
+            'name': b'intc\0', 'compatible': b'arm,gic-v3\0', '#interrupt-cells': struct.pack('<I', 3),
+            'interrupt-controller': b'', 'reg': struct.pack('<4Q', 0x100000, 0x10000, 0x180000, 0x200000),
+            'redistributor-stride': struct.pack('<Q', 0x40000),
+        })
+        self.assertEqual(report['source_sha256'], pack.sha(fdt))
+        with self.assertRaisesRegex(ValueError, 'reviewed TB710FU device FDT'):
+            pack.add_device_gic(adt, fdt + b'\0', devicetree)
+        with self.assertRaisesRegex(ValueError, 'reviewed RootPolicies ADT'):
+            pack.add_device_gic(output, fdt, devicetree)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
@@ -419,5 +449,6 @@ if __name__ == '__main__':
     parser.add_argument('--retained-prelink', type=Path)
     parser.add_argument('--baseline', type=Path)
     parser.add_argument('--rooted-baseline', type=Path)
+    parser.add_argument('--gic-device-fdt', type=Path)
     SETTINGS = parser.parse_args()
     unittest.main(argv=[sys.argv[0]], verbosity=2)

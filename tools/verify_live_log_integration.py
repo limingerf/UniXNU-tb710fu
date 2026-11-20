@@ -24,10 +24,12 @@ QR_OBJECTS = ('LiveQr', 'QrEncoderLib', 'QrEncoderTables')
 FINAL_SYMBOLS = (
     '_tb710fu_live_log_init', '_tb710fu_live_log_freeze',
     '_tb710fu_live_log_putc', '_tb710fu_live_log_checkpoint',
-    '_tb710fu_live_log_checkpoint_sampled', '_tb710fu_live_capture_putc',
+    '_tb710fu_live_log_checkpoint_sampled', '_tb710fu_live_log_checkpoint_priority',
+    '_tb710fu_live_capture_putc',
     '_tb710fu_live_capture_copy', '_tb710fu_live_log_set_source',
     '_tb710fu_live_log_snapshot_file',
     '_tb710fu_live_log_snapshot_single_file',
+    '_tb710fu_live_log_replace_single_file',
     '_tb710fu_live_log_poll', '_tb710fu_live_log_refresh',
     '_tb710fu_live_log_active', '_tb710fu_ramoops_snapshot_copy',
     '_tb710fu_live_log_sender_init', '_tb710fu_live_log_snapshot',
@@ -47,7 +49,9 @@ HOOK_OBJECTS = {
                                         '_tb710fu_live_log_checkpoint_sampled'),
     'osfmk/DEVELOPMENT/machine_routines.o': ('_tb710fu_live_log_checkpoint',),
     'osfmk/DEVELOPMENT/startup.o': ('_tb710fu_live_log_poll', '_tb710fu_live_log_checkpoint',
-                                    '_tb710fu_live_log_checkpoint_sampled'),
+                                    '_tb710fu_live_log_checkpoint_sampled',
+                                    '_tb710fu_live_log_checkpoint_priority'),
+    'osfmk/DEVELOPMENT/kperf.o': ('_tb710fu_live_log_checkpoint_priority',),
     'osfmk/DEVELOPMENT/kalloc.o': ('_tb710fu_live_log_checkpoint',
                                    '_tb710fu_live_log_checkpoint_sampled'),
     'osfmk/DEVELOPMENT/video_console.o': ('_tb710fu_live_log_active', '_tb710fu_live_log_refresh'),
@@ -60,6 +64,7 @@ ADAPTER_SOURCE_IMPORTS = (
     '_tb710fu_ramoops_snapshot_copy', '_tb710fu_live_capture_putc',
     '_tb710fu_live_capture_copy', '_tb710fu_live_log_set_source',
     '_tb710fu_live_log_snapshot_file', '_tb710fu_live_log_snapshot_single_file',
+    '_tb710fu_live_log_replace_single_file',
 )
 CHECKPOINT_DISPLAY_IMPORTS = (
     '_tb_live_display_checkpoint_qr', '_tb_live_display_scroll_log',
@@ -375,8 +380,9 @@ def verify(tree, config, native_path):
                             for name in ADAPTER_SOURCE_IMPORTS}
     require(all(any(call['caller'] == '_checkpoint_publish' for call in
                     adapter_source_calls[name]['branches'])
-                for name in ('_tb710fu_live_log_snapshot_single_file', '_tb710fu_live_log_snapshot_file')),
-            'The checkpoint publisher must call both single-frame and multiframe snapshot providers')
+                for name in ('_tb710fu_live_log_snapshot_single_file', '_tb710fu_live_log_snapshot_file',
+                             '_tb710fu_live_log_replace_single_file')),
+            'The checkpoint publisher must call the paced and priority snapshot providers')
     checkpoint_display_calls = {name: {'symbol': strong_import(live_xnu, name),
                                        'branches': branch_relocations(live_xnu, name)}
                                 for name in CHECKPOINT_DISPLAY_IMPORTS}
@@ -433,6 +439,12 @@ def verify(tree, config, native_path):
     kalloc_checkpoint_calls = hooks['osfmk/DEVELOPMENT/kalloc.o']['strong_hook_imports']
     sampled = '_tb710fu_live_log_checkpoint_sampled'
     immediate = '_tb710fu_live_log_checkpoint'
+    priority = '_tb710fu_live_log_checkpoint_priority'
+    for path, caller, minimum in (('startup.o', '_kernel_bootstrap_thread', 3),
+                                  ('kperf.o', '_kperf_init_early', 2)):
+        branches = hooks[f'osfmk/DEVELOPMENT/{path}']['strong_hook_imports'][priority]['branches']
+        require(sum(call['caller'] == caller for call in branches) >= minimum,
+                'Incomplete priority checkpoint branches in ' + caller)
     require(any(call['caller'] == '_kernel_startup_initialize_upto'
                 for call in startup_checkpoint_calls[sampled]['branches']) and
             any(call['caller'] == '_kalloc_type_distribute_zone_for_type'

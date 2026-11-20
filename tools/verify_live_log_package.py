@@ -14,13 +14,13 @@ OBJECTS = {'LiveProtocol.o', 'LiveDisplay.o', 'LiveQr.o', 'LiveXnu.o',
 ORDERED_OBJECTS = ('LiveProtocol.o', 'LiveDisplay.o', 'LiveQr.o', 'LiveXnu.o',
                    'QrEncoderLib.o', 'QrEncoderTables.o')
 SYMBOLS = ('_tb710fu_live_log_init', '_tb710fu_live_log_poll',
-           '_tb710fu_live_log_checkpoint',
+           '_tb710fu_live_log_checkpoint', '_tb710fu_live_log_checkpoint_priority',
            '_tb710fu_live_log_refresh', '_tb710fu_live_log_active',
            '_tb710fu_live_log_freeze', '_tb710fu_ramoops_snapshot_copy',
            '_tb710fu_live_log_putc', '_tb710fu_live_capture_putc',
            '_tb710fu_live_capture_copy', '_tb710fu_live_log_set_source',
            '_tb710fu_live_log_snapshot_file',
-           '_tb710fu_live_log_snapshot_single_file',
+           '_tb710fu_live_log_snapshot_single_file', '_tb710fu_live_log_replace_single_file',
            '_tb710fu_live_log_snapshot', '_tb710fu_live_log_next_frame',
            '_tb710fu_live_log_can_snapshot', '_tb710fu_live_log_can_snapshot_single',
            '_tb_live_display_qr_slot', '_tb_live_display_checkpoint_qr',
@@ -32,7 +32,7 @@ OBJECT_SYMBOLS = {
     'LiveProtocol.o': ('_tb710fu_live_log_snapshot', '_tb710fu_live_log_next_frame',
                        '_tb710fu_live_capture_putc', '_tb710fu_live_capture_copy',
                        '_tb710fu_live_log_set_source', '_tb710fu_live_log_snapshot_file',
-                       '_tb710fu_live_log_snapshot_single_file',
+                       '_tb710fu_live_log_snapshot_single_file', '_tb710fu_live_log_replace_single_file',
                        '_tb710fu_live_log_can_snapshot_single'),
     'LiveDisplay.o': ('_tb_live_display_qr_slot', '_tb_live_display_bands',
                       '_tb_live_display_checkpoint_qr', '_tb_live_display_scroll_log',
@@ -40,7 +40,7 @@ OBJECT_SYMBOLS = {
                       '_tb_live_display_checkpoint_status'),
     'LiveQr.o': ('_tb_live_qr_encode',),
     'LiveXnu.o': ('_tb710fu_live_log_init', '_tb710fu_live_log_poll',
-                  '_tb710fu_live_log_checkpoint',
+                  '_tb710fu_live_log_checkpoint', '_tb710fu_live_log_checkpoint_priority',
                   '_tb710fu_live_log_freeze', '_tb710fu_live_log_putc'),
     'QrEncoderLib.o': ('_tb_live_qr_QrEncodeData',),
     'QrEncoderTables.o': ('_tb_live_qr_InitializeLogTables',),
@@ -62,6 +62,9 @@ DUAL_SOURCE_LOG_CONTRACT = {
         'provider': 'tb710fu_live_log_checkpoint',
         'worker_role': 'service the same checkpoint renderer as boot checkpoints',
         'sampled_provider': 'tb710fu_live_log_checkpoint_sampled',
+        'priority_provider': 'tb710fu_live_log_checkpoint_priority',
+        'priority_refresh': 'render the latest single-frame tail immediately before the worker starts',
+        'priority_single_frame_sender_api': 'tb710fu_live_log_replace_single_file',
         'text_refresh': 'immediate checkpoints draw immediately; sampled checkpoints and worker are paced',
         'sampled_text_interval_ms': 250,
         'qr_frame_interval_ms': 250,
@@ -96,6 +99,7 @@ ADAPTER_SOURCE_IMPORTS = (
     '_tb710fu_ramoops_snapshot_copy', '_tb710fu_live_capture_putc',
     '_tb710fu_live_capture_copy', '_tb710fu_live_log_set_source',
     '_tb710fu_live_log_snapshot_file', '_tb710fu_live_log_snapshot_single_file',
+    '_tb710fu_live_log_replace_single_file',
 )
 CHECKPOINT_DISPLAY_IMPORTS = (
     '_tb_live_display_checkpoint_qr', '_tb_live_display_scroll_log',
@@ -181,8 +185,9 @@ def dual_source_evidence(integration, report):
     require('_tb710fu_live_log_putc' in callers['_tb710fu_live_capture_putc'],
             'XNU console provider does not call its independent capture ring')
     require(all('_checkpoint_publish' in callers[name]
-                for name in ('_tb710fu_live_log_snapshot_single_file', '_tb710fu_live_log_snapshot_file')),
-            'Checkpoint publisher lacks its single-frame and multiframe snapshot calls')
+                for name in ('_tb710fu_live_log_snapshot_single_file', '_tb710fu_live_log_snapshot_file',
+                             '_tb710fu_live_log_replace_single_file')),
+            'Checkpoint publisher lacks its paced or priority snapshot calls')
     require(integration.get('adapter_snapshot_calls') == adapter['_tb710fu_ramoops_snapshot_copy']['branches'],
             'Ramoops snapshot-call evidence differs from the actual provider import')
     pte = integration.get('prelink_rnx_pte_substeps', {})
