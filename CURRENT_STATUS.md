@@ -25,6 +25,31 @@ SMMU、队列接管、UFS 命令、根布局与发布准备。移除了诊断日
 一次 provider cast 及四次控制器 MMIO 读取。主机补丁序列及调用比对、
 两组 UFS 测试和 19 组 ASan/UBSan LiveXnu 测试通过。实机停点和根挂载待验证。
 
+macOS `ufs-integrated` run
+[44755999777](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44755999777)
+在设备提交 `0c89f66495bf5988c09b79098c859b4f82543e5b` 完成。原生 arm64e、
+严格预链接及 production DarwinBoot parser 均通过。产物 `14641271615` 共
+39,197,010 字节，SHA-256
+`47b33c86a7100aa9be977d521b83e37dee13eb19454e26094529fea63beb64d4`，
+与 GitHub 摘要一致，ZIP CRC 回读通过。严格预链接内核 142,835,712 字节，
+SHA-256 `292f1e2d798d717937e3982ca0545ffdce59514e2902564e53248257d7d6d668`，
+屏显构建标识 `src-0c89f664-ramoops`，`mapping_complete=true`，
+`missing={}`、`stubbed={}`。
+
+二进制复核确认 `0xfffffff00c26b4e4` 的 PAC 虚调用仍指向
+`NativeUfs::start`（`0xfffffff00c263dfc`），weak import 已绑定 LiveLog。
+`0xfffffff00c263e30` 调用同步文本刷新并传入 `ufsentry`，
+随后才在 `0xfffffff00c263e40` 调用 `printf`。
+
+standard-bands 派生内核 SHA-256
+`9fe6de296a61653b154538c4d786c8ef2fc40554b2b40613c81b7f6f3aef4f37`。
+未签名产物 `out/live-checkpoints-44755999777-ufs-sync-unsigned/vendor_boot.unsigned.img`
+共 37,859,328 字节，SHA-256
+`1ee56a0c5480be7f6ba8f9b03b63812cafeddac79974afdf5752a69ebf108344`。
+打包后 production parser、FAT/LZMA 回读、ADT 哈希及 20 个页脚标签均通过。
+`signing_performed=false`、`device_operations=false`、
+`hardware_boot_verified=false`、`runtime_qualified=false`。
+
 ## 追踪改用 printf，避开 IOLog 在该上下文的限制 · 2026-11-20
 
 实机刷入 run `44742777160` 后仍无任何 `NativeUfs:` 行且无 panic，但
