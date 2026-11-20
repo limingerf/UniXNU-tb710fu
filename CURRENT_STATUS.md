@@ -1,5 +1,27 @@
 # Current status · 2026-11-20
 
+## NativeUfs 同步检查点镜像已签名 · 2026-11-20
+
+按用户授权，对 run `44755999777`、设备提交
+`0c89f66495bf5988c09b79098c859b4f82543e5b` 的诊断镜像使用现有 AVB
+`SHA256_RSA4096` 基线签名。屏显标识为 `src-0c89f664-ramoops`。
+
+签名包 `out/live-checkpoints-44755999777-ufs-sync-signed.zip` 共 8 个成员，
+35,630,503 字节，SHA-256
+`33017b307c87e84d4ad58636e7b3e794f7c9b64bc0779ec011e559dfc686a00f`。
+
+| 镜像 | SHA-256 |
+| --- | --- |
+| `boot.img`（沿用已验证的 loader） | `a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83` |
+| `vendor_boot.img` | `dfe1fe75d56321c78af8e44d07fb2b20bb1d3417a9fa0875323cbad5cb3b0f3c` |
+| `vbmeta.img` | `657b7692f60fb3481d9c1228e1d6b79845a58e103418be5221fdc5692202fa62` |
+
+独立回读通过 ZIP CRC、SHA256SUMS、AVB 签名、boot 信任链、两处 vendor_boot
+带盐哈希及另外 22 个描述符的逐字节比较。FAT/LZMA 回读匹配本次内核和 ADT，
+20 个同步页脚标签均存在，production DarwinBoot parser 通过。
+实机启动及根挂载待验证。`device_operations=false`、
+`hardware_boot_verified=false`、`runtime_qualified=false`。
+
 ## NativeUfs 入口和接管边界同步屏显 · 2026-11-20
 
 本轮照片 SHA-256
