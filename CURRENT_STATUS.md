@@ -1,5 +1,28 @@
 # Current status · 2026-11-20
 
+## 实机越过 400 次 PTE 调用，修复重叠映射的 hint 冲突 · 2026-11-20
+
+用户实机扫出 `src-2bd0cc05-ramoops` 的单块日志，确认早期二维码可独立还原日志。
+该帧在 `ld-prelink-rnx-edge-existing-table` 结束，范围 `[991325,991510)` 共 185 字节，
+`dropped=0`。屏幕更新至 `LOG=994145`，最后可见 `completed=400 next-i=412
+next-va=0xfffffff00719c000`。计数表示 `update_or_defer_tte()` 返回次数。照片原文件
+SHA-256 `2657abbf24161448f73708f1a2b2dae665a3163134341b2ab13811c791f9f126`。
+
+该 VA 是签名测试内核的 native `__TEXT` 起点。对照 Mach-O 得到 native `__TEXT`
+`[0xfffffff00719c000,0xfffffff007340000)`，整个区间落入外层 `__PRELINK_TEXT`
+`[0xfffffff00700c000,0xfffffff007dc4000)`。建表时 native `__TEXT` 允许 64 KiB contiguous
+hint，首个完整组为 `i=416..431`，VA `0xfffffff0071a0000` 起。随后活动页表上的
+PRELINKTEXT RNX 禁用 hint。复核已签名内核的 `tbz #52` 检查和失败分支定位到
+`brk #0xbffc` @ `0xfffffff00c2b3eac`。`i=416` 落在最后可见的下一项 412 与下一条预期
+检查点所报的下一项 428 之间。已有可复现的描述符属性冲突，实机异常 PC 尚待确认。
+
+`0030-tb710fu-prelink-overlap-no-hint.patch` SHA-256
+`27c7b65f52c17a3cbb49e9ba435c53d7927176f0f56470e6317611122de47876`。在页表启用前计算区间
+相交关系，重叠时初始 native `__TEXT` 只允许块映射，采用原 RNX 权限和活动 PTE 断言。
+互不重叠时允许原有 hint 策略。隔离的 0028 源码文件正反向应用通过，精确 preimage
+`f03c10dfc3e7c860d490747973b009c2e1c37c94`、postimage `bd948b65ebc6c8b558ac8a924fcc5e0ae6802315`。
+实机需要观察是否到达 `ld-prelink-rnx-head-done`。
+
 ## 早期二维码诊断镜像已签出 · 2026-11-20
 
 按用户请求用 run [44685819017](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44685819017)

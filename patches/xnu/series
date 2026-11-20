@@ -27,3 +27,4 @@
 0027-tb710fu-prelink-rnx-edge-checkpoints.patch
 0028-tb710fu-prelink-rnx-pte-substeps.patch
 0029-tb710fu-bound-fixed-kalloc-progress.patch
+0030-tb710fu-prelink-overlap-no-hint.patch

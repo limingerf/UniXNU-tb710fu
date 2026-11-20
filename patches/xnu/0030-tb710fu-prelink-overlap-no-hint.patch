@@ -1,0 +1,40 @@
+From: TB710FU clean board
+Subject: [PATCH] Keep overlapping PRELINKTEXT mappings unhinted
+
+Source: pinned XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f after device
+patch 0028 in arm_vm_init.c. The device fileset nests native __TEXT within
+the outer __PRELINK_TEXT. Initial native __TEXT mapping can set the L3
+contiguous hint bit, while PRELINKTEXT RNX finalization builds entries
+with that bit clear and asserts equality against existing live PTEs.
+
+Set the initial granule policy before the tables go live. Keep ARM64
+block eligibility, RNX flags and the active-map checks. Disjoint native
+TEXT mappings continue to allow hints.
+
+Verification: exact source replay, host geometry/policy cases, and the
+official macOS native link and strict prelink workflow.
+---
+
+diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
+index f03c10dfc3e7c860d490747973b009c2e1c37c94..bd948b65ebc6c8b558ac8a924fcc5e0ae6802315 100644
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -1912,7 +1912,17 @@ noAuxKC:
+ 	 *
+ 	 * TEXT segment contains mach headers and other non-executable data. This will become RONX later.
+ 	 */
+-	arm_vm_page_granular_RNX(segTEXTB, segSizeTEXT, ARM64_GRANULE_ALLOW_BLOCK | ARM64_GRANULE_ALLOW_HINT);
++	/* A fileset may place the native __TEXT inside the coalesced kext TEXT.
++	 * That region is tightened again after the tables go live, without hints.
++	 * Keep both passes consistent for the overlapping native TEXT mapping.
++	 */
++	unsigned text_granule = ARM64_GRANULE_ALLOW_BLOCK;
++	if (segSizePRELINKTEXT == 0 || segSizeTEXT == 0 ||
++	    (segTEXTB >= segPRELINKTEXTB && segTEXTB - segPRELINKTEXTB >= segSizePRELINKTEXT) ||
++	    (segTEXTB < segPRELINKTEXTB && segPRELINKTEXTB - segTEXTB >= segSizeTEXT)) {
++		text_granule |= ARM64_GRANULE_ALLOW_HINT;
++	}
++	arm_vm_page_granular_RNX(segTEXTB, segSizeTEXT, text_granule);
+ 
+ 	/* Can DATACONST start out and stay RNX?
+ 	 * NO, stuff in this segment gets modified during startup (viz. mac_policy_init()/mac_policy_list)
