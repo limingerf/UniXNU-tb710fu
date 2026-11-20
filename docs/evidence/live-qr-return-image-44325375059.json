@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "stage": "signed-and-independently-verified-live-qr-return-test-candidate",
+  "request": "User requested a flashable image package; no device operation was requested or performed.",
+  "source": {
+    "run_id": 44325375059,
+    "run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44325375059",
+    "source_commit": "1446070ec13d33165c344dab3be9c21d6d93d83d",
+    "native_sha256": "af5b2efee21868c3c77db2963f9a4a029f3ec43a62d720921bea2b2e4a7071b6",
+    "prelinked_sha256": "56a6931b5451d90922e54595ea6ecf99380f4b169549dc9d72866851930e864e",
+    "prelinked_bytes": 142819328,
+    "standard_band_derivative_sha256": "92d91b61ad6df670a1fa738e934b7d148a925c6393a7e1e720d2172ec0a2f906",
+    "standard_band_verification": "PASS: six spans, three probes, other bytes and segments unchanged"
+  },
+  "package": {
+    "directory": "out/live-qr-return-44325375059-signed",
+    "bundle": "out/tb710fu-live-qr-return-44325375059-signed.zip",
+    "bundle_bytes": 35589312,
+    "bundle_sha256": "2b7fe30d7b978fdc3ad1dad6b93a0df9f8b259217e28224f73897aee01d22356",
+    "member_count": 18,
+    "zip_integrity": "PASS",
+    "sha256sums_readback": "PASS",
+    "forbidden_members": [],
+    "boot_args": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 debug=0x8 -enable_kprintf_spam startup_debug=1"
+  },
+  "images": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83",
+      "unchanged_from_signed_baseline": true
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "0606e62d18028676a721e815dff3d23dbc7f4beda8125d801ffe657ed59d6e90"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "d8d25f085b622a5830e93861b7ecfc8ef70cb10b3ca00d81703e3dbf1fed1f49"
+    }
+  },
+  "unsigned_vendor_boot_sha256": "360ceac84e7d2d118d653aab8656c775345e775ea9d814aa1cad7f112e6d4307",
+  "local_signing": {
+    "authorization": "Continuing explicit local-signing authorization recorded in CURRENT_STATUS.md",
+    "avb_public_key_sha256": "7728e30f50bfa5cea165f473175a08803f6a8346642b5aa10913e9d9e6defef6",
+    "public_key_matches_retained_baseline": true,
+    "private_key_included": false,
+    "signing_report": "PASS: AVB vendor footer and vbmeta signatures; payload preserved byte-for-byte"
+  },
+  "independent_verification": {
+    "rsa4096_pkcs1_sha256": {
+      "boot_footer": "PASS",
+      "vendor_boot_footer": "PASS",
+      "vbmeta": "PASS"
+    },
+    "salted_image_hashes": {
+      "boot": "PASS",
+      "vendor_boot": "PASS"
+    },
+    "unchanged_other_raw_descriptors": 22,
+    "vbmeta_header_unchanged": true,
+    "public_key_unchanged": true,
+    "boot_chain_public_key_matches": true,
+    "fat_clusters": 66512,
+    "fat_payload_readback": "PASS: all four files",
+    "lzma_kernel_roundtrip": "PASS",
+    "packaged_kernel_sha256": "92d91b61ad6df670a1fa738e934b7d148a925c6393a7e1e720d2172ec0a2f906",
+    "device_operations": false
+  },
+  "qualification": {
+    "prelink_mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "allow_missing": false,
+    "runtime_qualified": false,
+    "loadable": false,
+    "hardware_boot_verified": false,
+    "cdc_enumeration_verified": false,
+    "qr_scan_verified": false,
+    "macos_userspace_verified": false
+  }
+}

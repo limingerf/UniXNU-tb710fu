@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "profile": "macos-27.3-26C5035r",
+  "source_run": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/43724852936",
+  "source_artifact_name": "tb710fu-macos-userdata-43724852936",
+  "provenance": "docs/USERDATA_BUILD.md",
+  "inputs": {
+    "raw_os": {
+      "path": ".work/root-policy-run-43724852936/OS.raw",
+      "bytes": 14493417472,
+      "recorded_sha256": "40d8282eb8650da9b4d7437a981764c48d47ee4bdc5b8b362248f25ecbce0e70"
+    },
+    "userdata_root_vroot": {
+      "path": ".work/root-policy-run-43724852936/userdata-root-vroot.img",
+      "report": ".work/root-policy-run-43724852936/userdata-root-vroot.json",
+      "bytes": 17603493888,
+      "recorded_sha256": "35b1c581c7074c626b4b3750af93901a988425e42671f1aaeafd7fd6e13de199",
+      "os_window_offset_bytes": 1048576,
+      "os_window_bytes": 14493417472
+    }
+  },
+  "verification": {
+    "tool": "Python 3 read-only binary file access under WSL Debian",
+    "method": [
+      "Read 4096-byte APFS blocks from OS.raw and independently from the bounded OS window of userdata-root-vroot.img.",
+      "Validate APFS Fletcher64 on the primary NXSB and candidate NXSB records in its 96-block checkpoint descriptor region. Select the highest validated transaction ID.",
+      "Follow the current NXSB filesystem OID through its checksummed physical object-map record and fixed-key leaf B-tree. Select the latest object mapping at or before that transaction ID and validate the referenced APSB checksum, OID and transaction ID.",
+      "Read the volume UUID from APSB bytes 240 through 255 and compare it with the OS policy and the signed payload ADT's boot-uuid and IOMedia root-matching UUID."
+    ],
+    "volume_count": 1,
+    "block_size": 4096,
+    "os_window_block_count": 3538432,
+    "descriptor_region_base_block": 3538320,
+    "descriptor_region_block_count": 96,
+    "transaction_id": 690,
+    "volume_oid": 1026,
+    "verified_blocks": {
+      "primary_nxsb": {"block": 0, "sha256": "554e17e0c5ce11bdb90e65f5abaa5ebb2ed3eb1a8c48ed75fad41484ae0761b7"},
+      "checkpoint_nxsb": {"block": 3538323, "sha256": "796cb57212e1ccd25bfc72e8aaaca579b61a3f2c0bda557a3df778adf3bc5129"},
+      "object_map": {"block": 107195, "sha256": "acdc2e609898d8be730d0b4d88846abe0ec3d82b0c97a29b6a90b3b8ca8eede1"},
+      "object_map_btree": {"block": 107196, "sha256": "c13d90a9d6c8cc54222130d8858c6a93fa5fa2c1da2ed2b2ec24eaed3510b050"},
+      "volume_apsb": {"block": 107194, "sha256": "9830bef694f768319772e72311a520b66c0005846fb4a19eebc9b8d873fc97ae"}
+    },
+    "os_policy_report": "scripts/policies/26C5035r/OS/verification.json",
+    "signed_payload_report": "docs/evidence/live-checkpoints-kperf-gic-signed-44696022526.json",
+    "signed_payload_adt_sha256": "f9b955bad7f9d6b3831d95cb70aa03cd44205c8e30f647e5e5e4f0a1708dca3b",
+    "matched_volume_uuid": "84581E99-85BE-4957-AC53-2947E887B3E4"
+  },
+  "host_apfs_metadata_verified": true,
+  "host_apfs_mount_performed": false,
+  "device_operations": false,
+  "device_root_mount_verified": false
+}
