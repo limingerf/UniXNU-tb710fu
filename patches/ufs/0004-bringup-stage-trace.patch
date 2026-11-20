@@ -267,3 +267,34 @@ index 20fd0c2..69bd2f0 100644
    native_ufs_root_step = 3;
    if (layout->manifestStatus != 0) {
      rootDiagnosticFailure ("root manifest rejected");
+diff --git a/TransferPoll.h b/TransferPoll.h
+index 2f56e30..534a561 100644
+--- a/TransferPoll.h
++++ b/TransferPoll.h
+@@ -15,6 +15,13 @@ static UfsTransferEnd pollUfsTransfer(Port &port, UfsTransferPoll &state)
+     uint32_t doorbell = port.doorbell();
+     state.doorbellSeen |= doorbell;
+     state.interruptSeen |= port.interrupt();
++    // Periodic state dump so a spin that never exits still shows what the
++    // controller is doing. Prints, then continues exactly as before.
++    if ((state.polls % 200000U) == 0U) {
++      printf("NativeUfs: poll polls=%u db=%08x is=%08x ocs=%u expired=%u\n",
++             state.polls, doorbell, state.interruptSeen, state.ocs,
++             (unsigned) port.expired());
++    }
+     if (state.interruptSeen & kUfsFatalStatus) return UfsTransferEnd::Fatal;
+     if (!(doorbell & 1)) {
+       state.ocs = port.completedOcs();
+@@ -22,7 +29,11 @@ static UfsTransferEnd pollUfsTransfer(Port &port, UfsTransferPoll &state)
+       // Also allow a completion so fast that software never observes DB=1.
+       if (state.ocs != 15) return UfsTransferEnd::Completed;
+     }
+-    if (port.expired()) return UfsTransferEnd::Timeout;
++    if (port.expired()) {
++      printf("NativeUfs: poll-timeout polls=%u db=%08x is=%08x ocs=%u\n",
++             state.polls, doorbell, state.interruptSeen, state.ocs);
++      return UfsTransferEnd::Timeout;
++    }
+     port.delay();
+   }
+ }
