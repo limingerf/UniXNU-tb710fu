@@ -1,5 +1,49 @@
 # Current status · 2026-11-20
 
+## 实机越过全部 BSD 检查点，进入 UFS 接管 · 2026-11-20
+
+新照片上传预览 SHA-256 `ab83777dad20c574d3909a6644f5b114427006dd568ace0b28c950287eaf1475`，
+本地原片 `C:/Users/baiti/Downloads/IMG20261120171040.jpg` SHA-256
+`ac71895bfe2f2cdbf2147e740fe8080ea7640c80810d3e1be887a43d7071e035`
+（14,155,405 字节，3072x4096；与上传预览差异来自传输重编码，屏幕文本为权威证据）。
+照片来自签名包 `44703596202` / 设备 `da21aa25` / `src-da21aa25-ramoops`。
+
+屏显按序出现 0032 的全部文本检查点：`bsd-init entered`、`throttle-init
+begin/done`、`kauth-init begin/done`、`bsd-bufferinit begin/done`、`iokit-time-init
+begin/done`、`cdc-start begin/done`、`vfsinit begin/done`，最后一行是
+`TB710FU bsd: source-storage-start begin`，没有对应的 `done`。页脚
+`CPT-TEXT LOG=1000983 QR=999984 ... ERR=0 source-s`（`source-s` 为
+`source-storage-start` 的截断）。这是新的最前沿：执行已进入
+`native_source_storage_start()`，且无可见 panic、`ERR=0`。
+
+`iokit-time-init` 窗口内的 `AppleARMBootPerf` / `AppleARMSFRManifest` 一串
+Error（缺 `/chosen/secure-boot-hashes`、`boot-manifest-hash`、`/chosen/iBoot`）
+不是当前停点：其后已出现 `iokit-time-init done` 及 cdc/vfs/source-storage 标记。
+它们反映非 Apple 固件缺少相应 DT/NVRAM manifest 属性，执行继续。
+
+由于 `native_source_storage_start()` 内部尚无子步骤标记，当前照片无法区分是
+RootPolicies handoff、`waitForMatchingService(IOPlatformExpertDevice, 5s)`、
+类注册、`native_ufs_source_create()`、UFS `init/attach/start` 的哪一步停住。
+这与文档预测的根挂载阻断项一致：`docs/UFS_PORT.md` 记录实机 UFS 接管、SID
+`0x60` SMMU、已知块读及根挂载均未验证。
+
+已实施下一版诊断改动：`package/SourceStorage.cpp` 的
+`native_source_storage_start()` 在 28 个 UFS 接管子步骤写入文本行并发布同步
+live-log 检查点（boot-arg/atomic gate、IOStorageFamily 加载、base class 查
+找、RootPolicies handoff、APFS 加载、deferred class 注册、platform wait、UFS
+create/init/attach/start）。provider 为 weak 条件引用，独立归档构建不受影响；
+不增加任何 kext/policy/UFS 调用，不改变 panic 路径，`init/attach/start` 短路
+三元式展开已对全部 8 种返回组合验证等价。本地门槛通过：clang++ 19
+`-fsyntax-only`、控制流等价模型、结构/verifier gate。见
+`package/Tb710fuSourceStorage/README.md` 与
+`.work/source-storage-step-equivalence.json`、
+`.work/source-storage-step-structure.json`。
+
+尚未执行 commit/push/云构建/签名/刷写。`hardware_boot_verified=false`、
+`runtime_qualified=false`、`device_operations=false`。下一张实机照片应能把
+停点定位到具体子步骤；在定位前不改动固件/DMA 逻辑。原始照片证据见
+`docs/evidence/live-checkpoints-source-storage-begin-device-IMG20261120171040.json`。
+
 ## BSD 初始化同步文本检查点 · 2026-11-20
 
 补丁 `0032-tb710fu-bsd-text-checkpoints.patch` SHA-256
@@ -13,6 +57,24 @@ QR 调度独立处理。19 组 ASan/UBSan LiveXnu 主机测试及 14 项打包�
 以保留 OSKext 所需的 `prng_random`。Sheng 同版 `26C5035r` 参考另有晚期 AES 配方，验证
 IOAESAccelerator 虚表、PAC discriminator 和类布局，注册点在 `IOKitBSDInit()` 返回之后。
 AppleKeyStoreState 还需固定设备身份和已核实的 macOS selector。两条适配都需各自验证。
+
+在本地 `OS.raw` 和 `userdata-root-vroot.img` 的 OS 窗口分别校验 APFS 的 NXSB、对象映射和
+APSB，读到同一卷 UUID `84581E99-85BE-4957-AC53-2947E887B3E4`，与 RootPolicies 和签名
+镜像 ADT 的 `boot-uuid`、`root-matching` 一致。实机 UFS 接管与根挂载待验证。证据见
+`docs/evidence/userdata-apfs-root-uuid-43724852936.json`。
+
+macOS `ufs-integrated` run [44703596202](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44703596202)
+通过 arm64e 原生构建、严格预链接和 production DarwinBoot parser。设备提交
+`da21aa254f90cb0171de78189676241121d98a64`，屏显 `src-da21aa25-ramoops`。下载产物
+`14614766127` 的 SHA-256 `6199024176d34329994748343407342ad99c1e669deb3daa5cb9520fb3dd5733`
+与 GitHub 摘要一致。严格预链接内核 SHA-256 `14006760161fe018c98bd667a56e61096e28d3042b7e5d6bf26ec1f096c8ca08`。
+打包校验 21 项输入及 ADT SHA-256 `f9b955bad7f9d6b3831d95cb70aa03cd44205c8e30f647e5e5e4f0a1708dca3b`。
+签名 ZIP `out/live-checkpoints-44703596202-bsd-text-signed.zip` 共 35,561,642 字节，SHA-256
+`5ef56c8cdbae886c9dafdd50ef9052fec1dd2e8ea68bd55f5b9c0cdf7309d5b1`。AVB RSA-4096、
+内核与 ADT 回读和 13 个 ZIP 成员验证通过，详见
+`docs/evidence/live-checkpoints-bsd-text-signed-44703596202.json`。待实机回传最后一条
+`TB710FU bsd:` 文本。`hardware_boot_verified=false`、`runtime_qualified=false`、
+`device_operations=false`。
 
 ## 已越过 CPU 拓扑等待，进入 BSD 初始化 · 2026-11-20
 
@@ -31,8 +93,7 @@ ADT 尚无 E/P cluster-type。macOS 驱动指南还要求评估 `SoftwareAES`（
 分阶段 marker；需取得更细粒度日志，才可区分早期 BSD 初始化与存储/root 阶段。
 
 根卷前置条件另有明确缺口。`docs/USERDATA_BUILD.md` 记录 userdata-root 镜像尚未写入设备，
-profile 的 APFS UUID `84581E99-…` 也未用所选镜像的 `diskutil apfs list` 核对；签名包中
-`kernel.macho.vroot` 是 1,712 字节 RootPolicies 数据，并非 APFS 根卷。`docs/UFS_PORT.md`
+签名包中的 `kernel.macho.vroot` 提供 1,712 字节 RootPolicies 数据。`docs/UFS_PORT.md`
 记录 NativeUfs 仍假设固件保留运行中的 UFS controller/link，实机接管、SID `0x60` SMMU、
 已知块读及根挂载都未验证。因此根挂载是后续明确的阻断项，但当前照片只停在 BSD 入口，尚未
 证明执行已到 UFS 或 root mount。macOS 驱动指南还列出缺失的 `SoftwareAES` 与

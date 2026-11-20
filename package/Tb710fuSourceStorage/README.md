@@ -9,6 +9,32 @@ attaches the real UFS service to IOPlatformExpertDevice. Startup requires
 `bsd_init` hook after `vfsinit()` for the source-storage integration build.
 Equal class size supplements a separate dispatch/PAC audit; it cannot replace it.
 
+## Synchronous takeover step checkpoints
+
+`native_source_storage_start()` writes a numbered text line and publishes a
+synchronous live-log checkpoint at each UFS takeover step (boot-arg/atomic gate,
+IOStorageFamily load, base-class lookup, RootPolicies handoff, APFS load,
+deferred class registration, platform wait, UFS create/init/attach/start).
+Source: device photo IMG20261120171040 (run 44703596202, `src-da21aa25`)
+reached `source-storage-start begin` with no `done`, no panic and `ERR=0`; the
+0032 `bsd_init` markers cannot distinguish which call inside this function
+blocks. The refresh is synchronous because a halted takeover may hold a lock or
+mask interrupts, so the checkpoint worker would not run and a ring-only
+`printf` would stay off-screen.
+
+The provider `tb710fu_live_log_checkpoint_text` is a weak conditional
+reference, so a standalone archive build without the live-log archive still
+compiles and archives with no strong undefined symbol; the kernel link that
+carries that archive binds it, and the provider gates itself on the
+`tb710fu-live-log` / `tb710fu-live-checkpoints` boot args. The change adds no
+kext, policy or UFS call and changes no panic path: the former
+`init/attach/start` short-circuit ternary is expanded with identical control
+flow and recorded `step` values (verified over all 8 return combinations).
+Local gates: clang++ 19 `-fsyntax-only`, a control-flow equivalence model and a
+structural/verifier gate all pass. Native arm64e compile, kernel link, strict
+prelink and DarwinBoot parsing remain separate macOS-runner gates; none of
+these establishes a hardware mount.
+
 `../SourceRootBinding.cpp` adapts reference blob
 `01ceb203de073170de257aaef1e8ce901f05dd52`. It validates UUID/BSD identities,
 rejects ambiguous matches and follows at most 64 retained providers to the real
