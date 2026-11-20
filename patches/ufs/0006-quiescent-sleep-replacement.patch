@@ -1,0 +1,45 @@
+Subject: [PATCH] Replace the blocking sleeps in hostBringUp with busy waits
+
+The 2026-11-21 03:52 device run reached 'NativeUfs: host wake-settle-begin'
+with the footer on ufssetl, and never printed 'host wake-settle-done'. The
+wake command itself had already succeeded (cmd-return end=0 ocs=0 polls=1,
+rsp-ok len=0, scsi-done status=0, wake-done printed), so the halt is inside
+IOSleep (50).
+
+hostBringUp drives the UFS command path with IODelay busy waits while
+interrupts are masked (see RootCommands.h). IOSleep needs the scheduler to
+wake the thread, which cannot happen in that state, so the thread never
+returns. Replace both sleeps in this function with bounded IODelay busy
+waits of the same duration: IOSleep (50) after the wake command and
+IOSleep (10) between TEST UNIT READY retries.
+
+Kept separate from 0004, which stays trace-only so its equivalence proof
+against the post-0002 body remains valid. Apply after 0004.
+---
+diff --git a/NativeUfs.cpp b/NativeUfs.cpp
+index 9ea32d3..f283ff6 100644
+--- a/NativeUfs.cpp
++++ b/NativeUfs.cpp
+@@ -1317,7 +1317,11 @@ static bool hostBringUp (const char **why)
+     printf ("NativeUfs: host wake-done\n");
+     printf ("NativeUfs: host wake-settle-begin\n");
+     ufsCheckpoint ("ufssetl");
+-    IOSleep (50);
++    // The UFS command path polls with IODelay while interrupts are masked, so a
++    // scheduler sleep can never wake this thread: the 03:52 device run stopped
++    // inside IOSleep(50), after 'host wake-settle-begin' and before the matching
++    // '-done'. Busy-wait the same 50 ms instead.
++    for (unsigned settle = 0; settle < 50; settle++) IODelay (1000);
+     printf ("NativeUfs: host wake-settle-done\n");
+     ufsCheckpoint ("ufssetd");
+   }
+@@ -1333,7 +1337,8 @@ static bool hostBringUp (const char **why)
+     }
+     if (gHost.poisoned) break;
+     printf ("NativeUfs: host tur-retry attempt=%u\n", attempt);
+-    IOSleep (10);
++    // Same reason as above: pace the retry with a busy wait, not a sleep.
++    for (unsigned pace = 0; pace < 10; pace++) IODelay (1000);
+   }
+   gHost.ready = false;
+   *why = "LUN 0 not ready";

@@ -22,6 +22,11 @@ PATCHES = (
     # transactional handoff so it annotates the final code the device runs.
     ROOT / 'patches/ufs/0004-bringup-stage-trace.patch',
     ROOT / 'patches/ufs/0005-synchronous-bringup-checkpoints.patch',
+    # hostBringUp drives the UFS command path with IODelay while interrupts are
+    # masked, so its two IOSleeps can never be woken. The 03:52 device run
+    # stopped inside IOSleep(50) after 'wake-settle-begin'. Behaviour fix, so it
+    # is a separate patch from the trace-only 0004.
+    ROOT / 'patches/ufs/0006-quiescent-sleep-replacement.patch',
 )
 
 

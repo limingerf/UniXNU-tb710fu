@@ -131,9 +131,61 @@ def main():
         subprocess.run(["git", "apply", str(PATCH_DIR / "0005-synchronous-bringup-checkpoints.patch")],
                        cwd=scratch, check=True)
         checkpointed = source.read_text(encoding="utf-8")
+        subprocess.run(["git", "apply", str(PATCH_DIR / "0006-quiescent-sleep-replacement.patch")],
+                       cwd=scratch, check=True)
+        slept = source.read_text(encoding="utf-8")
         subprocess.run(["git", "apply", "--check", str(PATCH_DIR / "0003-minimal-source-runtime.patch")],
                        cwd=scratch, check=True)
-    report("0001 -> 0002 -> 0004 -> 0005 -> 0003 applies", True)
+    report("0001 -> 0002 -> 0004 -> 0005 -> 0006 -> 0003 applies", True)
+
+    # 0006 replaces the two sleeps inside hostBringUp with busy waits. Locate the
+    # function body by brace matching so the check cannot drift with line numbers.
+    def function_body(text, signature):
+        """Body of the definition, not a forward declaration.
+
+        The declaration has no opening brace, so search for the signature that
+        is followed by a brace at the start of a line.
+        """
+        for m in re.finditer(re.escape(signature), text):
+            j = text.find("{", m.end())
+            if j < 0:
+                continue
+            between = text[m.end():j]
+            if ";" in between:
+                continue  # a declaration, not the definition
+            depth = 0
+            for k in range(j, len(text)):
+                if text[k] == "{":
+                    depth += 1
+                elif text[k] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return text[m.start():k]
+        return ""
+
+    def code_only(text):
+        """Drop comments so a call is not confused with a mention of one."""
+        text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+        text = re.sub(r"//[^\n]*", "", text)
+        return text
+
+    bring_up = code_only(function_body(slept, "static bool hostBringUp"))
+    report("0006 leaves no sleeping call in hostBringUp",
+           bring_up.count("IOSleep") == 0, "count=%d" % bring_up.count("IOSleep"))
+    report("0006 replaces the post-wake sleep with a 50 ms busy wait",
+           bring_up.count("for (unsigned settle = 0; settle < 50; settle++) IODelay (1000);") == 1)
+    report("0006 replaces the retry pacing with a 10 ms busy wait",
+           bring_up.count("for (unsigned pace = 0; pace < 10; pace++) IODelay (1000);") == 1)
+    # 0006 removes exactly the two sleeps in hostBringUp; every other sleep in
+    # the file must survive untouched.
+    before = sorted(re.findall(r"IOSleep \(\s*(\d+)\s*\)", code_only(checkpointed)))
+    after = sorted(re.findall(r"IOSleep \(\s*(\d+)\s*\)", code_only(slept)))
+    expected = before[:]
+    for gone in ("50", "10"):
+        if gone in expected:
+            expected.remove(gone)
+    report("0006 removes only the two hostBringUp sleeps",
+           after == expected, "%s vs %s" % (before, after))
     report("0005 uses the optional, guarded text checkpoint provider",
            checkpointed.count(CHECKPOINT_PROVIDER) == 1)
     without_checkpoints = CHECKPOINT.sub("", checkpointed.replace(CHECKPOINT_PROVIDER, "", 1))
