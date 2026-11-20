@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "stage": "native-plus-prelinked-kernel",
+  "workflow": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44685819017",
+  "result": "success",
+  "device_commit": "2bd0cc0502e5c841bdfb5200d4ee44667b9d6cfd",
+  "display_build_label": "src-2bd0cc05-ramoops",
+  "framework_revision": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",
+  "xnu_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+  "profile": "macos-27.3-26C5035r",
+  "patch": {
+    "path": "patches/xnu/0029-tb710fu-bound-fixed-kalloc-progress.patch",
+    "sha256": "7149448f0aa5a440c3d0a8e28790ca58ab56268cc9105f43269cf580867060c7"
+  },
+  "native_kernel": {
+    "sha256": "bf1e2b6a885334e9c24899327b10622d8ce96c28509d5f1c15aa90db7d601491"
+  },
+  "prelinked_kernel": {
+    "path": ".work/artifacts/run-44685819017/kernel/kernel.macho",
+    "sha256": "9456d0bb9f57a35f17cb47cb463792fbcaeaf39773f58a095a2d7556b9c8ae0a",
+    "bytes": 142835712,
+    "mapping_complete": true,
+    "missing": {},
+    "stubbed": {},
+    "allow_missing": false,
+    "production_parser": "PASS",
+    "local_production_parser_readback": "PASS"
+  },
+  "live_log_package_verification": {
+    "archive_sha256": "3e6bc022f59fc83db3655504a142baf9f1355ebaeba4469dbdb0b9580a25c931",
+    "archive_objects_verified": 6,
+    "strong_definitions_verified": 24
+  },
+  "host_checkpoint_qr_decode": {
+    "result": "PASS",
+    "adapter_groups": 17,
+    "display_geometries": 8,
+    "packager_tests": 14,
+    "live_xnu_sha256": "2448ff0b1883ed4bfaca4055478d377d453435a4d65fe6a9374c29df50966843",
+    "encoder_commit": "b8d46c71610318e36a661819e1e3c0b8bdda413a",
+    "receiver_commit": "39e95ce59df2f2dc38d2556dd4239cec6a0ca35f",
+    "receiver_sha256": "fd94d7f24ba27892d07c2d18cf67986dd793501d2b6298332cbb21863d7ccae3",
+    "independent_image_decoder": "ZXing-C++",
+    "complete_files_recovered_from_still_frames": 3,
+    "bytes_per_recovered_file": 652,
+    "first_two_sequences": [0, 1],
+    "first_two_raw_range": [8344, 8555],
+    "replacement_raw_range": [8915, 9126],
+    "local_detail": ".work/checkpoint-onesend-e2e/result.json",
+    "local_detail_sha256": "a15c7d4fb5a3d6a18df2bc074c76a602caedd4d2357bf904ca688acaa50f711c"
+  },
+  "github_artifact": {
+    "id": 14606672384,
+    "name": "tb710fu-ufs-integrated-44685819017",
+    "sha256": "47fd9b8496822b92977267d73998eaf9ce01dd8fd7ce27fd1db061a3a4cbac87",
+    "bytes": 39179120,
+    "github_digest_verified": true
+  },
+  "runtime_qualified": false,
+  "hardware_boot_verified": false,
+  "device_operations": false
+}

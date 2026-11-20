@@ -17,6 +17,20 @@
 16 组和末组记录进度，末组保留 skip-list/assignment 细节。隔离的固定源码通过正反向
 应用检查，剔除诊断输出和守卫后 allocator 操作一致。实机扫码和原启动故障边界待验证。
 
+macOS `ufs-integrated` run [44685819017](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44685819017)
+成功，设备提交 `2bd0cc0502e5c841bdfb5200d4ee44667b9d6cfd`，显示标识
+`src-2bd0cc05-ramoops`。Native arm64e SHA-256
+`bf1e2b6a885334e9c24899327b10622d8ce96c28509d5f1c15aa90db7d601491`；142,835,712 字节
+严格预链接内核 SHA-256 `9456d0bb9f57a35f17cb47cb463792fbcaeaf39773f58a095a2d7556b9c8ae0a`。
+`mapping_complete=true`、`missing={}`、`stubbed={}`、`allow_missing=false`。生产 DarwinBoot
+parser 在云端及本地回读通过，GitHub artifact 14606672384 的字节与发布摘要一致。
+
+17 组 LiveXnu 主机测试、8 种尺寸滚屏回归、14 项打包校验通过。主机端到端测试由实际
+LiveXnu 和固定 Mu 编码器生成三张帧缓冲图，ZXing 解出精确帧数据，固定 OneSend 从每张
+图独立还原 652 字节日志文件。前两张是同一会话，第三张更新到较新的尾部。产物与测试
+摘要见 `docs/evidence/live-checkpoints-early-qr-loop-44685819017.json`。
+`runtime_qualified=false`、`hardware_boot_verified=false`、`device_operations=false`。
+
 ## PTE substep signed test images · 2026-11-20
 
 用户要求将 run `44612581308` 产物打包为可刷写测试镜像。保留原 bootloader，使用
