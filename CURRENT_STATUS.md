@@ -1,5 +1,65 @@
 # Current status · 2026-11-21
 
+## 计数器自旋修复镜像已签出（0007）· 2026-11-21
+
+04:59 设备照片确认 0006 仍停在同一处：最后一行 `NativeUfs: host
+wake-settle-begin`，页脚 `CKPT=TEXT LOG=1002956 QR=996628 W=1 N=18 Q=1 B=0/1
+R=1 ERR=0 ufssetl`，既没有 `wake-settle-done`，也没有 `ufssetd`。唤醒命令本身
+仍是完整成功（`cmd-return end=0 ocs=0 polls=1`、`rsp-head b0=21 b2=d0 b3=00`
+匹配 `want=21/208/0`、`scsi-done status=0`）。
+
+根因：0006 把 `IOSleep` 换成 `IODelay` 的前提是后者忙等，但 UniXNU 文档与
+`ArmCpu.cpp` 说明，线程没有注册 idle latency 时每次 `IODelay` 都落到定时器等待
+（`armcpu-idle-latency-us` 默认 0）。因此 0006 与 `IOSleep` 一样不会被唤醒。
+命令轮询里的 `IODelay(2)` 同样受影响，TUR 重试也会踩到。
+
+修复单独成补丁 `patches/ufs/0007-quiescent-counter-spin.patch`（SHA-256
+`1c513341095bbf0b930e14377ce11988251f9e8b5c1f8cb6f73c6698e358ab60`）：
+
+- 新增 `hostSpinUs()`，用 `clock_interval_to_deadline` + `mach_absolute_time()`
+  有界自旋，循环内 `yield`，不依赖任何中断或调度器唤醒。
+- settle 改为自旋 50 ms，并在前后加 `ufsspn` / `ufssetd` 检查点；
+  TUR 每次尝试打印 `host lun-ready-attempt=N` 并加 `ufstur`，重试间隔自旋 10 ms。
+- `HardwareTransferPort::delay()` 的 2 µs 也切到同一自旋；host 测试仍用
+  `IODelay`（其时钟只在 delay 回调中推进）。通过
+  `TB710FU_CMD_SPIN_PROVIDER` 编译期切换，未改注册写、超时、所有权或错误字符串。
+
+`tools/check_ufs_bringup_trace.py` 已扩展为应用 0007 并断言自旋函数、两处自旋、
+三个新检查点、命令路径切换与 host 路径保留 `IODelay`，全套 46 项 PASS。
+提交 `64c8dfb479472c11d5ec15ce01b8eba29edd9a04` 已推送到
+`codex/ufs-transactional-handoff`。
+
+macOS `ufs-integrated` run [44820012647](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44820012647)
+在该提交上成功。产物 `14672625838` 共 39,207,560 字节。预链接内核 142,835,712
+字节，SHA-256
+`ab4f809214830a1cfff782a4dbf33056cf055831b201a326600419fb9d17bdf5`，
+`cpu_subtype` `0xc0000002`（arm64e），屏显 `src-64c8dfb4-ramoops`。内核扫描
+确认 31 个 `ufs*` 检查点标签（新增 `ufsspn`、`ufstur`）与 14 个必需标记
+（含 `host wake-settle-spin now=`、`host wake-settle-done elapsed=`、
+`host lun-ready-attempt=`）全部编入。
+
+签名三件套：`boot.img` `a3236acc…817a83`（基线），`vendor_boot.img`
+`298f3efd0b9825c926f56957296fb7bbf0fbd2453f76a7488ad5940c24514a8f`，
+`vbmeta.img` `d7b5d2de19c3a0964b82fc1e8bbe5b3f403ca41f9cd82126853ba6ae5213b9f0`。
+交付包 `out/live-checkpoints-44820012647-spin-signed.zip` 共 35,559,220 字节，
+SHA-256
+`7ab84f1bce94364c5d0f606c04e415d9b8b9db701b7be38622a393e52d28d9e4`，11 成员。
+独立复核全部通过：zip 完整性与逐成员校验、AVB `verify_image` 对内嵌公钥验证
+（WSL 下必须改走 `/usr/bin/openssl`，随包的 `openssl.exe` 无法写临时文件）、
+vbmeta 头签名与基线头逐字节一致、加盐哈希、未签名体逐字节保留、LZMA 解回的
+内核为带区衍生体且含 31 个标签与全部 14 个标记。证据见
+`docs/evidence/nufs-spin-signed-44820012647.json`。
+
+尚未刷写或操作设备。`hardware_boot_verified=false`、
+`runtime_qualified=false`、`device_operations=false`。
+
+预期本次实机表现：页脚应依次出现 `ufsspn`（自旋开始检查点已刷出）、50 ms 后
+`ufssetd`，并打印 `host wake-settle-spin now=` 与 `host wake-settle-done
+elapsed=`；随后是 `ufslun`、`host lun-ready-begin`、`ufstur` 与
+`host lun-ready-attempt=0`。若页脚停在 `ufssetl`，说明检查点本身没有发布；
+若停在 `ufsspn` 而没有 `ufssetd`，说明 `mach_absolute_time` 在此上下文不推进
+（与此前每条 `cmd-deadline` 的证据矛盾，需要另查）。
+
 ## 忙等修复镜像已签出（0006）· 2026-11-21
 
 03:52 照片把停点定死在 `IOSleep (50)`：唤醒命令完整成功（`cmd-return end=0
