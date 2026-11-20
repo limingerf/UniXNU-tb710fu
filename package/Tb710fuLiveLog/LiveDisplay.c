@@ -17,7 +17,10 @@ typedef uint8_t UINT8;
 #define GLYPH_WIDTH 8U
 #define GLYPH_HEIGHT 19U
 
-static char scroll_lines[TB_LIVE_SCROLL_MAX_ROWS][TB_LIVE_SCROLL_MAX_COLUMNS];
+/* The checkpoint pane has one owner. Keep its text ring and the last paint
+ * in RAM so scrolling never reads from the live framebuffer. */
+static uint8_t scroll_lines[TB_LIVE_SCROLL_MAX_ROWS][TB_LIVE_SCROLL_MAX_COLUMNS];
+static uint8_t scroll_painted[TB_LIVE_SCROLL_MAX_ROWS][TB_LIVE_SCROLL_MAX_COLUMNS];
 
 static int valid(const TB_LIVE_DISPLAY *d)
 {
@@ -239,42 +242,50 @@ int tb_live_display_checkpoint_qr(TB_LIVE_DISPLAY *d, const uint32_t *bgra,
 }
 
 static void draw_character(TB_LIVE_DISPLAY *d, uint32_t x, uint32_t y,
-                           uint8_t c, uint32_t scale, uint32_t color)
+                           uint8_t previous, uint8_t c, uint32_t scale)
 {
     uint32_t gx, gy, xx, yy;
     if (c < 32U || c > 126U)
         c = '?';
-    for (gy = 0; gy < GLYPH_HEIGHT; ++gy)
+    for (gy = 0; gy < GLYPH_HEIGHT; ++gy) {
+        uint8_t next_bits = mEarlyFont[c - 32U][gy];
+        uint8_t changed = next_bits ^ mEarlyFont[previous - 32U][gy];
         for (gx = 0; gx < GLYPH_WIDTH; ++gx) {
-            if (!(mEarlyFont[c - 32U][gy] & (128U >> gx)))
+            uint32_t mask = 128U >> gx;
+            if (!(changed & mask))
                 continue;
+            uint32_t color = next_bits & mask ? UINT32_C(0xffeeeeee) : UINT32_C(0xff000000);
             for (yy = 0; yy < scale; ++yy)
                 for (xx = 0; xx < scale; ++xx)
                     pixel(d, x + gx * scale + xx, y + gy * scale + yy, color);
         }
+    }
 }
 
-static void clear_scroll_row(TB_LIVE_DISPLAY *d, uint32_t logical_row)
+static void clear_scroll_pane(TB_LIVE_DISPLAY *d)
 {
-    uint32_t line_height = GLYPH_HEIGHT * d->TextScale;
-    uint32_t y = d->LogY + logical_row * line_height;
-    for (uint32_t row = 0; row < line_height; ++row)
+    for (uint32_t y = d->LogY; y < d->LogY + d->LogHeight; ++y)
         for (uint32_t x = d->LogX; x < d->LogX + d->LogWidth; ++x)
-            pixel(d, x, y + row, UINT32_C(0xff000000));
+            pixel(d, x, y, UINT32_C(0xff000000));
+    for (uint32_t row = 0; row < d->LogRows; ++row)
+        for (uint32_t column = 0; column < d->LogColumns; ++column)
+            scroll_painted[row][column] = ' ';
 }
 
-static void scroll_panel_up(TB_LIVE_DISPLAY *d)
+static void paint_scroll_lines(TB_LIVE_DISPLAY *d)
 {
-    uint32_t line_height = GLYPH_HEIGHT * d->TextScale;
-    uint32_t visible_height = d->LogRows * line_height;
-    for (uint32_t row = 0; row + line_height < visible_height; ++row)
-        for (uint32_t x = d->LogX; x < d->LogX + d->LogWidth; ++x) {
-            volatile uint32_t *destination = (volatile uint32_t *)(d->Base +
-                (size_t)(d->LogY + row) * d->StrideBytes + (size_t)x * 4U);
-            volatile uint32_t *source = (volatile uint32_t *)(d->Base +
-                (size_t)(d->LogY + row + line_height) * d->StrideBytes + (size_t)x * 4U);
-            *destination = *source;
+    for (uint32_t row = 0; row < d->LogCount; ++row) {
+        uint32_t current = (d->LogHead + row) % d->LogRows;
+        uint32_t y = d->LogY + row * GLYPH_HEIGHT * d->TextScale;
+        for (uint32_t column = 0; column < d->LogColumns; ++column) {
+            uint8_t c = scroll_lines[current][column];
+            if (c == scroll_painted[row][column])
+                continue;
+            uint32_t x = d->LogX + column * GLYPH_WIDTH * d->TextScale;
+            draw_character(d, x, y, scroll_painted[row][column], c, d->TextScale);
+            scroll_painted[row][column] = c;
         }
+    }
 }
 
 static void scroll_next_line(TB_LIVE_DISPLAY *d)
@@ -284,27 +295,21 @@ static void scroll_next_line(TB_LIVE_DISPLAY *d)
         current = (d->LogHead + d->LogCount) % d->LogRows;
         ++d->LogCount;
     } else {
-        scroll_panel_up(d);
         d->LogHead = (d->LogHead + 1U) % d->LogRows;
         current = (d->LogHead + d->LogCount - 1U) % d->LogRows;
     }
-    for (uint32_t i = 0; i < TB_LIVE_SCROLL_MAX_COLUMNS; ++i)
-        scroll_lines[current][i] = '\0';
-    clear_scroll_row(d, d->LogCount - 1U);
+    for (uint32_t i = 0; i < d->LogColumns; ++i)
+        scroll_lines[current][i] = ' ';
     d->LogColumn = 0;
 }
 
 static void scroll_character(TB_LIVE_DISPLAY *d, uint8_t c)
 {
-    uint32_t current, line_height, x, y;
+    uint32_t current;
     if (d->LogColumn >= d->LogColumns)
         scroll_next_line(d);
     current = (d->LogHead + d->LogCount - 1U) % d->LogRows;
-    scroll_lines[current][d->LogColumn] = (char)c;
-    line_height = GLYPH_HEIGHT * d->TextScale;
-    x = d->LogX + d->LogColumn * GLYPH_WIDTH * d->TextScale;
-    y = d->LogY + (d->LogCount - 1U) * line_height;
-    draw_character(d, x, y, c, d->TextScale, UINT32_C(0xffeeeeee));
+    scroll_lines[current][d->LogColumn] = c;
     ++d->LogColumn;
 }
 
@@ -334,15 +339,8 @@ int tb_live_display_scroll_log(TB_LIVE_DISPLAY *d, const char *text, size_t byte
         end - start != bytes)
         return 0;
     if (!d->LogInitialized) {
-        for (uint32_t row = 0; row < TB_LIVE_SCROLL_MAX_ROWS; ++row)
-            for (uint32_t col = 0; col < TB_LIVE_SCROLL_MAX_COLUMNS; ++col)
-                scroll_lines[row][col] = '\0';
-        for (uint32_t y = d->LogY; y < d->LogY + d->LogHeight; ++y)
-            for (uint32_t x = d->LogX; x < d->LogX + d->LogWidth; ++x)
-                pixel(d, x, y, UINT32_C(0xff000000));
-        d->LogHead = 0;
-        d->LogCount = 1;
-        d->LogColumn = 0;
+        clear_scroll_pane(d);
+        scroll_next_line(d);
         d->LogEnd = start;
         d->LogInitialized = 1;
     }
@@ -358,7 +356,19 @@ int tb_live_display_scroll_log(TB_LIVE_DISPLAY *d, const char *text, size_t byte
         return 0;
     for (size_t i = offset; i < bytes; ++i)
         scroll_append(d, (uint8_t)text[i]);
+    paint_scroll_lines(d);
     d->LogEnd = end;
+    return 1;
+}
+
+int tb_live_display_scroll_refresh(TB_LIVE_DISPLAY *d)
+{
+    if (!valid(d) || !d->CheckpointQrScale)
+        return 0;
+    if (d->LogInitialized) {
+        clear_scroll_pane(d);
+        paint_scroll_lines(d);
+    }
     return 1;
 }
 
@@ -373,8 +383,7 @@ int tb_live_display_checkpoint_status(TB_LIVE_DISPLAY *d, const char *text)
     maximum = d->LogColumns;
     for (index = 0; index < maximum && text[index]; ++index)
         draw_character(d, d->LogX + index * GLYPH_WIDTH * d->TextScale,
-                       d->CheckpointStatusY, (uint8_t)text[index], d->TextScale,
-                       UINT32_C(0xffeeeeee));
+                       d->CheckpointStatusY, ' ', (uint8_t)text[index], d->TextScale);
     return 1;
 }
 
@@ -393,7 +402,7 @@ int tb_live_display_status(TB_LIVE_DISPLAY *d, const char *text)
         if (c < 32U || c > 126U)
             c = '?';
         draw_character(d, DISPLAY_MARGIN + index * GLYPH_WIDTH * scale,
-                       d->StatusY, c, scale, UINT32_C(0xffeeeeee));
+                       d->StatusY, ' ', c, scale);
     }
     return 1;
 }

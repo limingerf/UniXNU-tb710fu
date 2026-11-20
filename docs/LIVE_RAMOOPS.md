@@ -65,26 +65,24 @@ ramoops 是当前启动的内核缓冲副本，因此两侧文本可能重叠。
 静止画面只反映最后一次成功绘制的快照。一次扫码可确定该帧中的阶段和
 日志范围。定位故障指令还需要 panic、异常寄存器或其他直接证据。
 
-`tb710fu-live-checkpoints=1` 须与 `tb710fu-live-log=1` 同时启用。该模式由
-startup/kalloc/VM 调用点刷新文本并维护一份不可变 XNU 文件；独立 worker 只轮播
-OneSend QR 帧，不运行普通双通道 poller。日志 capture writer 仍只写环形缓冲。
-`0024` 将 startup callback 入口和返回、kalloc 内层进度和组循环的热循环 QR 推进
-限制为距上一次尝试结束至少约 250ms。每个调用点仍先把事件写入日志环。
-kalloc 初始化、fixed/variable views 的入口和结束、startup phase、bootstrap
-操作及显示刷新会立即尝试更新捕获和文本；QR 单独按 250 ms cadence 推进。
-worker 未启动或超过 1 秒未推进时，下一个有日志进展的 checkpoint 会补发一帧；
-这只在内核仍执行 checkpoint 时有效，不能在 CPU 完全停止后续播。
-每份 immutable 文件最多 4096 字节，ready 时合并冻结的最多 512 字节 early backup
-和最新 XNU 尾部；若 current 范围已覆盖 early backup 的字节，只导出一次，不重复拼接。
-二维码 worker 独立按 OneSend systematic 多帧循环发送。固定 receiver 必须收齐所有
-block，session 更新时 reset 接收器；新文件仅在旧 sender 完成 16 轮后替换。
+`tb710fu-live-checkpoints=1` 须与 `tb710fu-live-log=1` 同时启用。startup、kalloc、VM
+检查点与 worker 共用一个检查点发布路径。每次二维码尝试结束至少 250 ms 后，下一次
+检查点或 worker 调用才可绘制下一帧。日志字符回调持续写入环形缓冲。
+
+早期备份冻结后，如果 worker 尚未实际运行，检查点会轮播同一份单块 OneSend 文件。
+任何一张清晰的码都包含完整文件。导出以最新的有界日志尾部和绝对字节范围为准，
+早期备份保留到多帧导出。单块会话至少成功绘制两帧后才可换文件。
+
+worker 运行且单块会话达到绘制次数后，发布路径切换到最多 4096 字节的多帧文件。
+文件合并已就绪的最多 512 字节冻结备份与最近日志，重叠字节仅写一次。每个多帧
+会话保持至少 16 个完整轮次。固定 OneSend 接收器须收齐该会话的全部 block，
+文件代次切换时需重置接收器。
 
 同步检查点模式下，屏幕左侧绘制当前 XNU 环形缓冲的滚动文本尾部，二维码固定在
-右下角，状态行位于文本窗格底部；二维码之外仍保留顶部官方色带。每个有效检查点
-捕获后都推进左侧日志文本，sampled QR cadence 不限速文本；最多 64 行、每行 256 个
-ASCII 字符，长行折行，非 ASCII 控制字节
-显示为 `?`。页面停住后画面保留最后一次成功绘制的文本和二维码。非检查点的普通
-双通道模式继续使用原左右二维码布局。
+右下角，状态行位于文本窗格底部，顶部保留官方色带。阶段入口和结束会立即更新
+文本，热循环的采样检查点和 worker 至多每 250 ms 更新一次文本。文本最多 64 行、
+每行 256 个 ASCII 字符。长行折行，非 ASCII 控制字节显示为 `?`。控制台重建时
+重画已保留的文本行。普通双通道模式继续使用左右二维码布局。
 
 滚屏文本保留最近采集尾部，二维码文件比单帧快照大，可携带早期备份和更多当前日志；
 它仍受 64 KiB capture 环和 4096 字节文件体上限约束，不是完整启动历史。capture、
@@ -99,18 +97,16 @@ bootstrap 内 `early_random` 的五次调用、kernel list/post tests，以及 t
 最旧的内容。二维码传输期间文件不会被修改，固定的早期备份也不会
 被覆盖；这两项保护不能保证保留每个时刻的完整日志。
 
-若 CPU 卡在关闭中断的循环中，实时轮播也会停下。多帧文件只有已经
-接收齐才可恢复；仅拍到停止时的一张码不能保证恢复整个文件。此前的
-独立固定单帧显示方案已按用户最新选择改为双实时加文件内早期备份。
+如果检查点和 worker 都停止执行，屏幕保留最后一次成功绘制的二维码。
+单块会话可用这张码还原文件。多帧会话仍需集齐同一会话的所有块。
 
 ## 原生边界
 
 检查点诊断的显式参数为 `tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1`。
 `debug=0x8` 选择现有 kprintf 输出，不设置 HALT 位。
 字符写入路径仍只做内存日志镜像，绝不格式化、编码二维码或画屏。滚屏文本从
-已复制的有界日志快照绘制，不在 `kprintf` 字符回调中更新。检查点调用不等待 QR
-传输；独立 worker 仅轮播 OneSend 帧。内核完全停止、worker 未调度或二维码线程
-未启动时，核内 carousel 也停止并保留最后一帧。未提供
+已复制的有界日志快照绘制。检查点调用按同一计时门限推进 OneSend 帧，流程不等待
+相机接收。未提供
 `tb710fu-live-checkpoints=1` 时保留旧双通道 250ms 轮询模式。
 
 渲染使用原生内核栈、内核拥有的当前启动缓冲区和非阻塞 render guard；
@@ -136,18 +132,14 @@ XNU 的对象宏 DEBUG 仅在三个 QR 对象的兼容头内解除，再定义 E
 状态行还显示每路二维码编码成功数和 framebuffer 写入成功数。`ready` 只表示
 源快照与传输帧可用，并不证明编码或显示写入成功，也不证明面板扫描输出或
 相机解码正常。补丁 `0016` 曾只记录 KMEM rank-0 返回；新版 `0017` 在 live-log 启用时为每个 startup callback 记录 subsystem、rank、arg 的返回 marker，并调用受 250ms 全局节流限制的轮询。这样一次构建即可覆盖任意启动阶段，不再逐阶段增加 marker；不修改 callback、顺序或 compressor 容量策略。
-补丁 `0022` 将 startup callback 与 kalloc 检查点改为同步刷新日志。检查点模式
-启动 QR-only carousel worker，不运行竞争的双通道 poller，并保留 callback
-begin/return 两侧边界。打包门禁要求新 boot argument 与 live-log 同时出现；native
-integration 验证 startup/kalloc 对强 checkpoint provider 的分支，并验证 worker 的
-kernel_thread_start 和 250ms timer/wait 运行路径。
+补丁 `0022` 将 startup callback 与 kalloc 检查点改为同步刷新日志，保留 callback
+begin/return 两侧边界。打包门禁要求检查点 boot argument 与 live-log 同时出现。
+native integration 验证 startup/kalloc 的强 checkpoint provider 分支、发布路径的
+单块和多块快照调用，以及 worker 的 kernel_thread_start 和 250 ms timer/wait 路径。
 `0027` 为 PRELINKTEXT RNX 的首段边缘 helper 增加 L2 TTE 分支和每 64 项 PTE
-批次的即时同步检查点；滚屏文本在这些边界更新，多帧 OneSend QR 独立按 cadence
-轮播同一不可变快照。
+批次的即时同步检查点。滚屏文本在这些边界更新，也能按统一时间间隔驱动二维码。
 `0028` 只统计 PRELINKTEXT 活跃范围内已经返回的 `update_or_defer_tte` 调用，每 16 次
-输出 completed count 和 next-index/VA；因此首批也按实际更新数对齐，而不是页表绝对索引。
-该循环只同步更新文本/capture；首次有效快照可 seed 一帧，之后二维码由独立 worker 每 250 ms
-轮播。worker 未获调度时二维码不会前进，避免在页表修改路径反复同步执行编码和显示写入。
+输出 completed count 和 next-index/VA。首批按实际更新数对齐。
 
 真实生产源码、独立捕获缓冲、双通道、早期备份、固定接收器和实际 Mu
 分别经过主机检查；实际 macOS arm64e 编译、强钩子、归档、最终代码和

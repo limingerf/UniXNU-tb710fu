@@ -63,6 +63,9 @@ int tb_live_display_checkpoint_qr(TB_LIVE_DISPLAY *display, const uint32_t *bgra
 int tb_live_display_scroll_log(TB_LIVE_DISPLAY *display, const char *text,
                                size_t bytes, uint64_t start, uint64_t end);
 
+/* Restore the saved scrollback after the console clears the framebuffer. */
+int tb_live_display_scroll_refresh(TB_LIVE_DISPLAY *display);
+
 /* One bounded ASCII status line below the scrollback pane, left of the QR. */
 int tb_live_display_checkpoint_status(TB_LIVE_DISPLAY *display, const char *text);
 

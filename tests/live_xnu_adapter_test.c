@@ -154,6 +154,8 @@ static void reset_fixture(void)
     enabled = guard = redraw = worker_started = sleep_channel = early_frozen = early_once = next_slot = 0;
     checkpoint_mode = checkpoint_guard = checkpoint_failures = checkpoint_bands_pending = 0;
     checkpoint_generation = checkpoint_last_qr_attempt_end = 0;
+    checkpoint_file_generation = checkpoint_qr_attempted = checkpoint_compact = checkpoint_text_attempted = 0;
+    checkpoint_last_text_end = checkpoint_export_dropped = 0;
     checkpoint_stage[0] = '\0';
     qr_encoded[0] = qr_encoded[1] = qr_drawn[0] = qr_drawn[1] = 0;
     frequency = next_frame = xnu_generation = ramoops_generation = xnu_last_dropped = 0;
@@ -400,7 +402,7 @@ static void test_worker_requires_actual_execution(void)
     assert(wait_calls == 1 && block_calls == 1 && create_calls == 1);
 }
 static uint32_t slot_pixel(unsigned slot);
-static void test_synchronous_checkpoints_bypass_worker_and_dwell(void)
+static void test_early_checkpoint_repeats_complete_frames_without_worker(void)
 {
     reset_fixture(); feed_xnu(1500);
     checkpoint_arg_present = checkpoint_arg_value = 1;
@@ -412,28 +414,43 @@ static void test_synchronous_checkpoints_bypass_worker_and_dwell(void)
     tb710fu_live_log_freeze(); feed_xnu(37);
     tb710fu_live_log_checkpoint("phase16-begin");
     assert(qr_calls == 1 && checkpoint_generation == 1 && checkpoint_sender.valid);
-    assert_checkpoint_body("phase16-begin");
-    uint32_t blocks = checkpoint_sender.info.block_count;
+    assert(checkpoint_sender.info.block_count == 1 && le32(encoded_frame + 12) == 1);
+    assert(le32(encoded_frame + 20) <= 720 && memcmp(encoded_frame + 28, "LMS1", 4) == 0);
+    assert(strstr((const char *)body(&checkpoint_sender), "checkpoint=phase16-begin\n"));
+    assert(strstr((const char *)body(&checkpoint_sender), "raw_layout=current_only_single_frame\n"));
+    for (uint64_t i = checkpoint_sender.info.start; i < checkpoint_sender.info.end; ++i) {
+        size_t offset = checkpoint_sender.info.bytes - (size_t)(checkpoint_sender.info.end - i);
+        assert(body(&checkpoint_sender)[offset] == xnu_byte(i));
+    }
     uint64_t first_session = checkpoint_sender.info.session_id;
     unsigned old_snapshot = snapshot_calls;
     feed_xnu(37);
-    clock_now += 5000;
+    clock_now += 250;
     tb710fu_live_log_checkpoint_sampled("text-without-worker");
-    assert(qr_calls == 1 && checkpoint_generation == 1 &&
+    assert(qr_calls == 2 && checkpoint_generation == 2 && le32(encoded_frame + 8) == 1 &&
            display.LogEnd == xnu_capture.written && checkpoint_sender.info.session_id == first_session);
+    clock_now += 250;
+    tb710fu_live_log_checkpoint_sampled("next-early-log");
+    assert(qr_calls == 3 && checkpoint_sender.info.session_id != first_session &&
+           checkpoint_sender.info.end == xnu_capture.written && !wait_calls);
     registered_startup();
     assert(create_calls == 1 && created_worker && !worker_started);
     carousel_tick();
-    assert(qr_calls == 2 && checkpoint_generation == 2 && slot_pixel(0) == 0xff112233u);
+    assert(qr_calls == 4 && checkpoint_compact && slot_pixel(0) == 0xff112233u);
+    carousel_tick();
+    assert(qr_calls == 5 && !checkpoint_compact && checkpoint_sender.info.block_count > 1);
+    assert_checkpoint_body("next-early-log");
+    first_session = checkpoint_sender.info.session_id;
+    unsigned blocks = checkpoint_sender.info.block_count;
 
     checkpoint_guard = 1;
     tb710fu_live_log_checkpoint("contended-renderer");
     checkpoint_guard = 0;
-    assert(qr_calls == 2 && checkpoint_failures == 1);
+    assert(qr_calls == 5 && checkpoint_failures == 1);
     xnu_capture.guard = 1;
     tb710fu_live_log_checkpoint("contended-capture");
     xnu_capture.guard = 0;
-    assert(qr_calls == 2 && checkpoint_failures == 2);
+    assert(qr_calls == 5 && checkpoint_failures == 2);
 
     while (checkpoint_sender.info.rounds < TB710FU_LIVE_LOG_MIN_ROUNDS)
         carousel_tick();
@@ -444,14 +461,13 @@ static void test_synchronous_checkpoints_bypass_worker_and_dwell(void)
 
     feed_xnu(70000);
     tb710fu_live_log_checkpoint("wrapped-log-tail");
-    assert(checkpoint_sender.info.session_id != first_session);
-    assert(checkpoint_sender.info.rounds == 0);
-    assert(qr_calls == blocks * TB710FU_LIVE_LOG_MIN_ROUNDS &&
-           checkpoint_generation == blocks * TB710FU_LIVE_LOG_MIN_ROUNDS);
-    assert_checkpoint_body("wrapped-log-tail");
+    assert(checkpoint_sender.info.session_id == first_session);
+    assert(qr_calls == 4 + blocks * TB710FU_LIVE_LOG_MIN_ROUNDS);
     old_snapshot = snapshot_calls;
     carousel_tick();
-    assert(qr_calls == blocks * TB710FU_LIVE_LOG_MIN_ROUNDS + 1u);
+    assert(checkpoint_sender.info.session_id != first_session && checkpoint_sender.info.rounds == 0);
+    assert(qr_calls == 5 + blocks * TB710FU_LIVE_LOG_MIN_ROUNDS);
+    assert_checkpoint_body("wrapped-log-tail");
     assert(snapshot_calls == old_snapshot && worker_started);
     guards();
 }
@@ -464,8 +480,7 @@ static void test_hot_checkpoints_leave_quiet_time_after_an_attempt(void)
     tb710fu_live_log_freeze();
     assert(qr_calls == 0 && checkpoint_generation == 0);
     tb710fu_live_log_checkpoint("fixed-fallback-assign");
-    assert(qr_calls == 1 && checkpoint_generation == 1 && checkpoint_sender.info.block_count > 1);
-    assert_checkpoint_body("fixed-fallback-assign");
+    assert(qr_calls == 1 && checkpoint_generation == 1 && checkpoint_sender.info.block_count == 1);
     registered_startup();
     carousel_tick();
     assert(qr_calls == 2 && checkpoint_generation == 2);
@@ -477,27 +492,34 @@ static void test_hot_checkpoints_leave_quiet_time_after_an_attempt(void)
     }
     assert(qr_calls == 2 && checkpoint_generation == 2 && !checkpoint_failures);
     assert(checkpoint_sender.info.end == 500 && xnu_capture.written == 1524);
-    assert(display.LogEnd == xnu_capture.written);
+    assert(display.LogEnd == 500);
 
-    /* A stalled carousel does not add QR work to the checkpoint path. */
+    /* Checkpoints can service the carousel after its worker misses a tick. */
     clock_now += 1000;
     feed_xnu(1);
     tb710fu_live_log_checkpoint_sampled("worker-qr-stalled");
-    assert(qr_calls == 2 && checkpoint_generation == 2);
+    assert(qr_calls == 3 && checkpoint_generation == 3 && !checkpoint_compact);
     assert(display.LogEnd == xnu_capture.written);
 
-    /* Text advances at each capture; QR encoding remains in the worker cadence. */
+    /* An immediate checkpoint publishes text during the QR quiet interval. */
     feed_xnu(1);
     tb710fu_live_log_checkpoint("fixed-views");
-    assert(qr_calls == 2 && checkpoint_generation == 2 && display.LogEnd == xnu_capture.written);
-    assert_checkpoint_body("fixed-fallback-assign");
+    assert(qr_calls == 3 && checkpoint_generation == 3 && display.LogEnd == xnu_capture.written);
+    assert_checkpoint_body("worker-qr-stalled");
     qr_encode_fail_slot = 0;
+    encoder_ticks = 180;
+    uint32_t sequence = checkpoint_sender.info.next_sequence;
     carousel_tick();
-    assert(qr_calls == 3 && checkpoint_failures == 1 && checkpoint_generation == 2);
+    assert(qr_calls == 4 && checkpoint_failures == 1 && checkpoint_generation == 3);
+    assert(checkpoint_sender.info.next_sequence == sequence);
     assert(slot_pixel(0) == 0xff112233u);
+    clock_now += 249;
+    tb710fu_live_log_checkpoint_sampled("quiet-after-failed-attempt");
+    assert(qr_calls == 4);
     qr_encode_fail_slot = -1;
-    carousel_tick();
-    assert(qr_calls == 4 && checkpoint_generation == 3);
+    ++clock_now;
+    tb710fu_live_log_checkpoint_sampled("retry-after-failed-attempt");
+    assert(qr_calls == 5 && checkpoint_generation == 4);
     guards();
 }
 static void test_checkpoint_multiframe_qr_worker_loops_without_new_snapshot(void)
@@ -507,7 +529,8 @@ static void test_checkpoint_multiframe_qr_worker_loops_without_new_snapshot(void
     tb710fu_live_log_init();
     assert(!checkpoint_sender.valid && qr_calls == 0);
     tb710fu_live_log_freeze();
-    tb710fu_live_log_checkpoint("qr-loop-seed");
+    live_start_worker();
+    carousel_tick();
     assert(checkpoint_sender.valid && checkpoint_sender.info.block_count > 1);
     assert(qr_calls == 1); /* first frame is painted at the session boundary */
     uint32_t blocks = checkpoint_sender.info.block_count;
@@ -516,11 +539,9 @@ static void test_checkpoint_multiframe_qr_worker_loops_without_new_snapshot(void
     unsigned snapshots = snapshot_calls;
     unsigned old_qr = qr_calls;
 
-    live_start_worker();
-    assert(create_calls == 1 && created_worker && !worker_started);
-    clock_now += 250;
-    if (!setjmp(worker_escape)) created_worker(NULL, 0);
-    assert(worker_started && wait_calls == 1 && block_calls == 1);
+    assert(create_calls == 1 && created_worker && worker_started);
+    carousel_tick();
+    assert(wait_calls == 2 && block_calls == 2);
     assert(qr_calls == old_qr + 1 && checkpoint_sender.info.next_sequence > 1);
     assert(checkpoint_sender.info.session_id == session &&
            checkpoint_sender.info.block_count == blocks && checkpoint_sender.info.bytes == bytes);
@@ -612,8 +633,8 @@ int main(void)
     test_checkpoint_mode_rejects_surface_without_log_column();
     test_ready_stream_reports_qr_encode_failure(); test_ready_stream_reports_qr_draw_failure();
     test_freeze_busy_and_empty_are_honest(); test_ramoops_failure_does_not_replace_xnu();
-    test_synchronous_checkpoints_bypass_worker_and_dwell();
+    test_early_checkpoint_repeats_complete_frames_without_worker();
     test_hot_checkpoints_leave_quiet_time_after_an_attempt();
     test_checkpoint_multiframe_qr_worker_loops_without_new_snapshot();
-    free(frame_allocation); puts("PASS: 16 dual/live-checkpoint LiveXnu adapter groups (15 invalid video cases)"); return 0;
+    free(frame_allocation); puts("PASS: 17 dual/live-checkpoint LiveXnu adapter groups (15 invalid video cases)"); return 0;
 }

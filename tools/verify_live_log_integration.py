@@ -36,6 +36,7 @@ FINAL_SYMBOLS = (
     '_tb710fu_live_log_get_info', '_tb_live_display_bind',
     '_tb_live_display_bands', '_tb_live_display_qr_slot',
     '_tb_live_display_checkpoint_qr', '_tb_live_display_scroll_log',
+    '_tb_live_display_scroll_refresh',
     '_tb_live_display_checkpoint_status', '_tb_live_display_status', '_tb_live_qr_encode',
     '_tb_live_qr_QrEncodeData', '_tb_live_qr_InitializeLogTables',
 )
@@ -62,6 +63,7 @@ ADAPTER_SOURCE_IMPORTS = (
 )
 CHECKPOINT_DISPLAY_IMPORTS = (
     '_tb_live_display_checkpoint_qr', '_tb_live_display_scroll_log',
+    '_tb_live_display_scroll_refresh',
     '_tb_live_display_checkpoint_status',
 )
 CHECKPOINT_WORKER_IMPORTS = (
@@ -371,13 +373,18 @@ def verify(tree, config, native_path):
     adapter_source_calls = {name: {'symbol': strong_import(live_xnu, name),
                                   'branches': branch_relocations(live_xnu, name)}
                             for name in ADAPTER_SOURCE_IMPORTS}
+    require(all(any(call['caller'] == '_checkpoint_publish' for call in
+                    adapter_source_calls[name]['branches'])
+                for name in ('_tb710fu_live_log_snapshot_single_file', '_tb710fu_live_log_snapshot_file')),
+            'The checkpoint publisher must call both single-frame and multiframe snapshot providers')
     checkpoint_display_calls = {name: {'symbol': strong_import(live_xnu, name),
                                        'branches': branch_relocations(live_xnu, name)}
                                 for name in CHECKPOINT_DISPLAY_IMPORTS}
-    require(any(call['caller'] == '_checkpoint_publish' for call in
-                checkpoint_display_calls['_tb_live_display_scroll_log']['branches']),
-            'Synchronous checkpoint renderer must draw the captured scrollback')
-    require(any(call['caller'] == '_checkpoint_qr_advance_locked' for call in
+    require(all(any(call['caller'] == '_checkpoint_publish' for call in
+                    checkpoint_display_calls[name]['branches'])
+                for name in ('_tb_live_display_scroll_log', '_tb_live_display_scroll_refresh')),
+            'The checkpoint renderer must append captured scrollback and repaint it on refresh')
+    require(any(call['caller'] in {'_checkpoint_qr_advance_locked', '_checkpoint_publish'} for call in
                 checkpoint_display_calls['_tb_live_display_checkpoint_qr']['branches']),
             'Synchronous checkpoint QR must use the bottom-right layout')
     require(any(call['caller'] in {'_checkpoint_status', '_checkpoint_publish'} for call in

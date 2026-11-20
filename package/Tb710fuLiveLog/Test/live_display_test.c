@@ -42,10 +42,11 @@ static void check_bands(const uint8_t *frame, const TB_LIVE_DISPLAY *d)
 }
 
 static void check_checkpoint_glyph(const uint8_t *frame, const TB_LIVE_DISPLAY *d,
-                                   uint8_t character)
+                                   uint32_t row, uint32_t column, uint8_t character)
 {
     uint32_t scale = d->TextScale;
-    uint32_t y0 = d->LogY + (d->LogRows - 1U) * 19U * scale;
+    uint32_t y0 = d->LogY + row * 19U * scale;
+    uint32_t x0 = d->LogX + column * 8U * scale;
     for (uint32_t y = 0; y < 19U; ++y)
         for (uint32_t x = 0; x < 8U; ++x) {
             uint32_t color = mEarlyFont[character - 32U][y] & (128U >> x) ?
@@ -53,7 +54,7 @@ static void check_checkpoint_glyph(const uint8_t *frame, const TB_LIVE_DISPLAY *
             for (uint32_t yy = 0; yy < scale; ++yy)
                 for (uint32_t xx = 0; xx < scale; ++xx)
                     assert(read_pixel(frame, (size_t)(y0 + y * scale + yy) * d->StrideBytes +
-                                      (size_t)(d->LogX + x * scale + xx) * 4U) == color);
+                                      (size_t)(x0 + x * scale + xx) * 4U) == color);
         }
 }
 
@@ -177,24 +178,44 @@ static void surface(uint32_t width, uint32_t height, uint32_t stride)
         }
         assert(tb_live_display_checkpoint_qr(&d, bitmap,
             TB_LIVE_QR_SIDE * TB_LIVE_QR_SIDE, TB_LIVE_QR_SIDE));
+        assert(tb_live_display_scroll_refresh(&d)); /* the pane has never been painted */
+        assert(!d.LogInitialized);
         assert(tb_live_display_scroll_log(&d, long_log, length, 0, length));
         assert(tb_live_display_checkpoint_status(&d, "SCROLL LOG - LATEST ROW 79"));
         check_bands(frame, &d);
-        check_checkpoint_glyph(frame, &d, 'R'); /* latest wrapped/scrolling row reaches the bottom */
+        for (row = 0; row < d.LogRows; ++row) {
+            char line[8];
+            assert(snprintf(line, sizeof(line), "ROW-%03u", 80U - d.LogRows + row) == 7);
+            for (uint32_t column = 0; column < 7U; ++column)
+                check_checkpoint_glyph(frame, &d, row, column, (uint8_t)line[column]);
+        }
         {
             static const char followup[] = "ROW-079\nLATEST";
             uint64_t start = length - 7U;
             uint64_t end = start + sizeof(followup) - 1U;
             assert(tb_live_display_scroll_log(&d, followup, sizeof(followup) - 1U, start, end));
             assert(d.LogEnd == end);
-            check_checkpoint_glyph(frame, &d, 'L'); /* overlap is skipped; new bytes append */
+            check_checkpoint_glyph(frame, &d, d.LogRows - 1U, 0, 'L');
+            check_checkpoint_glyph(frame, &d, d.LogRows - 1U, 6, ' '); /* old glyph erased */
+            uint8_t *painted = malloc(bytes);
+            assert(painted);
+            memcpy(painted, frame, bytes);
+            assert(tb_live_display_scroll_log(&d, followup, sizeof(followup) - 1U, start, end));
+            assert(tb_live_display_scroll_log(&d, long_log, length, 0, length));
+            assert(d.LogEnd == end && memcmp(painted, frame, bytes) == 0);
+            /* A console clear erases the paint, but an explicit refresh restores all rows. */
+            for (y = d.LogY; y < d.LogY + d.LogHeight; ++y)
+                memset(frame + (size_t)y * stride + d.LogX * 4U, SENTINEL, d.LogWidth * 4U);
+            assert(tb_live_display_scroll_refresh(&d));
+            assert(d.LogEnd == end && memcmp(painted, frame, bytes) == 0);
+            free(painted);
             static const char after_gap[] = "NEXT";
             uint64_t gap_start = end + 5U;
             uint64_t gap_end = gap_start + sizeof(after_gap) - 1U;
             assert(tb_live_display_scroll_log(&d, after_gap, sizeof(after_gap) - 1U,
                                               gap_start, gap_end));
             assert(d.LogEnd == gap_end);
-            check_checkpoint_glyph(frame, &d, 'N'); /* overwritten ring bytes leave an explicit gap */
+            check_checkpoint_glyph(frame, &d, d.LogRows - 1U, 0, 'N');
         }
         for (y = 0; y < qr_size; ++y)
             for (x = 0; x < qr_size; ++x) {
@@ -232,6 +253,7 @@ static void surface(uint32_t width, uint32_t height, uint32_t stride)
         assert(!tb_live_display_checkpoint_qr(&d, bitmap,
             TB_LIVE_QR_SIDE * TB_LIVE_QR_SIDE, TB_LIVE_QR_SIDE));
         assert(!tb_live_display_scroll_log(&d, "NO TEXT REGION", 14U, 0, 14U));
+        assert(!tb_live_display_scroll_refresh(&d));
         assert(!tb_live_display_checkpoint_status(&d, "NO TEXT REGION"));
     }
 

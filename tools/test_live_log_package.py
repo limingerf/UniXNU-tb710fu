@@ -47,6 +47,11 @@ def fixture():
     for key in ('compile_commands_sha256', 'dependency_records_sha256', 'included_inputs_records_sha256'):
         report[key] = {name[:-2] + '.c': 'c' * 64 for name in live.OBJECTS}
     link = '-Wl,-force_load,' + archive_path + '\n'
+    adapter_callers = {
+        '_tb710fu_live_capture_putc': '_tb710fu_live_log_putc',
+        '_tb710fu_live_log_snapshot_single_file': '_checkpoint_publish',
+        '_tb710fu_live_log_snapshot_file': '_checkpoint_publish',
+    }
     integration = {'schema_version': 1, 'profile': live.LOCK['os_profile'], 'device_commit': 'a' * 40,
         'display_build_label': 'src-aaaaaaaa-ramoops',
         'framework_revision': live.LOCK['unixnu']['commit'], 'xnu_revision': live.LOCK['xnu_commit'],
@@ -61,8 +66,7 @@ def fixture():
             'checkpoint_position': 'after-active-update-or-defer-before-next-PTE'},
         'linkarchives': link, 'linkarchives_sha256': live.sha(link.encode()),
         'dual_source_log_contract': deepcopy(live.DUAL_SOURCE_LOG_CONTRACT),
-        'adapter_source_calls': {name: call_evidence('_tb710fu_live_log_putc' if name ==
-            '_tb710fu_live_capture_putc' else '_tb710fu_live_log_poll')
+        'adapter_source_calls': {name: call_evidence(adapter_callers.get(name, '_tb710fu_live_log_poll'))
             for name in live.ADAPTER_SOURCE_IMPORTS},
         'checkpoint_display_calls': {
             name: call_evidence(
@@ -121,6 +125,7 @@ class LiveLogPackaging(unittest.TestCase):
                              'single_frame_checkpoint', 'no_early_backup', 'no_receiver_reset',
                              'oversize_multiframe_file', 'single_frame_file_api', 'wrong_raw_layout',
                              'missing_pte_substeps', 'wrong_pte_position', 'missing_raw_gap_metadata',
+                             'missing_checkpoint_qr_driver', 'wrong_compact_dwell',
                              'missing_pte_source_evidence', 'wrong_pte_source_position'):
                 with self.subTest(report=report_name, mutation=mutation):
                     value = fixture()
@@ -147,6 +152,8 @@ class LiveLogPackaging(unittest.TestCase):
                     elif mutation == 'missing_pte_substeps': contract['checkpoint_mode'].pop('pte_substep_interval')
                     elif mutation == 'wrong_pte_position': contract['checkpoint_mode']['pte_checkpoint_position'] = 'before-update'
                     elif mutation == 'missing_raw_gap_metadata': contract['checkpoint_mode']['multiframe_raw_gap_range_metadata'] = False
+                    elif mutation == 'missing_checkpoint_qr_driver': contract['checkpoint_mode']['qr_frame_drivers'] = ['worker']
+                    elif mutation == 'wrong_compact_dwell': contract['checkpoint_mode']['single_frame_successful_draws_before_replacement'] = 1
                     elif mutation == 'missing_pte_source_evidence': value['integration'].pop('prelink_rnx_pte_substeps')
                     elif mutation == 'wrong_pte_source_position': value['integration']['prelink_rnx_pte_substeps']['checkpoint_position'] = 'before-update'
                     else: contract['complete_rounds_before_replacement_min'] = 1
@@ -181,6 +188,14 @@ class LiveLogPackaging(unittest.TestCase):
                     elif mutation == 'no_branch': calls[symbol]['branches'] = []
                     else: calls[symbol]['branches'][0]['caller'] = '_other'
                     with self.assertRaises(ValueError): check(value)
+
+    def test_checkpoint_uses_both_snapshot_providers(self):
+        for symbol in ('_tb710fu_live_log_snapshot_single_file', '_tb710fu_live_log_snapshot_file'):
+            with self.subTest(symbol=symbol):
+                value = fixture()
+                value['integration']['adapter_source_calls'][symbol]['branches'][0]['caller'] = '_snapshot_xnu'
+                with self.assertRaisesRegex(ValueError, 'Checkpoint publisher lacks'):
+                    check(value)
 
     def test_multiframe_qr_carousel_worker_must_be_real_and_timer_driven(self):
         for symbol in live.CHECKPOINT_WORKER_IMPORTS:

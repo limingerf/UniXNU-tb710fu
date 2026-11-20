@@ -24,7 +24,8 @@ SYMBOLS = ('_tb710fu_live_log_init', '_tb710fu_live_log_poll',
            '_tb710fu_live_log_snapshot', '_tb710fu_live_log_next_frame',
            '_tb710fu_live_log_can_snapshot', '_tb710fu_live_log_can_snapshot_single',
            '_tb_live_display_qr_slot', '_tb_live_display_checkpoint_qr',
-           '_tb_live_display_scroll_log', '_tb_live_display_checkpoint_status',
+           '_tb_live_display_scroll_log', '_tb_live_display_scroll_refresh',
+           '_tb_live_display_checkpoint_status',
            '_tb_live_qr_encode',
            '_tb_live_qr_QrEncodeData')
 OBJECT_SYMBOLS = {
@@ -35,6 +36,7 @@ OBJECT_SYMBOLS = {
                        '_tb710fu_live_log_can_snapshot_single'),
     'LiveDisplay.o': ('_tb_live_display_qr_slot', '_tb_live_display_bands',
                       '_tb_live_display_checkpoint_qr', '_tb_live_display_scroll_log',
+                      '_tb_live_display_scroll_refresh',
                       '_tb_live_display_checkpoint_status'),
     'LiveQr.o': ('_tb_live_qr_encode',),
     'LiveXnu.o': ('_tb710fu_live_log_init', '_tb710fu_live_log_poll',
@@ -58,10 +60,13 @@ DUAL_SOURCE_LOG_CONTRACT = {
         'argument': 'tb710fu-live-checkpoints=1',
         'requires': 'tb710fu-live-log=1',
         'provider': 'tb710fu_live_log_checkpoint',
-        'worker_role': 'QR-only immutable-snapshot carousel; no dual-source polling',
+        'worker_role': 'service the same checkpoint renderer as boot checkpoints',
         'sampled_provider': 'tb710fu_live_log_checkpoint_sampled',
-        'text_refresh': 'immediate at every accepted checkpoint snapshot',
+        'text_refresh': 'immediate checkpoints draw immediately; sampled checkpoints and worker are paced',
+        'sampled_text_interval_ms': 250,
         'qr_frame_interval_ms': 250,
+        'qr_frame_interval_from_attempt_end': True,
+        'qr_frame_drivers': ['boot-checkpoint', 'worker'],
         'multi_frame_file_body_max_bytes': 4096,
         'early_backup': 'include frozen ready 512-byte prefix in immutable file',
         'raw_layout': 'earlybackup_then_current',
@@ -72,14 +77,17 @@ DUAL_SOURCE_LOG_CONTRACT = {
         'sender_snapshot_api': 'tb710fu_live_log_snapshot_file',
         'sender_frame_api': 'tb710fu_live_log_next_frame',
         'qr_session_reset_required_on_generation_change': True,
-        'halt_limit': 'carousel freezes if kernel execution or worker scheduling stops',
-        'single_frame_after_early_freeze': False,
+        'halt_limit': 'carousel requires a running checkpoint or worker',
+        'single_frame_after_early_freeze': True,
+        'single_frame_until': 'first worker execution and completion of compact dwell',
+        'single_frame_successful_draws_before_replacement': 2,
+        'single_frame_sender_snapshot_api': 'tb710fu_live_log_snapshot_single_file',
         'display': {'checkpoint_qr_anchor': 'bottom-right',
                     'scroll_log_region': 'left-of-checkpoint-qr',
                     'scroll_source': 'latest-current-xnu-capture-tail',
                     'scroll_max_rows': 64, 'scroll_max_columns': 256,
                     'scroll_offset_model': 'absolute-range; append-unseen-suffix; mark-overwrite-gap',
-                    'scroll_refresh': 'after-synchronous-checkpoint-snapshot',
+                    'scroll_refresh': 'repaint from retained rows on console refresh',
                     'console_character_writer_draws': False,
                     'status_location': 'footer-left-of-checkpoint-qr'},
     },
@@ -91,6 +99,7 @@ ADAPTER_SOURCE_IMPORTS = (
 )
 CHECKPOINT_DISPLAY_IMPORTS = (
     '_tb_live_display_checkpoint_qr', '_tb_live_display_scroll_log',
+    '_tb_live_display_scroll_refresh',
     '_tb_live_display_checkpoint_status',
 )
 CHECKPOINT_WORKER_IMPORTS = (
@@ -171,6 +180,9 @@ def dual_source_evidence(integration, report):
     callers = {name: import_branch_evidence(adapter[name], name) for name in ADAPTER_SOURCE_IMPORTS}
     require('_tb710fu_live_log_putc' in callers['_tb710fu_live_capture_putc'],
             'XNU console provider does not call its independent capture ring')
+    require(all('_checkpoint_publish' in callers[name]
+                for name in ('_tb710fu_live_log_snapshot_single_file', '_tb710fu_live_log_snapshot_file')),
+            'Checkpoint publisher lacks its single-frame and multiframe snapshot calls')
     require(integration.get('adapter_snapshot_calls') == adapter['_tb710fu_ramoops_snapshot_copy']['branches'],
             'Ramoops snapshot-call evidence differs from the actual provider import')
     pte = integration.get('prelink_rnx_pte_substeps', {})
@@ -216,8 +228,9 @@ def checkpoint_display_evidence(integration):
     require(set(calls) == set(CHECKPOINT_DISPLAY_IMPORTS),
             'Incomplete synchronous checkpoint display-call evidence')
     callers = {name: import_branch_evidence(calls[name], name) for name in CHECKPOINT_DISPLAY_IMPORTS}
-    require('_checkpoint_publish' in callers['_tb_live_display_scroll_log'] and
-            '_checkpoint_qr_advance_locked' in callers['_tb_live_display_checkpoint_qr'] and
+    require(all('_checkpoint_publish' in callers[name]
+                for name in ('_tb_live_display_scroll_log', '_tb_live_display_scroll_refresh')) and
+            callers['_tb_live_display_checkpoint_qr'] & {'_checkpoint_qr_advance_locked', '_checkpoint_publish'} and
             callers['_tb_live_display_checkpoint_status'] & {'_checkpoint_status', '_checkpoint_publish'},
             'Synchronous log, bottom-right QR and status do not have their real checkpoint callers')
     worker = integration.get('checkpoint_worker_calls', {})

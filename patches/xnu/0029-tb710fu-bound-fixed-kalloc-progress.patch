@@ -1,0 +1,128 @@
+From: TB710FU clean board
+Subject: [PATCH] Report completed fixed kalloc groups at bounded intervals
+
+Source: pinned XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f with
+device patch 0024 applied to kalloc.c.
+
+The boot photo shows class 3 advancing through groups 55 to 59 of 64.
+Repeated skip-list and fallback progress per group fill the visible log.
+Record completed groups at the first, every sixteenth and final group.
+Keep skip-list and fallback or single-type detail for the final group
+and preserve the class and kalloc phase boundaries.
+
+Verification: the isolated pinned source matches the 0024 postimage.
+Forward and reverse apply checks pass and allocator code compares
+byte-for-byte after removing the logging calls and their guards.
+---
+
+diff --git a/osfmk/kern/kalloc.c b/osfmk/kern/kalloc.c
+--- a/osfmk/kern/kalloc.c
++++ b/osfmk/kern/kalloc.c
+@@ -132,14 +132,16 @@
+ 			tb710fu_live_log_checkpoint_sampled(label); \
+ 		} \
+ 	} while (0)
+-#define TB710FU_KALLOC_GROUP(event, class_idx, group_idx, group_total, \
++#define TB710FU_KALLOC_GROUP_DONE(class_idx, group_idx, group_total, \
+ 	    view_start, view_end) \
+ 	do { \
+-		if (tb710fu_live_log_active()) { \
+-			kprintf("TB710FU kalloc: fixed-group %s class=%u group=%u/%u views=%u..%u\n", \
+-			    event, (uint32_t)(class_idx), (uint32_t)(group_idx), \
+-			    (uint32_t)(group_total), (uint32_t)(view_start), \
+-			    (uint32_t)(view_end)); \
++		uint32_t tb710fu_group_index = (uint32_t)(group_idx); \
++		uint32_t tb710fu_group_total = (uint32_t)(group_total); \
++		if ((tb710fu_group_index == 1 || tb710fu_group_index % 16 == 0 || \
++		    tb710fu_group_index == tb710fu_group_total) && tb710fu_live_log_active()) { \
++			kprintf("TB710FU kalloc: fixed-group done class=%u group=%u/%u views=%u..%u\n", \
++			    (uint32_t)(class_idx), tb710fu_group_index, tb710fu_group_total, \
++			    (uint32_t)(view_start), (uint32_t)(view_end)); \
+ 			tb710fu_live_log_checkpoint_sampled("fixed-group"); \
+ 		} \
+ 	} while (0)
+@@ -158,7 +160,7 @@
+ #define TB710FU_KALLOC_VALUE(label, value) do { } while (0)
+ #define TB710FU_KALLOC_PROGRESS(label, index, interval) do { } while (0)
+ #define TB710FU_KALLOC_RANGE(label, event, index, total, interval) do { } while (0)
+-#define TB710FU_KALLOC_GROUP(event, class_idx, group_idx, group_total, view_start, view_end) do { } while (0)
++#define TB710FU_KALLOC_GROUP_DONE(class_idx, group_idx, group_total, view_start, view_end) do { } while (0)
+ #define TB710FU_KALLOC_CLASS(event, class_idx, sig_count, type_count) do { } while (0)
+ #endif
+ 
+@@ -1832,9 +1834,13 @@
+ 	/*
+ 	 * Assert there is space in buffer
+ 	 */
+-	TB710FU_KALLOC_EVENT("fixed-type-skip-list", "begin");
++	if (last_sig) {
++		TB710FU_KALLOC_EVENT("fixed-type-skip-list", "begin");
++	}
+ 	count = kalloc_type_build_skip_list(start, end, kt_skip_list);
+-	TB710FU_KALLOC_EVENT("fixed-type-skip-list", "done");
++	if (last_sig) {
++		TB710FU_KALLOC_EVENT("fixed-type-skip-list", "done");
++	}
+ 	n_zones = kalloc_type_zones_for_type(zones_total_type, count, total_types,
+ 	    last_sig);
+ 	shuffle_buf = &kt_skip_list[count + 1];
+@@ -1845,10 +1851,14 @@
+ 	kalloc_type_init_sig_eq(type_zones, n_zones, sig_zone);
+ 
+ 	if (n_zones == 0) {
+-		TB710FU_KALLOC_EVENT("fixed-fallback-assign", "begin");
++		if (last_sig) {
++			TB710FU_KALLOC_EVENT("fixed-fallback-assign", "begin");
++		}
+ 		kalloc_type_assign_zone_fixed(start, end, sig_zone, sig_zone,
+ 		    early_zone);
+-		TB710FU_KALLOC_EVENT("fixed-fallback-assign", "done");
++		if (last_sig) {
++			TB710FU_KALLOC_EVENT("fixed-fallback-assign", "done");
++		}
+ 		return n_zones;
+ 	}
+ 
+@@ -1856,10 +1866,14 @@
+ 	 * Don't shuffle in the sig_zone if there is only 1 type in the zone
+ 	 */
+ 	if (count == 1) {
+-		TB710FU_KALLOC_EVENT("fixed-single-type-assign", "begin");
++		if (last_sig) {
++			TB710FU_KALLOC_EVENT("fixed-single-type-assign", "begin");
++		}
+ 		kalloc_type_assign_zone_fixed(start, end, type_zones[0], sig_zone,
+ 		    early_zone);
+-		TB710FU_KALLOC_EVENT("fixed-single-type-assign", "done");
++		if (last_sig) {
++			TB710FU_KALLOC_EVENT("fixed-single-type-assign", "done");
++		}
+ 		return n_zones;
+ 	}
+ 
+@@ -1965,7 +1979,6 @@
+ 		}
+ 
+ 		for (uint16_t j = 0; j < n_unique_sig; j++) {
+-			TB710FU_KALLOC_PROGRESS("fixed-zone-signature", j, 256);
+ 			/*
+ 			 * For every size that has unique types
+ 			 */
+@@ -1977,16 +1990,13 @@
+ 			bool last_sig;
+ 
+ 			last_sig = (j == (n_unique_sig - 1)) ? true : false;
+-			TB710FU_KALLOC_GROUP("begin", i, j + 1, n_unique_sig, cur, end);
+-			TB710FU_KALLOC_CLASS("group-helper-begin", i, j + 1, n_unique_sig);
+ 			type_zones_used += kalloc_type_distribute_zone_for_type(
+ 				&kt_buffer[cur].ktv_fixed,
+ 				&kt_buffer[end].ktv_fixed, last_sig,
+ 				n_zones_type, total_types + n_unique_sig,
+ 				&kt_shuffle_buf[n_unique_sig], kt_zones_for_size,
+ 				n_zones_sig + type_zones_used, zone, early_zone);
+-			TB710FU_KALLOC_CLASS("group-helper-returned", i, j + 1, n_unique_sig);
+-			TB710FU_KALLOC_GROUP("done", i, j + 1, n_unique_sig, cur, end);
++			TB710FU_KALLOC_GROUP_DONE(i, j + 1, n_unique_sig, cur, end);
+ 		}
+ 		assert(type_zones_used <= n_zones_type);
+ 		p_j += n_unique_sig;
