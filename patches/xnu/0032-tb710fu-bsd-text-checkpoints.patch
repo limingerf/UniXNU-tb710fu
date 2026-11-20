@@ -1,0 +1,152 @@
+From: TB710FU clean board
+Subject: [PATCH] Show BSD initialization progress in the text log
+
+Source: XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f with the exact
+ordered patches recorded by run 44696022526.
+
+The device passed CPU topology initialization and last displayed the
+bsd_init caller's entry marker. Trace the first BSD operation, the time,
+CDC, VFS and source-storage transitions, and the root selection and mount
+attempts. Flush each line through the text checkpoint provider. Record
+the original vfs_mountroot result before testing it.
+
+Verification: apply the prior run's hash-checked inputs to pinned source
+in an isolated fixture. Validate forward and reverse application and the
+restored bytes.
+---
+
+diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
+index 67d2f4d4460bceb811174053cb430902eb198929..46b25ac4987e86a7d70fb87a9c7924218de28131 100644
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -108,6 +108,7 @@
+ #include <kern/zalloc.h>
+ #include <kern/ux_handler.h>            /* for ux_handler_setup() */
+ #include <kern/sched_hygiene.h>
++#include <kern/tb710fu_live_log.h>
+ 
+ #if (DEVELOPMENT || DEBUG)
+ #include <kern/debug.h>
+@@ -567,9 +568,22 @@ native_mobile_graphics_load_probe(void)
+ }
+ #endif
+ 
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++#define TB710FU_BSD_TEXT(stage, ...) \
++	do { \
++		if (tb710fu_live_log_active()) { \
++			kprintf("TB710FU bsd: " stage " " __VA_ARGS__); \
++			tb710fu_live_log_checkpoint_text(stage); \
++		} \
++	} while (0)
++#else
++#define TB710FU_BSD_TEXT(stage, ...) do { } while (0)
++#endif
++
+ void
+ bsd_init(void)
+ {
++	TB710FU_BSD_TEXT("bsd-init", "entered\n");
+ 	boot_progress_stage("bsd_init enter");
+ 	struct uthread *ut;
+ 	vnode_t init_rootvnode = NULLVP;
+@@ -593,7 +607,9 @@ bsd_init(void)
+ #define bsd_init_kprintf(x, ...) boot_progress_stage("bsd_init: " x)
+ #endif
+ 
++	TB710FU_BSD_TEXT("throttle-init", "begin\n");
+ 	throttle_init();
++	TB710FU_BSD_TEXT("throttle-init", "done\n");
+ 
+ 	printf(copyright);
+ 
+@@ -604,7 +620,9 @@ bsd_init(void)
+ 
+ 	/* Initialize kauth subsystem before instancing the first credential */
+ 	bsd_init_kprintf("calling kauth_init\n");
++	TB710FU_BSD_TEXT("kauth-init", "begin\n");
+ 	kauth_init();
++	TB710FU_BSD_TEXT("kauth-init", "done\n");
+ 
+ 	/* kernel_task->proc = kernproc; */
+ 	set_bsdtask_info(kernel_task, (void *)kernproc);
+@@ -776,7 +794,9 @@ bsd_init(void)
+ 	 *		the kernel task.
+ 	 */
+ 	bsd_init_kprintf("calling bsd_bufferinit\n");
++	TB710FU_BSD_TEXT("bsd-bufferinit", "begin\n");
+ 	bsd_bufferinit();
++	TB710FU_BSD_TEXT("bsd-bufferinit", "done\n");
+ 
+ #if defined(XNU_SHENG_PMGR) && XNU_SHENG_PMGR
+ 	extern void sheng_pmgr_run(void);
+@@ -789,18 +809,26 @@ bsd_init(void)
+ 	 * Initialize the calendar.
+ 	 */
+ 	bsd_init_kprintf("calling IOKitInitializeTime\n");
++	TB710FU_BSD_TEXT("iokit-time-init", "begin\n");
+ 	IOKitInitializeTime();
++	TB710FU_BSD_TEXT("iokit-time-init", "done\n");
+ 
+ 	/* Initialize the file systems. */
+ #if defined(XNU_TB710FU_CDC) && XNU_TB710FU_CDC
+ 	extern void tb710fu_cdc_start(void);
++	TB710FU_BSD_TEXT("cdc-start", "begin\n");
+ 	tb710fu_cdc_start();
++	TB710FU_BSD_TEXT("cdc-start", "done\n");
+ #endif
+ 	bsd_init_kprintf("calling vfsinit\n");
++	TB710FU_BSD_TEXT("vfsinit", "begin\n");
+ 	vfsinit();
++	TB710FU_BSD_TEXT("vfsinit", "done\n");
+ #if defined(XNU_TB710FU_SOURCE_STORAGE) && XNU_TB710FU_SOURCE_STORAGE
+ 	extern void native_source_storage_start(void);
++	TB710FU_BSD_TEXT("source-storage-start", "begin\n");
+ 	native_source_storage_start();
++	TB710FU_BSD_TEXT("source-storage-start", "done\n");
+ #endif
+ #if DEVELOPMENT || DEBUG
+ 	native_apfs_load_probe();
+@@ -937,7 +965,9 @@ bsd_init(void)
+ #endif
+ 
+ 	bsd_init_kprintf("calling bsd_autoconf\n");
++	TB710FU_BSD_TEXT("bsd-autoconf", "begin\n");
+ 	bsd_autoconf();
++	TB710FU_BSD_TEXT("bsd-autoconf", "done\n");
+ 
+ #if CONFIG_DTRACE
+ 	dtrace_postinit();
+@@ -1023,14 +1053,19 @@ bsd_init(void)
+ 		int err;
+ 
+ 		bsd_init_kprintf("calling setconf\n");
++		TB710FU_BSD_TEXT("root-match", "begin\n");
+ 		setconf();
++		TB710FU_BSD_TEXT("root-match", "done\n");
+ #if CONFIG_NETBOOT
+ 		netboot = (mountroot == netboot_mountroot);
+ #endif
+ 
+ 		bsd_init_kprintf("vfs_mountroot\n");
+ 		boot_progress_stage("vfs_mountroot enter");
+-		if (0 == (err = vfs_mountroot())) {
++		TB710FU_BSD_TEXT("vfs-mountroot", "begin\n");
++		err = vfs_mountroot();
++		TB710FU_BSD_TEXT("vfs-mountroot", "result=%d\n", err);
++		if (0 == err) {
+ 			boot_progress_stage("vfs_mountroot mounted; authentication pending");
+ 			break;
+ 		}
+diff --git a/osfmk/kern/tb710fu_live_log.h b/osfmk/kern/tb710fu_live_log.h
+index c72551b092c0a27b32b0c0fd0e1543af2ee5fe95..842220da61ae3c7da92aa31f961daf944e4bf67a 100644
+--- a/osfmk/kern/tb710fu_live_log.h
++++ b/osfmk/kern/tb710fu_live_log.h
+@@ -10,6 +10,7 @@ void tb710fu_live_log_poll(void);
+ void tb710fu_live_log_checkpoint(const char *stage);
+ void tb710fu_live_log_checkpoint_sampled(const char *stage);
+ void tb710fu_live_log_checkpoint_priority(const char *stage);
++void tb710fu_live_log_checkpoint_text(const char *stage);
+ void tb710fu_live_log_refresh(void);
+ void tb710fu_live_log_freeze(void);
+ int tb710fu_live_log_active(void);

@@ -25,6 +25,7 @@ FINAL_SYMBOLS = (
     '_tb710fu_live_log_init', '_tb710fu_live_log_freeze',
     '_tb710fu_live_log_putc', '_tb710fu_live_log_checkpoint',
     '_tb710fu_live_log_checkpoint_sampled', '_tb710fu_live_log_checkpoint_priority',
+    '_tb710fu_live_log_checkpoint_text',
     '_tb710fu_live_capture_putc',
     '_tb710fu_live_capture_copy', '_tb710fu_live_log_set_source',
     '_tb710fu_live_log_snapshot_file',
@@ -43,6 +44,7 @@ FINAL_SYMBOLS = (
     '_tb_live_qr_QrEncodeData', '_tb_live_qr_InitializeLogTables',
 )
 HOOK_OBJECTS = {
+    'bsd/DEVELOPMENT/bsd_init.o': ('_tb710fu_live_log_checkpoint_text',),
     'osfmk/DEVELOPMENT/arm_init.o': ('_tb710fu_live_log_init', '_tb710fu_live_log_freeze'),
     'osfmk/DEVELOPMENT/arm_vm_init.o': ('_tb710fu_live_log_active',
                                         '_tb710fu_live_log_checkpoint',
@@ -445,6 +447,10 @@ def verify(tree, config, native_path):
         branches = hooks[f'osfmk/DEVELOPMENT/{path}']['strong_hook_imports'][priority]['branches']
         require(sum(call['caller'] == caller for call in branches) >= minimum,
                 'Incomplete priority checkpoint branches in ' + caller)
+    bsd_checkpoint = hooks['bsd/DEVELOPMENT/bsd_init.o']['strong_hook_imports'][
+        '_tb710fu_live_log_checkpoint_text']
+    require(sum(call['caller'] == '_bsd_init' for call in bsd_checkpoint['branches']) >= 20,
+            'Missing BSD initialization text checkpoints')
     require(any(call['caller'] == '_kernel_startup_initialize_upto'
                 for call in startup_checkpoint_calls[sampled]['branches']) and
             any(call['caller'] == '_kalloc_type_distribute_zone_for_type'

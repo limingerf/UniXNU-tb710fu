@@ -1,5 +1,50 @@
 # Current status · 2026-11-20
 
+## BSD 初始化同步文本检查点 · 2026-11-20
+
+补丁 `0032-tb710fu-bsd-text-checkpoints.patch` SHA-256
+`f1546f4ffcb9f57e0626b9ae23bc8c9a2ae5ee3f7915d81e47e9a0cc29c6ab6c`。从 run
+`44696022526` 记录的固定源码和补丁序列重建后，正向应用和反向恢复通过。新增 21 处
+文本检查点，覆盖 `throttle_init`、kauth、BSD buffer、IOKit 时间、CDC、VFS、source-storage、
+BSD autoconf、根设备匹配及 `vfs_mountroot` 的返回值。文字在调用边界同步刷新，发送由现有
+QR 调度独立处理。19 组 ASan/UBSan LiveXnu 主机测试及 14 项打包验证通过。
+
+固定框架的通用 `XNU_NATIVE_AES` 配方要求 prelinked 加密引导。TB710FU 使用 source 模式，
+以保留 OSKext 所需的 `prng_random`。Sheng 同版 `26C5035r` 参考另有晚期 AES 配方，验证
+IOAESAccelerator 虚表、PAC discriminator 和类布局，注册点在 `IOKitBSDInit()` 返回之后。
+AppleKeyStoreState 还需固定设备身份和已核实的 macOS selector。两条适配都需各自验证。
+
+## 已越过 CPU 拓扑等待，进入 BSD 初始化 · 2026-11-20
+
+新照片原文件 SHA-256 `c8ff7fdd4675f5ba38bde09254f9c15572a640458b72df980a532a415513b45d`。
+屏显先后出现 `kperf-topology-wait begin/done`、`kperf-init-early done` 和
+`bsd-init begin`，确认启动 CPU 拓扑等待已返回。页脚 `LOG=996965 QR=996640 W=1
+N=18 Q=1 B=0/1 R=1 ERR=0 bsd-init` 表明 worker 已启动。尚未看到 `bsd-init done`；本照片
+没有显示构建标识或 XNU 异常寄存器，不能断言停在哪个 BSD 子调用。照片未提供设备分区回读。
+
+当前签名包 `44696022526` 的组件为 ArmDTPlatform、ArmCpu、XnuPrelink 和 DarwinBoot，
+具备本次观察所需的 GIC `/arm-io/intc` 与单核 timer/CPU bring-up；`smp=1` 未启用，
+ADT 尚无 E/P cluster-type。macOS 驱动指南还要求评估 `SoftwareAES`（AppleImage4 等待
+`IOAESAccelerator`）与 `AppleKeyStoreState`。两者不在当前组件或 archive 清单内，属于应补齐
+审查的 macOS 适配项，可能影响文件系统/密封系统卷与后续用户空间，不足以单凭当前 `bsd-init`
+入口判定为即时停机原因。BSD 内部第一个 `throttle_init()` 和后续 `vfsinit()`、root 挂载均无
+分阶段 marker；需取得更细粒度日志，才可区分早期 BSD 初始化与存储/root 阶段。
+
+根卷前置条件另有明确缺口。`docs/USERDATA_BUILD.md` 记录 userdata-root 镜像尚未写入设备，
+profile 的 APFS UUID `84581E99-…` 也未用所选镜像的 `diskutil apfs list` 核对；签名包中
+`kernel.macho.vroot` 是 1,712 字节 RootPolicies 数据，并非 APFS 根卷。`docs/UFS_PORT.md`
+记录 NativeUfs 仍假设固件保留运行中的 UFS controller/link，实机接管、SID `0x60` SMMU、
+已知块读及根挂载都未验证。因此根挂载是后续明确的阻断项，但当前照片只停在 BSD 入口，尚未
+证明执行已到 UFS 或 root mount。macOS 驱动指南还列出缺失的 `SoftwareAES` 与
+`AppleKeyStoreState` 适配；前者关联 AppleImage4 等待 `IOAESAccelerator`，其作用阶段与
+触发条件需要后续日志确认。固定 XNU 的 `bsd_init()` 入口后的首个调用为 `throttle_init()`；
+其后 `IOKitInitializeTime()` 对 `IORTC` 最多等待 30 秒并会继续返回。下一张只需关注文本中
+新增的 `throttle_init begin/done` 及后续 IOKit 时间初始化边界，无需调整二维码路径。
+
+参考：[驱动适配清单](https://unixnu.com/zh/porting/drivers)、
+[macOS 驱动要求](https://unixnu.com/zh/porting/macos#drivers)、
+[平台与内存/OS 服务](https://unixnu.com/zh/porting/platform#block-and-os-services)。
+
 ## 实机越过 machine_lockdown，到达 CPU 拓扑等待附近 · 2026-11-20
 
 新照片原文件 SHA-256 `01de2c9744c483ba5f4ef352e19cc4d152e63727b395365365b738c04eeef98f`。
@@ -23,6 +68,21 @@ LiveLog 新增优先检查点。工作线程开始前，关键启动点立即发
 对应总线范围。GICD 为 `0x17100000/0x10000`，GICR 为 `0x17180000/0x200000`，步长 `0x40000`。
 两段均落在设备 UEFI 的 APSS_HM MMIO 窗口，保留 RootPolicies 和现有 CPU 节点。16 项
 source-storage 打包测试通过，2 项缺少可选夹具而跳过。GIC 初始化与 CPU 发布待实机验证。
+
+macOS `ufs-integrated` run [44696022526](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44696022526)
+通过原生 arm64e 构建、严格预链接与 production DarwinBoot parser，设备提交
+`7f772a8d9272554c1f2520350be9524ed6de0586`，屏显 `src-7f772a8d-ramoops`。GitHub artifact
+`14611735452` 的 SHA-256 `4c83ce20b882866be8cd3c6034d17e1368422859ce0196cce95b23e79666928c`
+与下载一致。严格预链接内核 SHA-256 `c98006c2bcdb05652dd839b2c72490a5831e618f91008deb77a9cb561e2ca5ad`。
+标准色带变体及 21 项打包输入验证通过。签名镜像 FAT 回读的 ADT SHA-256
+`f9b955bad7f9d6b3831d95cb70aa03cd44205c8e30f647e5e5e4f0a1708dca3b`。
+
+`out/live-checkpoints-44696022526-kperf-gic-signed.zip` 共 35,561,810 字节，SHA-256
+`0fcbfbec0abc013db398016021c74ea613019f8785f03ad47f86cc9a8f44660b`。AVB RSA-4096 签名、
+FAT/LZMA 内核回读和 13 个 ZIP 成员的 CRC 与 SHA256SUMS 均通过。验证报告
+`docs/evidence/live-checkpoints-kperf-gic-signed-44696022526.json`。实机待确认
+`kperf-topology-wait done` 和 `bsd-init begin`，`hardware_boot_verified=false`、
+`runtime_qualified=false`、`device_operations=false`。
 
 ## 重叠映射修复版签名测试镜像 · 2026-11-20
 

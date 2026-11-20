@@ -67,6 +67,8 @@ DUAL_SOURCE_LOG_CONTRACT = {
         'priority_provider': 'tb710fu_live_log_checkpoint_priority',
         'priority_refresh': 'render the latest single-frame tail immediately before the worker starts',
         'priority_single_frame_sender_api': 'tb710fu_live_log_replace_single_file',
+        'bsd_text_provider': 'tb710fu_live_log_checkpoint_text',
+        'bsd_text_refresh': 'immediate scroll capture without servicing the QR sender',
         'text_refresh': 'immediate checkpoints draw immediately; sampled checkpoints and worker are paced',
         'sampled_text_interval_ms': 250,
         'qr_frame_interval_ms': 250,

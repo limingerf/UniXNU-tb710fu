@@ -15,6 +15,7 @@ ORDERED_OBJECTS = ('LiveProtocol.o', 'LiveDisplay.o', 'LiveQr.o', 'LiveXnu.o',
                    'QrEncoderLib.o', 'QrEncoderTables.o')
 SYMBOLS = ('_tb710fu_live_log_init', '_tb710fu_live_log_poll',
            '_tb710fu_live_log_checkpoint', '_tb710fu_live_log_checkpoint_priority',
+           '_tb710fu_live_log_checkpoint_text',
            '_tb710fu_live_log_refresh', '_tb710fu_live_log_active',
            '_tb710fu_live_log_freeze', '_tb710fu_ramoops_snapshot_copy',
            '_tb710fu_live_log_putc', '_tb710fu_live_capture_putc',
@@ -41,6 +42,7 @@ OBJECT_SYMBOLS = {
     'LiveQr.o': ('_tb_live_qr_encode',),
     'LiveXnu.o': ('_tb710fu_live_log_init', '_tb710fu_live_log_poll',
                   '_tb710fu_live_log_checkpoint', '_tb710fu_live_log_checkpoint_priority',
+                  '_tb710fu_live_log_checkpoint_text',
                   '_tb710fu_live_log_freeze', '_tb710fu_live_log_putc'),
     'QrEncoderLib.o': ('_tb_live_qr_QrEncodeData',),
     'QrEncoderTables.o': ('_tb_live_qr_InitializeLogTables',),
@@ -65,6 +67,8 @@ DUAL_SOURCE_LOG_CONTRACT = {
         'priority_provider': 'tb710fu_live_log_checkpoint_priority',
         'priority_refresh': 'render the latest single-frame tail immediately before the worker starts',
         'priority_single_frame_sender_api': 'tb710fu_live_log_replace_single_file',
+        'bsd_text_provider': 'tb710fu_live_log_checkpoint_text',
+        'bsd_text_refresh': 'immediate scroll capture without servicing the QR sender',
         'text_refresh': 'immediate checkpoints draw immediately; sampled checkpoints and worker are paced',
         'sampled_text_interval_ms': 250,
         'qr_frame_interval_ms': 250,
@@ -197,6 +201,11 @@ def dual_source_evidence(integration, report):
             pte.get('checkpoint_position') == 'after-active-update-or-defer-before-next-PTE',
             'Live-log dual-source capture/export contract lacks compiled PRELINKTEXT completed-PTE checkpoint evidence')
     hooks = integration.get('hook_objects', {})
+    bsd_symbol = '_tb710fu_live_log_checkpoint_text'
+    bsd_hook = hooks.get('bsd/DEVELOPMENT/bsd_init.o', {}).get('strong_hook_imports', {}).get(bsd_symbol, {})
+    require('_bsd_init' in import_branch_evidence(bsd_hook, bsd_symbol) and
+            sum(branch['caller'] == '_bsd_init' for branch in bsd_hook['branches']) >= 20,
+            'Incomplete BSD initialization text checkpoint evidence')
     serial = hooks['osfmk/DEVELOPMENT/serial_console.o']
     pe = hooks['pexpert/DEVELOPMENT/pe_kprintf.o']
     for record in (serial, pe):

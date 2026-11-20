@@ -80,6 +80,9 @@ def fixture():
                                 else '_live_worker')
             for name in live.CHECKPOINT_WORKER_IMPORTS},
         'hook_objects': {
+            'bsd/DEVELOPMENT/bsd_init.o': {
+                'strong_hook_imports': {
+                    '_tb710fu_live_log_checkpoint_text': call_evidence(*(['_bsd_init'] * 20))}},
             'osfmk/DEVELOPMENT/serial_console.o': {
                 'object_sha256': 'd' * 64, 'compile_record_sha256': 'e' * 64,
                 'disabled_capture_live_gate': True,

@@ -590,6 +590,45 @@ static void test_priority_publishes_latest_single_frame_before_possible_stall(vo
     assert(strstr(last_status, "LOG=1537 QR=1537") && slot_pixel(0) == 0xff112233u);
     guards();
 }
+static void test_text_checkpoint_only_updates_scroll_and_footer(void)
+{
+    static const char boundary[] = "TB710FU BSD: throttle begin\n";
+    reset_fixture(); feed_xnu(1800);
+    tb710fu_live_log_init(); tb710fu_live_log_freeze();
+    assert(enabled && !checkpoint_mode && !qr_calls);
+    tb710fu_live_log_checkpoint_text("throttle");
+    assert(!qr_calls && display.LogEnd == 0);
+
+    reset_fixture(); feed_xnu(1800);
+    checkpoint_arg_present = checkpoint_arg_value = 1;
+    tb710fu_live_log_init(); tb710fu_live_log_freeze();
+    live_start_worker();
+    carousel_tick();
+    assert(worker_started && qr_calls == 1 && checkpoint_sender.info.block_count > 1);
+    struct tb710fu_live_log_sender last_qr = checkpoint_sender;
+    uint64_t last_qr_attempt = checkpoint_last_qr_attempt_end;
+    unsigned last_file_generation = checkpoint_file_generation;
+    assert(checkpoint_qr_attempted && checkpoint_generation == 1);
+    assert(slot_pixel(0) == 0xff112233u);
+
+    for (size_t i = 0; i < sizeof(boundary) - 1u; ++i)
+        tb710fu_live_log_putc(boundary[i]);
+    clock_now += 250;
+    checkpoint_bands_pending = 1;
+    tb710fu_live_log_checkpoint_text("throttle");
+    assert(display.LogEnd == xnu_capture.written && checkpoint_last_text_end == clock_now);
+    assert(strstr(last_status, "CKPT=TEXT LOG=1828 QR=1800") && strstr(last_status, "throttle"));
+    assert(qr_calls == 1 && checkpoint_generation == 1 && checkpoint_drawn_end == 1800);
+    assert(checkpoint_qr_attempted && checkpoint_last_qr_attempt_end == last_qr_attempt);
+    assert(checkpoint_file_generation == last_file_generation && checkpoint_bands_pending == 1);
+    assert(memcmp(&last_qr, &checkpoint_sender, sizeof(last_qr)) == 0);
+    assert(strcmp(checkpoint_stage, "display-refresh") == 0 && slot_pixel(0) == 0xff112233u);
+
+    tb710fu_live_log_checkpoint_sampled("next-worker-tick");
+    assert(qr_calls == 2 && checkpoint_generation == 2 && !checkpoint_bands_pending);
+    assert(checkpoint_sender.info.session_id == last_qr.info.session_id);
+    guards();
+}
 static uint32_t slot_pixel(unsigned slot)
 {
     if (checkpoint_mode) {
@@ -678,5 +717,6 @@ int main(void)
     test_hot_checkpoints_leave_quiet_time_after_an_attempt();
     test_checkpoint_multiframe_qr_worker_loops_without_new_snapshot();
     test_priority_publishes_latest_single_frame_before_possible_stall();
-    free(frame_allocation); puts("PASS: 18 dual/live-checkpoint LiveXnu adapter groups (15 invalid video cases)"); return 0;
+    test_text_checkpoint_only_updates_scroll_and_footer();
+    free(frame_allocation); puts("PASS: 19 dual/live-checkpoint LiveXnu adapter groups (15 invalid video cases)"); return 0;
 }
