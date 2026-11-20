@@ -44,6 +44,9 @@ FOOTER_STAGES = {
     "ufsentry", "ufsgate", "ufsdeny", "ufsroot", "ufshost", "ufsgcc", "ufsgccrd",
     "ufshc", "ufshcrd", "ufsdma", "ufssmmu", "ufsqsnap", "ufsqown", "ufsnop",
     "ufspower", "ufswake", "ufslun", "ufslay", "ufssuper", "ufspub",
+    # 0004 brackets the post-wake IOSleep so the footer shows whether execution
+    # reaches and leaves it; both labels fit the eight-character footer.
+    "ufssetl", "ufssetd",
 }
 
 
@@ -140,8 +143,12 @@ def main():
     # switch and the comparison is asymmetric.
     without_checkpoints = CMD_PROVIDER_SWITCH.sub("", without_checkpoints)
     without_checkpoints = CMD_PROBE_CALL.sub("", without_checkpoints)
+    # 0004 also adds ufsCheckpoint calls of its own (the two settle brackets).
+    # CHECKPOINT runs on the 0005 side above; apply it to the 0004 side too so the
+    # comparison stays symmetric.
     applied_without_scaffold = CMD_PROVIDER_SWITCH.sub("", applied)
     applied_without_scaffold = CMD_PROBE_CALL.sub("", applied_without_scaffold)
+    applied_without_scaffold = CHECKPOINT.sub("", applied_without_scaffold)
     report("0004 uses a compile-time switch so host tests keep compiling",
            CMD_PROVIDER_SWITCH.search(checkpointed) is not None)
     report("0005 leaves the post-0004 body intact apart from trace output and checkpoints",
