@@ -21,6 +21,7 @@ PATCHES = (
     # Unconditional host bring-up and root-layout stage trace. Ordered after the
     # transactional handoff so it annotates the final code the device runs.
     ROOT / 'patches/ufs/0004-bringup-stage-trace.patch',
+    ROOT / 'patches/ufs/0005-synchronous-bringup-checkpoints.patch',
 )
 
 

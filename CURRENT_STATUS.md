@@ -1,5 +1,30 @@
 # Current status · 2026-11-20
 
+## NativeUfs 入口和接管边界同步屏显 · 2026-11-20
+
+本轮照片 SHA-256
+`5e3e8dbb6a3d4bc276db97b3ff2d82fbdbc2e60b2550780eb2caa8ee26927ca8`。
+截图走完 `ufs-init` / `ufs-attach`，最后一行 `ufs-start-begin`，页脚
+`CKPT=TEXT LOG=999423 QR=996385 W=1 N=18 Q=1 B=0/1 R=1 ERR=0 ss-ufs-s`。
+照片内没有可核对的镜像标识。此页脚来自调用 `start()` 前的同步刷新。
+`NativeUfs` 的 `printf` 只写入环形缓冲区，屏显还要等后台刷新或下一次显式检查点。
+因此这张照片无法定位到 `start()` 内部，也无法判断是否已进入该函数。
+
+静态复核 run `44748388382` 的 strict 预链接内核
+（SHA-256 `a76508900eeebe2308f9a2245f840dd4d58626f54985920fc19acf53f00522df`）。
+调用点 `0xfffffff00c26b2e0` 与 vtable 槽位 `0x5f0`、
+PAC discriminator `0x3c68` 和 chained fixup 一致，指向
+`NativeUfs::start` 的 `0xfffffff00c263dfc`。调用者与入口日志均调用同一个
+`_printf`。保留现有虚调用路径。
+
+补丁 `0005-synchronous-bringup-checkpoints.patch`（SHA-256
+`8f2d333f3a12237161430afaaffc0491b8c690798cc489f02b0d233ca71cdd6a`）
+加入 20 个同步文本检查点。
+`ufsentry` 在入口第一次打印前刷新页脚，随后覆盖参数门槛、GCC、DMA、
+SMMU、队列接管、UFS 命令、根布局与发布准备。移除了诊断日志额外执行的
+一次 provider cast 及四次控制器 MMIO 读取。主机补丁序列及调用比对、
+两组 UFS 测试和 19 组 ASan/UBSan LiveXnu 测试通过。实机停点和根挂载待验证。
+
 ## 追踪改用 printf，避开 IOLog 在该上下文的限制 · 2026-11-20
 
 实机刷入 run `44742777160` 后仍无任何 `NativeUfs:` 行且无 panic，但

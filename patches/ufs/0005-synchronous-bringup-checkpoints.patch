@@ -1,0 +1,207 @@
+Subject: [PATCH] Publish synchronous NativeUfs boot checkpoints
+
+Source: pinned UniXNU/ShengUfs NativeUfs.cpp after device patches 0001,
+0002 and 0004. Reuses the TB710FU SourceStorage text checkpoint provider.
+
+The 2026-11-20 device photo ends at ss-ufs-s. The existing printf probes
+only reach the capture ring until the display worker refreshes it. Draw
+the entry footer before the first printf or provider access, and refresh
+the captured text before operations that can stop boot progress. The
+queue ownership checkpoint covers the transition from firmware queue
+stop through replacement queue start. It draws before that transition.
+
+The optional weak import preserves the standalone archive path. Every
+label fits the eight-character footer. Remove the trace-only extra
+provider cast and four extra controller reads introduced by 0004. The
+original short-circuit gate and controller diagnostics still execute
+under their original conditions.
+
+Verification: tools/check_ufs_bringup_trace.py applies the full series,
+checks the footer labels and strips the traces and checkpoints to
+compare against post-0002. The original MMIO read and provider cast
+sites are checked separately.
+---
+diff --git a/NativeUfs.cpp b/NativeUfs.cpp
+index 69bd2f0..6640974 100644
+--- a/NativeUfs.cpp
++++ b/NativeUfs.cpp
+@@ -39,6 +39,17 @@ extern const uint8_t verified_root_key[];
+ #include "TransferPoll.h"
+ #include "SmmuTakeover.h"
+
++// Text checkpoints use the same optional live-log provider as SourceStorage.
++extern "C" void tb710fu_live_log_checkpoint_text (const char *stage)
++  __attribute__((weak_import));
++
++static void ufsCheckpoint (const char *stage)
++{
++  if (tb710fu_live_log_checkpoint_text) {
++    tb710fu_live_log_checkpoint_text (stage);
++  }
++}
++
+ static UfsRootDiagnostics gRootDiagnostic;
+ static bool gRootDiagnosticEnabled;
+ static void rootDiagnosticFailure (const char *reason);
+@@ -1007,6 +1018,7 @@ static bool hostBringUp (const char **why)
+   // TB710FU bring-up checkpoints: unconditional, so a halt is visible without
+   // any diagnostic boot argument. Each line precedes the operation it names.
+   printf ("NativeUfs: host gcc-map-begin\n");
++  ufsCheckpoint ("ufsgcc");
+   OSSharedPtr<IOMemoryMap> gccMap;
+   uintptr_t gcc = mapPhys (GCC_BASE + 0x77000, 0x1000, gccMap);
+   if (!gcc) {
+@@ -1015,6 +1027,7 @@ static bool hostBringUp (const char **why)
+     return false;
+   }
+   printf ("NativeUfs: host gcc-map-done\n");
++  ufsCheckpoint ("ufsgccrd");
+   const uint32_t gdsc = read32 (gcc, GCC_UFS_PHY_GDSCR - 0x77000);
+   const uint32_t axi = read32 (gcc, GCC_UFS_PHY_AXI_ENABLE - 0x77000);
+   const uint32_t ahb = read32 (gcc, GCC_UFS_PHY_AHB_ENABLE - 0x77000);
+@@ -1028,16 +1041,16 @@ static bool hostBringUp (const char **why)
+   printf ("NativeUfs: host gcc-state-accepted\n");
+   gRootDiagnostic.stage = "controller map";
+   printf ("NativeUfs: host controller-map-begin\n");
++  ufsCheckpoint ("ufshc");
+   gHost.hc = mapPhys (UFS_HC_BASE, UFS_HC_SIZE, gHost.hcMap);
+   if (!gHost.hc) {
+     *why = "controller map";
+     printf ("NativeUfs: host controller-map-failed\n");
+     return false;
+   }
+-  printf ("NativeUfs: host controller-map-done cap=%08x ver=%08x hcs=%08x hce=%08x\n",
+-         read32 (gHost.hc, 0x00), read32 (gHost.hc, 0x08),
+-         read32 (gHost.hc, 0x30), read32 (gHost.hc, 0x34));
++  printf ("NativeUfs: host controller-map-done\n");
+   if (gRootDiagnosticEnabled) {
++    ufsCheckpoint ("ufshcrd");
+     gRootDiagnostic.cap = read32 (gHost.hc, 0x00);
+     gRootDiagnostic.version = read32 (gHost.hc, 0x08);
+     gRootDiagnostic.hcs = read32 (gHost.hc, 0x30);
+@@ -1045,6 +1058,7 @@ static bool hostBringUp (const char **why)
+   }
+   gRootDiagnostic.stage = "DMA allocation";
+   printf ("NativeUfs: host dma-alloc-begin bytes=%u\n", (unsigned) kDmaBytes);
++  ufsCheckpoint ("ufsdma");
+   gHost.dma = IOBufferMemoryDescriptor::inTaskWithOptions (
+     kernel_task, static_cast<IOOptionBits> (kIODirectionInOut) | static_cast<IOOptionBits> (kIOMemoryPhysicallyContiguous) |
+     static_cast<IOOptionBits> (kIOMemoryMapperNone),
+@@ -1072,6 +1086,7 @@ static bool hostBringUp (const char **why)
+   bzero (gHost.virt, kDmaBytes);
+   cacheCivac (gHost.virt, kDmaBytes);
+   printf ("NativeUfs: host smmu-map-begin\n");
++  ufsCheckpoint ("ufssmmu");
+   gHost.smmu = mapPhys (0x15000000ULL, 0xd0000, gHost.smmuMap);
+   if (!gHost.smmu) {
+     *why = "apps SMMU map";
+@@ -1080,6 +1095,7 @@ static bool hostBringUp (const char **why)
+   }
+   printf ("NativeUfs: host smmu-map-done\n");
+   printf ("NativeUfs: host queue-snapshot-begin\n");
++  ufsCheckpoint ("ufsqsnap");
+   if (!hostSnapshotOriginalQueue (why)) {
+     printf ("NativeUfs: host queue-snapshot-failed %s\n", *why ? *why : "?");
+     return false;
+@@ -1097,6 +1113,7 @@ static bool hostBringUp (const char **why)
+   uint32_t report[3] = { 0, 0, 0 };
+   gRootDiagnostic.stage = "SMMU and request list";
+   printf ("NativeUfs: host queue-stop-begin\n");
++  ufsCheckpoint ("ufsqown");
+   if (!hostStopQueue (why)) {
+     printf ("NativeUfs: host queue-stop-failed %s\n", *why ? *why : "?");
+     return false;
+@@ -1281,6 +1298,7 @@ static bool hostBringUp (const char **why)
+   printf ("NativeUfs: host queue-start-done\n");
+   // NOP OUT proves the transport before touching the SCSI layer.
+   printf ("NativeUfs: host nop-begin\n");
++  ufsCheckpoint ("ufsnop");
+   if (hostNop () != kIOReturnSuccess) {
+     gHost.ready = false;
+     *why = "NOP OUT";
+@@ -1291,6 +1309,7 @@ static bool hostBringUp (const char **why)
+   uint32_t power = 0;
+   gRootDiagnostic.stage = "power mode query";
+   printf ("NativeUfs: host power-query-begin\n");
++  ufsCheckpoint ("ufspower");
+   if (hostQueryRead (0x03, 0x02, &power) != kIOReturnSuccess) {
+     gHost.ready = false;
+     *why = "power mode query";
+@@ -1305,6 +1324,7 @@ static bool hostBringUp (const char **why)
+     uint8_t ssu[6] = { 0x1b, 0, 0, 0, 0x10, 0 };
+     uint32_t scsi = 0;
+     printf ("NativeUfs: host wake-begin\n");
++    ufsCheckpoint ("ufswake");
+     if (hostScsi (0xd0, ssu, 6, false, 0, 500000, &scsi) != kIOReturnSuccess) {
+       gHost.ready = false;
+       *why = "wake (START STOP UNIT)";
+@@ -1316,6 +1336,7 @@ static bool hostBringUp (const char **why)
+   }
+   gRootDiagnostic.stage = "LUN ready";
+   printf ("NativeUfs: host lun-ready-begin\n");
++  ufsCheckpoint ("ufslun");
+   for (unsigned attempt = 0; attempt < 20; attempt++) {
+     uint8_t tur[6] = { 0, 0, 0, 0, 0, 0 };
+     uint32_t scsi = 0;
+@@ -2257,17 +2278,19 @@ static void mediaReportThread (void *, wait_result_t)
+
+ bool NativeUfs::start (IOService *provider)
+ {
++  ufsCheckpoint ("ufsentry");
+   printf ("NativeUfs: start-enter provider=%p\n", (void *) provider);
+   unsigned probe = 0, rootMode = 0;
+   PE_parse_boot_argn ("native-ufs-probe", &probe, sizeof (probe));
+   PE_parse_boot_argn ("native-ufs-root", &rootMode, sizeof (rootMode));
+-  printf ("NativeUfs: start-args probe=%u root=%u cast=%u\n",
+-         probe, rootMode, (unsigned) (OSDynamicCast (IOPlatformExpertDevice, provider) != nullptr));
++  printf ("NativeUfs: start-args probe=%u root=%u\n", probe, rootMode);
++  ufsCheckpoint ("ufsgate");
+   native_ufs_probe_requested = probe != 0;
+   // Default: match for observability only, never touch the controller. Hardware work runs once,
+   // from the root-device personality; the ufshc nub match stays observation-only.
+   if ((!probe && !rootMode) || !OSDynamicCast (IOPlatformExpertDevice, provider)) {
+     printf ("NativeUfs: start-gate-return probe=%u root=%u\n", probe, rootMode);
++    ufsCheckpoint ("ufsdeny");
+     return false;
+   }
+   if ((probe >= 3 && probe <= 5) || probe == 9) {
+@@ -2390,6 +2413,7 @@ bool NativeUfs::start (IOService *provider)
+   }
+   if (rootMode && !probe) {
+     printf ("NativeUfs: start-dispatch-root\n");
++    ufsCheckpoint ("ufsroot");
+     return startRoot (provider);
+   }
+   printf ("NativeUfs: start-fallthrough probe=%u root=%u\n", probe, rootMode);
+@@ -2401,6 +2425,7 @@ bool NativeUfs::startRoot (IOService *provider)
+ {
+   const char *why = "";
+   printf ("NativeUfs: root bring-up-begin\n");
++  ufsCheckpoint ("ufshost");
+   native_ufs_root_step = 1;
+   if (!hostBringUp (&why)) {
+     rootDiagnosticFailure (why);
+@@ -2410,6 +2435,7 @@ bool NativeUfs::startRoot (IOService *provider)
+   printf ("NativeUfs: root bring-up-done\n");
+   native_ufs_root_step = 2;
+   printf ("NativeUfs: root layout-begin\n");
++  ufsCheckpoint ("ufslay");
+   RootLayout *layout = static_cast<RootLayout *> (IOMalloc (sizeof (RootLayout)));
+   if (!layout || !findRootLayout (layout, &why)) {
+     rootDiagnosticFailure (layout ? why : "root layout allocation failed");
+@@ -2440,6 +2466,7 @@ bool NativeUfs::startRoot (IOService *provider)
+     IOFree (layout, sizeof (RootLayout));
+     return false;
+   }
++  ufsCheckpoint ("ufssuper");
+   if (!IOService::start (provider)) {
+     rootDiagnosticFailure ("root IOService start failed");
+     IOFree (layout, sizeof (RootLayout));
+@@ -2499,6 +2526,7 @@ bool NativeUfs::startRoot (IOService *provider)
+     }
+     void discard (unsigned index) { discardPendingWindow (index); }
+   } operations = { this, layout };
++  ufsCheckpoint ("ufspub");
+   UfsRootPublicationResult result = ufsPrepareRootWindows (operations, layout->windows);
+   IOFree (layout, sizeof (RootLayout));
+   if (result.phase != UfsRootPhase::Complete) {

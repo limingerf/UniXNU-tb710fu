@@ -1,21 +1,39 @@
 #!/usr/bin/env python3
-"""Prove patches/ufs/0004-bringup-stage-trace.patch only adds IOLog output.
+"""Check that patches 0004 and 0005 add only NativeUfs diagnostic probes.
 
 Baseline is the post-0002 NativeUfs.cpp, rebuilt here from the pinned source so
-the check does not depend on a stale local copy. Removing every IOLog call from
-the applied result must reproduce that baseline after brace/whitespace
-normalisation; hardware calls, wait bounds, error strings and panic sites must
-be unchanged.
+the check does not depend on a stale local copy.
 """
 import argparse
+import io
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PIN = "99d8bcd3e43dd24fc3c8437c67b5d4cc71ab94d0"
+PATCH_DIR = ROOT / "patches/ufs"
+CHECKPOINT = re.compile(r'^ *ufsCheckpoint \("([a-z]+)"\);\n', re.M)
+CHECKPOINT_PROVIDER = """// Text checkpoints use the same optional live-log provider as SourceStorage.
+extern "C" void tb710fu_live_log_checkpoint_text (const char *stage)
+  __attribute__((weak_import));
+
+static void ufsCheckpoint (const char *stage)
+{
+  if (tb710fu_live_log_checkpoint_text) {
+    tb710fu_live_log_checkpoint_text (stage);
+  }
+}
+
+"""
+FOOTER_STAGES = {
+    "ufsentry", "ufsgate", "ufsdeny", "ufsroot", "ufshost", "ufsgcc", "ufsgccrd",
+    "ufshc", "ufshcrd", "ufsdma", "ufssmmu", "ufsqsnap", "ufsqown", "ufsnop",
+    "ufspower", "ufswake", "ufslun", "ufslay", "ufssuper", "ufspub",
+}
 
 
 def strip_iolog(s):
@@ -75,7 +93,7 @@ def main():
     parser.add_argument("--source", type=Path, required=True,
                         help="Pinned ShengUfs checkout (git archive source)")
     parser.add_argument("--patch", type=Path,
-                        default=ROOT / "patches/ufs/0004-bringup-stage-trace.patch")
+                        default=PATCH_DIR / "0004-bringup-stage-trace.patch")
     args = parser.parse_args()
     ok = True
 
@@ -85,32 +103,47 @@ def main():
         if not good:
             ok = False
 
-    scratch = Path(tempfile.mkdtemp(prefix="ufs-trace-verify-"))
-    archive = subprocess.check_output(["git", "-C", str(args.source), "archive", PIN])
-    import io
-    import tarfile
-    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
-        tar.extractall(scratch, filter="data")
-    subprocess.run(["git", "init", "--quiet"], cwd=scratch, check=True,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    for name in ("0001-sm8650-compatible.patch", "0002-transactional-handoff.patch"):
-        subprocess.run(["git", "apply", str(ROOT / "patches/ufs" / name)],
+    with tempfile.TemporaryDirectory(prefix="ufs-trace-verify-") as temporary:
+        scratch = Path(temporary)
+        source = scratch / "NativeUfs.cpp"
+        archive = subprocess.check_output(["git", "-C", str(args.source), "archive", PIN])
+        with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+            tar.extractall(scratch, filter="data")
+        for name in ("0001-sm8650-compatible.patch", "0002-transactional-handoff.patch"):
+            subprocess.run(["git", "apply", str(PATCH_DIR / name)], cwd=scratch, check=True)
+        baseline = source.read_text(encoding="utf-8")
+        subprocess.run(["git", "apply", str(args.patch.resolve())], cwd=scratch, check=True)
+        applied = source.read_text(encoding="utf-8")
+        subprocess.run(["git", "apply", str(PATCH_DIR / "0005-synchronous-bringup-checkpoints.patch")],
                        cwd=scratch, check=True)
-    baseline = (scratch / "NativeUfs.cpp").read_text(encoding="utf-8")
+        checkpointed = source.read_text(encoding="utf-8")
+        subprocess.run(["git", "apply", "--check", str(PATCH_DIR / "0003-minimal-source-runtime.patch")],
+                       cwd=scratch, check=True)
+    report("0001 -> 0002 -> 0004 -> 0005 -> 0003 applies", True)
+    report("0005 uses the optional, guarded text checkpoint provider",
+           checkpointed.count(CHECKPOINT_PROVIDER) == 1)
+    without_checkpoints = CHECKPOINT.sub("", checkpointed.replace(CHECKPOINT_PROVIDER, "", 1))
+    report("0005 leaves the post-0004 body intact apart from trace output and checkpoints",
+           strip_iolog(without_checkpoints) == strip_iolog(applied))
+    stages = CHECKPOINT.findall(checkpointed)
+    report("all footer labels are unique and fit the visible eight characters",
+           set(stages) == FOOTER_STAGES and len(stages) == len(FOOTER_STAGES) and
+           all(len(stage) <= 8 for stage in stages))
+    report("NativeUfs::start publishes its entry before printf or provider access",
+           'bool NativeUfs::start (IOService *provider)\n{\n  ufsCheckpoint ("ufsentry");\n'
+           in checkpointed)
+    queue_begin = '  ufsCheckpoint ("ufsqown");\n  if (!hostStopQueue (why))'
+    queue_end = '  ufsCheckpoint ("ufsnop");\n  if (hostNop ()'
+    ownership_window = checkpointed.partition(queue_begin)[2].partition(queue_end)
+    report("queue ownership change has no synchronous draws during takeover",
+           bool(ownership_window[1]) and "ufsCheckpoint" not in ownership_window[0])
 
-    (scratch / "p.patch").write_bytes(args.patch.read_bytes())
-    r = subprocess.run(["git", "apply", "p.patch"], cwd=scratch,
-                       capture_output=True, text=True)
-    report("0004 applies to the post-0002 baseline", r.returncode == 0,
-           r.stderr.strip()[:200])
-    if r.returncode:
-        return 1
-    applied = (scratch / "NativeUfs.cpp").read_text(encoding="utf-8")
-
-    report("semantic body identical once IOLog is removed",
+    report("post-0002 body matches after removing diagnostic console traces",
            norm(baseline) == norm(applied))
     print()
     guards = [
+        (r'\bread32\s*\(', "MMIO read sites"),
+        (r'\bOSDynamicCast\s*\(', "provider cast sites"),
         (r'write32\s*\(', "write32 calls"),
         (r'IOSleep\s*\(\s*(\d+)\s*\)', "IOSleep constants"),
         (r'hostStopQueue\s*\(', "hostStopQueue calls"),
@@ -127,14 +160,14 @@ def main():
     ]
     for pat, label in guards:
         bv = sorted(re.findall(pat, baseline))
-        av = sorted(re.findall(pat, applied))
+        av = sorted(re.findall(pat, checkpointed))
         report("%s unchanged" % label, bv == av,
                "" if bv == av else "%s vs %s" % (bv[:5], av[:5]))
 
     # Count trace statements regardless of whether they use IOLog or printf.
     # Labels are "host ...", "root ..." or "start-..." (the start probes).
     trace = re.findall(
-        r'(?:IOLog|printf) \("NativeUfs: (start-[a-z-]+|(?:host|root) [a-z-]+)', applied)
+        r'(?:IOLog|printf) \("NativeUfs: (start-[a-z-]+|(?:host|root) [a-z-]+)', checkpointed)
     trace = [t[0] if isinstance(t, tuple) else t for t in trace]
     report("trace checkpoint count >= 40", len(trace) >= 40, "found %d" % len(trace))
     pairs = {}
