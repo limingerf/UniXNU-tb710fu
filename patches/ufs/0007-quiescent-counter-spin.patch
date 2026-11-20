@@ -1,0 +1,144 @@
+Subject: [PATCH] Spin on mach_absolute_time instead of timer-backed delays
+
+0006 replaced IOSleep (50) with IODelay (1000) in hostBringUp on the premise
+that IODelay is a busy wait. It is not one for a thread: with no registered
+idle latency, every IODelay of a thread is serviced on a timer (ArmCpu,
+armcpu-idle-latency-us, default 0). The 2026-11-21 04:59 device photo shows
+the same stop as before: 'host wake-settle-begin' and checkpoint ufssetl are
+the last output, and neither the matching '-done' nor ufssetd is published.
+The command path also polls through IODelay (2) in HardwareTransferPort, so
+every retry would inherit the same timer dependency.
+
+Replace both waits with a bounded spin on mach_absolute_time, the same clock
+the command deadlines already use: every cmd-deadline line shows it advancing
+in this context, and leaving the loop needs no interrupt. The poll delay is
+selected at compile time: NativeUfs.cpp defines TB710FU_CMD_SPIN_PROVIDER and
+supplies tb710fuCmdSpinUs, while the host harnesses keep IODelay because their
+clock advances only inside their IODelay hook. No register write, timeout,
+ownership decision or error string changes. Add ufsspn/ufstur checkpoints and
+settle/attempt prints so the next photo shows which step ran.
+
+Separate from 0004 (trace-only, equivalence proof unchanged) and from 0006
+(whose intermediate state stays recorded and verified). Apply after 0006.
+
+Verification: patches/ufs applies 0001 -> 0002 -> 0004 -> 0005 -> 0006 -> 0007
+-> 0003; tools/check_ufs_bringup_trace.py asserts no IOSleep or IODelay remains
+in hostBringUp, both spins are present, the settle is bracketed, the kernel
+path selects the spin and the host path still uses IODelay.
+---
+diff --git a/NativeUfs.cpp b/NativeUfs.cpp
+index 0f7d45b..327f2e6 100644
+--- a/NativeUfs.cpp
++++ b/NativeUfs.cpp
+@@ -999,11 +999,35 @@ static void hostWrite (unsigned offset, uint32_t value)
+   __asm__ volatile ("dsb sy" ::: "memory");
+ }
+ 
++// A true quiescent wait. In a thread with no registered idle latency the kernel
++// services IODelay on a timer (see ArmCpu's armcpu-idle-latency-us comment), so
++// a delay in this masked-interrupt bring-up path is a sleep that never wakes:
++// that is why 0006's "busy wait" still stopped at the same line as IOSleep.
++// Spin on the monotonic clock the command deadlines already use. Every
++// cmd-deadline line shows it advancing in this context, and leaving the loop
++// needs no timer.
++static void hostSpinUs (uint64_t microseconds)
++{
++  uint64_t deadline = 0;
++  clock_interval_to_deadline (static_cast<uint32_t> (microseconds), kMicrosecondScale, &deadline);
++  while (mach_absolute_time () < deadline) {
++    __asm__ volatile ("yield" ::: "memory");
++  }
++}
++
+ #include "RootQueue.h"
+ 
+ // This translation unit owns ufsCheckpoint, so the command-path probes in
+ // RootCommands.h draw the footer here; other includers compile them away.
+ #define TB710FU_CMD_CHECKPOINT_PROVIDER 1
++// The host harnesses drive mach_absolute_time through a callback that only
++// their IODelay hook advances, so they keep the original delay. Only this
++// translation unit, which runs the real command path, selects the spin.
++#define TB710FU_CMD_SPIN_PROVIDER 1
++static void tb710fuCmdSpinUs (uint64_t microseconds)
++{
++  hostSpinUs (microseconds);
++}
+ #include "RootCommands.h"
+ 
+ // Bring the live controller up for reading: map, SMMU pass-through for the UFS stream, take over
+@@ -1337,12 +1361,16 @@ static bool hostBringUp (const char **why)
+     printf ("NativeUfs: host wake-done\n");
+     printf ("NativeUfs: host wake-settle-begin\n");
+     ufsCheckpoint ("ufssetl");
+-    // The UFS command path polls with IODelay while interrupts are masked, so a
+-    // scheduler sleep can never wake this thread: the 03:52 device run stopped
+-    // inside IOSleep(50), after 'host wake-settle-begin' and before the matching
+-    // '-done'. Busy-wait the same 50 ms instead.
+-    for (unsigned settle = 0; settle < 50; settle++) IODelay (1000);
+-    printf ("NativeUfs: host wake-settle-done\n");
++    // 0006 replaced IOSleep with IODelay here and still stopped before the
++    // matching '-done': IODelay is itself a timer wait for a thread. Spin on
++    // mach_absolute_time instead, and print its endpoints so the next photo
++    // separates "time did not advance" from "the loop was never entered".
++    const uint64_t settleStart = mach_absolute_time ();
++    printf ("NativeUfs: host wake-settle-spin now=%llu\n", (unsigned long long) settleStart);
++    ufsCheckpoint ("ufsspn");
++    hostSpinUs (50000);
++    printf ("NativeUfs: host wake-settle-done elapsed=%llu\n",
++            (unsigned long long) (mach_absolute_time () - settleStart));
+     ufsCheckpoint ("ufssetd");
+   }
+   gRootDiagnostic.stage = "LUN ready";
+@@ -1351,6 +1379,8 @@ static bool hostBringUp (const char **why)
+   for (unsigned attempt = 0; attempt < 20; attempt++) {
+     uint8_t tur[6] = { 0, 0, 0, 0, 0, 0 };
+     uint32_t scsi = 0;
++    printf ("NativeUfs: host lun-ready-attempt=%u\n", attempt);
++    ufsCheckpoint ("ufstur");
+     if (hostScsi (0, tur, 6, false, 0, 200000, &scsi) == kIOReturnSuccess) {
+       gHost.ready = true;
+       printf ("NativeUfs: host lun-ready-done attempt=%u\n", attempt);
+@@ -1358,8 +1388,9 @@ static bool hostBringUp (const char **why)
+     }
+     if (gHost.poisoned) break;
+     printf ("NativeUfs: host tur-retry attempt=%u\n", attempt);
+-    // Same reason as above: pace the retry with a busy wait, not a sleep.
+-    for (unsigned pace = 0; pace < 10; pace++) IODelay (1000);
++    // Same fix as the settle: IODelay here would be another timer wait. Pace
++    // the retry on the monotonic clock so it cannot stall either.
++    hostSpinUs (10000);
+   }
+   gHost.ready = false;
+   *why = "LUN 0 not ready";
+diff --git a/RootCommands.h b/RootCommands.h
+index 9c2e598..78db5d6 100644
+--- a/RootCommands.h
++++ b/RootCommands.h
+@@ -14,6 +14,18 @@
+ #else
+ #define tb710fuCmdCheckpoint(stage) ((void) 0)
+ #endif
++
++// IODelay is a timer wait, not a busy wait, when a thread calls it without a
++// registered idle latency (ArmCpu, armcpu-idle-latency-us default 0). The
++// command path polls from the masked-interrupt bring-up, where that timer wake
++// never arrives. NativeUfs.cpp therefore supplies a counter spin for the real
++// command path; the host harnesses keep IODelay because their clock only moves
++// inside it.
++#if defined(TB710FU_CMD_SPIN_PROVIDER)
++#define tb710fuCmdDelay(us) tb710fuCmdSpinUs (us)
++#else
++#define tb710fuCmdDelay(us) IODelay (us)
++#endif
+ struct HardwareTransferPort {
+   uint64_t deadline;
+   uint32_t doorbell () { return read32 (gHost.hc, 0x58); }
+@@ -23,7 +35,7 @@ struct HardwareTransferPort {
+     return *reinterpret_cast<volatile uint32_t *> (gHost.virt + 8) & 0xff;
+   }
+   bool expired () { return mach_absolute_time () >= deadline; }
+-  void delay () { IODelay (2); }
++  void delay () { tb710fuCmdDelay (2); }
+ };
+ 
+ static void putBe32 (uint8_t *at, uint32_t value)

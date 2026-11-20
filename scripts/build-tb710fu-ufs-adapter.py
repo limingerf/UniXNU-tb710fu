@@ -27,6 +27,10 @@ PATCHES = (
     # stopped inside IOSleep(50) after 'wake-settle-begin'. Behaviour fix, so it
     # is a separate patch from the trace-only 0004.
     ROOT / 'patches/ufs/0006-quiescent-sleep-replacement.patch',
+    # 0006 still stopped at the same checkpoint: in a thread IODelay is a timer
+    # wait, not a busy wait. 0007 replaces the settle and the command poll delay
+    # with a bounded spin on mach_absolute_time. Behaviour fix, separate again.
+    ROOT / 'patches/ufs/0007-quiescent-counter-spin.patch',
 )
 
 

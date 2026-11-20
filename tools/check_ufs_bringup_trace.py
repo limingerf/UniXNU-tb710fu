@@ -45,8 +45,9 @@ FOOTER_STAGES = {
     "ufshc", "ufshcrd", "ufsdma", "ufssmmu", "ufsqsnap", "ufsqown", "ufsnop",
     "ufspower", "ufswake", "ufslun", "ufslay", "ufssuper", "ufspub",
     # 0004 brackets the post-wake IOSleep so the footer shows whether execution
-    # reaches and leaves it; both labels fit the eight-character footer.
-    "ufssetl", "ufssetd",
+    # reaches and leaves it; 0006 adds the busy-wait bracket and 0007 adds the
+    # counter-spin and LUN-ready-attempt labels; all fit eight characters.
+    "ufssetl", "ufssetd", "ufsspn", "ufstur",
 }
 
 
@@ -134,9 +135,13 @@ def main():
         subprocess.run(["git", "apply", str(PATCH_DIR / "0006-quiescent-sleep-replacement.patch")],
                        cwd=scratch, check=True)
         slept = source.read_text(encoding="utf-8")
+        subprocess.run(["git", "apply", str(PATCH_DIR / "0007-quiescent-counter-spin.patch")],
+                       cwd=scratch, check=True)
+        spun = source.read_text(encoding="utf-8")
+        commands = (scratch / "RootCommands.h").read_text(encoding="utf-8")
         subprocess.run(["git", "apply", "--check", str(PATCH_DIR / "0003-minimal-source-runtime.patch")],
                        cwd=scratch, check=True)
-    report("0001 -> 0002 -> 0004 -> 0005 -> 0006 -> 0003 applies", True)
+    report("0001 -> 0002 -> 0004 -> 0005 -> 0006 -> 0007 -> 0003 applies", True)
 
     # 0006 replaces the two sleeps inside hostBringUp with busy waits. Locate the
     # function body by brace matching so the check cannot drift with line numbers.
@@ -186,6 +191,40 @@ def main():
             expected.remove(gone)
     report("0006 removes only the two hostBringUp sleeps",
            after == expected, "%s vs %s" % (before, after))
+
+    # 0007 replaces 0006's IODelay calls with a true counter spin. IODelay is a
+    # timer wait for a thread without a registered idle latency, so 0006's
+    # "busy wait" inherited the same stop; count both primitives to prove the
+    # function now has neither.
+    bring_up_spun = code_only(function_body(spun, "static bool hostBringUp"))
+    report("0007 leaves no sleeping or timer wait in hostBringUp",
+           bring_up_spun.count("IOSleep") == 0 and bring_up_spun.count("IODelay") == 0,
+           "IOSleep=%d IODelay=%d" % (bring_up_spun.count("IOSleep"), bring_up_spun.count("IODelay")))
+    report("0007 spins the post-wake settle on mach_absolute_time",
+           bring_up_spun.count("hostSpinUs (50000);") == 1 and
+           'printf ("NativeUfs: host wake-settle-spin now=%llu' in bring_up_spun)
+    report("0007 spins the TUR retry pacing on mach_absolute_time",
+           bring_up_spun.count("hostSpinUs (10000);") == 1)
+    report("0007 brackets the spin with ufsspn and ufssetd",
+           'ufsCheckpoint ("ufsspn");' in bring_up_spun and
+           'ufsCheckpoint ("ufssetd");' in bring_up_spun and
+           bring_up_spun.index('ufsCheckpoint ("ufsspn");') <
+           bring_up_spun.index("hostSpinUs (50000);") <
+           bring_up_spun.index('ufsCheckpoint ("ufssetd");'))
+    report("0007 publishes a checkpoint before each LUN-ready attempt",
+           'ufsCheckpoint ("ufstur");' in bring_up_spun and
+           'printf ("NativeUfs: host lun-ready-attempt=%u' in bring_up_spun)
+    report("0007 defines the counter spin and selects it for the command path",
+           spun.count("static void hostSpinUs (uint64_t microseconds)") == 1 and
+           "#define TB710FU_CMD_SPIN_PROVIDER 1" in spun and
+           "static void tb710fuCmdSpinUs (uint64_t microseconds)" in spun)
+    report("0007 keeps the host harnesses on IODelay",
+           "#define tb710fuCmdDelay(us) IODelay (us)" in commands and
+           "#define tb710fuCmdDelay(us) tb710fuCmdSpinUs (us)" in commands and
+           "void delay () { tb710fuCmdDelay (2); }" in commands)
+    report("0007 changes only the command poll delay",
+           code_only(commands).count("IODelay (") == 2,
+           "IODelay sites=%d" % code_only(commands).count("IODelay ("))
     report("0005 uses the optional, guarded text checkpoint provider",
            checkpointed.count(CHECKPOINT_PROVIDER) == 1)
     without_checkpoints = CHECKPOINT.sub("", checkpointed.replace(CHECKPOINT_PROVIDER, "", 1))
@@ -205,7 +244,7 @@ def main():
            CMD_PROVIDER_SWITCH.search(checkpointed) is not None)
     report("0005 leaves the post-0004 body intact apart from trace output and checkpoints",
            strip_iolog(without_checkpoints) == strip_iolog(applied_without_scaffold))
-    stages = CHECKPOINT.findall(checkpointed)
+    stages = CHECKPOINT.findall(spun)
     report("all footer labels are unique and fit the visible eight characters",
            set(stages) == FOOTER_STAGES and len(stages) == len(FOOTER_STAGES) and
            all(len(stage) <= 8 for stage in stages))

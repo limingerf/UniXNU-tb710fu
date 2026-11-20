@@ -22,11 +22,17 @@ The adapter script exports that exact commit and never edits fetched caches.
    reads from the formatted probes. Run `tools/check_ufs_bringup_trace.py
    --source /path/to/pinned/ShengUfs` to verify placement, footer labels and
    the post-0002 behavior.
-5. `0003-minimal-source-runtime.patch` is selected only by the complete minimal
+5. `0006-quiescent-sleep-replacement.patch` replaces the two `IOSleep` calls in
+   `hostBringUp()` with `IODelay` loops after the post-wake stop.
+6. `0007-quiescent-counter-spin.patch` replaces those loops and the command
+   poll delay with a bounded `mach_absolute_time` spin: in a thread without a
+   registered idle latency `IODelay` is itself a timer wait. `ufsspn`/`ufssetd`
+   bracket the settle and `ufstur` precedes each LUN-ready attempt.
+7. `0003-minimal-source-runtime.patch` is selected only by the complete minimal
    source-storage archive builder. It disables the optional boot observer's
    declaration and call together when `TB710FU_UFS_NO_BOOT_OBSERVER=1`; it does
-   not provide a no-op implementation. The isolated NativeUfs adapter still
-   uses patches 0001, 0002, 0004 and 0005.
+   not provide a no-op implementation. The isolated NativeUfs adapter uses
+   patches 0001, 0002, 0004, 0005, 0006 and 0007.
 
 The controller/GCC/SID facts come from the same-device Linux commit
 `4d04410798b538fbe4b50664e3a66d9500a2ed31`, documented in
