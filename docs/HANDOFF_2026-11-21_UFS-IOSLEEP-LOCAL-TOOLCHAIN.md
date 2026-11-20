@@ -213,26 +213,52 @@ run(['git', '-C', src, 'apply', HERE / 'llvm-ptrauth-null-values.patch'])
 不同（main 的 `HandlePtrAuthQualifier` 在 8727 行，固定 commit 在 8659 行），
 用 main 版会应用失败。
 
-### 5.5 正在进行的任务（等它完成）
+### 5.5 clang 重建：当前脚本与三个坑
 
-**clang 重建正在后台运行**（本 agent 启动的 job `pwsh-7c31fd642fe84f6c`）：
-- 旧 `llvm/` 已重命名为 `llvm.prev`（回滚用）
-- 日志：`/tmp/toolchain-rebuild.log`
-- 预计 40-60 分钟
+**当前脚本**：`.work/rebuild-clang5.sh`（tarball 获取 + 打补丁 + cmake + ninja + 自动
+验证 `__ptrauth`）。日志写 `.work/toolchain-rebuild.log`（**持久**，不要写 `/tmp`）。
+
+**为什么不用 `setup-toolchain.py` 直接跑**：它在 ninja 结束后执行
+`shutil.rmtree(src)`，构建一旦被中断，检出就没了，下次只能从零开始（每次约
+40-60 分钟）。现在的做法是源码树固定在 `.work/llvm-project`，直接调 ninja，
+中断只损失未编译的 .o，检出永远保留。
+
+**三个坑**（都实际踩过）：
+
+1. **`/tmp` 会被 WSL 重启清空**。日志必须写 `.work/`。同理 `/tmp/pt.c` 这类
+   验证文件也要放 `.work/`。
+
+2. **不要用 `--filter=blob:none` 的 partial clone**。`git clone --filter=blob:none
+   --no-checkout` + `checkout` 会在 checkout 阶段按需逐个下载 blob，每个 blob
+   一次网络往返，10 分钟才拉了 900M，而且极易触发
+   `GnuTLS recv error (-9)` / `early EOF`。
+   **正确做法是 tarball**：
+   ```bash
+   curl -L --http1.1 --retry 5 --connect-timeout 30 --max-time 1800 \
+        -o llvm.tar.gz \
+        "https://github.com/llvm/llvm-project/archive/58c46bae21181fb4240cf964461bea738d96d50e.tar.gz"
+   tar xzf llvm.tar.gz -C .work/llvm-project --strip-components=1
+   ```
+   一次请求拿回整棵树。tarball 没有 `.git`，所以补丁要用 `patch -p1 -d <dir>`，
+   不能用 `git apply`。
+
+3. **`bash script.sh | tail -N` 的退出码取自 `tail`，不是脚本**。用它判断构建
+   成功会得到假的 exit 0。正确做法：脚本自己把退出码写进日志，或
+   `set -o pipefail`。
 
 **重建完成后要做的**：
-1. 验证新 clang 能编译四参数 `__ptrauth`：
-```bash
-cat > /tmp/pt.c <<'EOF'
-struct lbl *p __ptrauth(ptrauth_key_process_independent_data, 1,
-                         ptrauth_string_discriminator(struct lbl),
-                         "authenticates-null-values");
-EOF
-.work/UniXNU/.linux-toolchain/llvm/bin/clang \
-  -target arm64e-apple-macos26.0 -c /tmp/pt.c -o /tmp/pt.o
-```
+1. 脚本会自动验证四参数 `__ptrauth`：
+   ```bash
+   .work/UniXNU/.linux-toolchain/llvm/bin/clang \
+     -target arm64e-apple-macos26.0 -c .work/llvm-project/ptrauth-check.c \
+     -o .work/llvm-project/ptrauth-check.o
+   ```
+   期望 `ptrauth compile exit=0`。
 2. 重跑 `python3 tools/ci_kernel.py native`，看是否越过 `firehose_buffer.c`
 3. 若成功，本地编译链路打通，此后改补丁只需本地几秒
+
+**回滚**：`.work/UniXNU/.linux-toolchain/llvm.prev` 是旧 clang（无 `__ptrauth`
+补丁）。新 clang 若有问题，`mv llvm.prev llvm` 即可换回。
 
 ---
 
