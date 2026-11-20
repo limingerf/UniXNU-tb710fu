@@ -22,7 +22,7 @@ Verification: git apply on the pinned ShengUfs source after 0001 and 0002, with
 .work/verify-ufs-bringup-patch.py.
 ---
 diff --git a/NativeUfs.cpp b/NativeUfs.cpp
-index 20fd0c2..124a79a 100644
+index 20fd0c2..69bd2f0 100644
 --- a/NativeUfs.cpp
 +++ b/NativeUfs.cpp
 @@ -1004,26 +1004,39 @@ static bool hostBringUp (const char **why)
@@ -31,35 +31,35 @@ index 20fd0c2..124a79a 100644
    }
 +  // TB710FU bring-up checkpoints: unconditional, so a halt is visible without
 +  // any diagnostic boot argument. Each line precedes the operation it names.
-+  IOLog ("NativeUfs: host gcc-map-begin\n");
++  printf ("NativeUfs: host gcc-map-begin\n");
    OSSharedPtr<IOMemoryMap> gccMap;
    uintptr_t gcc = mapPhys (GCC_BASE + 0x77000, 0x1000, gccMap);
    if (!gcc) {
      *why = "GCC map";
-+    IOLog ("NativeUfs: host gcc-map-failed\n");
++    printf ("NativeUfs: host gcc-map-failed\n");
      return false;
    }
-+  IOLog ("NativeUfs: host gcc-map-done\n");
++  printf ("NativeUfs: host gcc-map-done\n");
    const uint32_t gdsc = read32 (gcc, GCC_UFS_PHY_GDSCR - 0x77000);
    const uint32_t axi = read32 (gcc, GCC_UFS_PHY_AXI_ENABLE - 0x77000);
    const uint32_t ahb = read32 (gcc, GCC_UFS_PHY_AHB_ENABLE - 0x77000);
-+  IOLog ("NativeUfs: host gcc-state gdsc=%08x axi=%08x ahb=%08x\n", gdsc, axi, ahb);
++  printf ("NativeUfs: host gcc-state gdsc=%08x axi=%08x ahb=%08x\n", gdsc, axi, ahb);
    if (!(gdsc & 0x80000000U) || (axi & 0x80000000U) || !(axi & GCC_UFS_BRANCH_ENABLE_BIT) ||
        !(ahb & GCC_UFS_BRANCH_ENABLE_BIT)) {
      *why = "firmware UFS power/clock state";
-+    IOLog ("NativeUfs: host gcc-state-rejected\n");
++    printf ("NativeUfs: host gcc-state-rejected\n");
      return false;
    }
-+  IOLog ("NativeUfs: host gcc-state-accepted\n");
++  printf ("NativeUfs: host gcc-state-accepted\n");
    gRootDiagnostic.stage = "controller map";
-+  IOLog ("NativeUfs: host controller-map-begin\n");
++  printf ("NativeUfs: host controller-map-begin\n");
    gHost.hc = mapPhys (UFS_HC_BASE, UFS_HC_SIZE, gHost.hcMap);
    if (!gHost.hc) {
      *why = "controller map";
-+    IOLog ("NativeUfs: host controller-map-failed\n");
++    printf ("NativeUfs: host controller-map-failed\n");
      return false;
    }
-+  IOLog ("NativeUfs: host controller-map-done cap=%08x ver=%08x hcs=%08x hce=%08x\n",
++  printf ("NativeUfs: host controller-map-done cap=%08x ver=%08x hcs=%08x hce=%08x\n",
 +         read32 (gHost.hc, 0x00), read32 (gHost.hc, 0x08),
 +         read32 (gHost.hc, 0x30), read32 (gHost.hc, 0x34));
    if (gRootDiagnosticEnabled) {
@@ -69,7 +69,7 @@ index 20fd0c2..124a79a 100644
      gRootDiagnostic.hce = read32 (gHost.hc, 0x34);
    }
    gRootDiagnostic.stage = "DMA allocation";
-+  IOLog ("NativeUfs: host dma-alloc-begin bytes=%u\n", (unsigned) kDmaBytes);
++  printf ("NativeUfs: host dma-alloc-begin bytes=%u\n", (unsigned) kDmaBytes);
    gHost.dma = IOBufferMemoryDescriptor::inTaskWithOptions (
      kernel_task, static_cast<IOOptionBits> (kIODirectionInOut) | static_cast<IOOptionBits> (kIOMemoryPhysicallyContiguous) |
      static_cast<IOOptionBits> (kIOMemoryMapperNone),
@@ -77,7 +77,7 @@ index 20fd0c2..124a79a 100644
    gHost.lock = IOLockAlloc ();
    if (!gHost.dma || !gHost.lock) {
      *why = "dma buffer";
-+    IOLog ("NativeUfs: host dma-alloc-failed dma=%p lock=%p\n", (void *) gHost.dma, (void *) gHost.lock);
++    printf ("NativeUfs: host dma-alloc-failed dma=%p lock=%p\n", (void *) gHost.dma, (void *) gHost.lock);
      return false;
    }
    gHost.virt = static_cast<uint8_t *> (gHost.dma->getBytesNoCopy ());
@@ -85,29 +85,29 @@ index 20fd0c2..124a79a 100644
    if (!gHost.virt || !gHost.phys || (gHost.phys & 4095) || contiguous < kDmaBytes ||
        (!(read32 (gHost.hc, 0) & 0x01000000) && gHost.phys + kDmaBytes > 0x100000000ULL)) {
      *why = "DMA address/contiguity";
-+    IOLog ("NativeUfs: host dma-reject virt=%p phys=%llx contig=%llu\n",
++    printf ("NativeUfs: host dma-reject virt=%p phys=%llx contig=%llu\n",
 +           gHost.virt, (unsigned long long) gHost.phys, (unsigned long long) contiguous);
      return false;
    }
-+  IOLog ("NativeUfs: host dma-ready phys=%llx contig=%llu\n",
++  printf ("NativeUfs: host dma-ready phys=%llx contig=%llu\n",
 +         (unsigned long long) gHost.phys, (unsigned long long) contiguous);
    bzero (gHost.virt, kDmaBytes);
    cacheCivac (gHost.virt, kDmaBytes);
-+  IOLog ("NativeUfs: host smmu-map-begin\n");
++  printf ("NativeUfs: host smmu-map-begin\n");
    gHost.smmu = mapPhys (0x15000000ULL, 0xd0000, gHost.smmuMap);
    if (!gHost.smmu) {
      *why = "apps SMMU map";
-+    IOLog ("NativeUfs: host smmu-map-failed\n");
++    printf ("NativeUfs: host smmu-map-failed\n");
      return false;
    }
 -  if (!hostSnapshotOriginalQueue (why)) return false;
-+  IOLog ("NativeUfs: host smmu-map-done\n");
-+  IOLog ("NativeUfs: host queue-snapshot-begin\n");
++  printf ("NativeUfs: host smmu-map-done\n");
++  printf ("NativeUfs: host queue-snapshot-begin\n");
 +  if (!hostSnapshotOriginalQueue (why)) {
-+    IOLog ("NativeUfs: host queue-snapshot-failed %s\n", *why ? *why : "?");
++    printf ("NativeUfs: host queue-snapshot-failed %s\n", *why ? *why : "?");
 +    return false;
 +  }
-+  IOLog ("NativeUfs: host queue-snapshot-done\n");
++  printf ("NativeUfs: host queue-snapshot-done\n");
    UfsSmmuPlan smmuPlan = planUfsSmmu (0x60, gHost.phys, kDmaBytes,
      [smmu = gHost.smmu](unsigned offset) { return read32 (smmu, offset); });
    gRootDiagnostic.smmuId1 = read32 (gHost.smmu, 0x24);
@@ -116,12 +116,12 @@ index 20fd0c2..124a79a 100644
    uint32_t report[3] = { 0, 0, 0 };
    gRootDiagnostic.stage = "SMMU and request list";
 -  if (!hostStopQueue (why)) return false;
-+  IOLog ("NativeUfs: host queue-stop-begin\n");
++  printf ("NativeUfs: host queue-stop-begin\n");
 +  if (!hostStopQueue (why)) {
-+    IOLog ("NativeUfs: host queue-stop-failed %s\n", *why ? *why : "?");
++    printf ("NativeUfs: host queue-stop-failed %s\n", *why ? *why : "?");
 +    return false;
 +  }
-+  IOLog ("NativeUfs: host queue-stop-done\n");
++  printf ("NativeUfs: host queue-stop-done\n");
    bool rollbackVerified = false;
    const char *smmuFailure = configureUfsSmmuTransactional (smmuPlan,
      [smmu = gHost.smmu](unsigned offset) { return read32 (smmu, offset); },
@@ -129,7 +129,7 @@ index 20fd0c2..124a79a 100644
      gRootDiagnostic.smmuId2 = read32 (gHost.smmu, 0x28);
      gRootDiagnostic.cba2r = read32 (gHost.smmu, 0x1800 + 4 * (report[0] >> 16));
    }
-+  IOLog ("NativeUfs: host queue-start-begin\n");
++  printf ("NativeUfs: host queue-start-begin\n");
    if (!hostStartQueue (why)) {
      const char *recoveryWhy = "";
      if (!hostStopTakenQueue (&recoveryWhy))
@@ -137,56 +137,56 @@ index 20fd0c2..124a79a 100644
            __asm__ volatile ("dsb sy" ::: "memory");
          }))
        panic ("NATIVE_UFS replacement queue rollback could not restore SMMU");
-+    IOLog ("NativeUfs: host queue-start-failed %s\n", *why ? *why : "?");
++    printf ("NativeUfs: host queue-start-failed %s\n", *why ? *why : "?");
      if (!hostResumeOriginalQueue (&recoveryWhy))
        panic ("NATIVE_UFS replacement queue rollback could not resume firmware: %s", recoveryWhy);
      return false;
    }
    gRootDiagnostic.stage = "NOP OUT";
-+  IOLog ("NativeUfs: host queue-start-done\n");
++  printf ("NativeUfs: host queue-start-done\n");
    // NOP OUT proves the transport before touching the SCSI layer.
-+  IOLog ("NativeUfs: host nop-begin\n");
++  printf ("NativeUfs: host nop-begin\n");
    if (hostNop () != kIOReturnSuccess) {
      gHost.ready = false;
      *why = "NOP OUT";
-+    IOLog ("NativeUfs: host nop-failed\n");
++    printf ("NativeUfs: host nop-failed\n");
      return false;
    }
-+  IOLog ("NativeUfs: host nop-done\n");
++  printf ("NativeUfs: host nop-done\n");
    uint32_t power = 0;
    gRootDiagnostic.stage = "power mode query";
-+  IOLog ("NativeUfs: host power-query-begin\n");
++  printf ("NativeUfs: host power-query-begin\n");
    if (hostQueryRead (0x03, 0x02, &power) != kIOReturnSuccess) {
      gHost.ready = false;
      *why = "power mode query";
-+    IOLog ("NativeUfs: host power-query-failed\n");
++    printf ("NativeUfs: host power-query-failed\n");
      return false;
    }
-+  IOLog ("NativeUfs: host power-query-done power=%08x\n", power);
++  printf ("NativeUfs: host power-query-done power=%08x\n", power);
    gRootDiagnostic.power = power;
    if ((power & 0xff) != 0x11) {
      gRootDiagnostic.stage = "device wake";
      // START STOP UNIT, power condition ACTIVE, to the UFS Device well-known LU (as Linux resumes).
      uint8_t ssu[6] = { 0x1b, 0, 0, 0, 0x10, 0 };
      uint32_t scsi = 0;
-+    IOLog ("NativeUfs: host wake-begin\n");
++    printf ("NativeUfs: host wake-begin\n");
      if (hostScsi (0xd0, ssu, 6, false, 0, 500000, &scsi) != kIOReturnSuccess) {
        gHost.ready = false;
        *why = "wake (START STOP UNIT)";
-+      IOLog ("NativeUfs: host wake-failed\n");
++      printf ("NativeUfs: host wake-failed\n");
        return false;
      }
-+    IOLog ("NativeUfs: host wake-done\n");
++    printf ("NativeUfs: host wake-done\n");
      IOSleep (50);
    }
    gRootDiagnostic.stage = "LUN ready";
-+  IOLog ("NativeUfs: host lun-ready-begin\n");
++  printf ("NativeUfs: host lun-ready-begin\n");
    for (unsigned attempt = 0; attempt < 20; attempt++) {
      uint8_t tur[6] = { 0, 0, 0, 0, 0, 0 };
      uint32_t scsi = 0;
      if (hostScsi (0, tur, 6, false, 0, 200000, &scsi) == kIOReturnSuccess) {
        gHost.ready = true;
-+      IOLog ("NativeUfs: host lun-ready-done attempt=%u\n", attempt);
++      printf ("NativeUfs: host lun-ready-done attempt=%u\n", attempt);
        return true;
      }
      if (gHost.poisoned) break;
@@ -194,7 +194,7 @@ index 20fd0c2..124a79a 100644
    }
    gHost.ready = false;
    *why = "LUN 0 not ready";
-+  IOLog ("NativeUfs: host lun-ready-failed poisoned=%u\n", (unsigned) gHost.poisoned);
++  printf ("NativeUfs: host lun-ready-failed poisoned=%u\n", (unsigned) gHost.poisoned);
    return false;
  }
  }
@@ -202,17 +202,17 @@ index 20fd0c2..124a79a 100644
  
  bool NativeUfs::start (IOService *provider)
  {
-+  IOLog ("NativeUfs: start-enter provider=%p\n", (void *) provider);
++  printf ("NativeUfs: start-enter provider=%p\n", (void *) provider);
    unsigned probe = 0, rootMode = 0;
    PE_parse_boot_argn ("native-ufs-probe", &probe, sizeof (probe));
    PE_parse_boot_argn ("native-ufs-root", &rootMode, sizeof (rootMode));
-+  IOLog ("NativeUfs: start-args probe=%u root=%u cast=%u\n",
++  printf ("NativeUfs: start-args probe=%u root=%u cast=%u\n",
 +         probe, rootMode, (unsigned) (OSDynamicCast (IOPlatformExpertDevice, provider) != nullptr));
    native_ufs_probe_requested = probe != 0;
    // Default: match for observability only, never touch the controller. Hardware work runs once,
    // from the root-device personality; the ufshc nub match stays observation-only.
    if ((!probe && !rootMode) || !OSDynamicCast (IOPlatformExpertDevice, provider)) {
-+    IOLog ("NativeUfs: start-gate-return probe=%u root=%u\n", probe, rootMode);
++    printf ("NativeUfs: start-gate-return probe=%u root=%u\n", probe, rootMode);
      return false;
    }
    if ((probe >= 3 && probe <= 5) || probe == 9) {
@@ -220,12 +220,12 @@ index 20fd0c2..124a79a 100644
        IOLog ("NativeUfs: refusing Sheng-only Wi-Fi/DPU SMMU options during TB710FU takeover\n");
        return false;
      }
-+    IOLog ("NativeUfs: start-options-ok\n");
++    printf ("NativeUfs: start-options-ok\n");
    }
    unsigned diagnostic = 0;
    PE_parse_boot_argn ("native-ufs-diagnostics", &diagnostic, sizeof (diagnostic));
    gRootDiagnosticEnabled = diagnostic == 1;
-+  IOLog ("NativeUfs: start-diag=%u\n", diagnostic);
++  printf ("NativeUfs: start-diag=%u\n", diagnostic);
    if (probe == 2) {
      inspect ();
    }
@@ -233,36 +233,35 @@ index 20fd0c2..124a79a 100644
      return true;
    }
    if (rootMode && !probe) {
-+    IOLog ("NativeUfs: start-dispatch-root\n");
++    printf ("NativeUfs: start-dispatch-root\n");
      return startRoot (provider);
    }
-+  IOLog ("NativeUfs: start-fallthrough probe=%u root=%u\n", probe, rootMode);
++  printf ("NativeUfs: start-fallthrough probe=%u root=%u\n", probe, rootMode);
    return false;
  }
  
-@@ -2345,20 +2400,26 @@ bool NativeUfs::start (IOService *provider)
+@@ -2345,13 +2400,16 @@ bool NativeUfs::start (IOService *provider)
  bool NativeUfs::startRoot (IOService *provider)
  {
    const char *why = "";
-+  IOLog ("NativeUfs: root bring-up-begin\n");
++  printf ("NativeUfs: root bring-up-begin\n");
    native_ufs_root_step = 1;
    if (!hostBringUp (&why)) {
      rootDiagnosticFailure (why);
      IOLog ("NativeUfs: root bring-up failed: %s\n", why);
      return false;
    }
-+  IOLog ("NativeUfs: root bring-up-done\n");
++  printf ("NativeUfs: root bring-up-done\n");
    native_ufs_root_step = 2;
-+  IOLog ("NativeUfs: root layout-begin\n");
++  printf ("NativeUfs: root layout-begin\n");
    RootLayout *layout = static_cast<RootLayout *> (IOMalloc (sizeof (RootLayout)));
    if (!layout || !findRootLayout (layout, &why)) {
      rootDiagnosticFailure (layout ? why : "root layout allocation failed");
--    IOLog ("NativeUfs: root layout failed: %s\n", why);
-+    IOLog ("NativeUfs: root layout-failed: %s\n", why);
+@@ -2359,6 +2417,9 @@ bool NativeUfs::startRoot (IOService *provider)
      if (layout) IOFree (layout, sizeof (RootLayout));
      return false;
    }
-+  IOLog ("NativeUfs: root layout-done first=%llx last=%llx manifest=%u windows=%u\n",
++  printf ("NativeUfs: root layout-done first=%llx last=%llx manifest=%u windows=%u\n",
 +         (unsigned long long) layout->userdataFirst, (unsigned long long) layout->userdataLast,
 +         layout->manifestStatus, layout->windows);
    native_ufs_root_step = 3;

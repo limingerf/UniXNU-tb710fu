@@ -19,14 +19,34 @@ PIN = "99d8bcd3e43dd24fc3c8437c67b5d4cc71ab94d0"
 
 
 def strip_iolog(s):
-    out, i = [], 0
+    """Remove the checkpoint statements this patch adds.
+
+    The traces were originally IOLog calls; they were switched to printf because
+    IOLog's serial path did not reach the live-log ring from the bsd_init
+    context while printf did. Both spellings are stripped so the equivalence
+    proof is independent of which console call the patch uses.
+
+    Only calls whose literal starts with "NativeUfs: host/root/start" are
+    removed, so the nine pre-existing IOLog calls and the eight pre-existing
+    snprintf calls stay in the comparison.
+    """
+    out = []
+    i = 0
+    head = re.compile(r'(?:IOLog|printf)\s*\(')
     while i < len(s):
-        m = re.compile(r'\bIOLog\s*\(').match(s, i)
+        m = head.search(s, i)
         if not m:
-            out.append(s[i])
-            i += 1
+            out.append(s[i:])
+            break
+        # Only treat it as a trace if the literal begins with our prefixes.
+        lit = re.match(r'\s*"NativeUfs: (?:host|root|start)', s[m.end():])
+        if not lit:
+            out.append(s[i:m.end()])
+            i = m.end()
             continue
-        j, depth = m.end(), 1
+        out.append(s[i:m.start()])
+        j = m.end()
+        depth = 1
         while j < len(s) and depth:
             depth += (s[j] == '(') - (s[j] == ')')
             j += 1
@@ -111,8 +131,12 @@ def main():
         report("%s unchanged" % label, bv == av,
                "" if bv == av else "%s vs %s" % (bv[:5], av[:5]))
 
-    trace = re.findall(r'IOLog \("NativeUfs: (?:host|root) ([a-z-]+)', applied)
-    report("trace checkpoint count >= 30", len(trace) >= 30, "found %d" % len(trace))
+    # Count trace statements regardless of whether they use IOLog or printf.
+    # Labels are "host ...", "root ..." or "start-..." (the start probes).
+    trace = re.findall(
+        r'(?:IOLog|printf) \("NativeUfs: (start-[a-z-]+|(?:host|root) [a-z-]+)', applied)
+    trace = [t[0] if isinstance(t, tuple) else t for t in trace]
+    report("trace checkpoint count >= 40", len(trace) >= 40, "found %d" % len(trace))
     pairs = {}
     for t in trace:
         for stage in ("begin", "done", "failed"):
@@ -120,6 +144,11 @@ def main():
                 pairs.setdefault(t[: -len(stage) - 1], set()).add(stage)
     orphan = [k for k, v in pairs.items() if "begin" in v and not ({"done", "failed"} & v)]
     report("every begin has done/failed", not orphan, ",".join(orphan[:5]))
+
+    # The seven start() probes must all be present.
+    for probe in ("start-enter", "start-args", "start-gate-return", "start-options-ok",
+                  "start-diag", "start-dispatch-root", "start-fallthrough"):
+        report("start probe present: " + probe, probe in trace)
 
     print("\nRESULT:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
