@@ -1,5 +1,55 @@
 # Current status · 2026-11-21
 
+## 0008 双系统运行时分区名补丁 · 云构建中 · 2026-11-21
+
+用户目标：保留安卓系统，给安卓 data 留 70 GiB，其余建 macOS 根卷分区；即官方
+`dual-system-partition.md` + vermeer 板的 `*-root-partition` boot arg 方案。
+
+设备现场（TWRP，HA2HZAW2 / topaz，只读勘察）：`userdata` = sda14，4096B 扇区，
+start 5105064 / end 61390842 = 214.71 GiB；`metadata` = sda11 64 MiB；`/data` 未挂载。
+userdata 首块是加密随机字节（Android data），不是 SHNGROOT —— 根卷从未刷入，
+所以此前实机停在 `ufsscsi` / `ERR=0`（GPT 读成功、清单无效）。GPT `Total free space is 0 sectors`。
+本机 userdata 多层加密（`inlinecrypt+wrappedkey+metadata_encryption`），官方 `dual_sys`
+在线缩容工具会拒绝，必须手动 sgdisk 硬切（清空安卓 data）。
+
+精确切分数值（4096B LBA，已核算）：
+- userdata 70.00 GiB: LBA 5105064..23455143（18350080 扇区，75,161,927,680 B）
+- unixnu 144.71 GiB: LBA 23455144..61390842（37935699 扇区，155,384,623,104 B）
+- macOS 根镜像 17,603,493,888 B（16.39 GiB）刷入 unixnu 后余 ~128 GiB 给 Data store+日志。
+
+官方机制核实（vermeer 板 `5945dda` / fork `bf21739`）：`RootLayout.h` 把硬编码
+`userdata` 换成 `extern const char *gRootPartitionName`，`NativeUfs.cpp` 定义它并从
+boot arg 设置，默认 `userdata`；加 GPT 名 NUL 终止检查。boot arg 名为本机化的
+`tb710fu-root-partition`（本机已确认 `PE_parse_boot_arg_str` 在 24A446 prelink 白名单内）。
+
+本轮实现：`patches/ufs/0008-runtime-root-partition.patch`
+SHA-256 `0811c2a0146c60b8ac3744d9e58a6df720f48e2e81f3e24af247e68800579683`（110 行）。
+改 4 个文件：RootLayout.h（运行时名+终止检查）、NativeUfs.cpp（默认定义+start 读 boot arg，
+静态缓冲避免悬空）、tests/RootLayout.cpp 与 tests/RootPathBridge.cpp（定义符号）。
+无 MMIO/cast/命令/错误串/panic 行为改动。
+
+验证：`tools/check_ufs_bringup_trace.py` 追加 0008 应用与符号守卫，**46/46 PASS**，
+原行为守卫（MMIO/cast/write32/IOSleep/错误串/panic）全部不变；全 7 补丁序列
+(0001,0002,0004,0005,0006,0007,0008) 在隔离 git 环境 apply 干净且符号确认存在。
+注意基线是 git archive + 0001-0007（NativeUfs.cpp 2596 行），不是 feed 缓存已应用副本。
+本机无 clang++，host C++ 编译交 macOS 云构建。
+
+接线：`build-tb710fu-ufs-adapter.py` 的 PATCHES 加入 0008；
+`package_source_storage.py` boot-arg 白名单加入 `tb710fu-root-partition`；
+`patches/ufs/README.md` 记录 0008。提交 `97f5aed`（5 文件），已推送
+`origin/codex/ufs-transactional-handoff`（d0f6416..97f5aed）。构建前工作区另有本会话
+之前就存在的 `docs/USERDATA_BUILD.md` 改动与 `docs/HANDOFF_2026-11-18_QR_DIAGNOSTICS.md`，
+未纳入本次提交。
+
+云构建：stage=ufs-integrated run **44831350082**，commit `97f5aed`，已触发
+（HTTP 204），本条记录时为 `in_progress`。待产物复核确认 0008 编入内核。
+
+依赖链（顺序不可颠倒）：①内核认 unixnu（本轮，构建中）→ ②boot args 带
+`tb710fu-root-partition=unixnu`（打包 manifest 阶段加）→ ③设备 GPT 切 70G+144.7G 并刷机。
+③是不可逆设备写操作（清空安卓 userdata），**本轮未执行**。Data seed 是根卷挂载成功
+之后的独立阶段，排在刷机验证之后，本轮未做。
+`hardware_boot_verified=false`、`runtime_qualified=false`、`device_operations=false`。
+
 ## 0007 实机越过 hostBringUp，停在 root manifest · 2026-11-21
 
 新照片确认 0007 生效：`host lun-ready-done attempt=0` 首次出现，随后
