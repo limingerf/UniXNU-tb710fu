@@ -41,8 +41,21 @@ SHA-256 `0811c2a0146c60b8ac3744d9e58a6df720f48e2e81f3e24af247e68800579683`（110
 之前就存在的 `docs/USERDATA_BUILD.md` 改动与 `docs/HANDOFF_2026-11-18_QR_DIAGNOSTICS.md`，
 未纳入本次提交。
 
-云构建：stage=ufs-integrated run **44831350082**，commit `97f5aed`，已触发
-（HTTP 204），本条记录时为 `in_progress`。待产物复核确认 0008 编入内核。
+云构建：stage=ufs-integrated run **44831350082**，commit `97f5aed` —— **failure**。
+失败在 step 10 内的 archive-08（source-storage archive 编译 NativeUfs.cpp）：
+`NativeUfs.cpp:2347: reference to 'gRootPartitionName' is ambiguous`——`RootLayout.h` 在
+NativeUfs.cpp 的 anonymous namespace 内 include，其 `extern` 声明属于 anon namespace，
+而 0008 初版把定义放在全局，两个命名空间同名符号导致歧义（-Werror 下成 error）。
+注意 job 日志里的 `_tb710fu_live_log_putc/refresh` 链接错误是基线既有现象（上一成功
+run 44820012647 同样出现且 success），不是失败原因；真正原因是 archive-08 的 ambiguous。
+
+修复：定义移进与 RootLayout.h 声明相同的 anonymous namespace（紧跟 include 之后），
+host 测试仍在全局定义（其 include 在全局）。WSL clang++ 最小复现确认 OLD 版本触发
+`-Wundefined-internal`、NEW 版本干净通过。新补丁 SHA-256
+`205b6ca14918340087afdad22441e043baa6c69203985ad34663510bf6a433e6`。
+workflow verifier 仍 46/46 PASS。提交 `af038ef` 已推送，重发云构建 run
+**44835102754**（commit `af038ef`，stage=ufs-integrated），本条记录时 `in_progress`。
+待产物复核确认 0008 编入内核。
 
 依赖链（顺序不可颠倒）：①内核认 unixnu（本轮，构建中）→ ②boot args 带
 `tb710fu-root-partition=unixnu`（打包 manifest 阶段加）→ ③设备 GPT 切 70G+144.7G 并刷机。
