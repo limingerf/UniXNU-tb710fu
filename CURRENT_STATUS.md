@@ -1,5 +1,37 @@
 # Current status · 2026-11-20
 
+## NativeUfs 阶段追踪镜像已签出 · 2026-11-20
+
+macOS `ufs-integrated` run [44732960980](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44732960980)
+在设备提交 `e6d56ca9de64335a5a419fafadda0dbe5f980df7` 成功（原生 arm64e、
+strict prelink、production DarwinBoot parser）。产物 `14627517335` 共
+39,192,652 字节，SHA-256
+`63ac7d68a3fe7c8a4e40a3212a459fed203255fb752f9e3eca4ed8c836317ed9`，与 GitHub
+摘要一致。strict 预链接内核 SHA-256
+`4953c8e52ddf155b3a44552e922caf8383570aaf451e64d1c12e0f34147d5872`，屏显标识
+`src-e6d56ca9-ramoops`，`mapping_complete=true`、`missing={}`、`stubbed={}`。
+对内核的字符串扫描确认 0004 的 26 条 `NativeUfs: host/root` 追踪串全部编入，
+且上一版 21 个 `ss-` source-storage 检查点仍在。
+
+签名三件套：`boot.img` SHA-256
+`a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`（loader 基线
+不变），`vendor_boot.img` SHA-256
+`e0fd7853aea197bc09fdcdcb79e785f7edc1c6ce42a92448c369a1cf20b3f3ec`，`vbmeta.img`
+SHA-256 `a81da9a415059e577eeccb1cbc9118c45d03372b2a556628720b0486e1ef1ee5`。
+交付包 `out/live-checkpoints-44732960980-nufs-trace-signed.zip` 共 35,559,461 字节，
+SHA-256 `29616ca8674616028ccf1f944a0378958e42f20bc628da467f8161ac50f4b8c1`，
+11 个成员。独立复核从磁盘重算全部镜像与成员哈希、ZIP CRC、SHA256SUMS、
+AVB RSA-4096 签名、22 个未变 descriptor、公钥不变、payload LZMA 回读、ADT
+`f9b955ba…0dca3b` 与 parser 均 PASS；15 个关键追踪串在打包后的内核中确认存在。
+证据见 `docs/evidence/nufs-bringup-trace-signed-44732960980.json`（bundle 哈希记在
+包外，避免自引用）。
+
+尚未刷写或操作设备。`hardware_boot_verified=false`、
+`runtime_qualified=false`、`device_operations=false`。刷机后
+`ufs-start-begin` 之下会新增 `NativeUfs: root bring-up-begin` 起的 26 条阶段行；
+`host gcc-state` 直接打印 `gdsc/axi/ahb` 三个寄存器值，可判定固件是否已开启
+UFS 时钟与电源。
+
 ## 实机确认 UFS 接管停点，补上 NativeUfs 阶段追踪 · 2026-11-20
 
 新刷入 `44713622044` 镜像（`src-a89bac58-ramoops`）后，实机屏显按序走完
