@@ -1,22 +1,20 @@
 diff --git a/NativeUfs.cpp b/NativeUfs.cpp
-index 327f2e6..4814124 100644
+index 327f2e6..0e62fe4 100644
 --- a/NativeUfs.cpp
 +++ b/NativeUfs.cpp
-@@ -54,6 +54,13 @@ static UfsRootDiagnostics gRootDiagnostic;
- static bool gRootDiagnosticEnabled;
- static void rootDiagnosticFailure (const char *reason);
+@@ -1409,6 +1409,11 @@ static uint32_t be32w (const uint8_t *at)
+ #include "RootWindowRead.h"
+ #include "RootPublication.h"
  
-+// RootLayout.h reads this before its first GPT scan. "userdata" is the upstream layout, where the
-+// root image was flashed over the whole userdata partition. TB710FU can keep Android's userdata
-+// and store the root image in a separate partition, so the name comes from the boot argument
-+// tb710fu-root-partition, read once at the start of NativeUfs::start(). The default keeps the
-+// upstream behaviour unchanged when the argument is absent.
++// RootLayout.h declares this (inside this anonymous namespace); define it here so the
++// declaration and definition share the same namespace. Default "userdata" keeps upstream
++// behaviour; NativeUfs::start() sets it from the tb710fu-root-partition boot argument.
 +const char *gRootPartitionName = "userdata";
 +
- extern "C" {
- // Optional passive observer; absent in ordinary builds. It may run while a
- // window lock is held, so its contract forbids blocking or transport access.
-@@ -2327,6 +2334,14 @@ bool NativeUfs::start (IOService *provider)
+ }
+ 
+ // ---- Persistent Data store window (sheng-data-persist) ----------------------------------------------------------
+@@ -2327,6 +2332,14 @@ bool NativeUfs::start (IOService *provider)
    unsigned probe = 0, rootMode = 0;
    PE_parse_boot_argn ("native-ufs-probe", &probe, sizeof (probe));
    PE_parse_boot_argn ("native-ufs-root", &rootMode, sizeof (rootMode));
@@ -32,10 +30,10 @@ index 327f2e6..4814124 100644
    ufsCheckpoint ("ufsgate");
    native_ufs_probe_requested = probe != 0;
 diff --git a/RootLayout.h b/RootLayout.h
-index 82851d6..c19a6b6 100644
+index 82851d6..a28d9c7 100644
 --- a/RootLayout.h
 +++ b/RootLayout.h
-@@ -2,6 +2,16 @@
+@@ -2,6 +2,15 @@
  #pragma once
  // Shared production parser. Requires hostRead4k, SHA256, diagnostics and C memory primitives.
  // ---- LUN 0 GPT and the root-image manifest -------------------------------------------------
@@ -43,16 +41,15 @@ index 82851d6..c19a6b6 100644
 +// The GPT partition that carries the root image. Upstream sheng compiled in "userdata" because
 +// there the root image was flashed over the whole userdata partition. TB710FU can keep Android's
 +// userdata and place the root image in a separate partition, so the name is a runtime value.
-+// NativeUfs.cpp defines it from the tb710fu-root-partition boot argument, defaulting to
-+// "userdata" so the upstream behaviour is unchanged when the argument is absent; host tests
-+// define it explicitly. The terminator check below keeps a short name from matching a longer
-+// partition that merely starts with it.
++// NativeUfs.cpp defines it (default "userdata") and sets it from the tb710fu-root-partition boot
++// argument; host tests define it explicitly. The terminator check below keeps a short name from
++// matching a longer partition that merely starts with it.
 +extern const char *gRootPartitionName;
 +
  struct RootWindow {
    char name[32];
    uint64_t offset;   // bytes from the start of the userdata partition
-@@ -105,7 +115,9 @@ static bool findRootLayout (RootLayout *layout, const char **why)
+@@ -105,7 +114,9 @@ static bool findRootLayout (RootLayout *layout, const char **why)
      *why = "GPT entries CRC";
      return false;
    }
@@ -63,7 +60,7 @@ index 82851d6..c19a6b6 100644
    bool found = false;
    for (uint32_t index = 0; index < count; index++) {
      const uint8_t *entry = gScratch + index * 128;
-@@ -122,13 +134,16 @@ static bool findRootLayout (RootLayout *layout, const char **why)
+@@ -122,13 +133,16 @@ static bool findRootLayout (RootLayout *layout, const char **why)
          return false;
        }
      }
