@@ -22,10 +22,20 @@ Verification: git apply on the pinned ShengUfs source after 0001 and 0002, with
 .work/verify-ufs-bringup-patch.py.
 ---
 diff --git a/NativeUfs.cpp b/NativeUfs.cpp
-index 20fd0c2..69bd2f0 100644
+index 20fd0c2..af72d9c 100644
 --- a/NativeUfs.cpp
 +++ b/NativeUfs.cpp
-@@ -1004,26 +1004,39 @@ static bool hostBringUp (const char **why)
+@@ -990,6 +990,9 @@ static void hostWrite (unsigned offset, uint32_t value)
+ 
+ #include "RootQueue.h"
+ 
++// This translation unit owns ufsCheckpoint, so the command-path probes in
++// RootCommands.h draw the footer here; other includers compile them away.
++#define TB710FU_CMD_CHECKPOINT_PROVIDER 1
+ #include "RootCommands.h"
+ 
+ // Bring the live controller up for reading: map, SMMU pass-through for the UFS stream, take over
+@@ -1004,26 +1007,39 @@ static bool hostBringUp (const char **why)
    if (gHost.ready) {
      return true;
    }
@@ -65,7 +75,7 @@ index 20fd0c2..69bd2f0 100644
    if (gRootDiagnosticEnabled) {
      gRootDiagnostic.cap = read32 (gHost.hc, 0x00);
      gRootDiagnostic.version = read32 (gHost.hc, 0x08);
-@@ -1031,6 +1044,7 @@ static bool hostBringUp (const char **why)
+@@ -1031,6 +1047,7 @@ static bool hostBringUp (const char **why)
      gRootDiagnostic.hce = read32 (gHost.hc, 0x34);
    }
    gRootDiagnostic.stage = "DMA allocation";
@@ -73,7 +83,7 @@ index 20fd0c2..69bd2f0 100644
    gHost.dma = IOBufferMemoryDescriptor::inTaskWithOptions (
      kernel_task, static_cast<IOOptionBits> (kIODirectionInOut) | static_cast<IOOptionBits> (kIOMemoryPhysicallyContiguous) |
      static_cast<IOOptionBits> (kIOMemoryMapperNone),
-@@ -1038,6 +1052,7 @@ static bool hostBringUp (const char **why)
+@@ -1038,6 +1055,7 @@ static bool hostBringUp (const char **why)
    gHost.lock = IOLockAlloc ();
    if (!gHost.dma || !gHost.lock) {
      *why = "dma buffer";
@@ -81,7 +91,7 @@ index 20fd0c2..69bd2f0 100644
      return false;
    }
    gHost.virt = static_cast<uint8_t *> (gHost.dma->getBytesNoCopy ());
-@@ -1048,16 +1063,28 @@ static bool hostBringUp (const char **why)
+@@ -1048,16 +1066,28 @@ static bool hostBringUp (const char **why)
    if (!gHost.virt || !gHost.phys || (gHost.phys & 4095) || contiguous < kDmaBytes ||
        (!(read32 (gHost.hc, 0) & 0x01000000) && gHost.phys + kDmaBytes > 0x100000000ULL)) {
      *why = "DMA address/contiguity";
@@ -111,7 +121,7 @@ index 20fd0c2..69bd2f0 100644
    UfsSmmuPlan smmuPlan = planUfsSmmu (0x60, gHost.phys, kDmaBytes,
      [smmu = gHost.smmu](unsigned offset) { return read32 (smmu, offset); });
    gRootDiagnostic.smmuId1 = read32 (gHost.smmu, 0x24);
-@@ -1069,7 +1096,12 @@ static bool hostBringUp (const char **why)
+@@ -1069,7 +1099,12 @@ static bool hostBringUp (const char **why)
    }
    uint32_t report[3] = { 0, 0, 0 };
    gRootDiagnostic.stage = "SMMU and request list";
@@ -125,7 +135,7 @@ index 20fd0c2..69bd2f0 100644
    bool rollbackVerified = false;
    const char *smmuFailure = configureUfsSmmuTransactional (smmuPlan,
      [smmu = gHost.smmu](unsigned offset) { return read32 (smmu, offset); },
-@@ -1228,6 +1260,7 @@ static bool hostBringUp (const char **why)
+@@ -1228,6 +1263,7 @@ static bool hostBringUp (const char **why)
      gRootDiagnostic.smmuId2 = read32 (gHost.smmu, 0x28);
      gRootDiagnostic.cba2r = read32 (gHost.smmu, 0x1800 + 4 * (report[0] >> 16));
    }
@@ -133,7 +143,7 @@ index 20fd0c2..69bd2f0 100644
    if (!hostStartQueue (why)) {
      const char *recoveryWhy = "";
      if (!hostStopTakenQueue (&recoveryWhy))
-@@ -1239,43 +1272,56 @@ static bool hostBringUp (const char **why)
+@@ -1239,43 +1275,56 @@ static bool hostBringUp (const char **why)
            __asm__ volatile ("dsb sy" ::: "memory");
          }))
        panic ("NATIVE_UFS replacement queue rollback could not restore SMMU");
@@ -190,7 +200,7 @@ index 20fd0c2..69bd2f0 100644
        return true;
      }
      if (gHost.poisoned) break;
-@@ -1283,6 +1329,7 @@ static bool hostBringUp (const char **why)
+@@ -1283,6 +1332,7 @@ static bool hostBringUp (const char **why)
    }
    gHost.ready = false;
    *why = "LUN 0 not ready";
@@ -198,7 +208,7 @@ index 20fd0c2..69bd2f0 100644
    return false;
  }
  }
-@@ -2210,13 +2257,17 @@ static void mediaReportThread (void *, wait_result_t)
+@@ -2210,13 +2260,17 @@ static void mediaReportThread (void *, wait_result_t)
  
  bool NativeUfs::start (IOService *provider)
  {
@@ -216,7 +226,7 @@ index 20fd0c2..69bd2f0 100644
      return false;
    }
    if ((probe >= 3 && probe <= 5) || probe == 9) {
-@@ -2232,10 +2283,12 @@ bool NativeUfs::start (IOService *provider)
+@@ -2232,10 +2286,12 @@ bool NativeUfs::start (IOService *provider)
        IOLog ("NativeUfs: refusing Sheng-only Wi-Fi/DPU SMMU options during TB710FU takeover\n");
        return false;
      }
@@ -229,7 +239,7 @@ index 20fd0c2..69bd2f0 100644
    if (probe == 2) {
      inspect ();
    }
-@@ -2336,8 +2389,10 @@ bool NativeUfs::start (IOService *provider)
+@@ -2336,8 +2392,10 @@ bool NativeUfs::start (IOService *provider)
      return true;
    }
    if (rootMode && !probe) {
@@ -240,7 +250,7 @@ index 20fd0c2..69bd2f0 100644
    return false;
  }
  
-@@ -2345,13 +2400,16 @@ bool NativeUfs::start (IOService *provider)
+@@ -2345,13 +2403,16 @@ bool NativeUfs::start (IOService *provider)
  bool NativeUfs::startRoot (IOService *provider)
  {
    const char *why = "";
@@ -257,7 +267,7 @@ index 20fd0c2..69bd2f0 100644
    RootLayout *layout = static_cast<RootLayout *> (IOMalloc (sizeof (RootLayout)));
    if (!layout || !findRootLayout (layout, &why)) {
      rootDiagnosticFailure (layout ? why : "root layout allocation failed");
-@@ -2359,6 +2417,9 @@ bool NativeUfs::startRoot (IOService *provider)
+@@ -2359,6 +2420,9 @@ bool NativeUfs::startRoot (IOService *provider)
      if (layout) IOFree (layout, sizeof (RootLayout));
      return false;
    }
@@ -268,20 +278,40 @@ index 20fd0c2..69bd2f0 100644
    if (layout->manifestStatus != 0) {
      rootDiagnosticFailure ("root manifest rejected");
 diff --git a/RootCommands.h b/RootCommands.h
-index 2cebfac..fcfe2f4 100644
+index 2cebfac..83d44f8 100644
 --- a/RootCommands.h
 +++ b/RootCommands.h
-@@ -36,6 +36,9 @@ static IOReturn hostSubmit (uint32_t direction, uint32_t dataBytes, uint32_t tim
+@@ -1,6 +1,19 @@
+ // SPDX-License-Identifier: BSD-2-Clause-Patent
+ // Shared production command path. Included inside the root transport namespace.
+ // The host harness replaces only MMIO, DMA synchronization, clock and lock primitives.
++
++// Screen refresh for the command-path probes below. RootCommands.h is also
++// included by the host tests, which have no NativeUfs.cpp context. A weak-symbol
++// shim does not survive their -Werror (weak_import is ignored off Darwin and
++// taking the address of a declared function is a hard warning), so the drawing
++// path is selected at compile time: NativeUfs.cpp defines
++// TB710FU_CMD_CHECKPOINT_PROVIDER before including this header, and every other
++// translation unit compiles the call away.
++#if defined(TB710FU_CMD_CHECKPOINT_PROVIDER)
++#define tb710fuCmdCheckpoint(stage) ufsCheckpoint (stage)
++#else
++#define tb710fuCmdCheckpoint(stage) ((void) 0)
++#endif
+ struct HardwareTransferPort {
+   uint64_t deadline;
+   uint32_t doorbell () { return read32 (gHost.hc, 0x58); }
+@@ -36,6 +49,9 @@ static IOReturn hostSubmit (uint32_t direction, uint32_t dataBytes, uint32_t tim
    if (!timeoutUs || dataBytes > kDataMax || (dataBytes & 3) ||
        (dataBytes ? (direction != 1 && direction != 2) : direction != 0)) return kIOReturnBadArgument;
    if (gHost.poisoned) return kIOReturnNotReady;
 +  printf ("NativeUfs: host cmd-doorbell db=%08x is=%08x\n",
 +          read32 (gHost.hc, 0x58), read32 (gHost.hc, 0x20));
-+  ufsCheckpoint ("ufscdb");
++  tb710fuCmdCheckpoint ("ufscdb");
    if (read32 (gHost.hc, 0x58) != 0) {
      gHost.poisoned = true;
      gHost.ready = false;
-@@ -79,9 +82,17 @@ static IOReturn hostSubmit (uint32_t direction, uint32_t dataBytes, uint32_t tim
+@@ -79,9 +95,17 @@ static IOReturn hostSubmit (uint32_t direction, uint32_t dataBytes, uint32_t tim
    hostWrite (0x20, 1);  // Acknowledge completion only; preserve error evidence.
    HardwareTransferPort port;
    clock_interval_to_deadline (timeoutUs, kMicrosecondScale, &port.deadline);
@@ -290,38 +320,38 @@ index 2cebfac..fcfe2f4 100644
 +          (unsigned long long) port.deadline, timeoutUs);
    hostWrite (0x58, 1);
 +  printf ("NativeUfs: host cmd-ring-done\n");
-+  ufsCheckpoint ("ufscring");
++  tb710fuCmdCheckpoint ("ufscring");
    UfsTransferPoll state;
    UfsTransferEnd end = pollUfsTransfer (port, state);
 +  printf ("NativeUfs: host cmd-return end=%u ocs=%u polls=%u db=%08x is=%08x\n",
 +          (unsigned) end, state.ocs, state.polls, state.doorbellSeen, state.interruptSeen);
-+  ufsCheckpoint ("ufscret");
++  tb710fuCmdCheckpoint ("ufscret");
    gRootDiagnostic.polls = state.polls;
    gRootDiagnostic.dbSeen = state.doorbellSeen;
    gRootDiagnostic.isSeen = state.interruptSeen;
-@@ -166,7 +177,15 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
+@@ -166,7 +190,15 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
    *scsiStatus = 0xffff;
    if (!cdb || !cdbLength || cdbLength > 16 || dataBytes > kDataMax || direction > 2 ||
        (dataBytes & 3) || (dataBytes ? !direction : direction)) return kIOReturnBadArgument;
 -  if (!hostClearUcd ()) return kIOReturnNotReady;
 +  printf ("NativeUfs: host cmd-enter lun=%u op=%02x len=%u dir=%u bytes=%u timeout=%u\n",
 +          lun, cdb[0], cdbLength, direction, dataBytes, timeoutUs);
-+  ufsCheckpoint ("ufscent");
++  tb710fuCmdCheckpoint ("ufscent");
 +  if (!hostClearUcd ()) {
 +    printf ("NativeUfs: host cmd-ucd-refused\n");
 +    return kIOReturnNotReady;
 +  }
 +  printf ("NativeUfs: host cmd-ucd-cleared\n");
-+  ufsCheckpoint ("ufscucd");
++  tb710fuCmdCheckpoint ("ufscucd");
    uint8_t *ucd = gHost.virt + kUcdOffset;
    ucd[0] = 0x01;                      // COMMAND UPIU
    ucd[1] = direction == 2 ? 0x40 : direction == 1 ? 0x20 : 0x00;   // R: data in, W: data out
-@@ -176,6 +195,8 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
+@@ -176,6 +208,8 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
      ucd[16 + index] = cdb[index];
    }
    uint32_t ocs = 0xf;
 +  printf ("NativeUfs: host cmd-submit\n");
-+  ufsCheckpoint ("ufscsub");
++  tb710fuCmdCheckpoint ("ufscsub");
    IOReturn status = hostSubmit (direction ? direction : 0U, dataBytes, timeoutUs, &ocs);
    if (status != kIOReturnSuccess) return status;
    status = hostResponseHeader (0x21, lun, 0);

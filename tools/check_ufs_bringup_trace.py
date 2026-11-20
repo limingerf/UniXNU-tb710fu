@@ -17,6 +17,17 @@ ROOT = Path(__file__).resolve().parents[1]
 PIN = "99d8bcd3e43dd24fc3c8437c67b5d4cc71ab94d0"
 PATCH_DIR = ROOT / "patches/ufs"
 CHECKPOINT = re.compile(r'^ *ufsCheckpoint \("([a-z]+)"\);\n', re.M)
+# RootCommands.h is also included by the host tests, which have no
+# ufsCheckpoint in scope. NativeUfs.cpp therefore selects the drawing path with
+# a compile-time switch before including it, and every other includer compiles
+# the probes away.
+CMD_PROVIDER_SWITCH = re.compile(
+    r'^// This translation unit owns ufsCheckpoint,.*\n'
+    r'^// RootCommands\.h draw the footer here;.*\n'
+    r'^#define TB710FU_CMD_CHECKPOINT_PROVIDER 1\n',
+    re.M)
+# The probe calls themselves, in either spelling.
+CMD_PROBE_CALL = re.compile(r'^ *tb710fuCmdCheckpoint \("[a-z]+"\);\n', re.M)
 CHECKPOINT_PROVIDER = """// Text checkpoints use the same optional live-log provider as SourceStorage.
 extern "C" void tb710fu_live_log_checkpoint_text (const char *stage)
   __attribute__((weak_import));
@@ -123,8 +134,18 @@ def main():
     report("0005 uses the optional, guarded text checkpoint provider",
            checkpointed.count(CHECKPOINT_PROVIDER) == 1)
     without_checkpoints = CHECKPOINT.sub("", checkpointed.replace(CHECKPOINT_PROVIDER, "", 1))
+    # 0004 adds the compile-time provider switch in NativeUfs.cpp and the
+    # header-side probe calls. Both are scaffolding that 0004 introduces, so strip
+    # them from BOTH sides before comparing -- otherwise the 0004 body keeps the
+    # switch and the comparison is asymmetric.
+    without_checkpoints = CMD_PROVIDER_SWITCH.sub("", without_checkpoints)
+    without_checkpoints = CMD_PROBE_CALL.sub("", without_checkpoints)
+    applied_without_scaffold = CMD_PROVIDER_SWITCH.sub("", applied)
+    applied_without_scaffold = CMD_PROBE_CALL.sub("", applied_without_scaffold)
+    report("0004 uses a compile-time switch so host tests keep compiling",
+           CMD_PROVIDER_SWITCH.search(checkpointed) is not None)
     report("0005 leaves the post-0004 body intact apart from trace output and checkpoints",
-           strip_iolog(without_checkpoints) == strip_iolog(applied))
+           strip_iolog(without_checkpoints) == strip_iolog(applied_without_scaffold))
     stages = CHECKPOINT.findall(checkpointed)
     report("all footer labels are unique and fit the visible eight characters",
            set(stages) == FOOTER_STAGES and len(stages) == len(FOOTER_STAGES) and
@@ -139,7 +160,7 @@ def main():
            bool(ownership_window[1]) and "ufsCheckpoint" not in ownership_window[0])
 
     report("post-0002 body matches after removing diagnostic console traces",
-           norm(baseline) == norm(applied))
+           norm(baseline) == norm(applied_without_scaffold))
     print()
     guards = [
         (r'\bread32\s*\(', "MMIO read sites"),
