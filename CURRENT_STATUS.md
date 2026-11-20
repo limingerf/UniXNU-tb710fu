@@ -1,5 +1,38 @@
 # Current status · 2026-11-20
 
+## SCSI 命令路径逐级探针镜像已签出 · 2026-11-21
+
+实机页脚 `ufswake` 确认镜像生效且执行进入 `host wake-begin`。此前 poll 探针每
+200000 次才打印，约 0.4 秒而超时 500 ms，可能整段错过，且无法判断
+`hostSubmit` 是否进入。补丁 0004 现将阈值为 1000，并在 `hostScsiDir` /
+`hostSubmit` 增加 8 条无条件输出：`cmd-enter`（lun/opcode/len/dir/bytes/
+timeout）、`cmd-ucd-cleared`、`cmd-ucd-refused`、`cmd-submit`、
+`cmd-doorbell`（HC 0x58/0x20）、`cmd-deadline`（mach_absolute_time 与
+deadline）、`cmd-ring-done`、`cmd-return`（end/ocs/polls/db/is）。返回值、
+寄存器写、等待上界与错误路径均未改（SHA-256
+`d147453fd1c4c0fffe17242e79efcdb290afba16a59e3f220d5341e05362fa67`）。
+
+macOS `ufs-integrated` run [44777314987](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44777314987)
+在设备提交 `3f6ab5294c3c8b4a7eabfbf926c48b10199748d8` 成功。产物
+`14651980205` 共 39,203,199 字节，SHA-256
+`479c6d3e22552abec16b7171eb1ee4edd9295a54d0ad3f05cdc4d030889ccee4`。预链接
+内核 SHA-256
+`914be0663ea7773f128f4a31a803756ccb292427b476ac9aea4ae4c32b580c9d`，屏显
+`src-3f6ab529-ramoops`。内核扫描确认 8 条 cmd 探针、2 条 poll 探针、
+`ufswake` 标签与阶段追踪全部编入。
+
+签名三件套：`boot.img` `a3236acc…817a83`（基线），`vendor_boot.img`
+`1f7eff633e074ecd1c2cc0c21b2b2a305b63306b74d3f68d5c3cd0ea2a6761dc`，
+`vbmeta.img` `02c8d0fc3efa306a70a796cb25fc0503f8ae3a55ae4dc5ac17e665224088324f`。
+交付包 `out/live-checkpoints-44777314987-cmd-probe-signed.zip` 共 35,558,977
+字节，SHA-256
+`3d2d6666c488dd217e0c925b1226f14388739230d8b92c85da2f7f5c7b03c2fd`，11 成员。
+独立复核全部通过。证据见
+`docs/evidence/nufs-cmd-probe-signed-44777314987.json`。
+
+尚未刷写或操作设备。`hardware_boot_verified=false`、
+`runtime_qualified=false`、`device_operations=false`。
+
 ## poll 状态探针镜像已签出 · 2026-11-21
 
 实机刷入 printf 追踪镜像后，NativeUfs 全链路可见，停在
