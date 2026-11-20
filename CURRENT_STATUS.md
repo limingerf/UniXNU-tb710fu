@@ -41,6 +41,22 @@ SHA-256 `0811c2a0146c60b8ac3744d9e58a6df720f48e2e81f3e24af247e68800579683`（110
 之前就存在的 `docs/USERDATA_BUILD.md` 改动与 `docs/HANDOFF_2026-11-18_QR_DIAGNOSTICS.md`，
 未纳入本次提交。
 
+签名包已就绪（2026-11-21）：run 44835102754 的 kernel.macho SHA-256
+`230ff011860cc1f2c62d9b3d58b7523c4dd1abf333894d10909b76462f319311`（142,835,712 B，
+arm64e），0008 的 `tb710fu-root-partition`/`gRootPartitionName` 已确认编入 kernel 与
+source-storage archive。经标准色带变换（核 SHA
+`85e0dedb0163ff3f0337a7c10bf9dc4d2e3813d49615eb0568ea16eaf60ec9e8`）后打包签名。
+签名三件套：boot.img `a3236acc…817a83`（loader 基线不变）、
+vendor_boot.img `b528bc7f21b0175d7102d124dabdcf80c2a4e030b9afdefbae6a44831735668a`、
+vbmeta.img `9b3398ccb321e0e9c1cce3e79b74c4b8d439d29a107e41dc69f1ac51dfa07048`。
+交付包 `out/live-checkpoints-44835102754-dualpartition-signed.zip`（35,559,400 B，
+SHA-256 `01ebfa3aca23dff141b135bad76db0d324343b4a21d404ecc5c1245ade516ba1`，11 成员，
+ZIP CRC/SHA256SUMS PASS）。boot args 含 `tb710fu-root-partition=unixnu`，6/6 打包标记
+验证通过，AVB SHA256_RSA4096 签名/salted hash/public key unchanged 全 PASS。
+证据 `docs/evidence/nufs-dualpartition-signed-44835102754.json`。display label
+`src-af038ef4-ramoops`。**尚未刷写或操作设备**；`device_operations=false`、
+`hardware_boot_verified=false`、`runtime_qualified=false`。
+
 云构建：stage=ufs-integrated run **44831350082**，commit `97f5aed` —— **failure**。
 失败在 step 10 内的 archive-08（source-storage archive 编译 NativeUfs.cpp）：
 `NativeUfs.cpp:2347: reference to 'gRootPartitionName' is ambiguous`——`RootLayout.h` 在

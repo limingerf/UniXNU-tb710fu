@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "stage": "signed-nativeufs-runtime-root-partition-dual-system-test-image-set",
+  "user_authorized_local_signing": true,
+  "kernel_run_id": 44835102754,
+  "kernel_run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44835102754",
+  "device_commit": "af038ef4645abca08c3842c8f397a9a23371e461",
+  "display_build_label": "src-af038ef4-ramoops",
+  "profile": "macos-27.3-26C5035r",
+  "prelinked_kernel": {
+    "sha256": "230ff011860cc1f2c62d9b3d58b7523c4dd1abf333894d10909b76462f319311",
+    "bytes": 142835712,
+    "mapping_complete": true,
+    "production_parser": "PASS"
+  },
+  "ufs_behaviour_fix": {
+    "patch": "patches/ufs/0008-runtime-root-partition.patch",
+    "patch_sha256": "205b6ca14918340087afdad22441e043baa6c69203985ad34663510bf6a433e6",
+    "change": "The GPT partition carrying the root image is a runtime value read from the tb710fu-root-partition boot argument (default userdata), following the official vermeer dual-system fork; a NUL-terminator check prevents a short name matching a longer partition",
+    "reason": "TB710FU can keep Android userdata and place the macOS root image in a separate unixnu GPT partition. The previous hardcoded userdata name made a dual-system layout impossible. RootLayout.h uses an extern name; NativeUfs.cpp defines it in the same anonymous namespace and sets it at start(); host tests define it explicitly.",
+    "dual_system_partitions": {
+      "userdata_gib": 70,
+      "unixnu_gib": 144.71,
+      "userdata_lba": "5105064..23455143",
+      "unixnu_lba": "23455144..61390842"
+    },
+    "markers_verified_in_packaged_kernel": 6
+  },
+  "ufs_trace": {
+    "patch": "patches/ufs/0004-bringup-stage-trace.patch",
+    "patch_sha256": "e1fe3733b45c288e0862351f41b5b675589aaedb2580583039e8336b0de8b00c",
+    "console_call": "printf",
+    "host_and_root_probes": 53
+  },
+  "standard_band_derivative": {
+    "stage": "verified-standard-early-bands-derivative",
+    "result": "PASS",
+    "original_prelink_sha256": "230ff011860cc1f2c62d9b3d58b7523c4dd1abf333894d10909b76462f319311",
+    "kernel_sha256": "85e0dedb0163ff3f0337a7c10bf9dc4d2e3813d49615eb0568ea16eaf60ec9e8",
+    "kernel_bytes": 142835712,
+    "patch_spans_verified": 6,
+    "compact_probes_verified": 3,
+    "other_bytes_unchanged": true,
+    "segments_unchanged": true,
+    "no_QR_reporter_or_waits": true,
+    "hardware_verified": false
+  },
+  "boot_args": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1 kc-segment-release=0 tb710fu-root-partition=unixnu",
+  "manifest_sha256": "d16e4d8134a3afd8a762b2d1ec7b75486ad31dc25e86292bc6740da80fb5abbd",
+  "unsigned_vendor_boot": {
+    "bytes": 37859328,
+    "sha256": "8e54f2814f07c4c42eb3b161e18e2765cfc41e74159535259eff1929e39f51f4"
+  },
+  "signed_images": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "b528bc7f21b0175d7102d124dabdcf80c2a4e030b9afdefbae6a44831735668a"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "9b3398ccb321e0e9c1cce3e79b74c4b8d439d29a107e41dc69f1ac51dfa07048"
+    }
+  },
+  "signing_verification": {
+    "algorithm": "SHA256_RSA4096",
+    "signature_checks": "PASS",
+    "vendor_boot_salted_hash": "PASS",
+    "unsigned_vendor_body_preserved": true,
+    "vbmeta_header_unchanged": true,
+    "public_key_unchanged": true,
+    "unchanged_other_raw_descriptors": 22
+  },
+  "payload_verification": {
+    "FAT_clusters": 66512,
+    "FAT_readback_sha256": {
+      "Payloads/kernel.macho": "4f74ed13f2e091f26f963160d20d6d36d95b706fe34bedc9cd002886acab2377",
+      "Payloads/kernel.macho.adt": "f9b955bad7f9d6b3831d95cb70aa03cd44205c8e30f647e5e5e4f0a1708dca3b",
+      "Payloads/kernel.macho.vroot": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+      "unixnu.toml": "1a1ca11a95cc4307640d79ad5ad941ccf5e05adbec62226dc1f8773181f5fcf7"
+    },
+    "LZMA_roundtrip": "PASS",
+    "kernel_readback_sha256": "85e0dedb0163ff3f0337a7c10bf9dc4d2e3813d49615eb0568ea16eaf60ec9e8",
+    "adt_sha256": "f9b955bad7f9d6b3831d95cb70aa03cd44205c8e30f647e5e5e4f0a1708dca3b",
+    "production_DarwinBoot_parser": "PASS"
+  },
+  "hardware_boot_verified": false,
+  "runtime_qualified": false,
+  "device_operations": false,
+  "bundle": {
+    "path": "out/live-checkpoints-44835102754-dualpartition-signed.zip",
+    "bytes": 35559400,
+    "sha256": "01ebfa3aca23dff141b135bad76db0d324343b4a21d404ecc5c1245ade516ba1",
+    "members": 11,
+    "zip_crc": "PASS",
+    "sha256sums_readback": "PASS"
+  }
+}
