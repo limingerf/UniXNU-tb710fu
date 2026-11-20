@@ -1,5 +1,43 @@
 # Current status · 2026-11-20
 
+## SCSI 命令每步同步屏显镜像已签出 · 2026-11-21
+
+实机页脚 `ufswake` 确认镜像生效，执行进入 `host wake-begin`。NOP 与 power-query
+均打印 `cmd-return end=0 ocs=0 polls=1`，而 wake 之后没有 `cmd-enter`——但那两条
+原生命令走 `hostSubmit`、不经 `hostScsiDir`，本来就没有 `cmd-enter`；wake 是第
+一条进入 `hostScsiDir` 的命令，其 `printf` 可能仍留在环形缓冲区未上屏（页脚
+QR 落后 LOG 4547 字节，说明显示 worker 已停摆）。因此给命令路径每一步加
+`ufsCheckpoint` 强制刷屏：`ufscent` / `ufscucd` / `ufscsub` / `ufscdb` /
+`ufscring` / `ufscret`。
+
+`RootCommands.h` 也被 `ShengUfs/tests` 直接包含，直接调用 `ufsCheckpoint` 会
+编译失败（run `44783303560` 报了 8 处 `use of undeclared identifier`）。
+`weak_import` 在 host 侧同样不可用（`-Werror=attributes` 与 `-Werror=address`）。
+最终改为编译期开关：`NativeUfs.cpp` 在 include 前 `#define
+TB710FU_CMD_CHECKPOINT_PROVIDER 1`，头文件据此展开为真实调用或 `((void)0)`。
+本地用 `c++ -Wall -Wextra -Werror` 编译 `tests/RootCommandsBridge.cpp` 通过。
+
+macOS `ufs-integrated` run [44785665693](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44785665693)
+在设备提交 `8eb1a7d63f66ad1a6980dd0ad05e79af7ebb3657` 成功。产物
+`14653774042` 共 39,204,195 字节，SHA-256
+`42b7dc336a5d6fedf2f52937944ff856f2a856555e21a4729940c35d289e4960`。预链接
+内核 SHA-256
+`8496ed8e79d3120c234df92962ea427be60ec6ffab91f7befe384fe556bd9627`，屏显
+`src-8eb1a7d6-ramoops`。内核扫描确认 6 个命令检查点、全部 cmd/poll 探针与既有
+阶段追踪均在。
+
+签名三件套：`boot.img` `a3236acc…817a83`（基线），`vendor_boot.img`
+`923c4409e56b6e8053a1a0ada10114e48dedc7b99f92574bb1b5822d8cc3116b`，
+`vbmeta.img` `ae4c9d6bf21b60f1cf5b38de8d26bc257c874b2098a4926f61fd0157a0a9988e`。
+交付包 `out/live-checkpoints-44785665693-cmd-ckpt-signed.zip` 共 35,559,046
+字节，SHA-256
+`63b879569b8cad3bb2bd036c7e98c5bee6bfcfcaba332fec0f7da508699e7319`，11 成员。
+独立复核全部通过。证据见
+`docs/evidence/nufs-cmd-ckpt-signed-44785665693.json`。
+
+尚未刷写或操作设备。`hardware_boot_verified=false`、
+`runtime_qualified=false`、`device_operations=false`。
+
 ## SCSI 命令路径逐级探针镜像已签出 · 2026-11-21
 
 实机页脚 `ufswake` 确认镜像生效且执行进入 `host wake-begin`。此前 poll 探针每
