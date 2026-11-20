@@ -1,5 +1,43 @@
 # Current status · 2026-11-20
 
+## NativeUfs::start 追踪镜像已签出 · 2026-11-20
+
+实机刷入 run `44732960980` 后，屏显在 `TB710FU SourceStorage: ufs-start-begin`
+之后没有任何 `NativeUfs:` 行、也没有 panic。上一版 0004 只覆盖了
+`hostBringUp()` 和 `startRoot()`，`NativeUfs::start()` 入口到 `startRoot()`
+调用之间没有探针。补丁 0004 因此扩展 7 个检查点（SHA-256
+`d1e72c5f5ee680589929b868f16cc3c2feb4182b7ce0a079e407db1d2bc000c5`）：
+`start-enter provider=%p`、`start-args probe/root/cast`、
+`start-gate-return`、`start-options-ok`、`start-diag`、
+`start-dispatch-root`、`start-fallthrough`。其中 `cast` 直接打印
+`OSDynamicCast(IOPlatformDevice)` 结果——该 cast 失败会让 `start()` 在
+2219 行静默返回。
+
+macOS `ufs-integrated` run [44742777160](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44742777160)
+在设备提交 `e8d08b67e84f694a033756670c61431ab24e939c` 成功。产物
+`14631828891` 共 39,194,200 字节，SHA-256
+`fbdd0be3d36242361158dad495d6a0bf387b57a52de9836b4c525d713456116c`。strict
+预链接内核 SHA-256
+`5dbc7cba096d474d2ba9823cbb6be10706e5e687dc76941cfba343ae0c67fb74`，屏显
+`src-e8d08b67-ramoops`，mapping complete、parser PASS。内核字符串扫描确认
+7 条 `start-*` 与之前的 45 条 `host`/`root` 追踪全部编入。
+
+签名三件套：`boot.img` `a3236acc…817a83`（loader 基线不变），
+`vendor_boot.img` `dd0b27f73eef961d2616fdae424b6cabb654e52e9d3c98b372d07a58d6b49f38`，
+`vbmeta.img` `4e4b8bb534f66643733c48923abce4dca6a0fcb7eb2d268b5d159e0d9da19225`。
+交付包 `out/live-checkpoints-44742777160-start-trace-signed.zip` 共
+35,558,845 字节，SHA-256
+`352e1a07d8cb93ce0cee57df6f830fcc3d144d187bba5ba397c16dfc7f9a897c`，11 成员。
+独立复核重算全部镜像与成员哈希、ZIP CRC、SHA256SUMS、AVB RSA-4096、
+22 个未变 descriptor、公钥、payload LZMA 回读、ADT 与 parser 均 PASS；
+14 个关键标记在打包后内核中确认存在。证据见
+`docs/evidence/nufs-start-trace-signed-44742777160.json`。
+
+尚未刷写或操作设备。`hardware_boot_verified=false`、
+`runtime_qualified=false`、`device_operations=false`。刷机后
+`ufs-start-begin` 之下应出现 `NativeUfs: start-enter`；若其后的
+`start-args` 显示 `cast=0`，即为静默返回点。
+
 ## NativeUfs 阶段追踪镜像已签出 · 2026-11-20
 
 macOS `ufs-integrated` run [44732960980](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44732960980)
