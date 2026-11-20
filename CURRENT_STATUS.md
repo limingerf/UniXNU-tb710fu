@@ -1,5 +1,44 @@
 # Current status · 2026-11-20
 
+## poll 状态探针镜像已签出 · 2026-11-21
+
+实机刷入 printf 追踪镜像后，NativeUfs 全链路可见，停在
+`TB710FU SourceStorage: ufs-start-begin` 之后的 `NativeUfs: host wake-begin`，
+无 `wake-done`、无 `wake-failed`、无 panic。已通过项：`start-enter`、
+`start-args probe=0 root=1`、`gcc-state gdsc=f022f800 axi=00000001
+ahb=00000003` → `gcc-state-accepted`、controller-map、`dma-ready
+phys=8ca6e000 contig=139264`、smmu-map、queue snapshot/stop/start、
+`nop-done`（传输层已通）、`power-query-done power=00000033`。
+
+`pollUfsTransfer` 是纯忙等，仅在完成、fatal 或时钟到期时退出；若控制器不抬
+doorbell 或 deadline 永不到期，它不打印任何内容。补丁 0004 因此增加两处输出：
+每 200000 次轮询打印 `polls/db/is/ocs/expired`，以及返回 Timeout 前打印
+`poll-timeout`（SHA-256
+`86fda82896c4f27187ae2f8c5f0b34440871cb370557af3fe2824dc06acb923f`）。循环退出
+条件、寄存器读取与 cache 操作未改。
+
+macOS `ufs-integrated` run [44766487477](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44766487477)
+在设备提交 `f1572109757449d5522e87a20e393f812fa3b72b` 成功。产物
+`14644668818` 共 39,197,776 字节，SHA-256
+`5993eba6c5de5927c4b456c9ea7b7c6812dbca2ed7aab5c9ed80dd80a3426201`。预链接
+内核 SHA-256
+`5405986b9c1dc88023d08aa1a2d65203cd336f5767033007a4eb68b3f202677f`，屏显
+`src-f1572109-ramoops`。内核字符串扫描确认 2 条 poll 探针、20 个
+`ufsCheckpoint` 标签、57 条阶段追踪全部编入，且 0004 引入的多余四次控制器
+寄存器读与重复 `OSDynamicCast` 已被 0005 移除。
+
+签名三件套：`boot.img` `a3236acc…817a83`（基线），`vendor_boot.img`
+`ced652095f0d722fadf80cb342157fd3df450f8df0e64a195b43c94981d8e6b9`，
+`vbmeta.img` `3fe2fcba7749f28b6ca7b8f95a0b9cf4afbd2ab6456ca165999757f920c5c233`。
+交付包 `out/live-checkpoints-44766487477-poll-trace-signed.zip` 共 35,559,043
+字节，SHA-256
+`c5579eb6de18d8ff5a1713123150bc5a26eeb1c28bfc2e3d6c80d74b0fe678b3`，11 成员。
+独立复核全部通过。证据见
+`docs/evidence/nufs-poll-trace-signed-44766487477.json`。
+
+尚未刷写或操作设备。`hardware_boot_verified=false`、
+`runtime_qualified=false`、`device_operations=false`。
+
 ## NativeUfs 同步检查点镜像已签名 · 2026-11-20
 
 按用户授权，对 run `44755999777`、设备提交
