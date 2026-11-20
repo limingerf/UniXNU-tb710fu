@@ -268,19 +268,20 @@ index 20fd0c2..69bd2f0 100644
    if (layout->manifestStatus != 0) {
      rootDiagnosticFailure ("root manifest rejected");
 diff --git a/RootCommands.h b/RootCommands.h
-index 2cebfac..08694b6 100644
+index 2cebfac..fcfe2f4 100644
 --- a/RootCommands.h
 +++ b/RootCommands.h
-@@ -36,6 +36,8 @@ static IOReturn hostSubmit (uint32_t direction, uint32_t dataBytes, uint32_t tim
+@@ -36,6 +36,9 @@ static IOReturn hostSubmit (uint32_t direction, uint32_t dataBytes, uint32_t tim
    if (!timeoutUs || dataBytes > kDataMax || (dataBytes & 3) ||
        (dataBytes ? (direction != 1 && direction != 2) : direction != 0)) return kIOReturnBadArgument;
    if (gHost.poisoned) return kIOReturnNotReady;
 +  printf ("NativeUfs: host cmd-doorbell db=%08x is=%08x\n",
 +          read32 (gHost.hc, 0x58), read32 (gHost.hc, 0x20));
++  ufsCheckpoint ("ufscdb");
    if (read32 (gHost.hc, 0x58) != 0) {
      gHost.poisoned = true;
      gHost.ready = false;
-@@ -79,9 +81,15 @@ static IOReturn hostSubmit (uint32_t direction, uint32_t dataBytes, uint32_t tim
+@@ -79,9 +82,17 @@ static IOReturn hostSubmit (uint32_t direction, uint32_t dataBytes, uint32_t tim
    hostWrite (0x20, 1);  // Acknowledge completion only; preserve error evidence.
    HardwareTransferPort port;
    clock_interval_to_deadline (timeoutUs, kMicrosecondScale, &port.deadline);
@@ -289,33 +290,38 @@ index 2cebfac..08694b6 100644
 +          (unsigned long long) port.deadline, timeoutUs);
    hostWrite (0x58, 1);
 +  printf ("NativeUfs: host cmd-ring-done\n");
++  ufsCheckpoint ("ufscring");
    UfsTransferPoll state;
    UfsTransferEnd end = pollUfsTransfer (port, state);
 +  printf ("NativeUfs: host cmd-return end=%u ocs=%u polls=%u db=%08x is=%08x\n",
 +          (unsigned) end, state.ocs, state.polls, state.doorbellSeen, state.interruptSeen);
++  ufsCheckpoint ("ufscret");
    gRootDiagnostic.polls = state.polls;
    gRootDiagnostic.dbSeen = state.doorbellSeen;
    gRootDiagnostic.isSeen = state.interruptSeen;
-@@ -166,7 +174,13 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
+@@ -166,7 +177,15 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
    *scsiStatus = 0xffff;
    if (!cdb || !cdbLength || cdbLength > 16 || dataBytes > kDataMax || direction > 2 ||
        (dataBytes & 3) || (dataBytes ? !direction : direction)) return kIOReturnBadArgument;
 -  if (!hostClearUcd ()) return kIOReturnNotReady;
 +  printf ("NativeUfs: host cmd-enter lun=%u op=%02x len=%u dir=%u bytes=%u timeout=%u\n",
 +          lun, cdb[0], cdbLength, direction, dataBytes, timeoutUs);
++  ufsCheckpoint ("ufscent");
 +  if (!hostClearUcd ()) {
 +    printf ("NativeUfs: host cmd-ucd-refused\n");
 +    return kIOReturnNotReady;
 +  }
 +  printf ("NativeUfs: host cmd-ucd-cleared\n");
++  ufsCheckpoint ("ufscucd");
    uint8_t *ucd = gHost.virt + kUcdOffset;
    ucd[0] = 0x01;                      // COMMAND UPIU
    ucd[1] = direction == 2 ? 0x40 : direction == 1 ? 0x20 : 0x00;   // R: data in, W: data out
-@@ -176,6 +190,7 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
+@@ -176,6 +195,8 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
      ucd[16 + index] = cdb[index];
    }
    uint32_t ocs = 0xf;
 +  printf ("NativeUfs: host cmd-submit\n");
++  ufsCheckpoint ("ufscsub");
    IOReturn status = hostSubmit (direction ? direction : 0U, dataBytes, timeoutUs, &ocs);
    if (status != kIOReturnSuccess) return status;
    status = hostResponseHeader (0x21, lun, 0);
