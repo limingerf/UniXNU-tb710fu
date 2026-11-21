@@ -1,0 +1,32 @@
+diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
+index 8e30533..5189dfc 100644
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -814,12 +814,6 @@ bsd_init(void)
+ 	TB710FU_BSD_TEXT("iokit-time-init", "done\n");
+ 
+ 	/* Initialize the file systems. */
+-#if defined(XNU_TB710FU_CDC) && XNU_TB710FU_CDC
+-	extern void tb710fu_cdc_start(void);
+-	TB710FU_BSD_TEXT("cdc-start", "begin\n");
+-	tb710fu_cdc_start();
+-	TB710FU_BSD_TEXT("cdc-start", "done\n");
+-#endif
+ 	bsd_init_kprintf("calling vfsinit\n");
+ 	TB710FU_BSD_TEXT("vfsinit", "begin\n");
+ 	vfsinit();
+@@ -830,6 +824,14 @@ bsd_init(void)
+ 	native_source_storage_start();
+ 	TB710FU_BSD_TEXT("source-storage-start", "done\n");
+ #endif
++#if defined(XNU_TB710FU_CDC) && XNU_TB710FU_CDC
++	/* Started after the storage handoff so the platform verdict lands at the
++	 * tail of the boot log instead of scrolling away before root announces. */
++	extern void tb710fu_cdc_start(void);
++	TB710FU_BSD_TEXT("cdc-start", "begin\n");
++	tb710fu_cdc_start();
++	TB710FU_BSD_TEXT("cdc-start", "done\n");
++#endif
+ #if DEVELOPMENT || DEBUG
+ 	TB710FU_BSD_TEXT("apfs-probe", "begin\n");
+ 	native_apfs_load_probe();

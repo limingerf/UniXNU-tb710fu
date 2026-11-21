@@ -1,5 +1,34 @@
 # TB710FU USB CDC port · 2026-11-17
 
+## Platform self-heal for the USB30_PRIM block · 2026-11-21
+
+A quiet 0009 boot now prints the entire UFS bring-up and stops after
+`TB710FU bsd: source-storage-start done`, so the CDC hook has never had its
+verdict photographed: it used to run before `vfsinit`, dozens of screens earlier.
+Two changes make the next boot report itself.
+
+`CdcXnu.c` now replays the bounded GCC-side sequence Linux performs in
+`dwc3-qcom` probe: deassert the block reset (`GCC 0x00100000 + 0x39000`), power
+the USB30_PRIM GDSC (`0x39004` control, `0x39008` status bit 16) and enable the
+five branch clocks (`0x39018`, `0x39024`, `0x39028`, `0x39088`, `0x3908c`),
+setting the software enable while leaving the read-only halt bit alone and
+clearing the hardware-gating vote. All of these registers sit in the always-on
+GCC aperture, so writing them cannot fault the USB interconnect; the GDSC gates
+only DWC3 and the PHY. The PHY, PMIC/repeater, SMMU and UFS sides stay adoption
+only: a refused PHY control or SID 0x40 route is still reported, never programmed.
+
+A loader may also hand the core over in host or OTG role. `GCTL.PrtCapDir` is
+now reported and left to `tb710fu_dwc3_start()`, which halts the core and selects
+device mode regardless; only the core ID and DMA width remain hard requirements.
+Each attempt prints two compact register lines (`gcc ...`, `phy ...`) before any
+verdict, and `tb710fu_cdc_start()` waits at most 20 ms for the worker so those
+lines stay the tail of the log. Patch 0034 moves the hook to immediately after
+the storage handoff for the same reason.
+
+Real enumeration is still unverified: no `TB710FU CDC:` line has appeared in any
+captured boot, so which predicate used to refuse remains open until the next
+photo, and the two printed lines name it.
+
 ## Current PRELINKTEXT checkpoint · 2026-11-20
 
 The latest user QR is from `src-45d347f6-ramoops`, run `44546733725`, and is still

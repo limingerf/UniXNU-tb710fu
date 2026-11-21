@@ -205,3 +205,10 @@ probe is bracketed, and the later init calls (`proc_uuid_policy_init`, `mbinit`,
 `audit_init`, `knote_init`, `eventhandler_init`, the shm/sem caches,
 `domaininit`, `sysctl_mib_init`) get a done tag. The stage tags are
 unconditional, so a quiet 0009 boot still names the call it stopped in.
+
+`0034-tb710fu-cdc-start-after-storage.patch` moves the CDC hook out of the
+`iokit-time-init`/`vfsinit` gap to immediately after the source-storage handoff,
+so the platform verdict lands in the last screenful of a boot photo instead of
+scrollback nobody can recover. The hook waits at most 20 ms for the worker to
+report, which keeps the boot log ordered without ever waiting on a host. Its
+second hunk carries 0033 context and must stay after it in the series.

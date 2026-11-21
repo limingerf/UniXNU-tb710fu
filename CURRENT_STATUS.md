@@ -1,5 +1,29 @@
 # Current status · 2026-11-21
 
+## USB CDC 平台自举与可见性改造 · 2026-11-21 14:11
+
+用户要求把 USB CDC 日志通道修通，避免调试只能靠拍屏幕。CDC 此前是严格"固件采用"：
+只校验 GCC 时钟门、EUSB2 PHY 控制与 SID 0x40 恒等路由，任一谓词不过就 `refuse`
+并返回；ABL 正常启动可能在充电检测结束后把 USB30_PRIM 整块关掉，而驱动明确不负责
+开时钟和 PHY，于是"采用"路径先天依赖固件恰好留住状态。
+
+- `CdcXnu.c` 增加有界 GCC 侧自举：解块复位（`0x39000`）、开 USB30_PRIM GDSC
+  （`0x39004` 控制 / `0x39008` 状态 bit16）、开五路分支（`0x39018`、`0x39024`、
+  `0x39028`、`0x39088`、`0x3908c`；只写软件 enable，清硬件门控投票，保持只读 halt 位）。
+  这些寄存器都在常开的 GCC 窗口，写操作打不到 USB 互联；GDSC 只门控 DWC3 与 PHY。
+  PHY、PMIC/中继器、SMMU、UFS 仍然只采用不编程。
+- `GCTL.PrtCapDir` 从硬性拒绝改为只报不改：`tb710fu_dwc3_start()` 本来就会 halt 内核
+  并写 device 模式；只保留 core ID 与 DMA 位宽两条硬要求。
+- 每次尝试先打两行紧凑寄存器（`gcc ...`、`phy ...`）再给判定；`tb710fu_cdc_start()`
+  最多等 worker 20 ms，保证判定停在日志尾部。
+- 新补丁 `patches/xnu/0034-tb710fu-cdc-start-after-storage.patch` 把 0012 的 CDC 钩子
+  从 `vfsinit` 之前移到 `source-storage-start done` 之后，让判定落在照片最后一屏。
+  补丁第二块带 0033 上下文，必须排在 0033 之后。
+- 宿主检查（WSL gcc）：`check_usb_cdc_protocol.py`、`check_usb_cdc_hardware.py`、
+  `check_usb_cdc_transport.py` 全 PASS；`git apply --check` 对 post-0033 树返回 0。
+- 未验证：真实枚举。既有任何一次启动都没抓到 `TB710FU CDC:` 行，究竟卡在时钟、PHY、
+  SID40 还是控制器，要等这次镜像开机的最后两行。
+
 ## 0009 静默镜像已签名 · 2026-11-21 13:49
 
 用户授权本地签名。用 run 44870542276 的 prelinked 内核走标准色带衍生 → 无签名
