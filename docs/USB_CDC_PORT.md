@@ -1,5 +1,52 @@
 # TB710FU USB CDC port · 2026-11-17
 
+## SID 0x40 route class and one-shot bypass claim · 2026-11-22
+
+The photo with SHA-256
+`4ee1ec7b97cb8e3aafb671cbc1c0ac8b977ed1a70ecf9be53717a13ea0db476e` shows the
+bottom lanes `DLIL 05 SEEN 7FFF`, `BSD autocbeg` and `CDC sid40`. That is the
+first hardware evidence that both the BSD thread and the CDC worker ran, and it
+fixes the CDC stop: `cdc_refuse("sid40")` in `cdc_route()`.
+
+The old predicate was wrong twice. It required a SID 0x40 group to already
+exist as an identity route, which the boot chain has no reason to leave behind
+for a port it never used; and it collapsed a dozen mutually exclusive causes
+(CLIENTPD set, no SMS, no stage 1, bad IDR2 encoding, register geometry beyond
+the window, no matching group, masked alias, duplicate groups, faulting group,
+translating group, unsupported context) into the same eight-character tag, so
+the photo could not distinguish them.
+
+`tb710fu_cdc_identity_route_scan()` now reports a class instead:
+
+| Class | Meaning | CDC action |
+| --- | --- | --- |
+| `OK` | Exact unmasked group, bypass type or identity stage-1 VA | adopt |
+| `ABSENT` | No group names 0x40, a claimable slot exists | claim |
+| `FAULTED` | Exact group exists but its S2CR faults | claim |
+| `AMBIGUOUS` | Masked alias, or two groups match 0x40 | refuse `sidamb` |
+| `TRANSLATES` | Exact group resolves through a live bank | refuse `sidxl` |
+| `GEOMETRY` | sCR0, SMS, IDR2 or register geometry unusable | refuse `sidgeom` |
+| `FULL` | Every claimable group is already valid | refuse `sidfull` |
+
+`ABSENT` and `FAULTED` are the two states a boot chain legitimately leaves for a
+SID it does not own, so those are claimed: S2CR is written as an explicit
+BYPASS (type 1) first and SMR is made valid afterwards, every write is read
+back, and any mismatch restores both saved words. A publication that does not
+attest through a second scan is undone. The claim never touches a context bank,
+so no storage or GPU route changes.
+
+Group selection is deliberately asymmetric with storage. The storage planner
+scans from the top and its own test asserts group 127, while CDC is queued
+before storage starts; CDC therefore claims from group 0 upward and stops before
+the last group, so the two claims cannot collide even when only a few groups are
+left. `sidclaim`/`sidtake` in the bottom band mark a successful claim and
+`sidpub` a publication that failed its read-back.
+
+Linux's `arm-smmu.c` derives the context-bank offset as
+`size = 1 << (NUMPAGENDXB + 1)` then `CB = (size + bank) << pgshift`; the
+adapter's `(pages + bank) * 4096` matches that for the 4 KiB register pages it
+accepts, so the formula was not the bug.
+
 ## PHY sampling checkpoint · 2026-11-21
 
 The latest supplied photo has SHA-256

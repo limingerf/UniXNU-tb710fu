@@ -93,13 +93,42 @@ static int route(struct tb710fu_cdc_identity_route *r)
     return tb710fu_cdc_identity_route_read(read_register, NULL, r);
 }
 
+static enum tb710fu_cdc_smmu_result scan(struct tb710fu_cdc_identity_route *r)
+{
+    return tb710fu_cdc_identity_route_scan(read_register, NULL, r);
+}
+
+static unsigned stuck_offset = UINT32_MAX;
+
+static void write_register(void *context, unsigned offset, uint32_t value)
+{
+    (void)context;
+    assert(offset < sizeof(registers));
+    assert(!(offset & 3u));
+    // A register that silently drops a write models the resource-owned SMMU a
+    // firmware handoff can leave behind; the caller must undo its own writes.
+    if (offset == stuck_offset) return;
+    registers[offset / 4u] = value;
+}
+
+static void barrier(void *context)
+{
+    (void)context;
+}
+
+static int attach(struct tb710fu_cdc_identity_route *planned,
+                  struct tb710fu_cdc_smmu_saved *saved)
+{
+    return tb710fu_cdc_stream_bypass_attach(read_register, write_register,
+                                            barrier, NULL, planned, saved);
+}
+
 static void test_route(void)
 {
     struct tb710fu_cdc_identity_route r;
     fixture();
     assert(route(&r));
-    assert(r.address_bits == 48 && r.matching_streams == 1 && r.slot == 7);
-    registers[0] = 1; // CLIENTPD bypasses stream decisions globally.
+    assert(r.address_bits == 48 && r.matching_streams == 1 && r.slot == 7);    registers[0] = 1; // CLIENTPD bypasses stream decisions globally.
     assert(!route(&r));
     registers[0] = 8; // Extended SID semantics not implemented.
     assert(!route(&r));
@@ -159,6 +188,76 @@ static void test_route(void)
     assert(route(&r) && r.address_bits == 32);
     registers[0x28 / 4] = 0x656;
     assert(!route(&r)); // Reserved IDR2 address-size encoding.
+}
+
+static void test_route_classes(void)
+{
+    struct tb710fu_cdc_identity_route r;
+    // The boot chain owns no route for 0x40: that is ABSENT, not a refusal.
+    fixture();
+    registers[(0x800 + 7 * 4) / 4] = 0;
+    assert(scan(&r) == TB710FU_CDC_SMMU_ABSENT && r.slot == 0);
+    assert(!route(&r));
+    // A group that already faults is claimable, not ambiguous.
+    fixture();
+    registers[(0xc00 + 7 * 4) / 4] = 2u << 16;
+    assert(scan(&r) == TB710FU_CDC_SMMU_FAULTED && r.slot == 7);
+    // A masked alias is never silently adopted.
+    fixture();
+    registers[(0x800 + 7 * 4) / 4] = (1u << 31) | (1u << 16) | 0x41;
+    assert(scan(&r) == TB710FU_CDC_SMMU_AMBIGUOUS);
+    // Two exact groups for one SID are ambiguous as well.
+    fixture();
+    registers[(0x800 + 8 * 4) / 4] = (1u << 31) | 0x40;
+    assert(scan(&r) == TB710FU_CDC_SMMU_AMBIGUOUS);
+    // A live fast-path translation is someone else's route.
+    fixture();
+    registers[(0xc00 + 7 * 4) / 4] = 0;
+    assert(scan(&r) == TB710FU_CDC_SMMU_TRANSLATES);
+    // Geometry failures stay distinguishable from stream failures.
+    fixture();
+    registers[0] = 1;
+    assert(scan(&r) == TB710FU_CDC_SMMU_GEOMETRY);
+    // The storage planner expects the top group free, so CDC never takes it:
+    // with only group 127 available the claim must report FULL.
+    fixture();
+    for (unsigned i = 0; i < 127u; ++i)
+        registers[(0x800 + i * 4) / 4] = (1u << 31) | (0x100u + i);
+    registers[(0x800 + 127 * 4) / 4] = 0;
+    assert(scan(&r) == TB710FU_CDC_SMMU_FULL);
+}
+
+static void test_route_claim(void)
+{
+    struct tb710fu_cdc_identity_route planned;
+    struct tb710fu_cdc_smmu_saved saved;
+    // Claim a free group, then require the scan to attest it.
+    fixture();
+    registers[(0x800 + 7 * 4) / 4] = 0;
+    registers[(0xc00 + 7 * 4) / 4] = 0;
+    assert(scan(&planned) == TB710FU_CDC_SMMU_ABSENT && planned.slot == 0);
+    assert(attach(&planned, &saved));
+    assert(saved.slot == 0 && saved.smr == 0 && saved.s2cr == 0);
+    assert(registers[0x800 / 4] == ((1u << 31) | 0x40u));
+    assert(registers[0xc00 / 4] == (1u << 16));
+    assert(scan(&planned) == TB710FU_CDC_SMMU_OK && planned.slot == 0);
+    // Claiming a faulted group only rewrites its action.
+    fixture();
+    registers[(0xc00 + 7 * 4) / 4] = 2u << 16;
+    assert(scan(&planned) == TB710FU_CDC_SMMU_FAULTED && planned.slot == 7);
+    assert(attach(&planned, &saved));
+    assert(saved.smr == ((1u << 31) | 0x40u) && saved.s2cr == (2u << 16));
+    assert(registers[(0xc00 + 7 * 4) / 4] == (1u << 16));
+    assert(scan(&planned) == TB710FU_CDC_SMMU_OK);
+    // A publication that does not read back is undone in full.
+    fixture();
+    registers[(0x800 + 7 * 4) / 4] = 0;
+    assert(scan(&planned) == TB710FU_CDC_SMMU_ABSENT && planned.slot == 0);
+    stuck_offset = 0xc00; // The S2CR write is silently dropped.
+    assert(!attach(&planned, &saved));
+    stuck_offset = UINT32_MAX;
+    assert(registers[0x800 / 4] == 0 && registers[0xc00 / 4] == 0);
+    assert(scan(&planned) == TB710FU_CDC_SMMU_ABSENT);
 }
 
 static void put16(uint8_t *target, uint16_t value)
@@ -264,6 +363,8 @@ int main(void)
     test_clocks();
     test_phy();
     test_route();
+    test_route_classes();
+    test_route_claim();
     test_rpmh();
     test_board_power();
     puts("CDC hardware predicates: clock/PHY/SMMU, RPMh and board sequencing cases passed");

@@ -87,10 +87,37 @@ static inline int tb710fu_cdc_phy_adoptable(const struct tb710fu_cdc_phy_state *
 }
 
 typedef uint32_t (*tb710fu_cdc_register_read)(void *, unsigned);
+typedef void (*tb710fu_cdc_register_write)(void *, unsigned, uint32_t);
+typedef void (*tb710fu_cdc_register_barrier)(void *);
 
 struct tb710fu_cdc_identity_route {
     unsigned address_bits, matching_streams, slot, bank, context_offset;
     uint32_t smr, s2cr, cbar, cba2r, sctlr;
+};
+
+// A single boolean never said which of the mutually exclusive conditions a live
+// SMMU failed, and the device only has eight characters of bottom-band text.
+// The scan therefore reports the class and lets the caller name it.
+enum tb710fu_cdc_smmu_result {
+    TB710FU_CDC_SMMU_OK = 0,     // Exact group; explicit bypass or identity VA.
+    TB710FU_CDC_SMMU_ABSENT,     // No group names SID 0x40; a free slot exists.
+    TB710FU_CDC_SMMU_FAULTED,    // Exact group exists but its S2CR faults.
+    TB710FU_CDC_SMMU_AMBIGUOUS,  // Masked alias or more than one group matches.
+    TB710FU_CDC_SMMU_TRANSLATES, // Exact group resolves through a bank; not ours.
+    TB710FU_CDC_SMMU_GEOMETRY,   // sCR0, SMS or the register geometry is unusable.
+    TB710FU_CDC_SMMU_FULL        // Every stream-match group is already valid.
+};
+
+struct tb710fu_cdc_smmu_geometry {
+    uint32_t id0, id1, id2;
+    unsigned groups, banks, pages, address_bits;
+};
+
+// One group quarantined from the boot chain, kept so a failed publication can
+// put it back exactly as it was found.
+struct tb710fu_cdc_smmu_saved {
+    unsigned slot;
+    uint32_t smr, s2cr;
 };
 
 static inline unsigned tb710fu_cdc_smmu_width(unsigned field)
@@ -99,50 +126,148 @@ static inline unsigned tb710fu_cdc_smmu_width(unsigned field)
     return field < sizeof(widths) / sizeof(widths[0]) ? widths[field] : 0;
 }
 
-static inline int tb710fu_cdc_identity_route_read(tb710fu_cdc_register_read read,
-                                                  void *context,
-                                                  struct tb710fu_cdc_identity_route *r)
+static inline enum tb710fu_cdc_smmu_result tb710fu_cdc_smmu_geometry_read(
+    tb710fu_cdc_register_read read, void *context,
+    struct tb710fu_cdc_smmu_geometry *g)
 {
-    uint32_t control = read(context, 0), id0 = read(context, 0x20);
-    uint32_t id1 = read(context, 0x24), id2 = read(context, 0x28);
-    unsigned groups = id0 & 255u, banks = id1 & 255u;
-    unsigned pages = 1u << (((id1 >> 28) & 7u) + 1u);
-    *r = (struct tb710fu_cdc_identity_route){0};
+    const uint32_t control = read(context, 0);
+    g->id0 = read(context, 0x20);
+    g->id1 = read(context, 0x24);
+    g->id2 = read(context, 0x28);
+    g->groups = g->id0 & 255u;
+    g->banks = g->id1 & 255u;
+    // Linux arm-smmu.c: size = 1 << (NUMPAGENDXB + 1); CB = (size + bank) << 12.
+    g->pages = 1u << (((g->id1 >> 28) & 7u) + 1u);
+    g->address_bits = 64;
     // CLIENTPD must be clear. EXIDENABLE changes stream validity semantics;
     // this bounded path only implements SMR.VALID with 4 KiB register pages.
-    if ((control & 9u) || !(id0 & (1u << 27)) ||
-        !groups || groups > 128u || (id1 & (1u << 31)) ||
-        !banks || banks > 128u || pages > 128u ||
-        (pages + banks) * 4096u > TB710FU_USB_SMMU_BYTES) return 0;
-    r->address_bits = 64;
+    if ((control & 9u) || !(g->id0 & (1u << 27)) ||
+        !g->groups || g->groups > 128u || (g->id1 & (1u << 31)) ||
+        !g->banks || g->banks > 128u || g->pages > 128u ||
+        (g->pages + g->banks) * 4096u > TB710FU_USB_SMMU_BYTES)
+        return TB710FU_CDC_SMMU_GEOMETRY;
     for (unsigned shift = 0; shift <= 8; shift += 4) {
-        unsigned bits = tb710fu_cdc_smmu_width((id2 >> shift) & 15u);
-        if (!bits) return 0;
-        if (bits < r->address_bits) r->address_bits = bits;
+        const unsigned bits = tb710fu_cdc_smmu_width((g->id2 >> shift) & 15u);
+        if (!bits) return TB710FU_CDC_SMMU_GEOMETRY;
+        if (bits < g->address_bits) g->address_bits = bits;
     }
-    for (unsigned i = 0; i < groups; ++i) {
-        uint32_t smr = read(context, 0x800u + 4u * i);
-        uint32_t mask = (smr >> 16) & 0x7fffu;
-        if (!(smr & (1u << 31)) || ((smr ^ 0x40u) & 0xffffu & ~mask)) continue;
+    return TB710FU_CDC_SMMU_OK;
+}
+
+// Read-only. Names the class of the SID 0x40 route and, when a takeover is
+// possible, the group it would use; it never writes a register.
+static inline enum tb710fu_cdc_smmu_result tb710fu_cdc_identity_route_scan(
+    tb710fu_cdc_register_read read, void *context,
+    struct tb710fu_cdc_identity_route *r)
+{
+    struct tb710fu_cdc_smmu_geometry g;
+    *r = (struct tb710fu_cdc_identity_route){0};
+    const enum tb710fu_cdc_smmu_result status =
+        tb710fu_cdc_smmu_geometry_read(read, context, &g);
+    if (status != TB710FU_CDC_SMMU_OK) return status;
+    r->address_bits = g.address_bits;
+    // The storage planner scans groups from the top down and expects the last
+    // one free (its own test asserts slot 127). CDC is queued before storage
+    // starts, so claiming from the bottom keeps the two claims disjoint even
+    // when only a couple of groups remain.
+    const unsigned reserved = g.groups - 1u;
+    unsigned free_slot = g.groups;
+    for (unsigned i = 0; i < reserved; ++i) {
+        const uint32_t smr = read(context, 0x800u + 4u * i);
+        if (!(smr & (1u << 31))) {
+            if (free_slot == g.groups) free_slot = i;
+            continue;
+        }
+        // Masked matching makes 0x40 an alias of other SIDs; only an exact,
+        // unmasked group is a route this adapter may reason about.
+        const uint32_t mask = (smr >> 16) & 0x7fffu;
+        if ((smr ^ 0x40u) & 0xffffu & ~mask) continue;
         ++r->matching_streams;
-        if (r->matching_streams != 1 || mask) return 0;
+        if (r->matching_streams != 1 || mask) return TB710FU_CDC_SMMU_AMBIGUOUS;
         r->slot = i;
         r->smr = smr;
         r->s2cr = read(context, 0xc00u + 4u * i);
     }
-    if (r->matching_streams != 1) return 0;
-    unsigned type = (r->s2cr >> 16) & 3u;
-    if (type == 1) return 1; // Explicit bypass; no context-bank translation.
-    if (type != 0 || !(id0 & (1u << 30))) return 0;
+    if (!r->matching_streams) {
+        r->slot = free_slot;
+        return free_slot < g.groups ? TB710FU_CDC_SMMU_ABSENT : TB710FU_CDC_SMMU_FULL;
+    }
+    const unsigned type = (r->s2cr >> 16) & 3u;
+    if (type == 1) return TB710FU_CDC_SMMU_OK; // Explicit bypass, no bank.
+    if (type == 2) return TB710FU_CDC_SMMU_FAULTED; // Already blocked; safe to claim.
+    if (type != 0 || !(g.id0 & (1u << 30))) return TB710FU_CDC_SMMU_TRANSLATES;
     r->bank = r->s2cr & 255u;
-    if (r->bank >= banks) return 0;
-    r->context_offset = (pages + r->bank) * 4096u;
+    if (r->bank >= g.banks) return TB710FU_CDC_SMMU_TRANSLATES;
+    r->context_offset = (g.pages + r->bank) * 4096u;
     r->cbar = read(context, 0x1000u + 4u * r->bank);
     r->cba2r = read(context, 0x1800u + 4u * r->bank);
     r->sctlr = read(context, r->context_offset);
     // Only stage-1-with-stage-2-bypass, translation disabled and VA64. Enabled
     // page tables, stage 2 and 32-bit disabled contexts are deliberately refused.
-    return ((r->cbar >> 16) & 3u) == 1u && (r->cba2r & 1u) && !(r->sctlr & 1u);
+    return (((r->cbar >> 16) & 3u) == 1u && (r->cba2r & 1u) && !(r->sctlr & 1u))
+        ? TB710FU_CDC_SMMU_OK : TB710FU_CDC_SMMU_TRANSLATES;
+}
+
+// True only for a route this adapter may use as it stands.
+static inline int tb710fu_cdc_identity_route_read(tb710fu_cdc_register_read read,
+                                                  void *context,
+                                                  struct tb710fu_cdc_identity_route *r)
+{
+    return tb710fu_cdc_identity_route_scan(read, context, r) == TB710FU_CDC_SMMU_OK;
+}
+
+// Publish an explicit BYPASS route for SID 0x40 in a group the scan proved free
+// or faulted. S2CR is written before SMR is made valid, so an interrupted
+// publication leaves the stream unmatched rather than pointed at a live bank.
+// Every write is read back; any mismatch restores the two saved words.
+static inline int tb710fu_cdc_stream_bypass_attach(
+    tb710fu_cdc_register_read read, tb710fu_cdc_register_write write,
+    tb710fu_cdc_register_barrier barrier, void *context,
+    const struct tb710fu_cdc_identity_route *planned,
+    struct tb710fu_cdc_smmu_saved *saved)
+{
+    if (!planned || !saved || planned->slot >= 128u) return 0;
+    const unsigned smr_offset = 0x800u + 4u * planned->slot;
+    const unsigned s2cr_offset = 0xc00u + 4u * planned->slot;
+    saved->slot = planned->slot;
+    saved->smr = read(context, smr_offset);
+    saved->s2cr = read(context, s2cr_offset);
+    // SMMUv2 S2CR.TYPE: 0 translate, 1 bypass, 2 fault. CBNDX is irrelevant
+    // to bypass, so the value is fixed rather than taken from the old route.
+    const uint32_t bypass = 1u << 16;
+    int ok = 0;
+    if (!(saved->smr & (1u << 31))) {
+        // A free group: block it first, then nominate the exact SID.
+        write(context, s2cr_offset, bypass);
+        barrier(context);
+        ok = read(context, s2cr_offset) == bypass;
+        if (ok) {
+            const uint32_t match = (1u << 31) | 0x40u;
+            write(context, smr_offset, match);
+            barrier(context);
+            ok = read(context, smr_offset) == match;
+        }
+    } else {
+        // An exact group that already faults: only its action changes.
+        write(context, s2cr_offset, bypass);
+        barrier(context);
+        ok = read(context, s2cr_offset) == bypass;
+    }
+    if (!ok) {
+        write(context, smr_offset, saved->smr);
+        write(context, s2cr_offset, saved->s2cr);
+        barrier(context);
+        return 0;
+    }
+    struct tb710fu_cdc_identity_route attested;
+    if (tb710fu_cdc_identity_route_scan(read, context, &attested) != TB710FU_CDC_SMMU_OK ||
+        attested.slot != planned->slot || attested.matching_streams != 1u) {
+        write(context, smr_offset, saved->smr);
+        write(context, s2cr_offset, saved->s2cr);
+        barrier(context);
+        return 0;
+    }
+    return 1;
 }
 
 #endif

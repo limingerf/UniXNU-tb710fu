@@ -2,7 +2,9 @@
 // XNU 12377 adapter for the DWC3 CDC transport.
 // SM8650 controller, clock and PHY facts: tb710fu-linux@4d04410798b538fbe4b50664e3a66d9500a2ed31.
 // RPMh and PM8550B SPMI transaction formats follow the official UniXNU-sheng
-// reference at 516a780473a2ac59c8b438e132bb60204dda9e22. SMMU is read-only.
+// reference at 516a780473a2ac59c8b438e132bb60204dda9e22. SMMU is adopted
+// read-only; the only exception is one bypass stream group for SID 0x40, taken
+// when the boot chain left no route, and published with read-back and undo.
 // Replay an osfmk/startup.c compile record (MACH_KERNEL_PRIVATE). Use its
 // native declarations; BSD param/systm mixes incompatible BSD/libsa types.
 #include <kern/misc_protos.h>
@@ -64,7 +66,9 @@ static struct {
     uint32_t power_flags, repeater_status;
     uint32_t bcm_flags, bcm_values[4];
     uint32_t id, gctl, dma_bits, scr0, id0;
-    unsigned streams, role, spmi_apid;
+    uint32_t smmu_saved_smr, smmu_saved_s2cr;
+    unsigned streams, role, spmi_apid, smmu_slot;
+    unsigned smmu_claimed;
     uint64_t dma_physical;
     uint32_t dma_bytes;
 } gReport;
@@ -471,6 +475,17 @@ static uint32_t cdc_smmu_read(void *context, unsigned offset)
     return cdc_read(((struct tb710fu_cdc_xnu *)context)->smmu, offset);
 }
 
+static void cdc_smmu_write(void *context, unsigned offset, uint32_t value)
+{
+    cdc_write(((struct tb710fu_cdc_xnu *)context)->smmu, offset, value);
+}
+
+static void cdc_smmu_barrier(void *context)
+{
+    (void)context;
+    __asm__ volatile("dsb sy" ::: "memory");
+}
+
 static void cdc_delay(void *context, unsigned microseconds)
 {
     (void)context;
@@ -737,16 +752,50 @@ static int cdc_active_controls(struct tb710fu_cdc_xnu *x)
     return 1;
 }
 
+// The eight-character bottom band cannot carry a sentence, so every refusal
+// class gets its own short tag; "sid40" remains only as an unreachable default.
+static const char *cdc_smmu_tag(enum tb710fu_cdc_smmu_result result)
+{
+    switch (result) {
+    case TB710FU_CDC_SMMU_OK: return "sidok";
+    case TB710FU_CDC_SMMU_ABSENT: return "sidnone";
+    case TB710FU_CDC_SMMU_FAULTED: return "sidflt";
+    case TB710FU_CDC_SMMU_AMBIGUOUS: return "sidamb";
+    case TB710FU_CDC_SMMU_TRANSLATES: return "sidxl";
+    case TB710FU_CDC_SMMU_GEOMETRY: return "sidgeom";
+    case TB710FU_CDC_SMMU_FULL: return "sidfull";
+    }
+    return "sid40";
+}
+
 static int cdc_route(struct tb710fu_cdc_xnu *x,
-                      struct tb710fu_cdc_identity_route *route)
+                     struct tb710fu_cdc_identity_route *route)
 {
     cdc_step("smmu-route", "cdcsmmu");
-    int routed = tb710fu_cdc_identity_route_read(cdc_smmu_read, x, route);
+    enum tb710fu_cdc_smmu_result result =
+        tb710fu_cdc_identity_route_scan(cdc_smmu_read, x, route);
     gReport.scr0 = cdc_read(x->smmu, 0);
     gReport.id0 = cdc_read(x->smmu, 0x20);
     gReport.streams = route->matching_streams;
-    if (routed) return 1;
-    cdc_refuse("sid40");
+    if (result == TB710FU_CDC_SMMU_OK) return 1;
+    // An absent or already-faulted group is exactly the state the boot chain
+    // leaves for a SID it does not own; claim it, then require the same scan to
+    // attest the route this adapter will rely on.
+    if (result == TB710FU_CDC_SMMU_ABSENT || result == TB710FU_CDC_SMMU_FAULTED) {
+        cdc_checkpoint(result == TB710FU_CDC_SMMU_ABSENT ? "sidclaim" : "sidtake");
+        struct tb710fu_cdc_smmu_saved saved;
+        if (tb710fu_cdc_stream_bypass_attach(cdc_smmu_read, cdc_smmu_write,
+                                             cdc_smmu_barrier, x, route, &saved)) {
+            gReport.smmu_slot = route->slot;
+            gReport.smmu_saved_smr = saved.smr;
+            gReport.smmu_saved_s2cr = saved.s2cr;
+            gReport.smmu_claimed = 1;
+            return 1;
+        }
+        cdc_refuse(result == TB710FU_CDC_SMMU_ABSENT ? "sidpub" : "sidtake");
+        return 0;
+    }
+    cdc_refuse(cdc_smmu_tag(result));
     return 0;
 }
 
@@ -919,6 +968,12 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
            "smmu scr0=%08x id0=%08x streams=%u\n",
            gReport.id, gReport.gctl, gReport.role, gReport.dma_bits,
            gReport.scr0, gReport.id0, gReport.streams);
+    cdc_log("TB710FU CDC: smmu claimed=%u slot=%u smr=%08x s2cr=%08x "
+           "was smr=%08x s2cr=%08x\n",
+           gReport.smmu_claimed, gReport.smmu_slot,
+           gReport.smmu_claimed ? ((1u << 31) | 0x40u) : 0u,
+           gReport.smmu_claimed ? (1u << 16) : 0u,
+           gReport.smmu_saved_smr, gReport.smmu_saved_s2cr);
     if (ready) {
         cdc_checkpoint("irqroute");
         uint32_t spi_state = 0;
