@@ -148,7 +148,15 @@ def main():
         commands = (scratch / "RootCommands.h").read_text(encoding="utf-8")
         subprocess.run(["git", "apply", "--check", str(PATCH_DIR / "0003-minimal-source-runtime.patch")],
                        cwd=scratch, check=True)
-    report("0001 -> 0002 -> 0004 -> 0005 -> 0006 -> 0007 -> 0008 -> 0003 applies", True)
+        # 0009 gates the per-command and per-spin probes behind a boot argument. It
+        # is applied last so every invariant above is still checked on the 0008
+        # body those patches were written against.
+        subprocess.run(["git", "apply", str(PATCH_DIR / "0009-quiet-command-probes.patch")],
+                       cwd=scratch, check=True)
+        quiet = source.read_text(encoding="utf-8")
+        quiet_commands = (scratch / "RootCommands.h").read_text(encoding="utf-8")
+        quiet_poll = (scratch / "TransferPoll.h").read_text(encoding="utf-8")
+    report("0001 -> 0002 -> 0004 -> 0005 -> 0006 -> 0007 -> 0008 -> 0009 -> 0003 applies", True)
     report("0008 resolves the root partition name at runtime",
            "extern const char *gRootPartitionName;" in partitioned and
            'PE_parse_boot_arg_str ("tb710fu-root-partition"' in spun and
@@ -156,6 +164,49 @@ def main():
            "static const char wanted[]" not in partitioned)
     report("0008 keeps the NUL-terminator check on the GPT name",
            "entry[56 + 2 * wantedLen] != 0" in partitioned)
+
+    # 0009 keeps every probe but gates the per-command and per-spin output. The
+    # compile-time provider and the run-time accessor have to be visible before
+    # the headers that expand them: TransferPoll.h resolves ufsCmdTraceEnabled()
+    # while its template body is parsed, not when it is instantiated, so a later
+    # definition is a device-build error the host harness never sees (it leaves
+    # the provider undefined and every probe compiles away).
+    switch_at = quiet.index("#define TB710FU_CMD_CHECKPOINT_PROVIDER 1")
+    accessor_at = quiet.index("static bool ufsCmdTraceEnabled (void) { return gCmdTrace; }")
+    poll_at = quiet.index('#include "TransferPoll.h"')
+    diag_at = quiet.index('#include "RootDiagnostics.h"')
+    report("0009 defines the switch once, before the headers that expand it",
+           quiet.count("#define TB710FU_CMD_CHECKPOINT_PROVIDER 1") == 1 and
+           switch_at < accessor_at < min(poll_at, diag_at),
+           "switch=%d accessor=%d poll=%d diag=%d" % (switch_at, accessor_at, poll_at, diag_at))
+    report("0009 reads the boot argument once in start()",
+           quiet.count('PE_parse_boot_argn ("tb710fu-cmd-trace"') == 1 and
+           "gCmdTrace = cmdTrace != 0;" in quiet)
+    report("0009 gates the command probes instead of compiling them out",
+           quiet_commands.count("tb710fuCmdTrace (") >= 14 and
+           "#define tb710fuCmdTrace(...) do { if (ufsCmdTraceEnabled ()) printf (__VA_ARGS__); } while (0)"
+           in quiet_commands and
+           "#define tb710fuCmdTrace(...) ((void) 0)" in quiet_commands,
+           "gated=%d" % quiet_commands.count("tb710fuCmdTrace ("))
+    report("0009 leaves no ungated per-command console line",
+           quiet_commands.count('printf ("NativeUfs: host cmd-') == 0 and
+           quiet_commands.count('printf ("NativeUfs: host rsp-') == 0 and
+           quiet_commands.count('printf ("NativeUfs: host scsi-') == 0)
+    report("0009 gates the spin diagnostics on the same switch",
+           quiet_poll.count("tb710fuPollTrace(") >= 2 and
+           quiet_poll.count('printf("NativeUfs: poll') == 0 and
+           "#define tb710fuPollTrace(...) ((void) 0)" in quiet_poll)
+    report("0009 keeps every stage tag unconditional",
+           quiet.count('ufsCheckpoint ("') == spun.count('ufsCheckpoint ("') and
+           quiet.count("tb710fuCmdCheckpoint (") == spun.count("tb710fuCmdCheckpoint ("),
+           "footer=%d/%d" % (quiet.count('ufsCheckpoint ("'), spun.count('ufsCheckpoint ("')))
+    for pat, label in ((r'\bread32\s*\(', "MMIO read sites"),
+                       (r'write32\s*\(', "write32 calls"),
+                       (r'hostScsi\s*\(', "hostScsi calls"),
+                       (r'\bpanic\s*\(', "panic sites"),
+                       (r'\*why = "([^"]+)"', "error strings")):
+        report("0009 keeps %s" % label,
+               sorted(re.findall(pat, spun)) == sorted(re.findall(pat, quiet)))
 
     # 0006 replaces the two sleeps inside hostBringUp with busy waits. Locate the
     # function body by brace matching so the check cannot drift with line numbers.

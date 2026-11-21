@@ -42,7 +42,17 @@ The adapter script exports that exact commit and never edits fetched caches.
    source-storage archive builder. It disables the optional boot observer's
    declaration and call together when `TB710FU_UFS_NO_BOOT_OBSERVER=1`; it does
    not provide a no-op implementation. The isolated NativeUfs adapter uses
-   patches 0001, 0002, 0004, 0005, 0006, 0007 and 0008.
+   patches 0001, 0002, 0004, 0005,
+   0006, 0007, 0008 and 0009.
+ 9. `0009-quiet-command-probes.patch` keeps every command-path and spin probe
+    but gates their output behind the `tb710fu-cmd-trace` boot argument: a
+    retried bring-up used to scroll hundreds of screens of `cmd-*` lines and
+    bury the stage that actually stopped. The `ufs*` stage tags and the
+    CKPT-TEXT footer stay unconditional. The compile-time provider and the
+    run-time accessor precede the `TransferPoll.h` and `RootCommands.h`
+    includes, because `TransferPoll.h` resolves the call while its template
+    body is parsed; a later definition is a device-build error the host
+    harness never sees.
 
 The controller/GCC/SID facts come from the same-device Linux commit
 `4d04410798b538fbe4b50664e3a66d9500a2ed31`, documented in

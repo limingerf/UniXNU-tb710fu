@@ -1,5 +1,36 @@
 # Current status · 2026-11-21
 
+## 0009 探针静默补丁：设备端声明顺序修正 · 2026-11-21 13:40
+
+用户要求撤掉每次开机刷屏的 `cmd-*` 日志、保留停点诊断。0009 把
+`RootCommands.h` 与 `TransferPoll.h` 的命令/自旋探针改成运行期开关：
+`NativeUfs.cpp` 在 `start()` 里读 `tb710fu-cmd-trace` boot argument，默认关闭；
+`ufs*` 阶段标签与 CKPT-TEXT 页脚保持无条件输出，安静配置下停点仍然可见。
+
+本轮发现并修掉一个只在设备端暴露的编译错误：0009 初版把
+`#define TB710FU_CMD_CHECKPOINT_PROVIDER 1` 提到两个 include 之前，但
+`ufsCmdTraceEnabled()` 的定义仍留在 include 之后。`TransferPoll.h` 的探针在
+模板函数体内，clang 在解析模板定义时就做非依赖名字查找，设备编译报
+`use of undeclared identifier 'ufsCmdTraceEnabled'`；host 构建没有 provider，
+整段被宏擦除，宿主测试看不到这个问题。修复是把 `gCmdTrace` 与
+`ufsCmdTraceEnabled()` 一并前移到两个 include 之前。
+
+- 补丁 `patches/ufs/0009-quiet-command-probes.patch`，12,879 B，SHA-256
+  `71350d0d47b15a4b6715aa0eb85edcef13224cff6dbd8b2871804bb31c4becc3`；
+  `build-tb710fu-ufs-adapter.py` 的 PATCHES 已加入 0009。
+- 验证器 `tools/check_ufs_bringup_trace.py` 追加 0009 应用与守卫：开关与访问器
+  早于 include、`tb710fu-cmd-trace` 只读一次、16 处命令探针全部走门控、自旋
+  探针共用同一开关、24 个阶段标签数量不变、MMIO/命令/panic/错误串不变，
+  **57/57 PASS**。
+- 适配器宿主测试（WSL clang 19.1.7，`-Werror`）：`SmmuTakeover` 与
+  `RootCommands` 均 PASS，`host-tests.json` 记录 9 个补丁哈希。
+- 环境注记：0007 补丁是 CRLF，WSL 的 Linux git 未设 `core.autocrlf=true` 时在
+  LF 暂存树上匹配失败；Windows 侧或 `GIT_CONFIG_*` 注入后正常。验证器建议走
+  Windows python 运行。
+- 未做：完整设备编译。本地 11:47 起的内核构建仍在 bsd/osfmk，
+  `build/storage-abi` 头尚未生成，adapter 的设备编译路径缺 `startup.o.json`；
+  0009 的设备侧编译确认留给云构建。
+
 ## clang 四参数 `__ptrauth` 补丁定稿 · 2026-11-21 11:45
 
 本地 Linux/WSL arm64e 工具链打通后的收尾：把 `llvm-ptrauth-null-values.patch`

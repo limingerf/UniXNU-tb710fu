@@ -36,6 +36,12 @@ PATCHES = (
     # official vermeer dual-system fork. This lets TB710FU keep Android's userdata
     # and place the macOS root image in a separate "unixnu" partition.
     ROOT / 'patches/ufs/0008-runtime-root-partition.patch',
+    # 0009 keeps every command-path probe but gates the per-command and per-spin
+    # output behind the tb710fu-cmd-trace boot argument. A retried bring-up used
+    # to scroll hundreds of screens of "cmd-*" lines and bury the stage that
+    # actually stopped. The ufs* stage tags and the CKPT-TEXT footer stay
+    # unconditional, so the stop point remains visible with the probes quiet.
+    ROOT / 'patches/ufs/0009-quiet-command-probes.patch',
 )
 
 

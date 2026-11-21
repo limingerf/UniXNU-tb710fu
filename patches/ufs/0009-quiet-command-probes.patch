@@ -1,0 +1,233 @@
+From: TB710FU bring-up
+Subject: [PATCH] ufs: gate the per-command bring-up probes behind a boot argument
+
+Source: board patch series for the clean TB710FU SM8650Q-AB workspace
+Reason:
+  The command-path probes print once per submit and once per response. A
+  bring-up that retries a command therefore scrolls hundreds of screens and
+  buries the stage that actually stopped; the device run on 2026-11-21 did
+  exactly that and hid the real stop point behind the command noise.
+
+  The probes are not compiled out. They are gated at run time by the
+  tb710fu-cmd-trace boot argument, so one build boots quiet by default and
+  can still be diagnosed without a rebuild. The one-line ufs* stage tags and
+  the CKPT-TEXT footer stay unconditional, so the stop point remains
+  visible in the quiet configuration.
+
+Verification:
+  Host build of the ShengUfs adapter: the host harness does not define
+  TB710FU_CMD_CHECKPOINT_PROVIDER, so every probe call compiles away and
+  no host test changes behaviour. The device build defines the provider and
+  reads the flag once in NativeUfs::start().
+  The provider and the accessor precede the TransferPoll.h and RootCommands.h
+  includes: TransferPoll.h expands its probe inside a template body, so clang
+  resolves the call while the header is parsed, not at instantiation.
+
+Not applicable:
+  Builds without the tb710fu-cmd-trace boot argument keep the per-command
+  output disabled; the stage tags remain the primary stop-point evidence.
+---
+diff --git a/NativeUfs.cpp b/NativeUfs.cpp
+index 0e62fe4..a389093 100644
+--- a/NativeUfs.cpp
++++ b/NativeUfs.cpp
+@@ -35,6 +35,17 @@ extern const uint8_t verified_root_key[];
+ #include <pexpert/pexpert.h>
+ #include <kern/debug.h>
+ #include "GccUfs.h"
++// Per-command and per-spin probes print once per submit and once per response. A
++// bring-up that retries a command therefore fills the screen and hides the stage
++// that actually stopped. They are not compiled out: tb710fu-cmd-trace=1 re-enables
++// them for a single boot, and the ufs* stage tags stay unconditional so the stop
++// point is still visible with the probes quiet. RootCommands.h and TransferPoll.h
++// expand the probes on this provider and on ufsCmdTraceEnabled(); TransferPoll.h
++// resolves the call while its template body is parsed, so the flag and the accessor
++// have to be visible before either header is included.
++#define TB710FU_CMD_CHECKPOINT_PROVIDER 1
++static bool gCmdTrace;
++static bool ufsCmdTraceEnabled (void) { return gCmdTrace; }
+ #include "RootDiagnostics.h"
+ #include "TransferPoll.h"
+ #include "SmmuTakeover.h"
+@@ -1019,7 +1030,6 @@ static void hostSpinUs (uint64_t microseconds)
+ 
+ // This translation unit owns ufsCheckpoint, so the command-path probes in
+ // RootCommands.h draw the footer here; other includers compile them away.
+-#define TB710FU_CMD_CHECKPOINT_PROVIDER 1
+ // The host harnesses drive mach_absolute_time through a callback that only
+ // their IODelay hook advances, so they keep the original delay. Only this
+ // translation unit, which runs the real command path, selects the spin.
+@@ -2331,6 +2341,10 @@ bool NativeUfs::start (IOService *provider)
+   printf ("NativeUfs: start-enter provider=%p\n", (void *) provider);
+   unsigned probe = 0, rootMode = 0;
+   PE_parse_boot_argn ("native-ufs-probe", &probe, sizeof (probe));
++  unsigned cmdTrace = 0;
++  if (PE_parse_boot_argn ("tb710fu-cmd-trace", &cmdTrace, sizeof (cmdTrace))) {
++    gCmdTrace = cmdTrace != 0;
++  }
+   PE_parse_boot_argn ("native-ufs-root", &rootMode, sizeof (rootMode));
+   // Select the GPT partition carrying the root image. Constrain to a safe 1..31 byte name so an
+   // absent, empty or oversized argument keeps the "userdata" default; RootLayout.h reads this
+diff --git a/RootCommands.h b/RootCommands.h
+index 78db5d6..9c09c5e 100644
+--- a/RootCommands.h
++++ b/RootCommands.h
+@@ -15,6 +15,19 @@
+ #define tb710fuCmdCheckpoint(stage) ((void) 0)
+ #endif
+ 
++// Command-path probes. Unlike the one-line stage prints, these fire once per
++// submit and once per response, so a bring-up that retries a command fills the
++// screen and hides the stage that actually stopped. They stay compiled in and are
++// gated at run time instead: NativeUfs.cpp sets the flag from the
++// tb710fu-cmd-trace boot argument, so one build can boot quiet and still be
++// diagnosed without a rebuild. Every argument is a pure read, so discarding them
++// in the host build cannot drop a side effect.
++#if defined(TB710FU_CMD_CHECKPOINT_PROVIDER)
++#define tb710fuCmdTrace(...) do { if (ufsCmdTraceEnabled ()) printf (__VA_ARGS__); } while (0)
++#else
++#define tb710fuCmdTrace(...) ((void) 0)
++#endif
++
+ // IODelay is a timer wait, not a busy wait, when a thread calls it without a
+ // registered idle latency (ArmCpu, armcpu-idle-latency-us default 0). The
+ // command path polls from the masked-interrupt bring-up, where that timer wake
+@@ -61,7 +74,7 @@ static IOReturn hostSubmit (uint32_t direction, uint32_t dataBytes, uint32_t tim
+   if (!timeoutUs || dataBytes > kDataMax || (dataBytes & 3) ||
+       (dataBytes ? (direction != 1 && direction != 2) : direction != 0)) return kIOReturnBadArgument;
+   if (gHost.poisoned) return kIOReturnNotReady;
+-  printf ("NativeUfs: host cmd-doorbell db=%08x is=%08x\n",
++  tb710fuCmdTrace ("NativeUfs: host cmd-doorbell db=%08x is=%08x\n",
+           read32 (gHost.hc, 0x58), read32 (gHost.hc, 0x20));
+   tb710fuCmdCheckpoint ("ufscdb");
+   if (read32 (gHost.hc, 0x58) != 0) {
+@@ -107,15 +120,15 @@ static IOReturn hostSubmit (uint32_t direction, uint32_t dataBytes, uint32_t tim
+   hostWrite (0x20, 1);  // Acknowledge completion only; preserve error evidence.
+   HardwareTransferPort port;
+   clock_interval_to_deadline (timeoutUs, kMicrosecondScale, &port.deadline);
+-  printf ("NativeUfs: host cmd-deadline now=%llu deadline=%llu timeout_us=%u\n",
++  tb710fuCmdTrace ("NativeUfs: host cmd-deadline now=%llu deadline=%llu timeout_us=%u\n",
+           (unsigned long long) mach_absolute_time (),
+           (unsigned long long) port.deadline, timeoutUs);
+   hostWrite (0x58, 1);
+-  printf ("NativeUfs: host cmd-ring-done\n");
++  tb710fuCmdTrace ("NativeUfs: host cmd-ring-done\n");
+   tb710fuCmdCheckpoint ("ufscring");
+   UfsTransferPoll state;
+   UfsTransferEnd end = pollUfsTransfer (port, state);
+-  printf ("NativeUfs: host cmd-return end=%u ocs=%u polls=%u db=%08x is=%08x\n",
++  tb710fuCmdTrace ("NativeUfs: host cmd-return end=%u ocs=%u polls=%u db=%08x is=%08x\n",
+           (unsigned) end, state.ocs, state.polls, state.doorbellSeen, state.interruptSeen);
+   tb710fuCmdCheckpoint ("ufscret");
+   gRootDiagnostic.polls = state.polls;
+@@ -171,20 +184,20 @@ static IOReturn hostProtocolError (uint32_t reason)
+ static IOReturn hostResponseHeader (uint8_t type, uint8_t lun, uint8_t tag)
+ {
+   const uint8_t *rsp = gHost.virt + kUcdOffset + kRspOffset;
+-  printf ("NativeUfs: host rsp-head b0=%02x b1=%02x b2=%02x b3=%02x "
++  tb710fuCmdTrace ("NativeUfs: host rsp-head b0=%02x b1=%02x b2=%02x b3=%02x "
+           "b6=%02x b7=%02x b8=%02x b10=%02x b11=%02x want=%02x/%u/%u\n",
+           rsp[0], rsp[1], rsp[2], rsp[3], rsp[6], rsp[7], rsp[8],
+           rsp[10], rsp[11], type, lun, tag);
+   tb710fuCmdCheckpoint ("ufsrsp");
+-  if (rsp[0] != type) { printf ("NativeUfs: host rsp-bad type\n"); return hostProtocolError (1); }
+-  if (rsp[3] != tag) { printf ("NativeUfs: host rsp-bad tag\n"); return hostProtocolError (2); }
+-  if (rsp[2] != lun) { printf ("NativeUfs: host rsp-bad lun\n"); return hostProtocolError (3); }
++  if (rsp[0] != type) { tb710fuCmdTrace ("NativeUfs: host rsp-bad type\n"); return hostProtocolError (1); }
++  if (rsp[3] != tag) { tb710fuCmdTrace ("NativeUfs: host rsp-bad tag\n"); return hostProtocolError (2); }
++  if (rsp[2] != lun) { tb710fuCmdTrace ("NativeUfs: host rsp-bad lun\n"); return hostProtocolError (3); }
+   unsigned length = (unsigned (rsp[10]) << 8) | rsp[11];
+   if (rsp[8] || length > 512 - 32) {
+-    printf ("NativeUfs: host rsp-bad len=%u status=%02x\n", length, rsp[8]);
++    tb710fuCmdTrace ("NativeUfs: host rsp-bad len=%u status=%02x\n", length, rsp[8]);
+     return hostProtocolError (4);
+   }
+-  printf ("NativeUfs: host rsp-ok len=%u\n", length);
++  tb710fuCmdTrace ("NativeUfs: host rsp-ok len=%u\n", length);
+   return kIOReturnSuccess;
+ }
+ 
+@@ -211,14 +224,14 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
+   *scsiStatus = 0xffff;
+   if (!cdb || !cdbLength || cdbLength > 16 || dataBytes > kDataMax || direction > 2 ||
+       (dataBytes & 3) || (dataBytes ? !direction : direction)) return kIOReturnBadArgument;
+-  printf ("NativeUfs: host cmd-enter lun=%u op=%02x len=%u dir=%u bytes=%u timeout=%u\n",
++  tb710fuCmdTrace ("NativeUfs: host cmd-enter lun=%u op=%02x len=%u dir=%u bytes=%u timeout=%u\n",
+           lun, cdb[0], cdbLength, direction, dataBytes, timeoutUs);
+   tb710fuCmdCheckpoint ("ufscent");
+   if (!hostClearUcd ()) {
+-    printf ("NativeUfs: host cmd-ucd-refused\n");
++    tb710fuCmdTrace ("NativeUfs: host cmd-ucd-refused\n");
+     return kIOReturnNotReady;
+   }
+-  printf ("NativeUfs: host cmd-ucd-cleared\n");
++  tb710fuCmdTrace ("NativeUfs: host cmd-ucd-cleared\n");
+   tb710fuCmdCheckpoint ("ufscucd");
+   uint8_t *ucd = gHost.virt + kUcdOffset;
+   ucd[0] = 0x01;                      // COMMAND UPIU
+@@ -229,7 +242,7 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
+     ucd[16 + index] = cdb[index];
+   }
+   uint32_t ocs = 0xf;
+-  printf ("NativeUfs: host cmd-submit\n");
++  tb710fuCmdTrace ("NativeUfs: host cmd-submit\n");
+   tb710fuCmdCheckpoint ("ufscsub");
+   IOReturn status = hostSubmit (direction ? direction : 0U, dataBytes, timeoutUs, &ocs);
+   if (status != kIOReturnSuccess) return status;
+@@ -240,7 +253,7 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
+   gRootDiagnostic.scsi = *scsiStatus;
+   gRootDiagnostic.residual = loadBe32 (rsp + 12);
+   unsigned length = (unsigned (rsp[10]) << 8) | rsp[11];
+-  printf ("NativeUfs: host scsi-tail scsi=%04x resid=%u len=%u\n",
++  tb710fuCmdTrace ("NativeUfs: host scsi-tail scsi=%04x resid=%u len=%u\n",
+           *scsiStatus, gRootDiagnostic.residual, length);
+   if (length) {
+     unsigned senseLength = (unsigned (rsp[32]) << 8) | rsp[33];
+@@ -254,7 +267,7 @@ static IOReturn hostScsiDir (uint8_t lun, const uint8_t *cdb, unsigned cdbLength
+   if (!*scsiStatus && ((rsp[1] & 0x60) || gRootDiagnostic.residual)) return hostProtocolError (6);
+   IOReturn result = *scsiStatus == 0 ? kIOReturnSuccess : kIOReturnNotReady;
+   gRootDiagnostic.result = static_cast<uint32_t> (result);
+-  printf ("NativeUfs: host scsi-done status=%d\n", (int) result);
++  tb710fuCmdTrace ("NativeUfs: host scsi-done status=%d\n", (int) result);
+   tb710fuCmdCheckpoint ("ufsscsi");
+   return result;
+ }
+diff --git a/TransferPoll.h b/TransferPoll.h
+index b84624c..d282398 100644
+--- a/TransferPoll.h
++++ b/TransferPoll.h
+@@ -1,6 +1,16 @@
+ // SPDX-License-Identifier: BSD-2-Clause-Patent
+ // Single-slot completion policy. Port supplies ordered MMIO, invalidate-only
+ // descriptor reads, a monotonic deadline and bounded pacing. No resubmission.
++// Spin diagnostics share the command probes' run-time switch (tb710fu-cmd-trace).
++// A healthy transfer prints nothing here; only a spin that never completes would,
++// and that is exactly when the screen has to stay readable. The host harnesses
++// leave the provider undefined, so the calls compile away for them.
++#if defined(TB710FU_CMD_CHECKPOINT_PROVIDER)
++#define tb710fuPollTrace(...) do { if (ufsCmdTraceEnabled ()) printf (__VA_ARGS__); } while (0)
++#else
++#define tb710fuPollTrace(...) ((void) 0)
++#endif
++
+ enum class UfsTransferEnd { Completed, Fatal, Timeout };
+ struct UfsTransferPoll {
+   uint32_t polls = 0, doorbellSeen = 0, interruptSeen = 0, ocs = 15;
+@@ -18,7 +28,7 @@ static UfsTransferEnd pollUfsTransfer(Port &port, UfsTransferPoll &state)
+     // Periodic state dump so a spin that never exits still shows what the
+     // controller is doing. Prints, then continues exactly as before.
+     if ((state.polls % 1000U) == 0U) {
+-      printf("NativeUfs: poll polls=%u db=%08x is=%08x ocs=%u expired=%u\n",
++      tb710fuPollTrace("NativeUfs: poll polls=%u db=%08x is=%08x ocs=%u expired=%u\n",
+              state.polls, doorbell, state.interruptSeen, state.ocs,
+              (unsigned) port.expired());
+     }
+@@ -30,7 +40,7 @@ static UfsTransferEnd pollUfsTransfer(Port &port, UfsTransferPoll &state)
+       if (state.ocs != 15) return UfsTransferEnd::Completed;
+     }
+     if (port.expired()) {
+-      printf("NativeUfs: poll-timeout polls=%u db=%08x is=%08x ocs=%u\n",
++      tb710fuPollTrace("NativeUfs: poll-timeout polls=%u db=%08x is=%08x ocs=%u\n",
+              state.polls, doorbell, state.interruptSeen, state.ocs);
+       return UfsTransferEnd::Timeout;
+     }
