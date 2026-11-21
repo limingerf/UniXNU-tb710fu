@@ -1,5 +1,24 @@
 # Current status · 2026-11-21
 
+## USB CDC + BSD 链检查点镜像已签名 · 2026-11-21 14:29
+
+CDC 平台自举与 0033 并进同一次构建，只发一套镜像，少刷一次机。
+
+- 构建 run `44874414139`（`ca5c7f8`）success；prelinked 内核 `24194e56…359f20`，142,835,712 B；
+  标准色带衍生 `d909abe4…bdc0c`，`verify_standard_bands` PASS（6 处色带、3 处紧凑探针、
+  其他字节与段未变）。0033 的 15 个 bsd-* 标签与 0034 的新钩子位置都在这一份内核里。
+- CDC 证据：内核含 `TB710FU CDC: gcc bcr=`、`phy rst=`、`USB2 platform up`、`controller role=`
+  四条新字符串；`usb-cdc` 的 archive 与 compile report 按本次构建重新绑定（旧脚本沿用
+  run-44713622044 的旧归档，已改成 rebind 到本 run）。
+- 签名：`vendor_boot.img` `1921cc13…68e58b7`（100,663,296 B）；`vbmeta.img` `b60be65c…92a7926b`
+  （8,000 B，只改 `vendor_boot` 一个描述符）；`boot.img` 与基线一致 `a3236acc…d817a83`。
+- 包 `out/live-checkpoints-44874414139-cdc-signed.zip`，35,560,840 B，
+  SHA-256 `8737ce3dca742dc315365cda430cf01c12372c790d920b6d8eedb0a8a0c3acfa`，11 成员，
+  ZIP CRC 与 SHA256SUMS 回读一致。
+- 证据：`docs/evidence/nufs-cdc-signed-44874414139.json`。
+- 未验证：真实枚举。开机末尾应看到 `cdc-start begin` → 三行寄存器 → `USB2 platform up`
+  或一条 `refuse ...`；后者直接指出是时钟、PHY、SID40 还是控制器。
+
 ## USB CDC 平台自举与可见性改造 · 2026-11-21 14:11
 
 用户要求把 USB CDC 日志通道修通，避免调试只能靠拍屏幕。CDC 此前是严格"固件采用"：
