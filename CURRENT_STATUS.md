@@ -25,6 +25,25 @@ XNU 0035（SHA-256 `8b9d7fa62f633eb1203cf21cd4aef8c6e308e6220b5d16f1361d3ed29bd8
 三组 CDC 主机测试和 UFS 发布/命令/SMMU 主机测试通过。CDC 和 UFS 设备对象
 均以 arm64e 编译通过。USB 枚举、根挂载和进入用户态待实机验证。
 
+macOS `ufs-integrated` run
+[44883138301](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44883138301)
+在设备提交 `bb22cff99b33f03f8c6951a1d19559d116eb9c1c` 通过原生 arm64e 构建、
+严格预链接及 production DarwinBoot parser。产物 `14698249745` 共 39,216,838 字节，
+ZIP CRC 及 GitHub SHA-256
+`dd1f6a4d982e3b2ec05636bf0f1c951164e7c8085f888a52a241fc9dedfe826d` 回读通过。
+预链接内核 142,835,712 字节，SHA-256
+`38729ac77d6d81f03c6126e35b7a3173dea06ab016ba60906270db0471d9f1ff`，
+`mapping_complete=true`、`missing={}`、`stubbed={}`。屏显标识 `src-bb22cff9-ramoops`。
+
+工作区存在本地 Linux 编译配方修改。打包从 Git 导出此 run 的精确设备提交，
+以该版本的原始打包工具对照云端配方哈希，保留当前工作区修改。
+衍生内核 SHA-256 `6f32ad269d027d1d66e05f82cf51be51b9c3c860e7669b463d7e3ef558a2ef3e`。
+未签名镜像 `out/live-checkpoints-44883138301-cdc-async-unsigned/vendor_boot.unsigned.img`
+共 37,859,328 字节，SHA-256
+`9c27ae30a17334f58d9ff43dfbbb6a2bfcad5229019592e11d87c43232add210`。
+FAT/LZMA 独立回读确认同次构建、原 ADT、RootPolicies、`tb710fu-root-partition=unixnu`
+及 24 个检查标记。报告随镜像保存。签名及实机验证待完成。
+
 ## CDC 判定改由 BSD 线程打印 · 2026-11-21 15:12
 
 上一版（run 44874414139）实机启动停在 `TB710FU bsd: cdc-start begin`，`done` 与任何
