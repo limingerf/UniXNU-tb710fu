@@ -46,8 +46,49 @@ aarch64 交叉语法检查与 clang `-Wshadow -Wconversion` 扫描均通过。
 
 该 run 只覆盖 native 编译：`linked_into_kernel` 与 `cdc_enumeration_verified` 在
 报告中均为 false，prelink、UFS 适配器、fileset 校验和 source-storage 归档四步在
-native 阶段按设计跳过。原生 arm64e 编译不是预链接内核，预链接不是硬件启动，
-实机 CDC 枚举仍待验证。详见 [`USB_CDC_PORT.md`](docs/USB_CDC_PORT.md)。
+native 阶段按设计跳过。
+
+## 可刷写候选：SID 0x40 接管 · 2026-11-22
+
+strict prelink run
+[44935038733](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44935038733)
+（`94595b9`）整体 success，第 12 步生成 kernelcache，第 14 步通过 production
+DarwinBoot parser。其 `kernel.json` 为 `mapping_complete=true`、`missing={}`、
+`stubbed={}`、`allow_missing=false`，预链接候选 `kernel.macho` SHA-256
+`91ebf1755867a127c71721d08f836b67930f8481e73535f44cff7d670ceda282`，142,835,712 字节。
+
+在新内核中按通用计数逐一确认，本轮新增的七个 SMMU 标签 `sidclaim`、`sidtake`、
+`sidpub`、`sidgeom`、`sidamb`、`sidfull`、`sidxl` 各出现 1 处，说明分类与接管
+代码确实被链接进了预链接内核，而不只是编译进归档。
+
+以保留的已签名 448831 基线重新打包：LZMA1（dict 8 MiB、lc3 lp0 pb2、preset 6）
+压缩后 SHA-256 `4472c2f3…`，两次往返校验通过；CDC 平台闸门确认 GIC ADT
+`f9b955ba…`、配置 `1a1ca11a…` 与五个必需参数（含 `tb710fu-cdc=1`、
+`tb710fu-live-checkpoints=1`、`kc-segment-release=0`、`tb710fu-root-partition=unixnu`）
+在回读中全部存在。
+
+交付包 `out/tb710fu-cdc-smmu-prelink-44935038733-signed.zip`，SHA-256
+`4be786e57b45aa642ddae4b85decf1bdbe71640bc4ef1fbb8a959a293700c7fb`，
+35,562,079 字节。`vendor_boot.img` SHA-256
+`5ecc4216bcb8227b7c08a893158cff8c15b2e91d955ff91a6a55823ebcd73397`，
+`vbmeta.img` SHA-256
+`cce0b0fbd7c4770920b75aac0d7d1dccc9edf2bd88012fc8a6d2a1e4d1d25d8c`，
+`boot.img` 沿用基线 `a3236acc…`。
+
+复核不依赖 avbtool 的自述：`avbtool verify_image` 用镜像内嵌公钥分别验证
+vendor_boot 与 boot 均通过；另用独立脚本按 avbtool 文档的头部与描述符格式自行解析
+vbmeta，`vendor_boot` 的 sha256 描述符覆盖 37,859,328 字节，与签名后镜像该区间
+逐字节吻合；从 payload FAT 内取出的 `kernel.macho` 压缩流 SHA-256 与本地压缩结果
+一致，五个必需参数在回读的 `unixnu.toml` 中存在。签名报告记录
+`signature_checks=PASS`、22 条未改 raw descriptor 一致、公钥未变、vbmeta header 相同。
+
+`dtbo` 与 `init_boot` 描述符仍在 vbmeta 中，但这两个镜像不在交付包内，因此本轮未对
+它们做内容比对。未执行任何设备刷写或重启；实机启动与 USB CDC 枚举仍待验证。
+
+原生 arm64e 编译不是预链接内核，预链接不是硬件启动。下一步只需一次实机启动，看
+底栏第三格：`sidclaim` 或 `sidtake` 表示接管已执行，`sidnone`、`sidamb`、`sidxl`、
+`sidgeom`、`sidfull` 会直接点出剩余障碍，不必再猜。详见
+[`USB_CDC_PORT.md`](docs/USB_CDC_PORT.md)。
 
 ## 最新实机停点 · 2026-11-22
 

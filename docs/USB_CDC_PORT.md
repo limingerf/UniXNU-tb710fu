@@ -47,6 +47,49 @@ Linux's `arm-smmu.c` derives the context-bank offset as
 adapter's `(pages + bank) * 4096` matches that for the 4 KiB register pages it
 accepts, so the formula was not the bug.
 
+## Flashable candidate carrying the classified route · 2026-11-22
+
+Strict prelink run
+[44935038733](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44935038733)
+on `94595b9` finished `success`: step 12 produced the kernelcache and step 14
+passed the production DarwinBoot parser, with `mapping_complete=true`,
+`missing={}` and `stubbed={}`. The prelinked `kernel.macho` is
+`91ebf1755867a127c71721d08f836b67930f8481e73535f44cff7d670ceda282`,
+142,835,712 bytes.
+
+Counting the new tags in that kernel shows all seven present exactly once
+(`sidclaim`, `sidtake`, `sidpub`, `sidgeom`, `sidamb`, `sidfull`, `sidxl`), so
+the classification and claim code is genuinely linked into the prelinked
+kernel, not merely compiled into the archive.
+
+The bundle reuses the retained signed 448831 baseline. The kernel was
+compressed with the recorded LZMA1 parameters, the CDC platform gate confirmed
+the GIC ADT, the configuration hash and all five required boot arguments on
+readback, and the signed set is
+`out/tb710fu-cdc-smmu-prelink-44935038733-signed.zip`
+(`4be786e57b45aa642ddae4b85decf1bdbe71640bc4ef1fbb8a959a293700c7fb`).
+
+Verification deliberately does not rest on avbtool's own report:
+
+- `avbtool verify_image` with each image's embedded public key passed for both
+  `vendor_boot.img` and `boot.img`.
+- A separate script parsed the vbmeta header and the hash descriptors itself and
+  recomputed the digest over the descriptor's own `image_size` range; the
+  `vendor_boot` record covers 37,859,328 bytes and matches the signed image
+  byte for byte.
+- Extracting `kernel.macho` from the FAT inside the payload and hashing it
+  reproduces the local compression result `4472c2f3…`.
+- The five required boot arguments are present in the `unixnu.toml` read back
+  from that same payload.
+
+The `dtbo` and `init_boot` descriptors remain in the vbmeta, but neither image
+is in this bundle, so neither was compared. No device operation was performed.
+
+One device boot is now the only missing evidence. The third bottom lane decides
+the next step: `sidclaim` or `sidtake` means the claim executed, while
+`sidnone`, `sidamb`, `sidxl`, `sidgeom` or `sidfull` names the remaining
+obstacle directly.
+
 ## Native arm64e compilation of the classified route · 2026-11-22
 
 Commit `dca6c2c` (branch `cdc-smmu-claim`) compiled on the macOS runner in run
