@@ -166,9 +166,13 @@ static void cdc_tcs_unlock(void)
     if (gCdcTcsLock) IOLockUnlock(gCdcTcsLock);
 }
 
-static uint64_t cdc_div_ceil(uint64_t numerator, uint64_t denominator)
+static uint64_t cdc_bcm_div(uint64_t numerator, uint64_t denominator)
 {
-    return denominator && numerator ? (numerator - 1u) / denominator + 1u : 0;
+    // Match Linux bcm-voter.c. Small non-zero votes survive integer scaling,
+    // while the normal path intentionally truncates like the RPMh driver.
+    if (!denominator) return 0;
+    if (numerator && numerator < denominator) return 1;
+    return numerator / denominator;
 }
 
 static int cdc_bcm_data(const struct tb710fu_cdc_rpmh_resource *resource,
@@ -186,13 +190,11 @@ static int cdc_bcm_data(const struct tb710fu_cdc_rpmh_resource *resource,
                           (uint64_t)resource->levels[1] << 16;
     const uint64_t width = resource->levels[2];
     if (!unit || !width) return 0;
-    const uint64_t average_node = cdc_div_ceil(
+    const uint64_t average_node = cdc_bcm_div(
         average * width, (uint64_t)buswidth * channels);
-    const uint64_t peak_node = cdc_div_ceil(peak * width, buswidth);
-    uint64_t vote_x = cdc_div_ceil(average_node * 1000u, unit);
-    uint64_t vote_y = cdc_div_ceil(peak_node * 1000u, unit);
-    if (average && !vote_x) vote_x = 1;
-    if (peak && !vote_y) vote_y = 1;
+    const uint64_t peak_node = cdc_bcm_div(peak * width, buswidth);
+    const uint64_t vote_x = cdc_bcm_div(average_node * 1000u, unit);
+    const uint64_t vote_y = cdc_bcm_div(peak_node * 1000u, unit);
     if (vote_x > 0x3fffu) vote_x = 0x3fffu;
     if (vote_y > 0x3fffu) vote_y = 0x3fffu;
     *data = (1u << 30) | (1u << 29) |
