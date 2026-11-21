@@ -1,5 +1,38 @@
 # Current status · 2026-11-21
 
+## CDC 可刷写测试镜像 · 2026-11-21
+
+native run `44913019961` 通过 macOS arm64e 编译、CDC 主机测试和集成校验。
+strict prelink run `44914445374` 实际生成了 `kernel.macho`，SHA-256
+`a76e10b3bbc7a9a9558dc1288d9303638ba7d7d8d40e2f01a98609bf846033f2`，但收尾
+校验因复用 native artifact 时缺少 `build/tb710fu-cdc-log/build-report.json`
+而失败。该缺失不影响已生成的 kernelcache，本地已对 kernel、FAT payload 和
+ADT 做回读校验。
+
+已基于保留的 signed baseline 生成并签名测试三件套：
+`out/cdc-prelink-44914445374-signed/boot.img`（沿用不变）、
+`vendor_boot.img` SHA-256
+`5be8628b471fa0c085326db034a7a9e04d747034e40408ac8fe5ce1bb2468605`、
+`vbmeta.img` SHA-256
+`7e706fa489a6aa890275132fc1411680632734edc33949a93081bdaa552b1901`。
+ZIP 为 `out/tb710fu-cdc-prelink-44914445374-signed.zip`，SHA-256
+`d9da9ee1634f2dc32abaf2110320c3020cfdeb0c1e5818ebc25a96eb80b95ede`。
+签名、AVB footer、payload 回读、公钥、vbmeta header 和 22 条未改 descriptor
+均通过。未执行设备刷写或重启，Windows CDC 枚举仍待实机验证。
+
+上一包使用的菜单参数只有 `tb710fu-live-log=1`，因此是双 QR 双通道显示，
+不能代表滚动日志显示路径。基于同一份 prelinked kernel 重新生成的滚动日志包为
+`out/tb710fu-cdc-prelink-44914445374-scroll-signed.zip`，菜单加入
+`tb710fu-live-checkpoints=1 kc-segment-release=0`，配置回读确认。其
+`vendor_boot.img` SHA-256 为
+`39d48ead3097ce00d818f8be4841e1081ba70287a70602dab672145508460843`，
+`vbmeta.img` SHA-256 为
+`3d68c13e87e870d8881e979cd082aa4b0d7ae1bbee1f424c0d9c157921147c33`，
+ZIP SHA-256 为
+`d30b0621c66084b3251f56ce9163cfc070d85255acf6135a7ea08d81794b6191`。
+该配置只改变显示/诊断模式，不改变 CDC 内核代码。无 CDC 端口仍表示硬件
+接管路径尚未通过，不能归因于 QR 配置。
+
 ## CDC PHY 采样停点 · 2026-11-21
 
 最新实机照片 SHA-256 `3d17a8bdc7fa5c51b2eee4b52fc2fa25c801223e99a333951421a3299788bc24`。
@@ -14,11 +47,11 @@ CDC 归档和内核包含 `cdcphyg`、`phy-sample`、`cdcphyr` 标记，不含�
 `phy-snps-eusb2.c` 先启用 PHY regulators 和 PMIC repeater，再开参考时钟、
 脉冲 PHY reset 并配置 PHY。当前源适配器已按该顺序加入四路 RPMh rail、
 PM8550B SPMI repeater、可选 `xo.lvl`、GCC/TCSR 时钟、reset 和 PHY 序列。
-RSC TCS 2 使用同设备 Apps SMMU 锁，完成等待采用同设备已验证的 2 ms bounded
-delay，不把 CPU 不可见的 IRQ latch 当作失败，也没有加入未经 USB 路径证实的
-`SN2` 投票。当前 XNU 没有导出同设备 Apps SMMU 锁，CDC worker 使用自己的
-`IOLock` 串行化 TCS 窗口。新增 APID 上限、SPMI 完成错误位和 repeater ready
-检查。
+RSC TCS 2 使用 CDC worker 自己的 `IOLock` 串行化，完成等待采用同设备已验证
+的 2 ms bounded delay，不把 CPU 不可见的 IRQ latch 当作失败。当前路径已按
+Linux USB HS interconnect 增加 `CN0`、`SN2`、`ACV`、`MC0` 的 command-db
+BCM 投票，使用 aux unit/width 和 240/700 MB/s 公式。新增 APID 上限、SPMI
+完成错误位和 repeater ready 检查。
 
 本地诊断改动在每次 PHY reset、ref、UTMI CTRL0/5、COMMON0、HS PHY CTRL2
 读取之前分别发布 `phy-rst`、`phy-ref`、`phy-u0`、`phy-u5`、`phy-c0`、

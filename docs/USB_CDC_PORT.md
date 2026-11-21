@@ -17,7 +17,9 @@ tree does not export the same-device Apps SMMU lock, so the CDC worker uses an
 XNU `IOLock` to serialize its own TCS transaction window. The RSC completion
 latch is not a reliable CPU-readable success signal on this board, so each
 one-command vote uses the same bounded 2 ms delay and cleanup sequence as the
-same-device reference. No guessed `SN2` interconnect vote is issued.
+same-device reference. The USB2 HS path now also issues Linux-style active BCM
+votes for `CN0`, `SN2`, `ACV` and `MC0`, using command-db aux scaling and the
+240/700 MB/s interconnect request.
 
 The adapter rejects an invalid SPMI version/count, non-owned or ambiguous
 repeater APID, failed SPMI transaction and repeater timeout. It also marks each
