@@ -193,8 +193,8 @@ static int cdc_bcm_data(const struct tb710fu_cdc_rpmh_resource *resource,
     const uint64_t average_node = cdc_bcm_div(
         average * width, (uint64_t)buswidth * channels);
     const uint64_t peak_node = cdc_bcm_div(peak * width, buswidth);
-    const uint64_t vote_x = cdc_bcm_div(average_node * 1000u, unit);
-    const uint64_t vote_y = cdc_bcm_div(peak_node * 1000u, unit);
+    uint64_t vote_x = cdc_bcm_div(average_node * 1000u, unit);
+    uint64_t vote_y = cdc_bcm_div(peak_node * 1000u, unit);
     if (vote_x > 0x3fffu) vote_x = 0x3fffu;
     if (vote_y > 0x3fffu) vote_y = 0x3fffu;
     *data = (1u << 30) | (1u << 29) |
