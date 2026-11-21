@@ -32,3 +32,4 @@
 0032-tb710fu-bsd-text-checkpoints.patch
 0033-tb710fu-bsd-init-chain-checkpoints.patch
 0034-tb710fu-cdc-start-after-storage.patch
+0035-tb710fu-root-userland-checkpoints.patch

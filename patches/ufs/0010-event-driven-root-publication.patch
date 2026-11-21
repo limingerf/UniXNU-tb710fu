@@ -1,0 +1,116 @@
+From: TB710FU clean board
+Subject: [PATCH] Wake the root publisher when its APFS media matches
+
+Source: UniXNU/ShengUfs 99d8bcd3e43dd24fc3c8437c67b5d4cc71ab94d0
+with TB710FU patches through 0009, and XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f
+IOService::waitForMatchingService(), matchPassive() and matchInternal().
+
+The device reached source-storage-start done, which confirms queuing the
+publisher. A publisher that queries before matching completes can block in
+IOSleep(100), the same timer-wakeup dependency bypassed in UFS bring-up.
+Wait once per window for a matching UUID and backing registry ID. Recheck
+the UUID and the original bounded provider ancestry using the retained
+IOMedia object from the wait. Preserve the 30-second IOKit deadline and the
+existing publication order and cleanup.
+
+Verification: forward and reverse application after the run 44877673063
+UFS patches, and run the adapter and existing RootPublication host tests.
+---
+
+diff --git a/NativeUfs.cpp b/NativeUfs.cpp
+--- a/NativeUfs.cpp
++++ b/NativeUfs.cpp
+@@ -3,6 +3,7 @@
+ // native-ufs-probe=1 is present. This is a register probe, not a storage driver.
+ #include <IOKit/IOService.h>
+ #include <IOKit/IOPlatformExpert.h>
++#include <IOKit/IOKitKeys.h>
+ #include <IOKit/storage/IOBlockStorageDevice.h>
+ #include <libkern/crypto/sha2.h>
+ #include <vm/vm_kern.h>
+@@ -2151,29 +2152,38 @@
+ static UfsRootPlan gPublicationPlan;
+ static NativeUfs *gPendingProvider;
+ 
+-static bool mediaWithUuidExists (const char *uuid, NativeUfsBlock *window)
++static bool waitForRootMedia (const char *uuid, NativeUfsBlock *window)
+ {
+   OSDictionary *matching = IOService::serviceMatching ("IOMedia");
+   OSDictionary *properties = OSDictionary::withCapacity (1);
+   OSString *wanted = OSString::withCString (uuid);
++  OSDictionary *ancestor = OSDictionary::withCapacity (1);
++  OSNumber *windowID = OSNumber::withNumber (window->getRegistryEntryID (), 64);
++  IOService *media = nullptr;
++  if (matching && properties && wanted && ancestor && windowID &&
++      properties->setObject ("UUID", wanted) &&
++      ancestor->setObject (kIORegistryEntryIDKey, windowID) &&
++      matching->setObject (kIOPropertyMatchKey, properties) &&
++      matching->setObject (kIOParentMatchKey, ancestor)) {
++    // Matching can complete immediately or wake this thread on publication.
++    // The same-UUID volume on an unrelated device is not a match.
++    media = IOService::waitForMatchingService (matching, 30ULL * NSEC_PER_SEC);
++  }
+   bool found = false;
+-  if (matching && properties && wanted && properties->setObject ("UUID", wanted) &&
+-      matching->setObject ("IOPropertyMatch", properties)) {
+-    OSIterator *iterator = IOService::getMatchingServices (matching);
+-    if (iterator) {
+-      for (unsigned matches = 0; matches < 64 && !found; ++matches) {
+-        IORegistryEntry *media = OSDynamicCast (IORegistryEntry, iterator->getNextObject ());
+-        if (!media) break;
+-        IORegistryIterator *parents = IORegistryIterator::iterateOver (
+-          media, gIOServicePlane, kIORegistryIterateRecursively | kIORegistryIterateParents);
+-        if (parents) {
+-          found = ufsMediaHasAncestor (*parents, window);
+-          parents->release ();
+-        }
+-      }
+-      iterator->release ();
+-    }
+-  }
++  if (media && !media->isInactive ()) {
++    // macOS parent matching can also follow registry aliases. Verify the actual
++    // provider ancestry and the current UUID before advancing publication.
++    OSObject *actual = media->copyProperty ("UUID");
++    IORegistryIterator *parents = IORegistryIterator::iterateOver (
++      media, gIOServicePlane, kIORegistryIterateRecursively | kIORegistryIterateParents);
++    found = actual && wanted->isEqualTo (actual) && parents &&
++      ufsMediaHasAncestor (*parents, window) && !media->isInactive ();
++    OSSafeReleaseNULL (parents);
++    OSSafeReleaseNULL (actual);
++  }
++  OSSafeReleaseNULL (media);
++  OSSafeReleaseNULL (windowID);
++  OSSafeReleaseNULL (ancestor);
+   OSSafeReleaseNULL (wanted);
+   OSSafeReleaseNULL (properties);
+   OSSafeReleaseNULL (matching);
+@@ -2221,6 +2231,8 @@
+       gRootDiagnostic.stage = "root window service start";
+       gRootDiagnostic.publicationPhase = static_cast<unsigned> (UfsRootPhase::Start);
+       gRootDiagnostic.publicationWindow = index;
++      printf ("NativeUfs: starting %s window\n", device->windowLabel ());
++      ufsCheckpoint ("ufspstrt");
+       if (!device->start (gPendingProvider)) return false;
+       native_ufs_blocks_published = native_ufs_blocks_published + 1;
+       IOLog ("NativeUfs: published %s\n", device->windowLabel ());
+@@ -2232,14 +2244,11 @@
+       gRootDiagnostic.stage = "media publication";
+       gRootDiagnostic.publicationPhase = static_cast<unsigned> (UfsRootPhase::Media);
+       gRootDiagnostic.publicationWindow = index;
+-      bool ready = false;
+-      // Diagnostic mode affects reporting only, never the dependency gate.
+-      for (unsigned tick = 0; tick <= 300; ++tick) {
+-        ready = mediaWithUuidExists (uuid, device);
+-        if (ready || tick == 300) break;
+-        IOSleep (100);
+-      }
+-      IOLog ("NativeUfs: %s volume %s %s\n", device->windowLabel (), uuid, ready ? "ready" : "not ready");
++      printf ("NativeUfs: waiting for %s volume %s\n", device->windowLabel (), uuid);
++      ufsCheckpoint ("ufspwait");
++      bool ready = waitForRootMedia (uuid, device);
++      printf ("NativeUfs: %s volume %s %s\n", device->windowLabel (), uuid, ready ? "ready" : "not ready");
++      ufsCheckpoint ("ufspdone");
+       if (!ready) captureMissingMedia (uuid);
+       return ready;
+     }

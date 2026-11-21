@@ -42,6 +42,7 @@ PATCHES = (
     # actually stopped. The ufs* stage tags and the CKPT-TEXT footer stay
     # unconditional, so the stop point remains visible with the probes quiet.
     ROOT / 'patches/ufs/0009-quiet-command-probes.patch',
+    ROOT / 'patches/ufs/0010-event-driven-root-publication.patch',
 )
 
 

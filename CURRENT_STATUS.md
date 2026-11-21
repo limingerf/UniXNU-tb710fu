@@ -1,5 +1,30 @@
 # Current status · 2026-11-21
 
+## CDC 异步启动与根卷发布修复 · 2026-11-21
+
+实机照片 SHA-256 `c507fbd80ae442e881142381cc9c91431dd72c21a6530e7b0211540be836fb02`。
+屏幕显示 UFS 控制器接管、LUN 就绪、`manifest=0 windows=3` 和
+`source-storage-start done`，随后停在 `cdc-start begin`。
+这段输出同时存在于 run `44874414139` 和 `44877673063`，照片里没有构建标识。
+UFS 服务返回时只保证根卷发布线程已排队。此处还没有 BSD 根挂载结果。
+
+CDC 现在由低优先级 worker 启动，BSD 钩子排队后立即返回。XNU 的 `delay()`
+可进入定时器等待，本机已在 UFS 的同类等待中复现停点。短寄存器轮询改为此前
+实机用过的计数器自旋。DWC3 事件优先通过 ArmCpu 的 level-high INTID 165
+唤醒 worker，定时轮询保留作回退。固定同机 Linux 源 `4d044107…` 的
+`sm8650.dtsi` 给出 SPI 133 和 TCSR wrapper 参考时钟。CDC 补齐该时钟，
+读取 eUSB2 前先核对 PHY 复位和参考时钟，保留 GCC 分支的硬件门控位。
+仅接管已处于 device 角色的控制器，因为 DCTL 不能停止 xHCI host。
+
+UFS 0010（SHA-256 `9e68b032748a4a570e9c230061815281862314b16885e1faa21d33842e947d87`）
+改为等待 IOKit 发布 UUID 和上游 registry ID 匹配的 APFS 介质。收到匹配后复核
+实际 UUID 和 provider 祖先链。正常匹配由事件唤醒，30 秒失败超时仍需要定时器。
+XNU 0035（SHA-256 `8b9d7fa62f633eb1203cf21cd4aef8c6e308e6220b5d16f1361d3ed29bd89f07`）
+记录根 vnode、根卷认证、devfs 及初始进程 exec 边界。
+
+三组 CDC 主机测试和 UFS 发布/命令/SMMU 主机测试通过。CDC 和 UFS 设备对象
+均以 arm64e 编译通过。USB 枚举、根挂载和进入用户态待实机验证。
+
 ## CDC 判定改由 BSD 线程打印 · 2026-11-21 15:12
 
 上一版（run 44874414139）实机启动停在 `TB710FU bsd: cdc-start begin`，`done` 与任何

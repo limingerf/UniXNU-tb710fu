@@ -13,9 +13,13 @@
 #define TB710FU_USB_GCC_WINDOW UINT64_C(0x00139000)
 #define TB710FU_USB_GCC_PHY_RESET UINT64_C(0x00112000)
 #define TB710FU_USB_DWC3_BASE UINT64_C(0x0a600000)
+// sm8650.dtsi dwc_usb3 is GIC_SPI 133 (INTID 133 + 32), level high.
+#define TB710FU_USB_DWC3_INTID 165u
 #define TB710FU_USB_QSCRATCH_BASE UINT64_C(0x0a6f8800)
 #define TB710FU_USB_EUSB2_BASE UINT64_C(0x088e3000)
 #define TB710FU_USB_CLKREF UINT64_C(0x01ff1000)
+#define TB710FU_USB_WRAPPER_XO 0x108u
+#define TB710FU_USB_PHY_XO 0x118u
 #define TB710FU_USB_SMMU_BASE UINT64_C(0x15000000)
 #define TB710FU_USB_SMMU_BYTES 0x100000u
 
@@ -43,12 +47,17 @@ struct tb710fu_cdc_phy_state {
     uint32_t reset, reference, control0, control5, common0, control2;
 };
 
+static inline int tb710fu_cdc_phy_clocked(uint32_t reset, uint32_t reference)
+{
+    return !(reset & 1u) && (reference & 1u);
+}
+
 // This recognizes the active control state established by the Linux sequence.
 // There is no documented PLL-ready bit in that driver. It does not measure the
 // PMIC repeater, regulator voltages or analog link; enumeration is still needed.
 static inline int tb710fu_cdc_phy_adoptable(const struct tb710fu_cdc_phy_state *s)
 {
-    return !(s->reset & 1u) && (s->reference & 1u) &&
+    return tb710fu_cdc_phy_clocked(s->reset, s->reference) &&
         (s->common0 & 9u) == 9u && !(s->common0 & 4u) &&
         !(s->control5 & 2u) && (s->control0 & 1u) &&
         !(s->control0 & (3u << 3)) &&

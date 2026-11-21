@@ -167,6 +167,7 @@ static void prepare(struct fixture *f)
     memset(f, 0, sizeof(*f));
     memset(f->cpu, 0xa5, sizeof(f->cpu));
     f->regs[0xc120 / 4] = 0x3331300au; // DWC_usb31, 64-bit DMA addresses.
+    f->regs[0xc110 / 4] = 2u << 12; // Firmware device role.
     f->regs[0xc144 / 4] = 1u << 15;
     f->regs[0xc14c / 4] = (6u << 12) | (3u << 18);
     f->regs[0xc200 / 4] = (1u << 6) | (1u << 8);
@@ -177,6 +178,25 @@ static int start(struct fixture *f, const char *serial)
 {
     struct tb710fu_dwc3_ops ops = operations(f);
     return tb710fu_dwc3_start(&f->core, &ops, f->cpu, PHYSICAL, 0x1209, 1, serial);
+}
+
+static void test_device_role_and_event_irq(void)
+{
+    struct fixture f;
+    for (unsigned role = 1; role <= 3; role += 2) {
+        prepare(&f);
+        f.regs[0xc110 / 4] = role << 12;
+        assert(!start(&f, "TB710FUCDC001"));
+        assert(!f.halted && !f.reset_complete && !f.address_writes);
+        assert(f.regs[0xc704 / 4] == (1u << 31));
+    }
+
+    prepare(&f);
+    assert(start(&f, "TB710FUCDC001"));
+    assert(!(f.regs[0xc200 / 4] & ((1u << 6) | (1u << 8))));
+    assert(f.regs[0xc408 / 4] == ((1u << 31) | TB710FU_DWC3_EVENT_BYTES));
+    tb710fu_dwc3_enable_event_irq(&f.core);
+    assert(f.regs[0xc408 / 4] == TB710FU_DWC3_EVENT_BYTES);
 }
 
 static void event(struct fixture *f, uint32_t value)
@@ -265,7 +285,7 @@ static void test_enumeration_and_normal_host_reset(void)
     prepare(&f);
     assert(start(&f, "diagnostic-test-1"));
     assert(!f.active[0] && f.address_writes >= 4);
-    assert(f.regs[0xc200 / 4] == ((1u << 6) | (1u << 8)));
+    assert(!(f.regs[0xc200 / 4] & ((1u << 6) | (1u << 8))));
     connect(&f, 0);
     read_request(&f, 0x0100, 0, 8, 8);
     const unsigned setup_starts = f.starts[0];
@@ -467,6 +487,7 @@ int main(void)
     test_line_coding_and_setup_abort();
     test_real_dma_log_delivery_and_commit_contention();
     test_failures_retain_dma_and_do_not_restart();
+    test_device_role_and_event_irq();
     test_event_budget_and_wrap();
     puts("DWC3 production core: enumeration/reset, EP0, cache/DMA, CDC log delivery and fault tests PASS");
     return 0;

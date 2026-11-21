@@ -1,0 +1,108 @@
+From: TB710FU clean board
+Subject: [PATCH] Trace root authentication and initial process exec
+
+Source: XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f with the ordered
+patches recorded by run 44877673063.
+
+The device has reached source-storage-start done. Once BSD reaches a
+successful vfs_mountroot, trace the next root and initial-process
+boundaries with the same synchronous text checkpoint provider. Record
+the filesystem's authentication result and the owner decision before
+the original authorization check. An init-exec return records the
+return to the kernel from load_init_program().
+
+Verification: recreate bsd_init.c from the pinned revision and the
+hash-checked run inputs. Validate forward and reverse application.
+---
+
+diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -1112,15 +1112,19 @@
+ 		printf("cannot mount root, errno = %d\n", err);
+ 	}
+ 
++	TB710FU_BSD_TEXT("secure-root", "begin\n");
+ 	IOSecureBSDRoot(rootdevice);
++	TB710FU_BSD_TEXT("secure-root", "done\n");
+ 
+ 	mountlist.tqh_first->mnt_flag |= MNT_ROOTFS;
+ 
+ 	bsd_init_kprintf("calling VFS_ROOT\n");
+ 	/* Get the vnode for '/'.  Set fdp->fd_fd.fd_cdir to reference it. */
++	TB710FU_BSD_TEXT("root-vnode", "begin\n");
+ 	if (VFS_ROOT(mountlist.tqh_first, &init_rootvnode, vfs_context_kernel())) {
+ 		panic("bsd_init: cannot find root vnode: %s", PE_boot_args());
+ 	}
++	TB710FU_BSD_TEXT("root-vnode", "done\n");
+ 	(void)vnode_ref(init_rootvnode);
+ 	(void)vnode_put(init_rootvnode);
+ 
+@@ -1145,7 +1149,9 @@
+ 
+ 		if (require_rootauth) {
+ 			/* enforce sealedness */
++			TB710FU_BSD_TEXT("root-auth", "begin\n");
+ 			int autherr = VNOP_IOCTL(rootvnode, FSIOC_KERNEL_ROOTAUTH, NULL, 0, vfs_context_kernel());
++			TB710FU_BSD_TEXT("root-auth", "result=%d\n", autherr);
+ 			int owner_authorized = 0;
+ #if defined(XNU_OWNER_ROOT_AUDIT) && XNU_OWNER_ROOT_AUDIT
+ 			{
+@@ -1170,6 +1176,7 @@
+ 				native_owner_root_checkpoint(autherr, owner, device);
+ 			}
+ #endif
++			TB710FU_BSD_TEXT("root-decision", "apple=%d owner=%d\n", autherr, owner_authorized);
+ 			if (autherr && !owner_authorized) {
+ 				panic("rootvp not authenticated after mounting");
+ 			}
+@@ -1233,7 +1240,9 @@
+ 		char mounthere[] = "/dev"; /* !const because of internal casting */
+ 
+ 		bsd_init_kprintf("calling devfs_kernel_mount\n");
++		TB710FU_BSD_TEXT("devfs-mount", "begin\n");
+ 		devfs_kernel_mount(mounthere);
++		TB710FU_BSD_TEXT("devfs-mount", "done\n");
+ 	}
+ #endif /* DEVFS */
+ 
+@@ -1279,7 +1288,9 @@
+ 	siginit(kernproc);
+ 
+ 	bsd_init_kprintf("calling bsd_utaskbootstrap\n");
++	TB710FU_BSD_TEXT("init-task", "bootstrap begin\n");
+ 	bsd_utaskbootstrap();
++	TB710FU_BSD_TEXT("init-task", "bootstrap done\n");
+ 
+ 	pal_kernel_announce();
+ 
+@@ -1288,7 +1299,9 @@
+ #if XNU_TARGET_OS_OSX
+ 	/* invoke post-root-mount hook */
+ 	if (mountroot_post_hook != NULL) {
++		TB710FU_BSD_TEXT("post-root-hook", "begin\n");
+ 		mountroot_post_hook();
++		TB710FU_BSD_TEXT("post-root-hook", "done\n");
+ 	}
+ #endif
+ 
+@@ -1351,7 +1364,9 @@
+ 	mac_cred_label_associate_user(proc_ucred_unsafe(p)); /* in init */
+ #endif
+ 
++	TB710FU_BSD_TEXT("vm-launchd", "begin\n");
+ 	vm_init_before_launchd();
++	TB710FU_BSD_TEXT("vm-launchd", "done\n");
+ 
+ #if CONFIG_XNUPOST
+ 	int result = bsd_list_tests();
+@@ -1363,7 +1378,9 @@
+ 
+ 	bsd_init_kprintf("bsd_do_post - done");
+ 
++	TB710FU_BSD_TEXT("init-exec", "begin\n");
+ 	load_init_program(p);
++	TB710FU_BSD_TEXT("init-exec", "returned\n");
+ 	lock_trace = 1;
+ }
+ 

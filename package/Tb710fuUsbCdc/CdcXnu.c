@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
-// XNU 12377 adapter for the original, polling-only DWC3 CDC transport.
+// XNU 12377 adapter for the DWC3 CDC transport.
 // Hardware facts: tb710fu-linux@4d04410798b538fbe4b50664e3a66d9500a2ed31,
 // sm8650.dtsi, gcc-sm8650.c, gdsc.c, tcsrcc-sm8650.c, phy-snps-eusb2.c,
 // dwc3-qcom.c; SMMU fields: ARM IHI 0062. Firmware adoption plus a bounded
@@ -10,6 +10,7 @@
 #include <kern/misc_protos.h>
 #include <kern/clock.h>
 #include <kern/thread.h>
+#include <kern/sched.h>
 #include <kern/sched_prim.h>
 #include <machine/machine_routines.h>
 #include <mach/vm_statistics.h>
@@ -28,6 +29,13 @@
 #endif
 
 void tb710fu_cdc_start(void);
+extern void tb710fu_live_log_checkpoint_text(const char *stage)
+    __attribute__((weak_import));
+extern volatile uint32_t armcpu_gic_ready;
+extern volatile uint64_t armcpu_timer_interrupts;
+extern kern_return_t armcpu_spi_attach(uint32_t intid, bool edge,
+    void (*handler)(void *), void *context, uint32_t *readback, uint64_t *router);
+extern kern_return_t armcpu_spi_mask(uint32_t intid, bool masked);
 
 struct tb710fu_cdc_xnu {
     vm_offset_t gcc, phy_reset, reference, phy, smmu, dwc, qscratch;
@@ -38,20 +46,13 @@ struct tb710fu_cdc_xnu {
 
 static struct tb710fu_cdc_xnu gCdc;
 static unsigned gAttempted;
-static unsigned gSettled;
 static unsigned gSleepChannel;
 
-// The platform verdict is printed by the BSD thread, never by this worker: a
-// kprintf from a worker that is already wedged on an MMIO read would otherwise
-// leave the initiator blocked on the console lock as well, which is exactly how
-// the first post-0034 boot froze after "cdc-start begin" with nothing to read.
-// The worker only records the last stage it entered before the access that is
-// about to run, so a hang in any single register names itself on screen.
 static const char *gStage;
+// Only the worker reads or writes the platform samples.
 static struct {
     const char *failure;
-    unsigned ready, configured, dtr;
-    uint32_t gcc[8];   // bcr, gdscr, status, master, sleep, utmi, cfg, aggre
+    uint32_t gcc[9];   // bcr, gdscr, status, master, sleep, utmi, cfg, aggre, xo
     uint32_t phy[6];   // reset, reference, control0, control5, common0, control2
     uint32_t id, gctl, dma_bits, scr0, id0;
     unsigned streams, role;
@@ -59,14 +60,34 @@ static struct {
     uint32_t dma_bytes;
 } gReport;
 
+static void cdc_checkpoint(const char *label)
+{
+    if (tb710fu_live_log_checkpoint_text) tb710fu_live_log_checkpoint_text(label);
+}
+
 static void cdc_mark(const char *stage)
 {
-    __atomic_store_n(&gStage, stage, __ATOMIC_RELEASE);
+    gStage = stage;
+}
+
+static void cdc_step(const char *stage, const char *label)
+{
+    cdc_mark(stage);
+    printf("TB710FU CDC: %s\n", stage);
+    cdc_checkpoint(label);
 }
 
 static void cdc_refuse(const char *reason)
 {
     gReport.failure = reason;
+}
+
+static void cdc_irq(void *argument)
+{
+    (void)argument;
+    // Level IRQ stays asserted until the worker drains the event ring.
+    (void)armcpu_spi_mask(TB710FU_USB_DWC3_INTID, true);
+    thread_wakeup_one((event_t)&gSleepChannel);
 }
 
 static uint32_t cdc_read(vm_offset_t base, unsigned offset)
@@ -100,7 +121,11 @@ static uint32_t cdc_smmu_read(void *context, unsigned offset)
 static void cdc_delay(void *context, unsigned microseconds)
 {
     (void)context;
-    delay((int)microseconds);
+    // XNU delay() may block on the architectural timer in this context.
+    // Match the short counter-based delay verified by the UFS 0007 patch.
+    uint64_t deadline;
+    clock_interval_to_deadline(microseconds, NSEC_PER_USEC, &deadline);
+    while (mach_absolute_time() < deadline) __asm__ volatile("yield");
 }
 
 // Each controller descriptor occupies its own 64-byte cache line; the layout
@@ -148,10 +173,7 @@ static int cdc_consume(void *context, size_t bytes)
 // SM8650 USB30_PRIM block inside GCC (GCC 0x00100000 + 0x39000). Linux's
 // dwc3-qcom probe powers the USB30_PRIM GDSC, enables the five branch clocks
 // and deasserts the block reset before it touches DWC3; a normal ABL handoff
-// may instead finish charger detection with that block gated off, which the
-// firmware-adoption predicate alone cannot recover from. Every register below
-// sits in the always-on GCC aperture, so replaying the sequence cannot fault
-// the USB interconnect: the GDSC only gates DWC3/PHY, never GCC itself.
+// may instead finish charger detection with that block gated off.
 #define CDC_GCC_BCR 0x00u          // block reset, bit0 = assert
 #define CDC_GCC_GDSCR 0x04u        // GDSC control, bit0 = software collapse
 #define CDC_GCC_GDSCR_STATUS 0x08u // GDSC status, bit16 = powered
@@ -161,49 +183,56 @@ static int cdc_consume(void *context, size_t bytes)
 #define CDC_GCC_CFG_NOC 0x88u      // cfg_noc_usb3_prim_axi_clk, halt voted
 #define CDC_GCC_AGGRE_NOC 0x8cu    // aggre_usb3_prim_axi_clk, halt voted
 
-static int cdc_branch_on(struct tb710fu_cdc_xnu *x, unsigned offset)
+static void cdc_branch_on(struct tb710fu_cdc_xnu *x, unsigned offset, int hardware_gated)
 {
     uint32_t value = cdc_read(x->gcc, offset);
-    if ((value & 1u) && !(value & (1u << 31))) return 1;
-    // Bit31 is read-only halt state; clearing the hardware-gating vote keeps a
-    // software enable from being masked by an idle vote on the NOC branches.
-    value = (value & ~((1u << 31) | 2u)) | 1u;
-    cdc_write(x->gcc, offset, value);
+    if (tb710fu_cdc_branch_active(value, hardware_gated)) return;
+    // Linux's branch gate updates only BIT(0). Keep the NOC HWCG vote.
+    if (!(value & 1u)) cdc_write(x->gcc, offset, value | 1u);
     for (unsigned i = 0; i < 50; ++i) {
         value = cdc_read(x->gcc, offset);
-        if ((value & 1u) && !(value & (1u << 31))) return 1;
-        delay(10);
+        if (tb710fu_cdc_branch_active(value, hardware_gated)) return;
+        cdc_delay(NULL, 10);
     }
-    return 0;
 }
 
-static void cdc_gcc_bring_up(struct tb710fu_cdc_xnu *x)
+static int cdc_gcc_bring_up(struct tb710fu_cdc_xnu *x)
 {
-    cdc_mark("gcc-reset");
+    cdc_step("gcc-reset", "cdcgcc");
     uint32_t bcr = cdc_read(x->gcc, CDC_GCC_BCR);
     if (bcr & 1u) {
         cdc_write(x->gcc, CDC_GCC_BCR, bcr & ~1u);
-        delay(1);
+        cdc_delay(NULL, 1);
     }
-    cdc_mark("gcc-gdsc");
+    cdc_step("gcc-gdsc", "cdcgdsc");
     if (!(cdc_read(x->gcc, CDC_GCC_GDSCR_STATUS) & (1u << 16))) {
         cdc_write(x->gcc, CDC_GCC_GDSCR,
                   cdc_read(x->gcc, CDC_GCC_GDSCR) & ~1u);
         for (unsigned i = 0; i < 100; ++i) {
             if (cdc_read(x->gcc, CDC_GCC_GDSCR_STATUS) & (1u << 16)) break;
-            delay(10);
+            cdc_delay(NULL, 10);
         }
     }
-    cdc_mark("gcc-master");
-    (void)cdc_branch_on(x, CDC_GCC_MASTER);
-    cdc_mark("gcc-sleep");
-    (void)cdc_branch_on(x, CDC_GCC_SLEEP);
-    cdc_mark("gcc-utmi");
-    (void)cdc_branch_on(x, CDC_GCC_MOCK_UTMI);
-    cdc_mark("gcc-cfg-noc");
-    (void)cdc_branch_on(x, CDC_GCC_CFG_NOC);
-    cdc_mark("gcc-aggre-noc");
-    (void)cdc_branch_on(x, CDC_GCC_AGGRE_NOC);
+    gReport.gcc[2] = cdc_read(x->gcc, CDC_GCC_GDSCR_STATUS);
+    if (!(gReport.gcc[2] & (1u << 16))) {
+        cdc_refuse("gcc-power");
+        return 0;
+    }
+    cdc_step("gcc-branches", "cdcclks");
+    cdc_branch_on(x, CDC_GCC_MASTER, 0);
+    cdc_branch_on(x, CDC_GCC_SLEEP, 0);
+    cdc_branch_on(x, CDC_GCC_MOCK_UTMI, 0);
+    cdc_branch_on(x, CDC_GCC_CFG_NOC, 1);
+    cdc_branch_on(x, CDC_GCC_AGGRE_NOC, 1);
+
+    // sm8650.dtsi names TCSR_USB3_CLKREF_EN as the wrapper's "xo".
+    cdc_step("wrapper-xo", "cdcxoref");
+    uint32_t xo = cdc_read(x->reference, TB710FU_USB_WRAPPER_XO);
+    if (!(xo & 1u)) {
+        cdc_write(x->reference, TB710FU_USB_WRAPPER_XO, xo | 1u);
+        cdc_delay(NULL, 10);  // Linux BRANCH_HALT_DELAY.
+    }
+    return 1;
 }
 
 // Sample every control block in one fixed order so the photo always shows the
@@ -219,6 +248,7 @@ static void cdc_sample_controls(struct tb710fu_cdc_xnu *x)
     gReport.gcc[5] = cdc_read(x->gcc, CDC_GCC_MOCK_UTMI);
     gReport.gcc[6] = cdc_read(x->gcc, CDC_GCC_CFG_NOC);
     gReport.gcc[7] = cdc_read(x->gcc, CDC_GCC_AGGRE_NOC);
+    gReport.gcc[8] = cdc_read(x->reference, TB710FU_USB_WRAPPER_XO);
 }
 
 static int cdc_active_controls(struct tb710fu_cdc_xnu *x)
@@ -233,20 +263,26 @@ static int cdc_active_controls(struct tb710fu_cdc_xnu *x)
         .aggregate = gReport.gcc[7]
     };
     cdc_mark("clock-check");
-    if (!tb710fu_cdc_clocks_active(&clocks)) {
+    if (!tb710fu_cdc_clocks_active(&clocks) || !(gReport.gcc[8] & 1u)) {
         cdc_refuse("clocks");
         return 0;
     }
-    cdc_mark("phy-sample");
+    cdc_step("phy-gates", "cdcphyg");
+    gReport.phy[0] = cdc_read(x->phy_reset, 0);
+    gReport.phy[1] = cdc_read(x->reference, TB710FU_USB_PHY_XO);
+    if (!tb710fu_cdc_phy_clocked(gReport.phy[0], gReport.phy[1])) {
+        cdc_refuse("phy-gates");
+        return 0;
+    }
+    cdc_step("phy-sample", "cdcphyr");
     struct tb710fu_cdc_phy_state phy = {
-        .reset = cdc_read(x->phy_reset, 0),
-        .reference = cdc_read(x->reference, 0x118),
+        .reset = gReport.phy[0],
+        .reference = gReport.phy[1],
         .control0 = cdc_read(x->phy, 0x3c),
         .control5 = cdc_read(x->phy, 0x50),
         .common0 = cdc_read(x->phy, 0x54),
         .control2 = cdc_read(x->phy, 0x64)
     };
-    gReport.phy[0] = phy.reset; gReport.phy[1] = phy.reference;
     gReport.phy[2] = phy.control0; gReport.phy[3] = phy.control5;
     gReport.phy[4] = phy.common0; gReport.phy[5] = phy.control2;
     if (!tb710fu_cdc_phy_adoptable(&phy)) {
@@ -259,7 +295,7 @@ static int cdc_active_controls(struct tb710fu_cdc_xnu *x)
 static int cdc_route(struct tb710fu_cdc_xnu *x,
                       struct tb710fu_cdc_identity_route *route)
 {
-    cdc_mark("smmu-route");
+    cdc_step("smmu-route", "cdcsmmu");
     int routed = tb710fu_cdc_identity_route_read(cdc_smmu_read, x, route);
     gReport.scr0 = cdc_read(x->smmu, 0);
     gReport.id0 = cdc_read(x->smmu, 0x20);
@@ -271,9 +307,7 @@ static int cdc_route(struct tb710fu_cdc_xnu *x,
 
 static int cdc_prepare(struct tb710fu_cdc_xnu *x)
 {
-    // All mappings and checks below are read-only until the final QSCRATCH
-    // session override. The exact DTS bounds the SMMU aperture at 1 MiB.
-    cdc_mark("map-clock");
+    cdc_step("map-clock", "cdcmap");
     x->gcc = ml_io_map(TB710FU_USB_GCC_WINDOW, 0x1000);
     x->phy_reset = ml_io_map(TB710FU_USB_GCC_PHY_RESET, 0x1000);
     x->reference = ml_io_map(TB710FU_USB_CLKREF, 0x1000);
@@ -285,7 +319,7 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
     // Bounded GCC-side bring-up: GDSC power, five branch clocks, block reset.
     // No PHY, PMIC, regulator or SMMU programming happens before the adoption
     // predicates below, which still decide whether this session may proceed.
-    cdc_gcc_bring_up(x);
+    if (!cdc_gcc_bring_up(x)) return 0;
     cdc_sample_controls(x);
     if (!cdc_active_controls(x)) return 0;
     cdc_mark("map-controller");
@@ -296,7 +330,7 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
         cdc_refuse("controller-map");
         return 0;
     }
-    cdc_mark("core-id");
+    cdc_step("core-id", "cdccore");
     uint32_t id = cdc_read(x->dwc, 0xc120), control = cdc_read(x->dwc, 0xc110);
     unsigned role = (control >> 12) & 3u;
     unsigned address_bits = (cdc_read(x->dwc, 0xc140) >> 24) & 255u;
@@ -307,9 +341,11 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
         cdc_refuse("controller");
         return 0;
     }
-    // The loader may hand the core over in host or OTG role. tb710fu_dwc3_start
-    // halts the core and reprograms GCTL.PrtCapDir to device, so the handoff
-    // role is reported rather than refused.
+    // The device halt sequence cannot quiesce an xHCI host or an OTG session.
+    if (role != 2u) {
+        cdc_refuse("handoff-role");
+        return 0;
+    }
     struct tb710fu_cdc_identity_route route, refreshed;
     if (!cdc_route(x, &route)) return 0;
     if (route.address_bits < address_bits) address_bits = route.address_bits;
@@ -325,7 +361,7 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
                        ((UINT64_C(1) << address_bits) - 1u) >> PAGE_SHIFT;
     ppnum_t max_pnum = (ppnum_t)~(ppnum_t)0;
     if (max_page < max_pnum) max_pnum = (ppnum_t)max_page;
-    cdc_mark("dma-alloc");
+    cdc_step("dma-alloc", "cdcdma");
     kern_return_t kr = kmem_alloc_contig(kernel_map, &x->dma,
         TB710FU_DWC3_DMA_SIZE, TB710FU_CDC_DMA_ALIGNMENT - 1u, max_pnum,
         (TB710FU_CDC_DMA_ALIGNMENT - 1u) >> PAGE_SHIFT,
@@ -374,7 +410,7 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
     }
     // Linux dwc3_qcom_vbus_override_enable defines these wrapper session bits.
     // USB2-only operation does not enable the SuperSpeed lane power override.
-    cdc_mark("vbus");
+    cdc_step("vbus", "cdcvbus");
     uint32_t hs = cdc_read(x->qscratch, 0x10);
     cdc_write(x->qscratch, 0x10, hs | (1u << 20) | (1u << 28));
     if ((cdc_read(x->qscratch, 0x10) & ((1u << 20) | (1u << 28))) !=
@@ -389,7 +425,7 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
         .log_consume = cdc_consume
     };
     // Development identity, deliberately synthetic and not a vendor serial.
-    cdc_mark("dwc3-start");
+    cdc_step("dwc3-start", "cdcdwc");
     if (!tb710fu_dwc3_start(&x->controller, &ops, (uint8_t *)x->dma,
                             physical, 0x1209, 0x0001, "TB710FUCDC001")) {
         cdc_refuse(x->controller.failure ? x->controller.failure : "dwc3-start");
@@ -405,41 +441,77 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
 {
     (void)argument;
     (void)wait_result;
-    // No kprintf happens on this thread at any point: the first post-0034 boot
-    // froze right after "cdc-start begin" with the verdict never printed, which
-    // is what a worker wedged inside a register access plus a console lock
-    // looks like. Stage markers and sampled words are published instead, and
-    // the BSD thread prints them after a bounded wait.
-    gReport.ready = (unsigned)cdc_prepare(&gCdc);
-    __atomic_store_n(&gSettled, 1u, __ATOMIC_RELEASE);
-    if (!gReport.ready) {
-        (void)thread_terminate(current_thread());
-        thread_block(THREAD_CONTINUE_NULL);
-    }
-    unsigned previous = 0;
-    while (gCdc.controller.running && !gCdc.controller.failed) {
-        tb710fu_dwc3_poll(&gCdc.controller);
-        unsigned current = gCdc.controller.configured |
-                           ((unsigned)gCdc.controller.dtr << 1);
-        if (current != previous) {
-            gReport.configured = (unsigned)gCdc.controller.configured;
-            gReport.dtr = (unsigned)gCdc.controller.dtr;
-            previous = current;
+    uint64_t timer_ctl;
+    __asm__ volatile("mrs %0, cntv_ctl_el0" : "=r"(timer_ctl));
+    printf("TB710FU CDC: worker gic=%u timer=%llu cntv_ctl=%llx irq=%u\n",
+           armcpu_gic_ready, (unsigned long long)armcpu_timer_interrupts,
+           (unsigned long long)timer_ctl, (unsigned)ml_get_interrupts_enabled());
+    cdc_checkpoint("cdcwork");
+    const int ready = cdc_prepare(&gCdc);
+    printf("TB710FU CDC: stage=%s failure=%s\n", gStage,
+           gReport.failure ? gReport.failure : "-");
+    printf("TB710FU CDC: gcc bcr=%08x gdscr=%08x sts=%08x m=%08x s=%08x "
+           "u=%08x cfg=%08x ag=%08x xo=%08x\n",
+           gReport.gcc[0], gReport.gcc[1], gReport.gcc[2], gReport.gcc[3],
+           gReport.gcc[4], gReport.gcc[5], gReport.gcc[6], gReport.gcc[7],
+           gReport.gcc[8]);
+    printf("TB710FU CDC: phy rst=%08x ref=%08x ctl0=%08x ctl5=%08x "
+           "common0=%08x ctl2=%08x\n",
+           gReport.phy[0], gReport.phy[1], gReport.phy[2], gReport.phy[3],
+           gReport.phy[4], gReport.phy[5]);
+    printf("TB710FU CDC: dwc id=%08x gctl=%08x role=%u bits=%u "
+           "smmu scr0=%08x id0=%08x streams=%u\n",
+           gReport.id, gReport.gctl, gReport.role, gReport.dma_bits,
+           gReport.scr0, gReport.id0, gReport.streams);
+    if (ready) {
+        uint32_t spi_state = 0;
+        kern_return_t spi = armcpu_spi_attach(TB710FU_USB_DWC3_INTID, false,
+                                              cdc_irq, NULL, &spi_state, NULL);
+        const int event_irq = spi == KERN_SUCCESS && (spi_state & 7u) == 3u;
+        if (event_irq) {
+            tb710fu_dwc3_enable_event_irq(&gCdc.controller);
+        } else if (spi == KERN_SUCCESS) {
+            (void)armcpu_spi_mask(TB710FU_USB_DWC3_INTID, true);
         }
-        uint64_t deadline;
-        clock_interval_to_deadline(1, NSEC_PER_MSEC, &deadline);
-        (void)assert_wait_deadline((event_t)&gSleepChannel, THREAD_UNINT, deadline);
-        thread_block(THREAD_CONTINUE_NULL);
+        printf("TB710FU CDC: event irq=%u kr=%d gic=%08x\n",
+               (unsigned)event_irq, spi, spi_state);
+        printf("TB710FU CDC: platform up dma=%llx/%x, waiting for enumeration "
+               "and host DTR\n",
+               (unsigned long long)gReport.dma_physical, (unsigned)gReport.dma_bytes);
+        cdc_checkpoint("cdcready");
+        unsigned previous = 0;
+        while (gCdc.controller.running && !gCdc.controller.failed) {
+            tb710fu_dwc3_poll(&gCdc.controller);
+            unsigned state = gCdc.controller.configured |
+                             ((unsigned)gCdc.controller.dtr << 1);
+            if (state != previous) {
+                printf("TB710FU CDC: configured=%u dtr=%u\n",
+                       (unsigned)gCdc.controller.configured,
+                       (unsigned)gCdc.controller.dtr);
+                cdc_checkpoint("cdcevent");
+                previous = state;
+            }
+            if (!gCdc.controller.running) break;
+            uint64_t deadline;
+            clock_interval_to_deadline(1, NSEC_PER_MSEC, &deadline);
+            (void)assert_wait_deadline((event_t)&gSleepChannel, THREAD_UNINT, deadline);
+            // Register the waiter first. A pending level interrupt can now
+            // wake it even if the architectural timer never fires.
+            if (event_irq) (void)armcpu_spi_mask(TB710FU_USB_DWC3_INTID, false);
+            thread_block(THREAD_CONTINUE_NULL);
+        }
+        if (event_irq) (void)armcpu_spi_mask(TB710FU_USB_DWC3_INTID, true);
+        printf("TB710FU CDC: transport stopped: %s\n",
+               gCdc.controller.failure ? gCdc.controller.failure : "stopped");
+        cdc_checkpoint("cdcstop");
+    } else {
+        cdc_checkpoint("cdcref");
     }
-    if (!gReport.failure && gCdc.controller.failure) gReport.failure = gCdc.controller.failure;
     (void)thread_terminate(current_thread());
     thread_block(THREAD_CONTINUE_NULL);
 }
 
-// Called after the UFS/source-storage handoff and before bsd_autoconf by the
-// device-owned, conditional BSD integration hook. This thread owns every print:
-// the worker only records stages, so a hang in any single register still leaves
-// a readable name on the last screenful instead of a frozen console.
+// BSD queues optional USB capture and proceeds immediately to root discovery.
 void tb710fu_cdc_start(void)
 {
     int enabled = 0;
@@ -450,37 +522,11 @@ void tb710fu_cdc_start(void)
     }
     if (__atomic_exchange_n(&gAttempted, 1u, __ATOMIC_ACQ_REL)) return;
     thread_t worker = THREAD_NULL;
-    kern_return_t kr = kernel_thread_start(cdc_worker, NULL, &worker);
+    kern_return_t kr = kernel_thread_start_priority(cdc_worker, NULL,
+                                                     BASEPRI_UTILITY, &worker);
     if (kr != KERN_SUCCESS) {
-        printf("TB710FU CDC: worker creation failed kr=%d; controller untouched\n", kr);
+        printf("TB710FU CDC: worker creation failed kr=%d\n", kr);
         return;
     }
-    // Up to 100 ms for the platform decision. The worker itself never waits on
-    // a host; if it is wedged the loop simply expires and the recorded stage
-    // names the register that stopped it.
-    for (unsigned i = 0; i < 1000; ++i) {
-        if (__atomic_load_n(&gSettled, __ATOMIC_ACQUIRE)) break;
-        delay(100);
-    }
-    const char *stage = __atomic_load_n(&gStage, __ATOMIC_ACQUIRE);
-    printf("TB710FU CDC: stage=%s settled=%u failure=%s\n",
-           stage ? stage : "none", __atomic_load_n(&gSettled, __ATOMIC_ACQUIRE),
-           gReport.failure ? gReport.failure : "-");
-    printf("TB710FU CDC: gcc bcr=%08x gdscr=%08x sts=%08x m=%08x s=%08x "
-           "u=%08x cfg=%08x ag=%08x\n",
-           gReport.gcc[0], gReport.gcc[1], gReport.gcc[2], gReport.gcc[3],
-           gReport.gcc[4], gReport.gcc[5], gReport.gcc[6], gReport.gcc[7]);
-    printf("TB710FU CDC: phy rst=%08x ref=%08x ctl0=%08x ctl5=%08x "
-           "common0=%08x ctl2=%08x\n",
-           gReport.phy[0], gReport.phy[1], gReport.phy[2], gReport.phy[3],
-           gReport.phy[4], gReport.phy[5]);
-    printf("TB710FU CDC: dwc id=%08x gctl=%08x role=%u bits=%u "
-           "smmu scr0=%08x id0=%08x streams=%u\n",
-           gReport.id, gReport.gctl, gReport.role, gReport.dma_bits,
-           gReport.scr0, gReport.id0, gReport.streams);
-    if (gReport.ready)
-        printf("TB710FU CDC: platform up dma=%llx/%x, waiting for enumeration "
-               "and host DTR\n",
-               (unsigned long long)gReport.dma_physical, (unsigned)gReport.dma_bytes);
     thread_deallocate(worker);
 }

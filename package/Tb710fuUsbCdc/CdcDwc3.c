@@ -38,6 +38,7 @@
 #define WAIT_POLLS 10000u
 #define EVENT_BUDGET 64u
 #define EVENT_COUNT_MASK 0xfffcu
+#define EVENT_INTERRUPT_MASK (1u << 31)
 #define TRB_HWO 1u
 #define TRB_LAST 2u
 #define TRB_IOC (1u << 11)
@@ -537,6 +538,11 @@ void tb710fu_dwc3_poll(struct tb710fu_dwc3 *d)
     if (!d->failed) (void)pump(d);
 }
 
+void tb710fu_dwc3_enable_event_irq(struct tb710fu_dwc3 *d)
+{
+    write_reg(d, EVENT_SIZE(0), TB710FU_DWC3_EVENT_BYTES);
+}
+
 int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *ops,
                        uint8_t *dma, uint64_t dma_physical,
                        uint16_t vendor_id, uint16_t product_id, const char *serial)
@@ -566,12 +572,22 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     d->packet_size = 512;
     d->coding[1] = 0xc2; d->coding[2] = 1; d->coding[6] = 8; // 115200 8N1.
     const uint32_t id = read_reg(d, GSNPSID) & 0xffff0000u;
-    if (id != 0x55330000u && id != 0x33310000u) return fail(d, "unrecognized DWC3 core ID");
+    if (id != 0x55330000u && id != 0x33310000u) {
+        d->failure = "unrecognized DWC3 core ID";
+        return 0;
+    }
+    if (((read_reg(d, GCTL) >> 12) & 3u) != 2u) {
+        d->failure = "firmware controller is not in device role";
+        return 0;
+    }
     const uint32_t hw = read_reg(d, GHWPARAMS3);
     const unsigned total_eps = (hw >> 12) & 63u, in_eps = (hw >> 18) & 31u;
     const unsigned interrupts = (read_reg(d, GHWPARAMS1) >> 15) & 63u;
     if (total_eps < 6 || in_eps < 3 || in_eps > total_eps || total_eps - in_eps < 2 ||
-        interrupts == 0 || interrupts > 32) return fail(d, "insufficient DWC3 resources");
+        interrupts == 0 || interrupts > 32) {
+        d->failure = "insufficient DWC3 resources";
+        return 0;
+    }
     // Do not replace firmware DMA addresses before proving the core halted and
     // its device reset completed. No endpoint ENDTRANSFER assumption is used.
     write_reg(d, DCTL, read_reg(d, DCTL) & ~RUN_STOP);
@@ -581,7 +597,7 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     write_reg(d, DEVTEN, 0);
     write_reg(d, DALEPENA, 0);
     for (unsigned i = 0; i < interrupts; ++i) {
-        write_reg(d, EVENT_SIZE(i), 1u << 31);
+        write_reg(d, EVENT_SIZE(i), EVENT_INTERRUPT_MASK);
         write_reg(d, EVENT_COUNT(i), read_reg(d, EVENT_COUNT(i)) & EVENT_COUNT_MASK);
         write_reg(d, EVENT_LO(i), 0);
         write_reg(d, EVENT_HI(i), 0);
@@ -589,10 +605,12 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     zero_bytes(dma, TB710FU_DWC3_DMA_SIZE);
     d->ops.sync_for_device(d->ops.context, 0, TB710FU_DWC3_DMA_SIZE);
     write_reg(d, GCTL, (read_reg(d, GCTL) & ~((3u << 12) | (1u << 1))) | (2u << 12));
+    // sm8650.dtsi declares both USB2 suspend quirks for the primary core.
+    write_reg(d, USB2PHYCFG, read_reg(d, USB2PHYCFG) & ~PHY_SUSPEND);
     write_reg(d, DCFG, read_reg(d, DCFG) & ~((127u << 3) | 7u | (1u << 22)));
     write_reg(d, EVENT_LO(0), (uint32_t)dma_physical);
     write_reg(d, EVENT_HI(0), (uint32_t)(dma_physical >> 32));
-    write_reg(d, EVENT_SIZE(0), TB710FU_DWC3_EVENT_BYTES | (1u << 31));
+    write_reg(d, EVENT_SIZE(0), TB710FU_DWC3_EVENT_BYTES | EVENT_INTERRUPT_MASK);
     write_reg(d, EVENT_COUNT(0), 0);
     if (!command(d, 0, COMMAND_START_CONFIGURATION, 0, 0, 0)) return 0;
     for (unsigned ep = 0; ep < 6; ++ep) {

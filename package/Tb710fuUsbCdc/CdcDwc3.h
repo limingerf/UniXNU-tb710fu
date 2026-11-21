@@ -74,6 +74,7 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *, const struct tb710fu_dwc3_ops *,
                        uint8_t *dma, uint64_t dma_physical,
                        uint16_t vendor_id, uint16_t product_id, const char *serial);
 void tb710fu_dwc3_poll(struct tb710fu_dwc3 *);
+void tb710fu_dwc3_enable_event_irq(struct tb710fu_dwc3 *);
 void tb710fu_dwc3_stop(struct tb710fu_dwc3 *, const char *reason);
 
 #endif
