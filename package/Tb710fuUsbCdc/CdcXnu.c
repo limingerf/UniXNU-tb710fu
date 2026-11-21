@@ -10,7 +10,6 @@
 #include <kern/misc_protos.h>
 #include <kern/clock.h>
 #include <kern/thread.h>
-#include <kern/sched.h>
 #include <kern/sched_prim.h>
 #include <machine/machine_routines.h>
 #include <mach/vm_statistics.h>
@@ -441,6 +440,7 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
 {
     (void)argument;
     (void)wait_result;
+    cdc_checkpoint("cdcentry");
     uint64_t timer_ctl;
     __asm__ volatile("mrs %0, cntv_ctl_el0" : "=r"(timer_ctl));
     printf("TB710FU CDC: worker gic=%u timer=%llu cntv_ctl=%llx irq=%u\n",
@@ -480,8 +480,19 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                (unsigned long long)gReport.dma_physical, (unsigned)gReport.dma_bytes);
         cdc_checkpoint("cdcready");
         unsigned previous = 0;
+        int bus_seen = 0, setup_seen = 0;
         while (gCdc.controller.running && !gCdc.controller.failed) {
             tb710fu_dwc3_poll(&gCdc.controller);
+            if (!bus_seen && gCdc.controller.connected) {
+                printf("TB710FU CDC: connect-done maxpacket=%u\n", gCdc.controller.packet_size);
+                cdc_checkpoint("cdcbus");
+                bus_seen = 1;
+            }
+            if (!setup_seen && gCdc.controller.setup_requests) {
+                printf("TB710FU CDC: first EP0 SETUP\n");
+                cdc_checkpoint("cdcsetup");
+                setup_seen = 1;
+            }
             unsigned state = gCdc.controller.configured |
                              ((unsigned)gCdc.controller.dtr << 1);
             if (state != previous) {
@@ -522,11 +533,16 @@ void tb710fu_cdc_start(void)
     }
     if (__atomic_exchange_n(&gAttempted, 1u, __ATOMIC_ACQ_REL)) return;
     thread_t worker = THREAD_NULL;
-    kern_return_t kr = kernel_thread_start_priority(cdc_worker, NULL,
-                                                     BASEPRI_UTILITY, &worker);
+    // Use the kernel-task default like the UFS publisher and DLIL startup
+    // threads. Bootstrap retains priority and never waits on this worker.
+    kern_return_t kr = kernel_thread_start(cdc_worker, NULL, &worker);
     if (kr != KERN_SUCCESS) {
         printf("TB710FU CDC: worker creation failed kr=%d\n", kr);
         return;
     }
     thread_deallocate(worker);
+    printf("TB710FU CDC: worker queued gic=%u timer=%llu irq=%u\n",
+           armcpu_gic_ready, (unsigned long long)armcpu_timer_interrupts,
+           (unsigned)ml_get_interrupts_enabled());
+    cdc_checkpoint("cdcqueue");
 }

@@ -620,6 +620,10 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
         if (!configure_ep(d, ep, type, mps, 0)) return 0;
     }
     write_reg(d, DALEPENA, 3);
+    // Linux v6.1 gadget.c __dwc3_gadget_start posts EP0 SETUP before
+    // dwc3_gadget_run_stop exposes the pull-up. A host can issue SETUP
+    // before the worker has drained CONNECT_DONE.
+    if (!setup_phase(d)) return 0;
     write_reg(d, DEVTEN, (1u << 11) | (1u << 9) | 7u);
     write_reg(d, DCTL, read_reg(d, DCTL) | RUN_STOP);
     d->running = 1;

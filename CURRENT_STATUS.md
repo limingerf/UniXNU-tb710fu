@@ -1,5 +1,29 @@
 # Current status · 2026-11-21
 
+## CDC 枚举与 BSD 网络初始化 · 2026-11-21
+
+本轮照片 SHA-256 `a53308cb37ee92efe025a532dd1c38bfa32e7e168f71a23003fa20353324a11a`。
+日志越过 `cdc-start done`，最后同步显示 `shm-sem-init done`，当前照片无
+CDC worker 或 UFS 发布线程行，无可核对的构建标签。Windows 的当前 PnP 设备和
+SetupAPI 日志中没有找到 CDC 的 `1209:0001` 或 `TB710FUCDC001`。
+
+已复核 run `44883138301` 的现场候选签名包，ZIP SHA-256
+`3ca98ed35a5576b7684997323528b6e507578b769424fc2641573459ba069e2e`，
+CRC、成员校验和、FAT 内核与启用 CDC 的启动参数通过。BSD 仅排队优先级 20
+的 CDC worker，启动线程优先级 95。现有画面不能确认 worker 实际执行。
+
+CDC 改用内核任务默认优先级，BSD 启动仍保持异步。新增入队回读（含 GIC、
+定时器计数和 IRQ 状态）、worker 首条同步页脚、总线连接和首个 EP0 SETUP
+标记。DWC3 在拉起 RUN_STOP 前提交 EP0 SETUP TRB，采用 Linux v6.1
+`drivers/usb/dwc3/gadget.c` 的启动顺序。主机模型断言启动时已有 SETUP
+TRB，并验证 CONNECT_DONE 和 Windows 常见的首轮描述符后总线复位不会重复提交。
+
+XNU 0036（SHA-256 `9b5a4d69349c076b0ceac7b829070f1b3720a7cd0f4f55f670094e4fd37194a4`）
+覆盖 `nwk_wq_init`、`dlil_init`、`socketinit`、`domaininit`
+与 DLIL 线程启动和等待。补丁按前次产物的输入哈希复原，正向应用与反向恢复通过，
+三个对象通过本地 arm64e 编译。三组 CDC 主机测试通过。Windows 枚举、
+根挂载和用户态待实机验证。
+
 ## CDC 异步启动与根卷发布修复 · 2026-11-21
 
 实机照片 SHA-256 `c507fbd80ae442e881142381cc9c91431dd72c21a6530e7b0211540be836fb02`。

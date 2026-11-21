@@ -58,7 +58,10 @@ static void write32(void *context, unsigned reg, uint32_t value)
     if (reg == 0xc704) {
         if (!(value & (1u << 31)) && !f->block_halt &&
             !(f->halt_needs_event_ack && f->regs[0xc40c / 4])) f->halted = 1;
-        if (value & (1u << 31)) f->halted = 0;
+        if (value & (1u << 31)) {
+            assert(f->active[0] && f->kind[0] == 2);
+            f->halted = 0;
+        }
         if ((value & (1u << 30)) && !f->block_reset) {
             assert(f->halted);
             f->reset_complete = 1;
@@ -284,9 +287,11 @@ static void test_enumeration_and_normal_host_reset(void)
     struct fixture f;
     prepare(&f);
     assert(start(&f, "diagnostic-test-1"));
-    assert(!f.active[0] && f.address_writes >= 4);
+    assert(f.active[0] && f.kind[0] == 2 && f.address_writes >= 4);
     assert(!(f.regs[0xc200 / 4] & ((1u << 6) | (1u << 8))));
+    const unsigned initial_setup_starts = f.starts[0];
     connect(&f, 0);
+    assert(f.starts[0] == initial_setup_starts);
     read_request(&f, 0x0100, 0, 8, 8);
     const unsigned setup_starts = f.starts[0];
     // Windows commonly resets after reading the first eight device bytes.
