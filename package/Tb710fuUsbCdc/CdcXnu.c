@@ -41,8 +41,8 @@ extern volatile uint64_t armcpu_timer_interrupts;
 extern kern_return_t armcpu_spi_attach(uint32_t intid, bool edge,
     void (*handler)(void *), void *context, uint32_t *readback, uint64_t *router);
 extern kern_return_t armcpu_spi_mask(uint32_t intid, bool masked);
-extern bool sm8550_apps_smmu_lock(void) __attribute__((weak_import));
-extern void sm8550_apps_smmu_unlock(void) __attribute__((weak_import));
+extern bool sm8550_apps_smmu_lock(void) __attribute__((weak));
+extern void sm8550_apps_smmu_unlock(void) __attribute__((weak));
 
 struct tb710fu_cdc_xnu {
     vm_offset_t gcc, phy_reset, reference, phy, smmu, dwc, qscratch;
@@ -201,7 +201,8 @@ static int cdc_power_rails(struct tb710fu_cdc_xnu *x)
         // TCS 2 is shared with the board's other RPMh clients. The active
         // completion IRQ must be enabled before the first request.
         cdc_step("rpmh-irq", "rpmh-irq");
-        cdc_write(x->rsc, 0xd00u + layout.irq_enable, 1u << 2);
+        const unsigned irq_offset = 0xd00u + layout.irq_enable;
+        cdc_write(x->rsc, irq_offset, cdc_read(x->rsc, irq_offset) | (1u << 2));
     }
 
     for (unsigned i = 0; i < TB710FU_CDC_PHY_RAIL_COUNT && ok; ++i) {
@@ -237,8 +238,9 @@ static int cdc_power_rails(struct tb710fu_cdc_xnu *x)
         ok = cdc_rpmh_issue(x, &layout, &address, &value, 1u, "xo-lvl");
         if (ok) gReport.power_flags |= 1u << 4;
     }
-    // Linux's USB path does not issue an additional interconnect/SN2 vote.
-    // The USB2-only path also has no verified XNU interconnect client here.
+    // Linux also raises usb-ddr/apps-usb interconnect paths. This adapter
+    // intentionally defers those BCM votes until an XNU interconnect client
+    // and the complete SN2/ACV/MC0/CN0 route are verified on this board.
     if (tcs_locked) cdc_tcs_unlock();
     IOFreeData(db, TB710FU_USB_CMD_DB_BYTES);
     if (!ok) {
