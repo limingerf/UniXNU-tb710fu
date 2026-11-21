@@ -195,3 +195,13 @@ headers to `osfmk/kern/Makefile` XNU_ONLY_EXPORTS, using the same official
 mechanism as `boot_progress.h`; no fetched source or official script is edited.
 The first compiler error and later missing-filelist consequence are recorded
 separately in `docs/evidence/live-ramoops-ci-44112832250.json`.
+
+`0033-tb710fu-bsd-init-chain-checkpoints.patch` brackets the BSD init chain
+between the source-storage start and `bsd_autoconf`. Run 44870542276 completed
+the whole UFS bring-up and printed `TB710FU bsd: source-storage-start done`,
+then nothing: the next `bsd_init_kprintf` does not reach the text console.
+`native_apfs_load_probe()` is the first call after the hook, so each DEVELOPMENT
+probe is bracketed, and the later init calls (`proc_uuid_policy_init`, `mbinit`,
+`audit_init`, `knote_init`, `eventhandler_init`, the shm/sem caches,
+`domaininit`, `sysctl_mib_init`) get a done tag. The stage tags are
+unconditional, so a quiet 0009 boot still names the call it stopped in.

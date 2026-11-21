@@ -1,0 +1,128 @@
+From: TB710FU clean board
+Subject: [PATCH] Bracket the BSD init chain that follows the storage start
+
+Source: XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f with the exact
+ordered patches recorded by run 44870542276.
+
+Run 44870542276 carried 0009 (quiet command probes) and passed the whole
+UFS bring-up: wake-settle, lun-ready, root layout-done, source-storage
+started, and "TB710FU bsd: source-storage-start done". It then stopped
+without another line. The next bsd_init_kprintf is not mirrored to the
+text console, so the gap between that marker and bsd-autoconf is dark.
+
+Bracket the DEVELOPMENT probe block and the init calls that run before
+bsd_autoconf. native_apfs_load_probe() is the first call after the storage
+hook, so it is the first suspect; the later tags name the call that was
+reached when the probe returns. Stage tags stay unconditional, matching
+0009's rule that the stop point must remain readable while command probes
+are quiet.
+
+Verification: apply the prior run's hash-checked inputs to pinned source
+in an isolated fixture. Validate forward application against the post-0032
+tree.
+---
+
+diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
+index 46b25ac..8e30533 100644
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -831,31 +831,48 @@ bsd_init(void)
+ 	TB710FU_BSD_TEXT("source-storage-start", "done\n");
+ #endif
+ #if DEVELOPMENT || DEBUG
++	TB710FU_BSD_TEXT("apfs-probe", "begin\n");
+ 	native_apfs_load_probe();
++	TB710FU_BSD_TEXT("apfs-probe", "done\n");
++	TB710FU_BSD_TEXT("mgpu-probe", "begin\n");
+ 	native_mobile_graphics_load_probe();
++	TB710FU_BSD_TEXT("mgpu-probe", "done\n");
++	TB710FU_BSD_TEXT("iogpu-probe", "begin\n");
+ 	native_iogpu_load_probe();
++	TB710FU_BSD_TEXT("iogpu-probe", "done\n");
+ #if defined(XNU_ADRENO_FIRMWARE_PROBE) && XNU_ADRENO_FIRMWARE_PROBE
+ 	extern void native_adreno_firmware_probe(void);
++	TB710FU_BSD_TEXT("adreno-fw-probe", "begin\n");
+ 	native_adreno_firmware_probe();
++	TB710FU_BSD_TEXT("adreno-fw-probe", "done\n");
+ #endif
+ #if defined(XNU_ADRENO_PM4_PROBE) && XNU_ADRENO_PM4_PROBE
+ 	extern void native_adreno_pm4_probe(void);
++	TB710FU_BSD_TEXT("adreno-pm4-probe", "begin\n");
+ 	native_adreno_pm4_probe();
++	TB710FU_BSD_TEXT("adreno-pm4-probe", "done\n");
+ #endif
+ #if defined(XNU_SMMU4K_PROBE) && XNU_SMMU4K_PROBE
+ 	extern void native_smmu4k_probe(void);
++	TB710FU_BSD_TEXT("smmu4k-probe", "begin\n");
+ 	native_smmu4k_probe();
++	TB710FU_BSD_TEXT("smmu4k-probe", "done\n");
+ #endif
+ #if defined(XNU_CONSTANT_UPLOADS_PROBE) && XNU_CONSTANT_UPLOADS_PROBE
+ 	extern void native_constants_probe(void);
++	TB710FU_BSD_TEXT("constants-probe", "begin\n");
+ 	native_constants_probe();
++	TB710FU_BSD_TEXT("constants-probe", "done\n");
+ #endif
++	TB710FU_BSD_TEXT("dev-probes", "done\n");
+ #endif
+ 
+ #if CONFIG_PROC_UUID_POLICY
+ 	/* Initial proc_uuid_policy subsystem */
+ 	bsd_init_kprintf("calling proc_uuid_policy_init()\n");
++	TB710FU_BSD_TEXT("proc-uuid-policy", "begin\n");
+ 	proc_uuid_policy_init();
++	TB710FU_BSD_TEXT("proc-uuid-policy", "done\n");
+ #endif
+ 
+ #if SOCKETS
+@@ -868,6 +885,7 @@ bsd_init(void)
+ 	/* Initialize mbuf's. */
+ 	bsd_init_kprintf("calling mbinit\n");
+ 	mbinit();
++	TB710FU_BSD_TEXT("mbinit", "done\n");
+ 	restricted_in_port_init();
+ #endif /* SOCKETS */
+ 
+@@ -878,15 +896,18 @@ bsd_init(void)
+ #if CONFIG_AUDIT
+ 	bsd_init_kprintf("calling audit_init\n");
+ 	audit_init();
++	TB710FU_BSD_TEXT("audit-init", "done\n");
+ #endif
+ 
+ 	/* Initialize kqueues */
+ 	bsd_init_kprintf("calling knote_init\n");
+ 	knote_init();
++	TB710FU_BSD_TEXT("knote-init", "done\n");
+ 
+ 	/* Initialize event handler */
+ 	bsd_init_kprintf("calling eventhandler_init\n");
+ 	eventhandler_init();
++	TB710FU_BSD_TEXT("eventhandler-init", "done\n");
+ 
+ 	/* Initialize for async IO */
+ 	bsd_init_kprintf("calling aio_init\n");
+@@ -898,6 +919,7 @@ bsd_init(void)
+ 	pshm_cache_init();
+ 	bsd_init_kprintf("calling psem_cache_init\n");
+ 	psem_cache_init();
++	TB710FU_BSD_TEXT("shm-sem-init", "done\n");
+ 
+ 	/*
+ 	 * Initialize protocols.  Block reception of incoming packets
+@@ -914,6 +936,7 @@ bsd_init(void)
+ 	socketinit();
+ 	bsd_init_kprintf("calling domaininit\n");
+ 	domaininit();
++	TB710FU_BSD_TEXT("domain-init", "done\n");
+ 	iptap_init();
+ #if FLOW_DIVERT
+ 	flow_divert_init();
+@@ -954,6 +977,7 @@ bsd_init(void)
+ 
+ 	bsd_init_kprintf("calling sysctl_mib_init\n");
+ 	sysctl_mib_init();
++	TB710FU_BSD_TEXT("sysctl-mib", "done\n");
+ #if defined(XNU_VERIFIED_ROOT_PROBE) && XNU_VERIFIED_ROOT_PROBE
+ 	{
+ 		extern void native_verified_root_probe(void);

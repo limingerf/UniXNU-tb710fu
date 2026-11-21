@@ -30,3 +30,4 @@
 0030-tb710fu-prelink-overlap-no-hint.patch
 0031-tb710fu-priority-boot-checkpoints.patch
 0032-tb710fu-bsd-text-checkpoints.patch
+0033-tb710fu-bsd-init-chain-checkpoints.patch
