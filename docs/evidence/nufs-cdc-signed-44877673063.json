@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "stage": "signed-nativeufs-bsd-chain-plus-cdc-platform-dual-system-test-image-set",
+  "user_authorized_local_signing": true,
+  "kernel_run_id": 44877673063,
+  "kernel_run_url": "https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44877673063",
+  "device_commit": "d2e0aa7e8d35ffe96298faf98ed61babdf768228",
+  "display_build_label": "src-d2e0aa7e-ramoops",
+  "profile": "macos-27.3-26C5035r",
+  "prelinked_kernel": {
+    "sha256": "1060cf886b9d6b8de0c5ae48ea15aeea5b0695d0aeeef1c5d8c3cf3e9eb81033",
+    "bytes": 142835712,
+    "mapping_complete": true,
+    "production_parser": "PASS"
+  },
+  "ufs_behaviour_change": {
+    "patch": "patches/ufs/0009-quiet-command-probes.patch",
+    "patch_sha256": "71350d0d47b15a4b6715aa0eb85edcef13224cff6dbd8b2871804bb31c4becc3",
+    "change": "Every command-path and spin probe stays compiled in, but its output is gated behind tb710fu-cmd-trace (default off). The ufs* stage tags and the CKPT-TEXT footer stay unconditional, so the quiet boot still ends at a readable stop point.",
+    "boot_argument": "tb710fu-cmd-trace",
+    "default": "quiet",
+    "switch_order": "The compile-time provider and ufsCmdTraceEnabled() precede the TransferPoll.h and RootCommands.h includes; TransferPoll.h resolves the call while its template body is parsed.",
+    "device_compile_evidence": "run 44877673063 archive-08 applied 0009 (sha256 71350d0d47b15a4b...) and compiled NativeUfs.cpp with no undeclared-identifier error"
+  },
+  "bsd_init_checkpoints": {
+    "patch": "patches/xnu/0033-tb710fu-bsd-init-chain-checkpoints.patch",
+    "patch_sha256": "bfcf74d49b94c7a511d75781630dc38fe65e8404cd854861f06fe03526cc3389",
+    "change": "Brackets every DEVELOPMENT probe and the init calls between the source-storage start and bsd_autoconf, so the first silent gap after the storage hook becomes readable.",
+    "stage_tags": [
+      "apfs-probe",
+      "mgpu-probe",
+      "iogpu-probe",
+      "adreno-fw-probe",
+      "adreno-pm4-probe",
+      "smmu4k-probe",
+      "constants-probe",
+      "proc-uuid-policy",
+      "mbinit",
+      "audit-init",
+      "knote-init",
+      "eventhandler-init",
+      "shm-sem-init",
+      "domain-init",
+      "sysctl-mib"
+    ],
+    "reason": "run 44870542276 reached 'source-storage-start done' and printed nothing else; the next bsd_init_kprintf never reached the text console."
+  },
+  "usb_cdc_platform": {
+    "source": "package/Tb710fuUsbCdc/CdcXnu.c",
+    "change": "Bounded GCC-side self-heal before the adopt-only predicates: USB30_PRIM block reset deassert (GCC+0x39000), GDSC power (0x39004/0x39008 bit16), five branch clocks (0x39018/0x39024/0x39028/0x39088/0x3908c). GCTL.PrtCapDir is now reported instead of refused, two compact register lines precede every verdict and the start hook waits at most 20 ms for the worker so the verdict stays at the tail of the log.",
+    "hook_patch": "patches/xnu/0034-tb710fu-cdc-start-after-storage.patch",
+    "hook_patch_sha256": "7534c0d7be265c5437ae3976e113d9d927a5cad64474fef02c0e3dcd97be01de",
+    "hook_position": "after source-storage-start done, before bsd_autoconf",
+    "adopt_only_still": [
+      "EUSB2 PHY controls",
+      "PMIC/repeater",
+      "SMMU SID 0x40",
+      "UFS"
+    ],
+    "enumeration_verified": false
+  },
+  "ufs_trace": {
+    "patch": "patches/ufs/0004-bringup-stage-trace.patch",
+    "patch_sha256": "e1fe3733b45c288e0862351f41b5b675589aaedb2580583039e8336b0de8b00c",
+    "console_call": "printf",
+    "stage_tags_unconditional": 24
+  },
+  "standard_band_derivative": {
+    "stage": "verified-standard-early-bands-derivative",
+    "result": "PASS",
+    "original_prelink_sha256": "1060cf886b9d6b8de0c5ae48ea15aeea5b0695d0aeeef1c5d8c3cf3e9eb81033",
+    "kernel_sha256": "a1a34e1979265141fbd5ef3bd313b70b6846c9efcbf5c4b43175cb4437f0c442",
+    "kernel_bytes": 142835712,
+    "patch_spans_verified": 6,
+    "compact_probes_verified": 3,
+    "other_bytes_unchanged": true,
+    "segments_unchanged": true,
+    "no_QR_reporter_or_waits": true,
+    "hardware_verified": false
+  },
+  "boot_args": "-v serial=3 native-source-storage=1 native-ufs-root=1 tb710fu-cdc=1 tb710fu-live-log=1 tb710fu-live-checkpoints=1 debug=0x8 -enable_kprintf_spam startup_debug=1 kc-segment-release=0 tb710fu-root-partition=unixnu",
+  "manifest_sha256": "c7fe3ee46002c38b3ad45a4a46b87ebef44d102c0ec985654c1fc4f6dd2673a4",
+  "unsigned_vendor_boot": {
+    "bytes": 37859328,
+    "sha256": "ffb284cc8c1cd5d1231e04c9d5021418dea3916437ffcb127f43b30562345b08"
+  },
+  "signed_images": {
+    "boot.img": {
+      "bytes": 100663296,
+      "sha256": "a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83"
+    },
+    "vendor_boot.img": {
+      "bytes": 100663296,
+      "sha256": "aa13aab7aaefe3b5fa3c2384ae7e19d6fcf90c689410760db37246b8eee48581"
+    },
+    "vbmeta.img": {
+      "bytes": 8000,
+      "sha256": "2fa33c62d6649bba3a36a708335b1100e3aa6deaae78a7d9025d54d4fa72e65f"
+    }
+  },
+  "signing_verification": {
+    "algorithm": "SHA256_RSA4096",
+    "signature_checks": "PASS",
+    "vendor_boot_salted_hash": "PASS",
+    "unsigned_vendor_body_preserved": true,
+    "vbmeta_header_unchanged": true,
+    "public_key_unchanged": true,
+    "unchanged_other_raw_descriptors": 22
+  },
+  "payload_verification": {
+    "FAT_clusters": 66512,
+    "FAT_readback_sha256": {
+      "Payloads/kernel.macho": "6fc38e6a11da16b64dc1ed28339c981580d5333f7a125c94634d51d1735706f3",
+      "Payloads/kernel.macho.adt": "f9b955bad7f9d6b3831d95cb70aa03cd44205c8e30f647e5e5e4f0a1708dca3b",
+      "Payloads/kernel.macho.vroot": "49da45a7bbc6360f50bb3efabae7dc0842513b701bbb1d297cd3bd333923cb68",
+      "unixnu.toml": "1a1ca11a95cc4307640d79ad5ad941ccf5e05adbec62226dc1f8773181f5fcf7"
+    },
+    "LZMA_roundtrip": "PASS",
+    "kernel_readback_sha256": "a1a34e1979265141fbd5ef3bd313b70b6846c9efcbf5c4b43175cb4437f0c442",
+    "adt_sha256": "f9b955bad7f9d6b3831d95cb70aa03cd44205c8e30f647e5e5e4f0a1708dca3b",
+    "production_DarwinBoot_parser": "PASS"
+  },
+  "hardware_boot_verified": false,
+  "runtime_qualified": false,
+  "device_operations": false,
+  "bundle": {
+    "path": "out/live-checkpoints-44877673063-cdc-signed.zip",
+    "bytes": 35560871,
+    "sha256": "1cda433a4b280cd586f637ec3451be30f797b85f47082e2d75051d0bd0ef8a9c",
+    "members": 11,
+    "zip_crc": "PASS",
+    "sha256sums_readback": "PASS"
+  }
+}

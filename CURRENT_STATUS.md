@@ -1,5 +1,31 @@
 # Current status · 2026-11-21
 
+## CDC 判定改由 BSD 线程打印 · 2026-11-21 15:12
+
+上一版（run 44874414139）实机启动停在 `TB710FU bsd: cdc-start begin`，`done` 与任何
+`TB710FU CDC:` 行都没出现，屏幕冻结在那里。钩子已经确认被 0034 挪到了正确位置，所以
+问题在 `tb710fu_cdc_start()` 之内：要么 worker 卡在某次寄存器访问上，要么 worker 的
+kprintf 与主线程的 kprintf 抢同一把控制台锁、双方都不返回。
+
+改法：worker 线程从此**不调用任何 printf**，只把"即将执行的操作"写进 `gStage`
+（`gcc-reset` / `gcc-gdsc` / `gcc-master` / `gcc-sleep` / `gcc-utmi` / `gcc-cfg-noc` /
+`gcc-aggre-noc` / `gcc-sample` / `clock-check` / `phy-sample` / `smmu-route` /
+`core-id` / `dma-alloc` / `dma-check` / `dma-preflight` / `vbus` / `dwc3-start` /
+`ready`），并把八个 GCC 字、六个 PHY 字、core ID/GCTL、SMMU SCR0/ID0 采样到全局。
+BSD 主线程最多等 100 ms 后一次性打印五行：`stage=... settled=... failure=...`、
+`gcc ...`、`phy ...`、`dwc ...`、`platform up dma=...`（或 `failure` 名）。
+
+- 构建 run `44877673063`（`d2e0aa7`）success；prelinked 内核 `1060cf88…eb81033`，142,835,712 B；
+  色带衍生 `a1a34e19…7f0c442`，`verify_standard_bands` PASS；打包断言 10/10 marker 命中
+  （含 `TB710FU CDC: stage=`、`gcc bcr=`、`phy rst=`、`platform up dma=`）。
+- 签名：`vendor_boot.img` `aa13aab7…e48581`、`vbmeta.img` `2fa33c62…72e65f`、
+  `boot.img` 仍为基线 `a3236acc…d817a83`。包 `out/live-checkpoints-44877673063-cdc-signed.zip`，
+  35,560,871 B，SHA-256 `1cda433a4b280cd586f637ec3451be30f797b85f47082e2d75051d0bd0ef8a9c`，
+  11 成员，ZIP CRC 与 SHA256SUMS 回读一致。证据 `docs/evidence/nufs-cdc-signed-44877673063.json`。
+- 下一步判读：若 `stage=` 停在某个寄存器操作名且 `settled=0`，就是那个访问挂死
+  （例如 `dma-alloc` 说明 `kmem_alloc_contig` 在 vfsinit 之后卡住，`gcc-gdsc` 说明
+  GDSC 窗口不可访问）；若 `settled=1` 则 `failure=` 直接给出拒绝原因。
+
 ## USB CDC + BSD 链检查点镜像已签名 · 2026-11-21 14:29
 
 CDC 平台自举与 0033 并进同一次构建，只发一套镜像，少刷一次机。

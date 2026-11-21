@@ -1,5 +1,24 @@
 # TB710FU USB CDC port · 2026-11-17
 
+## Device result on the first self-heal boot · 2026-11-21
+
+Run `44874414139` (`ca5c7f8`) booted through the whole UFS bring-up and printed
+`TB710FU bsd: cdc-start begin`, then froze: no `cdc-start done`, no
+`TB710FU CDC:` line at all. Patch 0034 had moved the hook to the right place, so
+the stall is inside `tb710fu_cdc_start()` — either the worker wedged on one
+register access, or the worker's kprintf and the initiator's kprintf serialize
+on the console lock and neither returns.
+
+The follow-up build (`d2e0aa7`, run `44877673063`) removes every print from the
+worker. The worker publishes `gStage` before each risky step (`gcc-reset`,
+`gcc-gdsc`, `gcc-master`, `gcc-sleep`, `gcc-utmi`, `gcc-cfg-noc`,
+`gcc-aggre-noc`, `gcc-sample`, `clock-check`, `phy-sample`, `smmu-route`,
+`core-id`, `dma-alloc`, `dma-check`, `dma-preflight`, `vbus`, `dwc3-start`,
+`ready`) plus the sampled GCC/PHY/core/SMMU words; the BSD thread waits at most
+100 ms and prints five lines itself. A `stage=` naming one register with
+`settled=0` therefore points at the access that never returned, while
+`settled=1` turns the line into an ordinary refusal with `failure=`.
+
 ## Platform self-heal for the USB30_PRIM block · 2026-11-21
 
 A quiet 0009 boot now prints the entire UFS bring-up and stops after
