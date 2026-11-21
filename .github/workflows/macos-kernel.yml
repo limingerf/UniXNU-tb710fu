@@ -74,6 +74,22 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           JOBS: '3'
         run: python3 tools/ci_kernel.py native
+      # A patch series is authored against the tree the series itself produces,
+      # not against the pristine checkout: earlier patches shift line numbers and
+      # rewrite surrounding context. ci_kernel native applies the series, so the
+      # patched sources are exported here for authoring the next patch against
+      # the state the compiler actually saw.
+      - name: Export the patched sources for patch authoring
+        if: always()
+        run: |
+          set -euo pipefail
+          work=$(cat .work/resolved-work.txt)
+          out=.work/artifacts/patched-sources
+          mkdir -p "$out"
+          cp "$work/tree/.cache/xnu-work/bsd/kern/bsd_init.c" "$out/bsd_init.c"
+          cp "$work/tree/.cache/xnu-work/bsd/net/dlil.c" "$out/dlil.c"
+          cp "$work/tree/.cache/xnu-work/osfmk/kern/tb710fu_live_log.h" "$out/tb710fu_live_log.h"
+          sha256sum "$out"/* | tee "$out/SHA256SUMS"
       - name: Exercise actual pinned Mu encoding and the native QR adapter
         run: |
           set -euo pipefail
