@@ -62,6 +62,7 @@ static struct {
     uint32_t gcc[9];   // bcr, gdscr, status, master, sleep, utmi, cfg, aggre, xo
     uint32_t phy[6];   // reset, reference, control0, control5, common0, control2
     uint32_t power_flags, repeater_status;
+    uint32_t bcm_flags, bcm_values[4];
     uint32_t id, gctl, dma_bits, scr0, id0;
     unsigned streams, role, spmi_apid;
     uint64_t dma_physical;
@@ -165,6 +166,68 @@ static void cdc_tcs_unlock(void)
     if (gCdcTcsLock) IOLockUnlock(gCdcTcsLock);
 }
 
+static uint64_t cdc_div_ceil(uint64_t numerator, uint64_t denominator)
+{
+    return denominator && numerator ? (numerator - 1u) / denominator + 1u : 0;
+}
+
+static int cdc_bcm_data(const struct tb710fu_cdc_rpmh_resource *resource,
+                        uint64_t average, uint64_t peak, unsigned buswidth,
+                        unsigned channels, int enable_only, uint32_t *data)
+{
+    if (!resource || !data || !resource->address || !buswidth || !channels)
+        return 0;
+    if (enable_only) {
+        *data = (1u << 30) | (1u << 29) | 1u;
+        return 1;
+    }
+    if (resource->level_count < 3u) return 0;
+    const uint64_t unit = resource->levels[0] |
+                          (uint64_t)resource->levels[1] << 16;
+    const uint64_t width = resource->levels[2];
+    if (!unit || !width) return 0;
+    const uint64_t average_node = cdc_div_ceil(
+        average * width, (uint64_t)buswidth * channels);
+    const uint64_t peak_node = cdc_div_ceil(peak * width, buswidth);
+    uint64_t vote_x = cdc_div_ceil(average_node * 1000u, unit);
+    uint64_t vote_y = cdc_div_ceil(peak_node * 1000u, unit);
+    if (average && !vote_x) vote_x = 1;
+    if (peak && !vote_y) vote_y = 1;
+    if (vote_x > 0x3fffu) vote_x = 0x3fffu;
+    if (vote_y > 0x3fffu) vote_y = 0x3fffu;
+    *data = (1u << 30) | (1u << 29) |
+            ((uint32_t)vote_x << 14) | (uint32_t)vote_y;
+    return 1;
+}
+
+static int cdc_bcm_vote(struct tb710fu_cdc_xnu *x,
+                        const struct tb710fu_cdc_rsc_layout *layout,
+                        const uint8_t *db, const char *name,
+                        uint64_t average, uint64_t peak, unsigned buswidth,
+                        unsigned channels, int enable_only, unsigned bit)
+{
+    struct tb710fu_cdc_rpmh_resource resource;
+    if (tb710fu_cdc_cmd_db_find(db, TB710FU_USB_CMD_DB_BYTES, name,
+                                &resource) != TB710FU_CDC_RPMH_OK) {
+        cdc_refuse(name);
+        return 0;
+    }
+    uint32_t value = 0;
+    if (!cdc_bcm_data(&resource, average, peak, buswidth, channels,
+                      enable_only, &value)) {
+        cdc_refuse("bcm-aux");
+        return 0;
+    }
+    const uint32_t address = resource.address;
+    if (!cdc_rpmh_issue(x, layout, &address, &value, 1u, name)) {
+        cdc_refuse("bcm-vote");
+        return 0;
+    }
+    gReport.bcm_flags |= bit;
+    gReport.bcm_values[bit == 1u ? 0u : bit == 2u ? 1u : bit == 4u ? 2u : 3u] = value;
+    return 1;
+}
+
 static int cdc_power_rails(struct tb710fu_cdc_xnu *x)
 {
     cdc_step("rpmh-map", "rpmh-map");
@@ -239,8 +302,16 @@ static int cdc_power_rails(struct tb710fu_cdc_xnu *x)
         if (ok) gReport.power_flags |= 1u << 4;
     }
     // Linux also raises usb-ddr/apps-usb interconnect paths. This adapter
-    // intentionally defers those BCM votes until an XNU interconnect client
-    // and the complete SN2/ACV/MC0/CN0 route are verified on this board.
+    // uses the same command-db BCM resources directly until an XNU
+    // interconnect client is available. USB2 HS requests 240/700 MB/s.
+    if (ok && !cdc_bcm_vote(x, &layout, db, "CN0", 0u, 40000u,
+                            4u, 1u, 1, 1u)) ok = 0;
+    if (ok && !cdc_bcm_vote(x, &layout, db, "SN2", 240000u, 700000u,
+                            16u, 1u, 0, 2u)) ok = 0;
+    if (ok && !cdc_bcm_vote(x, &layout, db, "ACV", 0u, 700000u,
+                            4u, 4u, 1, 4u)) ok = 0;
+    if (ok && !cdc_bcm_vote(x, &layout, db, "MC0", 240000u, 700000u,
+                            4u, 4u, 0, 8u)) ok = 0;
     if (tcs_locked) cdc_tcs_unlock();
     IOFreeData(db, TB710FU_USB_CMD_DB_BYTES);
     if (!ok) {
@@ -839,6 +910,9 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
            gReport.phy[4], gReport.phy[5]);
     cdc_log("TB710FU CDC: power rails=%02x repeater=%02x spmi-apid=%u\n",
             gReport.power_flags, gReport.repeater_status, gReport.spmi_apid);
+    cdc_log("TB710FU CDC: bcm flags=%02x cn0=%08x sn2=%08x acv=%08x mc0=%08x\n",
+            gReport.bcm_flags, gReport.bcm_values[0], gReport.bcm_values[1],
+            gReport.bcm_values[2], gReport.bcm_values[3]);
     cdc_log("TB710FU CDC: dwc id=%08x gctl=%08x role=%u bits=%u "
            "smmu scr0=%08x id0=%08x streams=%u\n",
            gReport.id, gReport.gctl, gReport.role, gReport.dma_bits,
