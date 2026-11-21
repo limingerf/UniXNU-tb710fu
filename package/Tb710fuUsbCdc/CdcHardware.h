@@ -22,6 +22,29 @@
 #define TB710FU_USB_PHY_XO 0x118u
 #define TB710FU_USB_SMMU_BASE UINT64_C(0x15000000)
 #define TB710FU_USB_SMMU_BYTES 0x100000u
+#define TB710FU_USB_CMD_DB_BASE UINT64_C(0x081c60000)
+#define TB710FU_USB_CMD_DB_BYTES 0x20000u
+#define TB710FU_USB_RSC_DRV2_BASE UINT64_C(0x17a20000)
+#define TB710FU_USB_RSC_BYTES 0x10000u
+#define TB710FU_USB_SPMI_CORE_BASE UINT64_C(0x0c400000)
+#define TB710FU_USB_SPMI_CONFIG_BASE UINT64_C(0x0c42d000)
+#define TB710FU_USB_SPMI_OBSERVER_BASE UINT64_C(0x0c440000)
+#define TB710FU_USB_SPMI_CHANNEL_BASE UINT64_C(0x0c500000)
+#define TB710FU_USB_SPMI_CORE_BYTES 0x3000u
+#define TB710FU_USB_SPMI_CONFIG_BYTES 0x4000u
+#define TB710FU_USB_SPMI_OBSERVER_STRIDE 0x20u
+#define TB710FU_USB_SPMI_CHANNEL_STRIDE 0x1000u
+
+struct tb710fu_cdc_masked_write {
+    uint16_t offset;
+    uint32_t mask, value;
+};
+
+static inline uint32_t tb710fu_cdc_masked_value(uint32_t old_value,
+                                                 uint32_t mask, uint32_t value)
+{
+    return (old_value & ~mask) | (value & mask);
+}
 
 struct tb710fu_cdc_clock_state {
     uint32_t reset, power_status, master, sleep, mock_utmi, config, aggregate;
@@ -52,9 +75,8 @@ static inline int tb710fu_cdc_phy_clocked(uint32_t reset, uint32_t reference)
     return !(reset & 1u) && (reference & 1u);
 }
 
-// This recognizes the active control state established by the Linux sequence.
-// There is no documented PLL-ready bit in that driver. It does not measure the
-// PMIC repeater, regulator voltages or analog link; enumeration is still needed.
+// These active bits follow the Linux QCOM sequence. They do not measure the
+// eUSB2 analog link or replace the PMIC repeater's own ready check.
 static inline int tb710fu_cdc_phy_adoptable(const struct tb710fu_cdc_phy_state *s)
 {
     return tb710fu_cdc_phy_clocked(s->reset, s->reference) &&

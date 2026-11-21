@@ -1,5 +1,28 @@
 # Current status · 2026-11-21
 
+## CDC PHY 采样停点 · 2026-11-21
+
+最新实机照片 SHA-256 `3d17a8bdc7fa5c51b2eee4b52fc2fa25c801223e99a333951421a3299788bc24`。
+屏底独立标记显示 BSD `autoconf`、CDC `phy-data`；普通日志仍停在
+`DLIL: waiting for main input and detacher`，DLIL 独立标记为 `05 SEEN 7FFF`。
+照片未显示完整构建标签，因此不能确认它来自 run `44897167991`。该 run 的实际
+CDC 归档和内核包含 `cdcphyg`、`phy-sample`、`cdcphyr` 标记，不含字面量
+`phy-data`。
+
+这次照片表明 CDC 已运行到 PHY 采样区，但不能确定停在具体哪次总线访问。
+同源 Linux `tb710fu-linux@4d04410798b538fbe4b50664e3a66d9500a2ed31` 的
+`phy-snps-eusb2.c` 先启用 PHY regulators 和 PMIC repeater，再开参考时钟、
+脉冲 PHY reset 并配置 PHY。当前源适配器已按该顺序加入四路 RPMh rail、
+PM8550B SPMI repeater、可选 `xo.lvl`、GCC/TCSR 时钟、reset 和 PHY 序列。
+RSC TCS 2 使用同设备 Apps SMMU 锁，完成等待采用同设备已验证的 2 ms bounded
+delay，不把 CPU 不可见的 IRQ latch 当作失败，也没有加入未经 USB 路径证实的
+`SN2` 投票。新增 APID 上限、SPMI 完成错误位和 repeater ready 检查。
+
+本地诊断改动在每次 PHY reset、ref、UTMI CTRL0/5、COMMON0、HS PHY CTRL2
+读取之前分别发布 `phy-rst`、`phy-ref`、`phy-u0`、`phy-u5`、`phy-c0`、
+`phy-h2` 屏底检查点，并在每次读取返回后立即保存读数。该源改动尚未 arm64e
+云编译，也未证明 CDC 枚举。
+
 ## 提前启动 CDC 与独立 BSD 检查点 · 2026-11-21
 
 新实机照片 SHA-256 `3dedaf7c6fab3a64b7710868189d17e3419f645ee4b7ea3bafa111669f129578`。
