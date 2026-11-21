@@ -24,6 +24,23 @@ XNU 0036（SHA-256 `9b5a4d69349c076b0ceac7b829070f1b3720a7cd0f4f55f670094e4fd371
 三个对象通过本地 arm64e 编译。三组 CDC 主机测试通过。Windows 枚举、
 根挂载和用户态待实机验证。
 
+macOS `ufs-integrated` run
+[44887638464](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44887638464)
+在设备提交 `9a15a799fe59b24b6dc3ff59a409d881e4a62ea4` 通过原生 arm64e 构建、
+严格预链接和 production DarwinBoot parser。产物 `14701530033` 共 39,218,843 字节，
+ZIP CRC 和 GitHub SHA-256
+`6017d000386ff94c3373efde9b45e283ca18e1dd5f50a3899d37f1b3e5afe276` 回读通过。
+预链接内核 SHA-256 `1cc5c833c6190dc582795fadac5072536f861068ba342f08e3d299cc9a764275`，
+屏显标识 `src-9a15a799-ramoops`。
+
+打包工具来自上述设备提交的 Git 导出。色带衍生内核 SHA-256
+`3c33ca697438ce42c0b8a79996f7102ba78119e82cc228311176c74ba0859aaf`。
+未签名镜像 `out/live-checkpoints-44887638464-cdc-network-unsigned/vendor_boot.unsigned.img`
+共 37,859,328 字节，SHA-256
+`95d3009155d77f7c89b954de581c160b70f1b8db3f467b50f4c029a5db62db07`。
+独立回读通过 CDC 与 BSD/DLIL 标记、ADT、RootPolicies、`unixnu` 启动参数。
+实机测试及签名待完成。
+
 ## CDC 异步启动与根卷发布修复 · 2026-11-21
 
 实机照片 SHA-256 `c507fbd80ae442e881142381cc9c91431dd72c21a6530e7b0211540be836fb02`。
