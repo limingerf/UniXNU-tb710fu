@@ -154,8 +154,31 @@ static void test_route(void)
     registers[(0x800 + 7 * 4) / 4] = (1u << 31) | 0x41; // Wrong SID.
     assert(!route(&r));
     fixture();
+    // SMMUv2 matches (sid & ~MASK) == (SMR.ID & ~MASK), so a masked group whose
+    // masked-away bits agree with 0x40 already routes this stream. This is the
+    // state the device actually reports, and refusing it was the sidamb stop.
     registers[(0x800 + 7 * 4) / 4] = (1u << 31) | (1u << 16) | 0x41;
-    assert(!route(&r)); // A masked alias for 0x40 is not an exact route.
+    assert(scan(&r) == TB710FU_CDC_SMMU_OK && r.masked && r.slot == 7);
+    assert(route(&r));
+    // A masked group whose stored ID disagrees on the visible bits is another
+    // stream's range and must not be adopted.
+    fixture();
+    registers[(0x800 + 7 * 4) / 4] = (1u << 31) | (1u << 16) | 0x43;
+    assert(scan(&r) != TB710FU_CDC_SMMU_OK);
+    // A masked group is never rewritten: its range would carry other masters.
+    {
+        struct tb710fu_cdc_identity_route planned;
+        struct tb710fu_cdc_smmu_saved saved;
+        fixture();
+        registers[(0x800 + 7 * 4) / 4] = (1u << 31) | (1u << 16) | 0x41;
+        registers[(0xc00 + 7 * 4) / 4] = 2u << 16; // Faulting, still not ours.
+        assert(scan(&planned) == TB710FU_CDC_SMMU_FAULTED);
+        const uint32_t smr_before = registers[(0x800 + 7 * 4) / 4];
+        const uint32_t s2cr_before = registers[(0xc00 + 7 * 4) / 4];
+        assert(!attach(&planned, &saved));
+        assert(registers[(0x800 + 7 * 4) / 4] == smr_before);
+        assert(registers[(0xc00 + 7 * 4) / 4] == s2cr_before);
+    }
     fixture();
     registers[(0x800 + 8 * 4) / 4] = (1u << 31) | 0x40;
     assert(!route(&r)); // Multiple matching stream slots.
@@ -202,11 +225,12 @@ static void test_route_classes(void)
     fixture();
     registers[(0xc00 + 7 * 4) / 4] = 2u << 16;
     assert(scan(&r) == TB710FU_CDC_SMMU_FAULTED && r.slot == 7);
-    // A masked alias is never silently adopted.
+    // A masked group that visibly matches 0x40 routes it, so it is adopted and
+    // flagged as shared rather than treated as ambiguous.
     fixture();
     registers[(0x800 + 7 * 4) / 4] = (1u << 31) | (1u << 16) | 0x41;
-    assert(scan(&r) == TB710FU_CDC_SMMU_AMBIGUOUS);
-    // Two exact groups for one SID are ambiguous as well.
+    assert(scan(&r) == TB710FU_CDC_SMMU_OK && r.masked);
+    // Two exact groups for one SID are genuinely ambiguous.
     fixture();
     registers[(0x800 + 8 * 4) / 4] = (1u << 31) | 0x40;
     assert(scan(&r) == TB710FU_CDC_SMMU_AMBIGUOUS);

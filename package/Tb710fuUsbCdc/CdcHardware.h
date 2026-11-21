@@ -92,6 +92,9 @@ typedef void (*tb710fu_cdc_register_barrier)(void *);
 
 struct tb710fu_cdc_identity_route {
     unsigned address_bits, matching_streams, slot, bank, context_offset;
+    // Set when the group that routes 0x40 is a masked (range) group, so the
+    // log can say the route is shared rather than exclusive to this SID.
+    unsigned masked;
     uint32_t smr, s2cr, cbar, cba2r, sctlr;
 };
 
@@ -178,20 +181,25 @@ static inline enum tb710fu_cdc_smmu_result tb710fu_cdc_identity_route_scan(
             if (free_slot == g.groups) free_slot = i;
             continue;
         }
-        // Masked matching makes 0x40 an alias of other SIDs; only an exact,
-        // unmasked group is a route this adapter may reason about.
+        // SMMUv2 matches when (sid & ~SMR.MASK) == (SMR.ID & ~SMR.MASK), so a
+        // masked group already routes 0x40 as long as the masked-away bits of
+        // the stored ID agree. Android commonly leaves one wide group behind;
+        // treating every mask as ambiguous hid exactly that case.
         const uint32_t mask = (smr >> 16) & 0x7fffu;
         if ((smr ^ 0x40u) & 0xffffu & ~mask) continue;
         ++r->matching_streams;
-        if (r->matching_streams != 1 || mask) return TB710FU_CDC_SMMU_AMBIGUOUS;
         r->slot = i;
         r->smr = smr;
         r->s2cr = read(context, 0xc00u + 4u * i);
+        // A second group that also routes 0x40 makes the outcome depend on
+        // group priority, which this adapter will not guess.
+        if (r->matching_streams > 1u) return TB710FU_CDC_SMMU_AMBIGUOUS;
     }
     if (!r->matching_streams) {
         r->slot = free_slot;
         return free_slot < g.groups ? TB710FU_CDC_SMMU_ABSENT : TB710FU_CDC_SMMU_FULL;
     }
+    if (r->smr & 0x7fff0000u) r->masked = 1;
     const unsigned type = (r->s2cr >> 16) & 3u;
     if (type == 1) return TB710FU_CDC_SMMU_OK; // Explicit bypass, no bank.
     if (type == 2) return TB710FU_CDC_SMMU_FAULTED; // Already blocked; safe to claim.
@@ -220,13 +228,18 @@ static inline int tb710fu_cdc_identity_route_read(tb710fu_cdc_register_read read
 // or faulted. S2CR is written before SMR is made valid, so an interrupted
 // publication leaves the stream unmatched rather than pointed at a live bank.
 // Every write is read back; any mismatch restores the two saved words.
+//
+// A masked group is never rewritten. Its SMR covers a range of stream IDs, so
+// flipping its action would change the routing of every other master behind the
+// same range; that is a decision the boot chain owner has to make, not a side
+// effect of bringing up a console.
 static inline int tb710fu_cdc_stream_bypass_attach(
     tb710fu_cdc_register_read read, tb710fu_cdc_register_write write,
     tb710fu_cdc_register_barrier barrier, void *context,
     const struct tb710fu_cdc_identity_route *planned,
     struct tb710fu_cdc_smmu_saved *saved)
 {
-    if (!planned || !saved || planned->slot >= 128u) return 0;
+    if (!planned || !saved || planned->slot >= 128u || planned->masked) return 0;
     const unsigned smr_offset = 0x800u + 4u * planned->slot;
     const unsigned s2cr_offset = 0xc00u + 4u * planned->slot;
     saved->slot = planned->slot;

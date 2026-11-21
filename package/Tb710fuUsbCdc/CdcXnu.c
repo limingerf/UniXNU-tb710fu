@@ -67,8 +67,9 @@ static struct {
     uint32_t bcm_flags, bcm_values[4];
     uint32_t id, gctl, dma_bits, scr0, id0;
     uint32_t smmu_saved_smr, smmu_saved_s2cr;
+    uint32_t smmu_smr, smmu_s2cr;
     unsigned streams, role, spmi_apid, smmu_slot;
-    unsigned smmu_claimed;
+    unsigned smmu_claimed, smmu_masked;
     uint64_t dma_physical;
     uint32_t dma_bytes;
 } gReport;
@@ -754,6 +755,8 @@ static int cdc_active_controls(struct tb710fu_cdc_xnu *x)
 
 // The eight-character bottom band cannot carry a sentence, so every refusal
 // class gets its own short tag; "sid40" remains only as an unreachable default.
+// The masked-group outcome is split further, because the device now proved that
+// a catch-all group is what the boot chain leaves behind.
 static const char *cdc_smmu_tag(enum tb710fu_cdc_smmu_result result)
 {
     switch (result) {
@@ -777,6 +780,10 @@ static int cdc_route(struct tb710fu_cdc_xnu *x,
     gReport.scr0 = cdc_read(x->smmu, 0);
     gReport.id0 = cdc_read(x->smmu, 0x20);
     gReport.streams = route->matching_streams;
+    gReport.smmu_slot = route->slot;
+    gReport.smmu_smr = route->smr;
+    gReport.smmu_s2cr = route->s2cr;
+    gReport.smmu_masked = route->masked;
     if (result == TB710FU_CDC_SMMU_OK) return 1;
     // An absent or already-faulted group is exactly the state the boot chain
     // leaves for a SID it does not own; claim it, then require the same scan to
@@ -786,7 +793,6 @@ static int cdc_route(struct tb710fu_cdc_xnu *x,
         struct tb710fu_cdc_smmu_saved saved;
         if (tb710fu_cdc_stream_bypass_attach(cdc_smmu_read, cdc_smmu_write,
                                              cdc_smmu_barrier, x, route, &saved)) {
-            gReport.smmu_slot = route->slot;
             gReport.smmu_saved_smr = saved.smr;
             gReport.smmu_saved_s2cr = saved.s2cr;
             gReport.smmu_claimed = 1;
@@ -968,11 +974,11 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
            "smmu scr0=%08x id0=%08x streams=%u\n",
            gReport.id, gReport.gctl, gReport.role, gReport.dma_bits,
            gReport.scr0, gReport.id0, gReport.streams);
-    cdc_log("TB710FU CDC: smmu claimed=%u slot=%u smr=%08x s2cr=%08x "
-           "was smr=%08x s2cr=%08x\n",
-           gReport.smmu_claimed, gReport.smmu_slot,
-           gReport.smmu_claimed ? ((1u << 31) | 0x40u) : 0u,
-           gReport.smmu_claimed ? (1u << 16) : 0u,
+    cdc_log("TB710FU CDC: smmu claimed=%u slot=%u masked=%u "
+           "smr=%08x s2cr=%08x\n",
+           gReport.smmu_claimed, gReport.smmu_slot, gReport.smmu_masked,
+           gReport.smmu_smr, gReport.smmu_s2cr);
+    cdc_log("TB710FU CDC: smmu was smr=%08x s2cr=%08x\n",
            gReport.smmu_saved_smr, gReport.smmu_saved_s2cr);
     if (ready) {
         cdc_checkpoint("irqroute");
