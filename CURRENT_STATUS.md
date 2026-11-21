@@ -1,6 +1,6 @@
 # Current status · 2026-11-21
 
-## 0009 探针静默补丁：设备端声明顺序修正 · 2026-11-21 13:40
+## 0009 探针静默补丁：设备端声明顺序修正 · 2026-11-21 13:55
 
 用户要求撤掉每次开机刷屏的 `cmd-*` 日志、保留停点诊断。0009 把
 `RootCommands.h` 与 `TransferPoll.h` 的命令/自旋探针改成运行期开关：
@@ -27,9 +27,17 @@
 - 环境注记：0007 补丁是 CRLF，WSL 的 Linux git 未设 `core.autocrlf=true` 时在
   LF 暂存树上匹配失败；Windows 侧或 `GIT_CONFIG_*` 注入后正常。验证器建议走
   Windows python 运行。
-- 未做：完整设备编译。本地 11:47 起的内核构建仍在 bsd/osfmk，
-  `build/storage-abi` 头尚未生成，adapter 的设备编译路径缺 `startup.o.json`；
-  0009 的设备侧编译确认留给云构建。
+- 设备端编译已由云构建确认：run 44870542276（commit `738269c`，
+  stage=ufs-integrated，success，05:21:58–05:31:18Z）。step 10 内的 archive-08
+  调用 `build-tb710fu-source-storage-archive.py`，`source-storage/build-report.json`
+  的 board_patches 共 9 项，0009 的 SHA-256 是 `71350d0d47b15a4b…`；
+  `NativeUfs.log` 只有既有的隐式转换/符号警告，没有 `ufsCmdTraceEnabled`
+  未声明错误，说明顺序修正在设备配置下成立。archive
+  `5566c7b52ea73b6397f62fa273d22579038a4aced207875bb9f694e8fa071c74`，1,479,296 B；
+  同一次构建的 source-storage host tests 2/2 PASS。step 13/15 因舞台是
+  ufs-integrated 而 skipped，adapter 与独立 archive 任务没有跑。
+- 本地仍未跑完整设备编译：11:47 起的内核构建仍在 bsd/osfmk，`build/storage-abi`
+  头未生成，adapter 的设备编译路径缺 `startup.o.json`。
 
 ## clang 四参数 `__ptrauth` 补丁定稿 · 2026-11-21 11:45
 
