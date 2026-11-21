@@ -19,6 +19,24 @@ CDC 自身诊断直接写入 CDC 和 LiveLog 缓冲，屏底独立的 CDC 标签
 各一格。帧缓冲边界、持有普通渲染锁时的独立更新、19 组 LiveXnu 测试和三组
 CDC 测试通过，CDC 与应用两份补丁后的 BSD 对象通过本地 arm64e 编译。
 
+macOS `ufs-integrated` run
+[44897167991](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44897167991)
+在设备提交 `45fc8ba6d3cae4d10224aa0606ad0e95b109bd6a` 通过原生 arm64e 构建、
+严格预链接及 production DarwinBoot parser。产物 `14703824246` 共 39,222,147 字节，
+GitHub SHA-256 `04f172844248f56f528f92b60298b56af0b699aa8a6a8cede4144e22ce753ba3`，
+下载哈希与 ZIP CRC 通过。预链接内核 SHA-256
+`115bb862b283987c009f3d36b0b780462753677f04a0acc8957fd235316e50a5`，
+屏显标识 `src-45fc8ba6-ramoops`。
+
+打包使用该提交的 Git 导出。色带衍生内核 SHA-256
+`357ca4887193e6da627ef390b56a7b29320b41235bc0e3ac40b82c06120ab829`。
+未签名镜像 `out/live-checkpoints-44897167991-bsd-cdc-raw-unsigned/vendor_boot.unsigned.img`
+共 37,859,328 字节，SHA-256
+`752920aad99b87921a89ac895f1c369b9e4c84d47fb4b20bb9c7a067dc938620`。
+独立回读确认 `unixnu` 根分区、原 ADT 和 RootPolicies、33 个 BSD 标记及 CDC 标记。
+两个新帧缓冲函数和五个既有调度标记函数均有唯一的强可执行定义。
+Windows 枚举、根挂载及用户态待实机验证。
+
 ## DLIL 等待两个启动线程 · 2026-11-21
 
 照片 SHA-256 `016148c87d499416c00778902ac62bf3efa06e19b2fdbcd1a6aed2ad7e0edc00`。
