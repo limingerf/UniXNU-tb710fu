@@ -17,7 +17,7 @@ stage instead of the caller.
 diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 --- a/bsd/kern/bsd_init.c
 +++ b/bsd/kern/bsd_init.c
-@@ -1431,20 +1431,34 @@
+@@ -1431,27 +1431,45 @@
  kern_return_t
  bsd_autoconf(void)
  {
@@ -33,18 +33,20 @@ diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
  		struct pseudo_init *pi;
 +		unsigned tbfu_pi_index = 0;
  
-+		TB710FU_BSD_MARK("pseudobeg");
++		TB710FU_BSD_MARK("pseudobg");
  		for (pi = pseudo_inits; pi->ps_func; pi++) {
 +			/* Publish which initialiser is running before entering it:
-+			 * a stop inside one of them otherwise looks like the loop. */
-+			TB710FU_BSD_MARK(tbfu_pi_index == 0 ? "pseudo000" :
-+			    tbfu_pi_index == 1 ? "pseudo001" :
-+			    tbfu_pi_index == 2 ? "pseudo002" :
-+			    tbfu_pi_index == 3 ? "pseudo003" : "pseudo004");
++			 * a stop inside one of them otherwise looks like the loop.
++			 * The bottom band keeps 8 characters after "BSD ", so these
++			 * names are 8 characters or shorter by construction. */
++			TB710FU_BSD_MARK(tbfu_pi_index == 0 ? "pseudo0" :
++			    tbfu_pi_index == 1 ? "pseudo1" :
++			    tbfu_pi_index == 2 ? "pseudo2" :
++			    tbfu_pi_index == 3 ? "pseudo3" : "pseudo4");
  			(*pi->ps_func)(pi->ps_count);
 +			++tbfu_pi_index;
  		}
-+		TB710FU_BSD_MARK("pseudoret");
++		TB710FU_BSD_MARK("pseudort");
  	}
  
 +	TB710FU_BSD_MARK("iokitbeg");

@@ -47,6 +47,7 @@ jobs:
           python3 scripts/check_usb_cdc_protocol.py
           python3 scripts/check_usb_cdc_hardware.py
           python3 scripts/check_usb_cdc_transport.py
+          python3 scripts/check_boot_mark_names.py
       - name: Check actual ramoops snapshots and live log display/protocol
         run: |
           set -euo pipefail
