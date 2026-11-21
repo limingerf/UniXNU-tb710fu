@@ -16,6 +16,8 @@ typedef uint8_t UINT8;
 #define CHECKPOINT_LOG_MIN_COLUMNS 8U
 #define GLYPH_WIDTH 8U
 #define GLYPH_HEIGHT 19U
+#define DLIL_MARK_COLUMNS 17U
+#define BOOT_MARK_COLUMNS 12U
 
 /* The checkpoint pane has one owner. Keep its text ring and the last paint
  * in RAM so scrolling never reads from the live framebuffer. */
@@ -387,30 +389,68 @@ int tb_live_display_checkpoint_status(TB_LIVE_DISPLAY *d, const char *text)
     return 1;
 }
 
-void tb_live_display_scheduler_mark(TB_LIVE_DISPLAY *d, unsigned stage, unsigned visited)
+static unsigned dlil_mark_scale(const TB_LIVE_DISPLAY *d)
 {
-    static const char hex[] = "0123456789ABCDEF";
-    const char text[] = {
-        'D', 'L', 'I', 'L', ' ', hex[(stage >> 4) & 15u], hex[stage & 15u],
-        ' ', 'S', 'E', 'E', 'N', ' ', hex[(visited >> 12) & 15u],
-        hex[(visited >> 8) & 15u], hex[(visited >> 4) & 15u], hex[visited & 15u],
-    };
-    /* The checkpoint pane and the QR end above this margin. Paint only a
-     * fixed strip, without clearing scrollback or touching the capture ring. */
-    if (!d->CheckpointQrScale || d->Width < DISPLAY_MARGIN + sizeof(text) * GLYPH_WIDTH)
-        return;
-    const uint32_t scale = d->Width >= DISPLAY_MARGIN + sizeof(text) * GLYPH_WIDTH * 2u ? 2u : 1u;
-    for (uint32_t index = 0; index < sizeof(text); ++index) {
+    return d->Width >= DISPLAY_MARGIN + DLIL_MARK_COLUMNS * GLYPH_WIDTH * 2u ? 2u : 1u;
+}
+
+/* Both checkpoint renderers stop above this margin. Each diagnostic writer
+ * paints only its own fixed rectangle using the already bound framebuffer. */
+static void draw_bottom_mark(TB_LIVE_DISPLAY *d, const char *text, unsigned columns,
+                             uint32_t start_x, unsigned scale)
+{
+    for (uint32_t index = 0; index < columns; ++index) {
         for (uint32_t row = 0; row < 14u; ++row) {
             uint8_t bits = mEarlyFont[(unsigned char)text[index] - 32u][row + 2u];
             for (uint32_t column = 0; column < GLYPH_WIDTH; ++column) {
                 uint32_t color = bits & (128u >> column) ? UINT32_C(0xffffffff) : UINT32_C(0xff000000);
-                uint32_t x = DISPLAY_MARGIN + (index * GLYPH_WIDTH + column) * scale;
+                uint32_t x = start_x + (index * GLYPH_WIDTH + column) * scale;
                 for (uint32_t delta = 0; delta < scale; ++delta)
                     pixel(d, x + delta, d->Height - DISPLAY_MARGIN + row, color);
             }
         }
     }
+}
+
+void tb_live_display_scheduler_mark(TB_LIVE_DISPLAY *d, unsigned stage, unsigned visited)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    const char text[DLIL_MARK_COLUMNS] = {
+        'D', 'L', 'I', 'L', ' ', hex[(stage >> 4) & 15u], hex[stage & 15u],
+        ' ', 'S', 'E', 'E', 'N', ' ', hex[(visited >> 12) & 15u],
+        hex[(visited >> 8) & 15u], hex[(visited >> 4) & 15u], hex[visited & 15u],
+    };
+    if (!d->CheckpointQrScale || d->Width < DISPLAY_MARGIN + sizeof(text) * GLYPH_WIDTH)
+        return;
+    draw_bottom_mark(d, text, sizeof(text), DISPLAY_MARGIN, dlil_mark_scale(d));
+}
+
+void tb_live_display_boot_mark(TB_LIVE_DISPLAY *d, unsigned lane, const char *stage)
+{
+    static const char prefix[2][4] = { {'B', 'S', 'D', ' '}, {'C', 'D', 'C', ' '} };
+    if (lane >= 2u || !stage || !valid(d) || !d->CheckpointQrScale)
+        return;
+
+    const uint32_t start_x = DISPLAY_MARGIN + DLIL_MARK_COLUMNS * GLYPH_WIDTH *
+        dlil_mark_scale(d) + DISPLAY_GAP;
+    const uint32_t lane_width = BOOT_MARK_COLUMNS * GLYPH_WIDTH;
+    const uint32_t minimum_width = start_x + DISPLAY_GAP + 2u * lane_width;
+    if (d->Width < minimum_width)
+        return;
+    const unsigned scale = d->Width >= minimum_width + 2u * lane_width ? 2u : 1u;
+
+    char text[BOOT_MARK_COLUMNS];
+    for (unsigned i = 0; i < sizeof(prefix[0]); ++i)
+        text[i] = prefix[lane][i];
+    unsigned i = sizeof(prefix[0]);
+    for (; i < sizeof(text) && *stage; ++i, ++stage) {
+        const unsigned char c = (unsigned char)*stage;
+        text[i] = c >= 32u && c <= 126u ? (char)c : '?';
+    }
+    for (; i < sizeof(text); ++i)
+        text[i] = ' ';
+
+    draw_bottom_mark(d, text, sizeof(text), start_x + lane * (lane_width * scale + DISPLAY_GAP), scale);
 }
 
 int tb_live_display_status(TB_LIVE_DISPLAY *d, const char *text)

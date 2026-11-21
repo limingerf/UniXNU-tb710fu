@@ -1,0 +1,224 @@
+From: TB710FU clean board
+Subject: [PATCH] Trace DLIL return and BSD root startup without console output
+
+Source: XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f, the ordered patch
+inputs of run 44891383574, and device patch 0038.
+
+The device displayed DLIL 05 SEEN 7FFF while the scrolling log still
+showed dlwait. The DLIL waiter had already reached the end marker.
+Instrument the return from that marker, the ordinary printf and refresh,
+and the caller. Keep the existing DLIL ready text and refresh inside
+their original LiveLog gate. Continue with framebuffer markers at network
+initialization, root selection, mounting and initial-process boundaries.
+The markers use lane 0 and never need the scrollback console.
+
+Verification includes forward application and byte-identical reversal
+against the reconstructed two-file tree.
+---
+
+diff --git a/osfmk/kern/tb710fu_live_log.h b/osfmk/kern/tb710fu_live_log.h
+--- a/osfmk/kern/tb710fu_live_log.h
++++ b/osfmk/kern/tb710fu_live_log.h
+@@ -16,6 +16,7 @@
+ int tb710fu_live_log_active(void);
+ 
+ /* These markers may run with interrupts masked or a scheduler lock held. */
++void tb710fu_live_log_boot_mark(unsigned lane, const char *stage);
+ void tb710fu_live_log_scheduler_mark(unsigned stage);
+ void tb710fu_live_log_dlil_wait_begin(void);
+ void tb710fu_live_log_dlil_wait_end(void);
+
+diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
+index 1f15867..2be89e7 100644
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -569,6 +569,7 @@ native_mobile_graphics_load_probe(void)
+ #endif
+ 
+ #if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++#define TB710FU_BSD_MARK(stage) tb710fu_live_log_boot_mark(0, (stage))
+ #define TB710FU_BSD_TEXT(stage, ...) \
+ 	do { \
+ 		if (tb710fu_live_log_active()) { \
+@@ -577,6 +578,7 @@ native_mobile_graphics_load_probe(void)
+ 		} \
+ 	} while (0)
+ #else
++#define TB710FU_BSD_MARK(stage) do { } while (0)
+ #define TB710FU_BSD_TEXT(stage, ...) do { } while (0)
+ #endif
+ 
+@@ -942,16 +944,22 @@ bsd_init(void)
+ 	bsd_init_kprintf("calling dlil_init\n");
+ 	TB710FU_BSD_TEXT("dlil-init", "begin\n");
+ 	dlil_init();
++	TB710FU_BSD_MARK("dlilretn");
+ 	TB710FU_BSD_TEXT("dlil-init", "done\n");
++	TB710FU_BSD_MARK("dliltext");
+ #endif /* NETWORKING */
+ #if SOCKETS
++	TB710FU_BSD_MARK("socketin");
+ 	bsd_init_kprintf("calling socketinit\n");
+ 	TB710FU_BSD_TEXT("socket-init", "begin\n");
+ 	socketinit();
++	TB710FU_BSD_MARK("socketok");
+ 	TB710FU_BSD_TEXT("socket-init", "done\n");
++	TB710FU_BSD_MARK("domainin");
+ 	bsd_init_kprintf("calling domaininit\n");
+ 	TB710FU_BSD_TEXT("domain-init", "begin\n");
+ 	domaininit();
++	TB710FU_BSD_MARK("domainok");
+ 	TB710FU_BSD_TEXT("domain-init", "done\n");
+ 	iptap_init();
+ #if FLOW_DIVERT
+@@ -1004,9 +1012,11 @@ bsd_init(void)
+ 	}
+ #endif
+ 
++	TB710FU_BSD_MARK("autocbeg");
+ 	bsd_init_kprintf("calling bsd_autoconf\n");
+ 	TB710FU_BSD_TEXT("bsd-autoconf", "begin\n");
+ 	bsd_autoconf();
++	TB710FU_BSD_MARK("autocret");
+ 	TB710FU_BSD_TEXT("bsd-autoconf", "done\n");
+ 
+ #if CONFIG_DTRACE
+@@ -1092,20 +1102,25 @@ bsd_init(void)
+ 	while (TRUE) {
+ 		int err;
+ 
++		TB710FU_BSD_MARK("rootfind");
+ 		bsd_init_kprintf("calling setconf\n");
+ 		TB710FU_BSD_TEXT("root-match", "begin\n");
+ 		setconf();
++		TB710FU_BSD_MARK("findretn");
+ 		TB710FU_BSD_TEXT("root-match", "done\n");
+ #if CONFIG_NETBOOT
+ 		netboot = (mountroot == netboot_mountroot);
+ #endif
+ 
++		TB710FU_BSD_MARK("mntbegin");
+ 		bsd_init_kprintf("vfs_mountroot\n");
+ 		boot_progress_stage("vfs_mountroot enter");
+ 		TB710FU_BSD_TEXT("vfs-mountroot", "begin\n");
+ 		err = vfs_mountroot();
++		TB710FU_BSD_MARK("mntretn");
+ 		TB710FU_BSD_TEXT("vfs-mountroot", "result=%d\n", err);
+ 		if (0 == err) {
++			TB710FU_BSD_MARK("mntok");
+ 			boot_progress_stage("vfs_mountroot mounted; authentication pending");
+ 			break;
+ 		}
+@@ -1126,18 +1141,22 @@ bsd_init(void)
+ 		printf("cannot mount root, errno = %d\n", err);
+ 	}
+ 
++	TB710FU_BSD_MARK("securbeg");
+ 	TB710FU_BSD_TEXT("secure-root", "begin\n");
+ 	IOSecureBSDRoot(rootdevice);
++	TB710FU_BSD_MARK("securret");
+ 	TB710FU_BSD_TEXT("secure-root", "done\n");
+ 
+ 	mountlist.tqh_first->mnt_flag |= MNT_ROOTFS;
+ 
+ 	bsd_init_kprintf("calling VFS_ROOT\n");
+ 	/* Get the vnode for '/'.  Set fdp->fd_fd.fd_cdir to reference it. */
++	TB710FU_BSD_MARK("vnodebeg");
+ 	TB710FU_BSD_TEXT("root-vnode", "begin\n");
+ 	if (VFS_ROOT(mountlist.tqh_first, &init_rootvnode, vfs_context_kernel())) {
+ 		panic("bsd_init: cannot find root vnode: %s", PE_boot_args());
+ 	}
++	TB710FU_BSD_MARK("vnodeok");
+ 	TB710FU_BSD_TEXT("root-vnode", "done\n");
+ 	(void)vnode_ref(init_rootvnode);
+ 	(void)vnode_put(init_rootvnode);
+@@ -1163,8 +1182,10 @@ bsd_init(void)
+ 
+ 		if (require_rootauth) {
+ 			/* enforce sealedness */
++			TB710FU_BSD_MARK("authbeg");
+ 			TB710FU_BSD_TEXT("root-auth", "begin\n");
+ 			int autherr = VNOP_IOCTL(rootvnode, FSIOC_KERNEL_ROOTAUTH, NULL, 0, vfs_context_kernel());
++			TB710FU_BSD_MARK("authretn");
+ 			TB710FU_BSD_TEXT("root-auth", "result=%d\n", autherr);
+ 			int owner_authorized = 0;
+ #if defined(XNU_OWNER_ROOT_AUDIT) && XNU_OWNER_ROOT_AUDIT
+@@ -1194,6 +1215,7 @@ bsd_init(void)
+ 			if (autherr && !owner_authorized) {
+ 				panic("rootvp not authenticated after mounting");
+ 			}
++			TB710FU_BSD_MARK("authok");
+ #if defined(XNU_OWNER_ROOT_TRUST) && XNU_OWNER_ROOT_TRUST
+ 			{
+ 				extern volatile int native_owner_root_accepted;
+@@ -1253,9 +1275,11 @@ bsd_init(void)
+ 	{
+ 		char mounthere[] = "/dev"; /* !const because of internal casting */
+ 
++		TB710FU_BSD_MARK("devfsbeg");
+ 		bsd_init_kprintf("calling devfs_kernel_mount\n");
+ 		TB710FU_BSD_TEXT("devfs-mount", "begin\n");
+ 		devfs_kernel_mount(mounthere);
++		TB710FU_BSD_MARK("devfsret");
+ 		TB710FU_BSD_TEXT("devfs-mount", "done\n");
+ 	}
+ #endif /* DEVFS */
+@@ -1301,9 +1325,11 @@ bsd_init(void)
+ 	bsd_init_kprintf("calling siginit\n");
+ 	siginit(kernproc);
+ 
++	TB710FU_BSD_MARK("initmake");
+ 	bsd_init_kprintf("calling bsd_utaskbootstrap\n");
+ 	TB710FU_BSD_TEXT("init-task", "bootstrap begin\n");
+ 	bsd_utaskbootstrap();
++	TB710FU_BSD_MARK("initmade");
+ 	TB710FU_BSD_TEXT("init-task", "bootstrap done\n");
+ 
+ 	pal_kernel_announce();
+@@ -1378,8 +1404,10 @@ bsdinit_task(void)
+ 	mac_cred_label_associate_user(proc_ucred_unsafe(p)); /* in init */
+ #endif
+ 
++	TB710FU_BSD_MARK("vmlaunch");
+ 	TB710FU_BSD_TEXT("vm-launchd", "begin\n");
+ 	vm_init_before_launchd();
++	TB710FU_BSD_MARK("vmready");
+ 	TB710FU_BSD_TEXT("vm-launchd", "done\n");
+ 
+ #if CONFIG_XNUPOST
+@@ -1390,10 +1418,13 @@ bsdinit_task(void)
+ 	}
+ #endif
+ 
++	TB710FU_BSD_MARK("initprep");
+ 	bsd_init_kprintf("bsd_do_post - done");
+ 
+ 	TB710FU_BSD_TEXT("init-exec", "begin\n");
++	TB710FU_BSD_MARK("initexec");
+ 	load_init_program(p);
++	TB710FU_BSD_MARK("initretn");
+ 	TB710FU_BSD_TEXT("init-exec", "returned\n");
+ 	lock_trace = 1;
+ }
+diff --git a/bsd/net/dlil.c b/bsd/net/dlil.c
+index 5aeb18c..026fe40 100644
+--- a/bsd/net/dlil.c
++++ b/bsd/net/dlil.c
+@@ -1636,7 +1636,16 @@ dlil_init(void)
+ 	}
+ 	lck_mtx_unlock(&dlil_thread_sync_lock);
+ 	TB710FU_DLIL_SCHED_END();
+-	TB710FU_DLIL_TEXT("dlready", "main input and detacher ready");
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++	tb710fu_live_log_boot_mark(0, "dlwaitok");
++	if (tb710fu_live_log_active()) {
++		tb710fu_live_log_boot_mark(0, "dlprbeg");
++		printf("TB710FU DLIL: main input and detacher ready\n");
++		tb710fu_live_log_boot_mark(0, "dlprdone");
++		tb710fu_live_log_checkpoint_text("dlready");
++		tb710fu_live_log_boot_mark(0, "dlrfend");
++	}
++#endif
+ }
+ 
+ __private_extern__ int

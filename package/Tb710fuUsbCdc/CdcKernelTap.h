@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 void tb710fu_cdc_log_tap_putc(char byte);
+void tb710fu_cdc_log_tap_append(const char *bytes, size_t length);
 size_t tb710fu_cdc_log_tap_copy(uint8_t *out, size_t capacity);
 int tb710fu_cdc_log_tap_consume(size_t length);
 size_t tb710fu_cdc_log_tap_pending(void);

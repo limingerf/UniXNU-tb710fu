@@ -596,6 +596,9 @@ static void test_text_checkpoint_only_updates_scroll_and_footer(void)
     reset_fixture(); feed_xnu(1800);
     tb710fu_live_log_init(); tb710fu_live_log_freeze();
     assert(enabled && !checkpoint_mode && !qr_calls);
+    uint8_t *marker = frame_allocation + 64u + (display.Height - 16u) * display.StrideBytes + 304u * 4u;
+    tb710fu_live_log_boot_mark(0u, "disabled");
+    assert(*marker == 0xa5);
     tb710fu_live_log_checkpoint_text("throttle");
     assert(!qr_calls && display.LogEnd == 0);
 
@@ -623,6 +626,18 @@ static void test_text_checkpoint_only_updates_scroll_and_footer(void)
     assert(checkpoint_file_generation == last_file_generation && checkpoint_bands_pending == 1);
     assert(memcmp(&last_qr, &checkpoint_sender, sizeof(last_qr)) == 0);
     assert(strcmp(checkpoint_stage, "display-refresh") == 0 && slot_pixel(0) == 0xff112233u);
+
+    marker = frame_allocation + 64u + (display.Height - 16u) * display.StrideBytes + 304u * 4u;
+    const uint64_t status_end = display.LogEnd;
+    const unsigned previous_failures = checkpoint_failures;
+    checkpoint_guard = xnu_capture.guard = 1u;
+    tb710fu_live_log_boot_mark(0u, "socket");
+    tb710fu_live_log_boot_mark(1u, "ready");
+    assert(*marker != 0xa5 && *(marker + 112u * 4u) != 0xa5);
+    assert(checkpoint_guard == 1u && xnu_capture.guard == 1u);
+    assert(checkpoint_failures == previous_failures && display.LogEnd == status_end);
+    assert(qr_calls == 1 && strstr(last_status, "throttle"));
+    checkpoint_guard = xnu_capture.guard = 0u;
 
     tb710fu_live_log_checkpoint_sampled("next-worker-tick");
     assert(qr_calls == 2 && checkpoint_generation == 2 && !checkpoint_bands_pending);

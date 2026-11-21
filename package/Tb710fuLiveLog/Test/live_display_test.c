@@ -271,6 +271,38 @@ static void surface(uint32_t width, uint32_t height, uint32_t stride)
                 column < 16U * 4U || column >= (16U + 17U * 8U * scale) * 4U)
                 assert(copy[n] == frame[n]);
         }
+        const unsigned boot_x = 16U + 17U * 8U * scale + 16U;
+        const unsigned minimum = boot_x + 2U * 12U * 8U + 16U;
+        const unsigned boot_scale = d.Width >= minimum + 2U * 12U * 8U ? 2U : 1U;
+        const char eight_bytes[] = {'p', 'u', 'b', 'l', 'i', 's', 'h', '1'};
+        for (unsigned lane = 0; lane < 2; ++lane) {
+            memcpy(copy, frame, bytes);
+            tb_live_display_boot_mark(&d, lane, eight_bytes);
+            if (d.Width >= minimum) {
+                const unsigned lane_width = 12U * 8U * boot_scale;
+                const unsigned x = boot_x + lane * (lane_width + 16U);
+                assert(memcmp(copy, frame, bytes) != 0);
+                for (n = 0; n < bytes; ++n) {
+                    const size_t row = n / stride, column = n % stride;
+                    if (row < height - 16U || row >= height - 2U ||
+                        column < x * 4U || column >= (x + lane_width) * 4U)
+                        assert(copy[n] == frame[n]);
+                }
+                tb_live_display_boot_mark(&d, lane, "\xff");
+                memcpy(copy, frame, bytes);
+                tb_live_display_boot_mark(&d, lane, "?");
+                assert(memcmp(copy, frame, bytes) == 0);
+                for (unsigned row = height - 16U; row < height - 2U; ++row)
+                    for (unsigned col = x + 5U * 8U * boot_scale; col < x + lane_width; ++col)
+                        assert(*(uint32_t *)(frame + (size_t)row * stride + col * 4U) == UINT32_C(0xff000000));
+            } else {
+                assert(memcmp(copy, frame, bytes) == 0);
+            }
+        }
+        memcpy(copy, frame, bytes);
+        tb_live_display_boot_mark(&d, 2U, "invalid");
+        tb_live_display_boot_mark(&d, 0U, NULL);
+        assert(memcmp(copy, frame, bytes) == 0);
         guards(memory, bytes);
         free(copy);
     }
@@ -289,6 +321,8 @@ static void surface(uint32_t width, uint32_t height, uint32_t stride)
         assert(!tb_live_display_qr(&broken, bitmap, TB_LIVE_QR_SIDE * TB_LIVE_QR_SIDE, TB_LIVE_QR_SIDE));
         assert(!tb_live_display_bands(&broken));
         assert(!tb_live_display_status(&broken, "REJECT"));
+        tb_live_display_boot_mark(&broken, 0U, "REJECT");
+        tb_live_display_boot_mark(NULL, 0U, "REJECT");
         assert(memcmp(copy, frame, bytes) == 0);
         free(copy);
     }
@@ -329,6 +363,7 @@ int main(void)
     surface(640, 480, 2560);
     surface(240, 480, 960);    /* narrow checkpoint pane with a single bottom-right QR */
     surface(641, 481, 2576);   /* padding and a band ending inside a row */
+    surface(512, 480, 2048);  /* both boot markers fit at one horizontal pixel per glyph pixel */
     surface(153, 240, 616);    /* smallest supported geometry, padded */
     surface(289, 480, 1160);   /* alternate two sessions in the shared QR rectangle */
     surface(290, 480, 1160);   /* first geometry wide enough for two QR slots */

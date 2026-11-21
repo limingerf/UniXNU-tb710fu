@@ -20,6 +20,11 @@ void tb710fu_cdc_log_tap_putc(char byte)
     (void)tb710fu_cdc_log_ring_append(&gKernelLog, &value, sizeof(value));
 }
 
+void tb710fu_cdc_log_tap_append(const char *bytes, size_t length)
+{
+    (void)tb710fu_cdc_log_ring_append(&gKernelLog, (const uint8_t *)bytes, length);
+}
+
 size_t tb710fu_cdc_log_tap_copy(uint8_t *out, size_t capacity)
 {
     return tb710fu_cdc_log_ring_copy(&gKernelLog, out, capacity);

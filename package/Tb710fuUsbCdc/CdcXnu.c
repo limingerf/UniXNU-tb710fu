@@ -9,6 +9,7 @@
 // native declarations; BSD param/systm mixes incompatible BSD/libsa types.
 #include <kern/misc_protos.h>
 #include <kern/clock.h>
+#include <kern/sched.h>
 #include <kern/thread.h>
 #include <kern/sched_prim.h>
 #include <machine/machine_routines.h>
@@ -17,6 +18,7 @@
 #include <vm/pmap.h>
 #include <vm/vm_kern.h>
 #include <vm/vm_kern_xnu.h>
+#include <stdarg.h>
 
 #include "CdcDwc3.h"
 #include "CdcHardware.h"
@@ -28,7 +30,10 @@
 #endif
 
 void tb710fu_cdc_start(void);
-extern void tb710fu_live_log_checkpoint_text(const char *stage)
+extern int vsnprintf(char *, size_t, const char *, va_list) __printflike(3, 0);
+extern void tb710fu_live_log_boot_mark(unsigned lane, const char *stage)
+    __attribute__((weak_import));
+extern void tb710fu_live_log_putc(char byte)
     __attribute__((weak_import));
 extern volatile uint32_t armcpu_gic_ready;
 extern volatile uint64_t armcpu_timer_interrupts;
@@ -61,7 +66,24 @@ static struct {
 
 static void cdc_checkpoint(const char *label)
 {
-    if (tb710fu_live_log_checkpoint_text) tb710fu_live_log_checkpoint_text(label);
+    if (tb710fu_live_log_boot_mark) tb710fu_live_log_boot_mark(1, label);
+}
+
+/* CDC can carry its own diagnostics even if the ordinary console is blocked. */
+static void cdc_log(const char *format, ...) __printflike(1, 2);
+static void cdc_log(const char *format, ...)
+{
+    char text[192];
+    va_list args;
+    va_start(args, format);
+    int length = vsnprintf(text, sizeof(text), format, args);
+    va_end(args);
+    if (length <= 0) return;
+    size_t count = (size_t)length < sizeof(text) ? (size_t)length : sizeof(text) - 1u;
+    tb710fu_cdc_log_tap_append(text, count);
+    if (tb710fu_live_log_putc) {
+        for (size_t i = 0; i < count; ++i) tb710fu_live_log_putc(text[i]);
+    }
 }
 
 static void cdc_mark(const char *stage)
@@ -72,13 +94,14 @@ static void cdc_mark(const char *stage)
 static void cdc_step(const char *stage, const char *label)
 {
     cdc_mark(stage);
-    printf("TB710FU CDC: %s\n", stage);
     cdc_checkpoint(label);
+    cdc_log("TB710FU CDC: %s\n", stage);
 }
 
 static void cdc_refuse(const char *reason)
 {
     gReport.failure = reason;
+    cdc_checkpoint(reason);
 }
 
 static void cdc_irq(void *argument)
@@ -239,6 +262,7 @@ static int cdc_gcc_bring_up(struct tb710fu_cdc_xnu *x)
 static void cdc_sample_controls(struct tb710fu_cdc_xnu *x)
 {
     cdc_mark("gcc-sample");
+    cdc_checkpoint("gccread");
     gReport.gcc[0] = cdc_read(x->gcc, CDC_GCC_BCR);
     gReport.gcc[1] = cdc_read(x->gcc, CDC_GCC_GDSCR);
     gReport.gcc[2] = cdc_read(x->gcc, CDC_GCC_GDSCR_STATUS);
@@ -262,6 +286,7 @@ static int cdc_active_controls(struct tb710fu_cdc_xnu *x)
         .aggregate = gReport.gcc[7]
     };
     cdc_mark("clock-check");
+    cdc_checkpoint("clkcheck");
     if (!tb710fu_cdc_clocks_active(&clocks) || !(gReport.gcc[8] & 1u)) {
         cdc_refuse("clocks");
         return 0;
@@ -322,6 +347,7 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
     cdc_sample_controls(x);
     if (!cdc_active_controls(x)) return 0;
     cdc_mark("map-controller");
+    cdc_checkpoint("coremap");
     x->dwc = ml_io_map(TB710FU_USB_DWC3_BASE, 0xe000);
     x->smmu = ml_io_map(TB710FU_USB_SMMU_BASE, TB710FU_USB_SMMU_BYTES);
     x->qscratch = ml_io_map(TB710FU_USB_QSCRATCH_BASE, 0x1000);
@@ -380,6 +406,7 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
     // Re-read the live route and controls after allocation, before any device
     // write. No translation register or stream table is changed by this path.
     cdc_mark("dma-check");
+    cdc_checkpoint("dmacheck");
     cdc_sample_controls(x);
     if (!cdc_active_controls(x) || !cdc_route(x, &refreshed)) return 0;
     if (memcmp(&route, &refreshed, sizeof(route)) ||
@@ -402,6 +429,7 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
         .dma_physical = physical, .dma_bytes = TB710FU_DWC3_DMA_SIZE
     };
     cdc_mark("dma-preflight");
+    cdc_checkpoint("dmapre");
     enum tb710fu_cdc_preflight_result preflight = tb710fu_cdc_preflight(1, &snapshot);
     if (preflight != TB710FU_CDC_PREFLIGHT_READY) {
         cdc_refuse("preflight");
@@ -433,6 +461,7 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
     gReport.dma_physical = physical;
     gReport.dma_bytes = TB710FU_DWC3_DMA_SIZE;
     cdc_mark("ready");
+    cdc_checkpoint("dwcstart");
     return 1;
 }
 
@@ -443,27 +472,28 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
     cdc_checkpoint("cdcentry");
     uint64_t timer_ctl;
     __asm__ volatile("mrs %0, cntv_ctl_el0" : "=r"(timer_ctl));
-    printf("TB710FU CDC: worker gic=%u timer=%llu cntv_ctl=%llx irq=%u\n",
+    cdc_log("TB710FU CDC: worker gic=%u timer=%llu cntv_ctl=%llx irq=%u\n",
            armcpu_gic_ready, (unsigned long long)armcpu_timer_interrupts,
            (unsigned long long)timer_ctl, (unsigned)ml_get_interrupts_enabled());
     cdc_checkpoint("cdcwork");
     const int ready = cdc_prepare(&gCdc);
-    printf("TB710FU CDC: stage=%s failure=%s\n", gStage,
+    cdc_log("TB710FU CDC: stage=%s failure=%s\n", gStage,
            gReport.failure ? gReport.failure : "-");
-    printf("TB710FU CDC: gcc bcr=%08x gdscr=%08x sts=%08x m=%08x s=%08x "
+    cdc_log("TB710FU CDC: gcc bcr=%08x gdscr=%08x sts=%08x m=%08x s=%08x "
            "u=%08x cfg=%08x ag=%08x xo=%08x\n",
            gReport.gcc[0], gReport.gcc[1], gReport.gcc[2], gReport.gcc[3],
            gReport.gcc[4], gReport.gcc[5], gReport.gcc[6], gReport.gcc[7],
            gReport.gcc[8]);
-    printf("TB710FU CDC: phy rst=%08x ref=%08x ctl0=%08x ctl5=%08x "
+    cdc_log("TB710FU CDC: phy rst=%08x ref=%08x ctl0=%08x ctl5=%08x "
            "common0=%08x ctl2=%08x\n",
            gReport.phy[0], gReport.phy[1], gReport.phy[2], gReport.phy[3],
            gReport.phy[4], gReport.phy[5]);
-    printf("TB710FU CDC: dwc id=%08x gctl=%08x role=%u bits=%u "
+    cdc_log("TB710FU CDC: dwc id=%08x gctl=%08x role=%u bits=%u "
            "smmu scr0=%08x id0=%08x streams=%u\n",
            gReport.id, gReport.gctl, gReport.role, gReport.dma_bits,
            gReport.scr0, gReport.id0, gReport.streams);
     if (ready) {
+        cdc_checkpoint("irqroute");
         uint32_t spi_state = 0;
         kern_return_t spi = armcpu_spi_attach(TB710FU_USB_DWC3_INTID, false,
                                               cdc_irq, NULL, &spi_state, NULL);
@@ -473,9 +503,9 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
         } else if (spi == KERN_SUCCESS) {
             (void)armcpu_spi_mask(TB710FU_USB_DWC3_INTID, true);
         }
-        printf("TB710FU CDC: event irq=%u kr=%d gic=%08x\n",
+        cdc_log("TB710FU CDC: event irq=%u kr=%d gic=%08x\n",
                (unsigned)event_irq, spi, spi_state);
-        printf("TB710FU CDC: platform up dma=%llx/%x, waiting for enumeration "
+        cdc_log("TB710FU CDC: platform up dma=%llx/%x, waiting for enumeration "
                "and host DTR\n",
                (unsigned long long)gReport.dma_physical, (unsigned)gReport.dma_bytes);
         cdc_checkpoint("cdcready");
@@ -484,22 +514,23 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
         while (gCdc.controller.running && !gCdc.controller.failed) {
             tb710fu_dwc3_poll(&gCdc.controller);
             if (!bus_seen && gCdc.controller.connected) {
-                printf("TB710FU CDC: connect-done maxpacket=%u\n", gCdc.controller.packet_size);
                 cdc_checkpoint("cdcbus");
+                cdc_log("TB710FU CDC: connect-done maxpacket=%u\n", gCdc.controller.packet_size);
                 bus_seen = 1;
             }
             if (!setup_seen && gCdc.controller.setup_requests) {
-                printf("TB710FU CDC: first EP0 SETUP\n");
                 cdc_checkpoint("cdcsetup");
+                cdc_log("TB710FU CDC: first EP0 SETUP\n");
                 setup_seen = 1;
             }
             unsigned state = gCdc.controller.configured |
                              ((unsigned)gCdc.controller.dtr << 1);
             if (state != previous) {
-                printf("TB710FU CDC: configured=%u dtr=%u\n",
+                cdc_checkpoint(gCdc.controller.dtr ? "cdcdtr" :
+                               gCdc.controller.configured ? "cdccfg" : "cdcevent");
+                cdc_log("TB710FU CDC: configured=%u dtr=%u\n",
                        (unsigned)gCdc.controller.configured,
                        (unsigned)gCdc.controller.dtr);
-                cdc_checkpoint("cdcevent");
                 previous = state;
             }
             if (!gCdc.controller.running) break;
@@ -512,11 +543,9 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
             thread_block(THREAD_CONTINUE_NULL);
         }
         if (event_irq) (void)armcpu_spi_mask(TB710FU_USB_DWC3_INTID, true);
-        printf("TB710FU CDC: transport stopped: %s\n",
-               gCdc.controller.failure ? gCdc.controller.failure : "stopped");
         cdc_checkpoint("cdcstop");
-    } else {
-        cdc_checkpoint("cdcref");
+        cdc_log("TB710FU CDC: transport stopped: %s\n",
+               gCdc.controller.failure ? gCdc.controller.failure : "stopped");
     }
     (void)thread_terminate(current_thread());
     thread_block(THREAD_CONTINUE_NULL);
@@ -528,21 +557,22 @@ void tb710fu_cdc_start(void)
     int enabled = 0;
     if (!PE_parse_boot_argn("tb710fu-cdc", &enabled, sizeof(enabled)) || !enabled) return;
     if (enabled != 1) {
-        printf("TB710FU CDC: tb710fu-cdc must be 0 or 1\n");
+        cdc_log("TB710FU CDC: tb710fu-cdc must be 0 or 1\n");
         return;
     }
     if (__atomic_exchange_n(&gAttempted, 1u, __ATOMIC_ACQ_REL)) return;
     thread_t worker = THREAD_NULL;
-    // Use the kernel-task default like the UFS publisher and DLIL startup
-    // threads. Bootstrap retains priority and never waits on this worker.
-    kern_return_t kr = kernel_thread_start(cdc_worker, NULL, &worker);
+    // Match the bootstrap thread's priority so USB can receive an early
+    // scheduling quantum without a wait or hardware access in the BSD hook.
+    cdc_checkpoint("cdcqueue");
+    kern_return_t kr = kernel_thread_start_priority(cdc_worker, NULL, MAXPRI_KERNEL, &worker);
     if (kr != KERN_SUCCESS) {
-        printf("TB710FU CDC: worker creation failed kr=%d\n", kr);
+        cdc_checkpoint("cdcnothr");
+        cdc_log("TB710FU CDC: worker creation failed kr=%d\n", kr);
         return;
     }
     thread_deallocate(worker);
-    printf("TB710FU CDC: worker queued gic=%u timer=%llu irq=%u\n",
+    cdc_log("TB710FU CDC: worker queued gic=%u timer=%llu irq=%u\n",
            armcpu_gic_ready, (unsigned long long)armcpu_timer_interrupts,
            (unsigned)ml_get_interrupts_enabled());
-    cdc_checkpoint("cdcqueue");
 }

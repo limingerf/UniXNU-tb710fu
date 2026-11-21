@@ -1,5 +1,24 @@
 # Current status · 2026-11-21
 
+## 提前启动 CDC 与独立 BSD 检查点 · 2026-11-21
+
+新实机照片 SHA-256 `3dedaf7c6fab3a64b7710868189d17e3419f645ee4b7ea3bafa111669f129578`。
+普通页脚仍为 `dlwait`，独立底栏为 `DLIL 05 SEEN 7FFF`，确认 DLIL 已从等待返回、
+两个线程均已到达入口，且 BSD 已释放等待锁。精确回读 run `44891383574` 后，
+阶段 05 后是普通 `printf` 和日志刷新。照片仍无法确认两者是否返回。
+
+0038（SHA-256 `617c0cc6f21fe2855c9fbb9f17b98b42276ac464a777e442f89f1f0675bae85c`）
+在 `IOKitInitializeTime()` 后、VFS 和 UFS 前异步排队 CDC。CDC 线程与 BSD
+启动线程使用相同优先级 `MAXPRI_KERNEL`，可以更早获得调度，枚举时机仍由实机决定。
+CDC 自身诊断直接写入 CDC 和 LiveLog 缓冲，屏底独立的 CDC 标签记录 worker、
+时钟、PHY、DMA、IRQ、USB 连接、EP0 SETUP、配置与 DTR。
+
+0039（SHA-256 `36ec206d90d88b253ec0e37dc9c85e57b34fdf6c1588900a364af6528ffcfd0f`）
+新增 33 个独立 BSD 标记，覆盖 `dlready` 打印前后、刷新返回、socket/domain、
+根卷匹配、挂载、认证和 PID 1 执行。现有 DLIL 底栏保留，新增 BSD 与 CDC
+各一格。帧缓冲边界、持有普通渲染锁时的独立更新、19 组 LiveXnu 测试和三组
+CDC 测试通过，CDC 与应用两份补丁后的 BSD 对象通过本地 arm64e 编译。
+
 ## DLIL 等待两个启动线程 · 2026-11-21
 
 照片 SHA-256 `016148c87d499416c00778902ac62bf3efa06e19b2fdbcd1a6aed2ad7e0edc00`。

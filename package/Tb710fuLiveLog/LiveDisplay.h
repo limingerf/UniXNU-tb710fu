@@ -75,6 +75,9 @@ int tb_live_display_checkpoint_status(TB_LIVE_DISPLAY *display, const char *text
 void tb_live_display_scheduler_mark(TB_LIVE_DISPLAY *display, unsigned stage,
                                     unsigned visited);
 
+/* Paint one boot stage in lane 0 (BSD) or 1 (CDC), with up to eight ASCII bytes. */
+void tb_live_display_boot_mark(TB_LIVE_DISPLAY *display, unsigned lane, const char *stage);
+
 /* One bounded ASCII line, truncated at the right edge. Unsupported bytes use ?.
  * This is the ordinary dual-stream status row below the legacy QR slots.
  */

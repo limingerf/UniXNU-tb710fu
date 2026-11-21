@@ -530,6 +530,14 @@ void tb710fu_live_log_scheduler_mark(unsigned stage)
     live_barrier();
 }
 
+void tb710fu_live_log_boot_mark(unsigned lane, const char *stage)
+{
+    if (!tb710fu_live_log_active() || !__atomic_load_n(&checkpoint_mode, __ATOMIC_ACQUIRE))
+        return;
+    tb_live_display_boot_mark(&display, lane, stage);
+    live_barrier();
+}
+
 /* Preserve precisely this pre-machine_startup boundary once. A busy/empty
  * result is exported honestly; a later post-startup tail is never called early.
  * Freeze itself never encodes, draws, waits or depends on a worker. */
