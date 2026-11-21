@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
 // XNU 12377 adapter for the DWC3 CDC transport.
-// Hardware facts: tb710fu-linux@4d04410798b538fbe4b50664e3a66d9500a2ed31,
-// sm8650.dtsi, gcc-sm8650.c, gdsc.c, tcsrcc-sm8650.c, phy-snps-eusb2.c,
-// dwc3-qcom.c; SMMU fields: ARM IHI 0062. Firmware adoption plus a bounded
-// GCC-side self-heal (USB30_PRIM GDSC, branch clocks, block reset). No PHY,
-// regulator, PMIC repeater, SMMU or UFS reinitialization is attempted here.
+// SM8650 controller, clock and PHY facts: tb710fu-linux@4d04410798b538fbe4b50664e3a66d9500a2ed31.
+// RPMh and PM8550B SPMI transaction formats follow the official UniXNU-sheng
+// reference at 516a780473a2ac59c8b438e132bb60204dda9e22. SMMU is read-only.
 // Replay an osfmk/startup.c compile record (MACH_KERNEL_PRIVATE). Use its
 // native declarations; BSD param/systm mixes incompatible BSD/libsa types.
 #include <kern/misc_protos.h>
@@ -18,11 +16,14 @@
 #include <vm/pmap.h>
 #include <vm/vm_kern.h>
 #include <vm/vm_kern_xnu.h>
+#include <IOKit/IOLib.h>
 #include <stdarg.h>
 
+#include "CdcBoardPower.h"
 #include "CdcDwc3.h"
 #include "CdcHardware.h"
 #include "CdcKernelTap.h"
+#include "CdcQcomRpmh.h"
 #include "CdcTransportGuard.h"
 
 #if !defined(__arm64__)
@@ -40,9 +41,12 @@ extern volatile uint64_t armcpu_timer_interrupts;
 extern kern_return_t armcpu_spi_attach(uint32_t intid, bool edge,
     void (*handler)(void *), void *context, uint32_t *readback, uint64_t *router);
 extern kern_return_t armcpu_spi_mask(uint32_t intid, bool masked);
+extern bool sm8550_apps_smmu_lock(void) __attribute__((weak_import));
+extern void sm8550_apps_smmu_unlock(void) __attribute__((weak_import));
 
 struct tb710fu_cdc_xnu {
     vm_offset_t gcc, phy_reset, reference, phy, smmu, dwc, qscratch;
+    vm_offset_t cmd_db, rsc;
     vm_offset_t dma;
     unsigned cache_line;
     struct tb710fu_dwc3 controller;
@@ -58,8 +62,9 @@ static struct {
     const char *failure;
     uint32_t gcc[9];   // bcr, gdscr, status, master, sleep, utmi, cfg, aggre, xo
     uint32_t phy[6];   // reset, reference, control0, control5, common0, control2
+    uint32_t power_flags, repeater_status;
     uint32_t id, gctl, dma_bits, scr0, id0;
-    unsigned streams, role;
+    unsigned streams, role, spmi_apid;
     uint64_t dma_physical;
     uint32_t dma_bytes;
 } gReport;
@@ -119,6 +124,257 @@ static uint32_t cdc_read(vm_offset_t base, unsigned offset)
     return value;
 }
 
+static void cdc_write(vm_offset_t base, unsigned offset, uint32_t value);
+static void cdc_delay(void *context, unsigned microseconds);
+
+static int cdc_rpmh_issue(struct tb710fu_cdc_xnu *x,
+                          const struct tb710fu_cdc_rsc_layout *layout,
+                          const uint32_t *addresses, const uint32_t *values,
+                          unsigned count, const char *stage)
+{
+    struct tb710fu_cdc_rpmh_write writes[18];
+    unsigned n = tb710fu_cdc_rpmh_active_request(layout, 2u, addresses,
+                                                   values, count, writes,
+                                                   sizeof(writes) / sizeof(writes[0]));
+    if (!n) return 0;
+    cdc_mark(stage);
+    cdc_checkpoint(stage);
+    for (unsigned i = 0; i < n; ++i)
+        cdc_write(x->rsc, 0xd00u + writes[i].offset, writes[i].value);
+    // On this board the active-TCS completion latch is not visible through
+    // the CPU read path, even though the RPMh request is accepted. Match the
+    // same-device helper's bounded delay and always return the TCS to idle.
+    cdc_delay(NULL, 2000u);
+    n = tb710fu_cdc_rpmh_finish(layout, 2u, writes,
+                                  sizeof(writes) / sizeof(writes[0]));
+    if (!n) return 0;
+    for (unsigned i = 0; i < n; ++i)
+        cdc_write(x->rsc, 0xd00u + writes[i].offset, writes[i].value);
+    return 1;
+}
+
+static int cdc_tcs_lock(void)
+{
+    if (!sm8550_apps_smmu_lock) return 1;
+    return sm8550_apps_smmu_unlock && sm8550_apps_smmu_lock();
+}
+
+static void cdc_tcs_unlock(void)
+{
+    if (sm8550_apps_smmu_lock && sm8550_apps_smmu_unlock)
+        sm8550_apps_smmu_unlock();
+}
+
+static int cdc_power_rails(struct tb710fu_cdc_xnu *x)
+{
+    cdc_step("rpmh-map", "rpmh-map");
+    x->cmd_db = ml_io_map(TB710FU_USB_CMD_DB_BASE, TB710FU_USB_CMD_DB_BYTES);
+    x->rsc = ml_io_map(TB710FU_USB_RSC_DRV2_BASE, TB710FU_USB_RSC_BYTES);
+    if (!x->cmd_db || !x->rsc) {
+        cdc_refuse("rpmh-map");
+        return 0;
+    }
+
+    uint8_t *db = IOMallocData(TB710FU_USB_CMD_DB_BYTES);
+    if (!db) {
+        cdc_refuse("rpmh-alloc");
+        return 0;
+    }
+    volatile uint32_t *db_words = (volatile uint32_t *)x->cmd_db;
+    for (unsigned offset = 0; offset < TB710FU_USB_CMD_DB_BYTES; offset += 4u) {
+        const uint32_t word = db_words[offset / 4u];
+        db[offset] = (uint8_t)word;
+        db[offset + 1u] = (uint8_t)(word >> 8);
+        db[offset + 2u] = (uint8_t)(word >> 16);
+        db[offset + 3u] = (uint8_t)(word >> 24);
+    }
+    __asm__ volatile("dmb oshld" ::: "memory");
+    const struct tb710fu_cdc_rsc_layout layout =
+        tb710fu_cdc_rsc_layout(cdc_read(x->rsc, 0));
+    int ok = layout.tcs_stride != 0;
+    int tcs_locked = 0;
+    if (ok) {
+        tcs_locked = cdc_tcs_lock();
+        if (!tcs_locked) ok = 0;
+    }
+    if (ok) {
+        // TCS 2 is shared with the board's other RPMh clients. The active
+        // completion IRQ must be enabled before the first request.
+        cdc_step("rpmh-irq", "rpmh-irq");
+        cdc_write(x->rsc, 0xd00u + layout.irq_enable, 1u << 2);
+    }
+
+    for (unsigned i = 0; i < TB710FU_CDC_PHY_RAIL_COUNT && ok; ++i) {
+        struct tb710fu_cdc_rpmh_resource resource;
+        const struct tb710fu_cdc_board_rail *rail = &tb710fu_cdc_phy_rails[i];
+        cdc_mark(rail->resource);
+        cdc_checkpoint(rail->resource);
+        if (tb710fu_cdc_cmd_db_find(db, TB710FU_USB_CMD_DB_BYTES,
+                                    rail->resource, &resource) != TB710FU_CDC_RPMH_OK) {
+            ok = 0;
+            break;
+        }
+        const uint32_t mode_address = resource.address + 8u;
+        const uint32_t voltage_address = resource.address;
+        const uint32_t enable_address = resource.address + 4u;
+        const uint32_t mode = 7u;
+        const uint32_t voltage = rail->millivolts;
+        const uint32_t enable = 1u;
+        ok = cdc_rpmh_issue(x, &layout, &mode_address, &mode, 1u, "rpmh-mode") &&
+             cdc_rpmh_issue(x, &layout, &voltage_address, &voltage, 1u, "rpmh-voltage") &&
+             cdc_rpmh_issue(x, &layout, &enable_address, &enable, 1u, "rpmh-enable");
+        if (ok) gReport.power_flags |= 1u << i;
+    }
+
+    // The TCSR USB2 reference is sourced from the board XO. Match Linux's
+    // rpmh XO vote when that ARC is present, while keeping older firmware
+    // command databases usable if the vote is already held by the loader.
+    struct tb710fu_cdc_rpmh_resource xo;
+    if (ok && tb710fu_cdc_cmd_db_find(db, TB710FU_USB_CMD_DB_BYTES,
+                                      "xo.lvl", &xo) == TB710FU_CDC_RPMH_OK) {
+        const uint32_t address = xo.address;
+        const uint32_t value = 3u;
+        ok = cdc_rpmh_issue(x, &layout, &address, &value, 1u, "xo-lvl");
+        if (ok) gReport.power_flags |= 1u << 4;
+    }
+    // Linux's USB path does not issue an additional interconnect/SN2 vote.
+    // The USB2-only path also has no verified XNU interconnect client here.
+    if (tcs_locked) cdc_tcs_unlock();
+    IOFreeData(db, TB710FU_USB_CMD_DB_BYTES);
+    if (!ok) {
+        cdc_refuse("rpmh-vote");
+        return 0;
+    }
+    return 1;
+}
+
+static uint32_t cdc_spmi_command(unsigned operation, unsigned address)
+{
+    return (operation << 27) | (address << 4);
+}
+
+static int cdc_spmi_wait(vm_offset_t registers)
+{
+    for (unsigned attempt = 0; attempt < 1000u; ++attempt) {
+        const uint32_t status = cdc_read(registers, 8u);
+        if (status & 1u) return !(status & 0xeu);
+        cdc_delay(NULL, 10u);
+    }
+    return 0;
+}
+
+static int cdc_spmi_write(vm_offset_t channels, unsigned apid,
+                          uint8_t address, uint8_t value)
+{
+    const vm_offset_t channel = channels +
+        TB710FU_USB_SPMI_CHANNEL_STRIDE * apid;
+    cdc_write(channel, 16u, value);
+    cdc_write(channel, 0, cdc_spmi_command(0u, address));
+    return cdc_spmi_wait(channel);
+}
+
+static int cdc_spmi_read(vm_offset_t observers, unsigned apid,
+                         uint8_t address, uint8_t *value)
+{
+    const vm_offset_t observer = observers +
+        TB710FU_USB_SPMI_OBSERVER_STRIDE * apid;
+    cdc_write(observer, 0, cdc_spmi_command(1u, address));
+    if (!cdc_spmi_wait(observer)) return 0;
+    *value = (uint8_t)cdc_read(observer, 24u);
+    return 1;
+}
+
+static int cdc_pm8550b_repeater_start(void)
+{
+    cdc_step("spmi-map", "spmi-map");
+    const vm_offset_t core = ml_io_map(TB710FU_USB_SPMI_CORE_BASE,
+                                       TB710FU_USB_SPMI_CORE_BYTES);
+    const vm_offset_t config = ml_io_map(TB710FU_USB_SPMI_CONFIG_BASE,
+                                         TB710FU_USB_SPMI_CONFIG_BYTES);
+    if (!core || !config) {
+        cdc_refuse("spmi-map");
+        return 0;
+    }
+
+    cdc_mark("spmi-apid");
+    cdc_checkpoint("spmi-apid");
+    const unsigned count = cdc_read(core, 4u) & 0x7ffu;
+    if (!count || count > 1024u || count > TB710FU_USB_SPMI_CORE_BYTES / 4u) {
+        cdc_refuse("spmi-count");
+        return 0;
+    }
+    int apid = -1;
+    for (unsigned i = 0; i < count; ++i) {
+        const uint32_t mapping = cdc_read(core, 0x2000u + 4u * i);
+        const unsigned owner = cdc_read(config, 4u * i) & 7u;
+        if (((mapping >> 8) & 0xfffu) != TB710FU_CDC_SPMI_REPEATER_PPID ||
+            owner != TB710FU_CDC_SPMI_EE) continue;
+        if (apid >= 0) {
+            cdc_refuse("spmi-ambig");
+            return 0;
+        }
+        apid = (int)i;
+    }
+    if (apid < 0) {
+        cdc_refuse("spmi-owner");
+        return 0;
+    }
+    gReport.spmi_apid = (unsigned)apid;
+
+    const size_t observer_bytes = TB710FU_USB_SPMI_OBSERVER_STRIDE *
+                                  ((size_t)apid + 1u);
+    const size_t channel_bytes = TB710FU_USB_SPMI_CHANNEL_STRIDE *
+                                 ((size_t)apid + 1u);
+    const vm_offset_t observers = ml_io_map(TB710FU_USB_SPMI_OBSERVER_BASE,
+                                             observer_bytes);
+    const vm_offset_t channels = ml_io_map(TB710FU_USB_SPMI_CHANNEL_BASE,
+                                            channel_bytes);
+    if (!observers || !channels) {
+        cdc_refuse("spmi-data-map");
+        return 0;
+    }
+
+    cdc_mark("rptr-enable");
+    cdc_checkpoint("rptr-en");
+    if (!cdc_spmi_write(channels, (unsigned)apid,
+                        TB710FU_CDC_REPEATER_ENABLE, 0x80u) ||
+        !cdc_spmi_write(channels, (unsigned)apid,
+                        TB710FU_CDC_REPEATER_TUNE_CURRENT, 0x08u) ||
+        !cdc_spmi_write(channels, (unsigned)apid,
+                        TB710FU_CDC_REPEATER_TUNE_SQUELCH, 0x03u) ||
+        !cdc_spmi_write(channels, (unsigned)apid,
+                        TB710FU_CDC_REPEATER_TUNE_PREEMPHASIS, 0x05u) ||
+        !cdc_spmi_write(channels, (unsigned)apid, 0xe8u, 0) ||
+        !cdc_spmi_write(channels, (unsigned)apid, 0xedu, 0)) {
+        cdc_refuse("spmi-write");
+        return 0;
+    }
+
+    for (unsigned attempt = 0; attempt < 100u; ++attempt) {
+        uint8_t status = 0;
+        cdc_mark("rptr-ready");
+        cdc_checkpoint("rptr-rd");
+        if (!cdc_spmi_read(observers, (unsigned)apid,
+                           TB710FU_CDC_REPEATER_STATUS, &status)) {
+            cdc_refuse("spmi-read");
+            return 0;
+        }
+        gReport.repeater_status = status;
+        if (status & TB710FU_CDC_REPEATER_READY) return 1;
+        cdc_delay(NULL, 100u);
+    }
+    cdc_refuse("repeater-ready");
+    return 0;
+}
+
+static uint32_t cdc_phy_read(vm_offset_t base, unsigned offset, const char *stage)
+{
+    // MMIO reads have no software timeout. Publish the exact next access first.
+    cdc_mark(stage);
+    cdc_checkpoint(stage);
+    return cdc_read(base, offset);
+}
+
 static void cdc_write(vm_offset_t base, unsigned offset, uint32_t value)
 {
     *(volatile uint32_t *)(base + offset) = value;
@@ -148,6 +404,63 @@ static void cdc_delay(void *context, unsigned microseconds)
     uint64_t deadline;
     clock_interval_to_deadline(microseconds, NSEC_PER_USEC, &deadline);
     while (mach_absolute_time() < deadline) __asm__ volatile("yield");
+}
+
+static void cdc_phy_write_mask(struct tb710fu_cdc_xnu *x,
+                               const struct tb710fu_cdc_masked_write *write,
+                               const char *stage)
+{
+    cdc_mark(stage);
+    cdc_checkpoint(stage);
+    const uint32_t old_value = cdc_read(x->phy, write->offset);
+    const uint32_t new_value = tb710fu_cdc_masked_value(
+        old_value, write->mask, write->value);
+    cdc_write(x->phy, write->offset, new_value);
+    (void)cdc_read(x->phy, write->offset);
+}
+
+static int cdc_phy_initialize(struct tb710fu_cdc_xnu *x)
+{
+    static const char *const write_stages[TB710FU_CDC_PHY_INIT_COUNT] = {
+        "phy-w00", "phy-w01", "phy-w02", "phy-w03", "phy-w04", "phy-w05",
+        "phy-w06", "phy-w07", "phy-w08", "phy-w09", "phy-w10", "phy-w11",
+        "phy-w12", "phy-w13", "phy-w14", "phy-w15", "phy-w16", "phy-w17",
+        "phy-w18", "phy-w19", "phy-w20", "phy-w21", "phy-w22", "phy-w23",
+        "phy-w24", "phy-w25", "phy-w26", "phy-w27"
+    };
+    _Static_assert(TB710FU_CDC_PHY_INIT_COUNT ==
+                   sizeof(write_stages) / sizeof(write_stages[0]),
+                   "PHY stage labels must match the programming table");
+
+    cdc_mark("phy-xo");
+    cdc_checkpoint("phy-xo");
+    uint32_t reference = cdc_read(x->reference, TB710FU_USB_PHY_XO);
+    if (!(reference & 1u)) {
+        cdc_write(x->reference, TB710FU_USB_PHY_XO, reference | 1u);
+        cdc_delay(NULL, 10u);
+    }
+    if (!(cdc_read(x->reference, TB710FU_USB_PHY_XO) & 1u)) {
+        cdc_refuse("phy-xo");
+        return 0;
+    }
+
+    cdc_mark("phy-rset");
+    cdc_checkpoint("phy-rset");
+    const uint32_t reset = cdc_read(x->phy_reset, 0);
+    cdc_write(x->phy_reset, 0, reset | 1u);
+    cdc_delay(NULL, 125u);
+    cdc_mark("phy-rclr");
+    cdc_checkpoint("phy-rclr");
+    cdc_write(x->phy_reset, 0, cdc_read(x->phy_reset, 0) & ~1u);
+    cdc_delay(NULL, 10u);
+
+    for (unsigned i = 0; i < TB710FU_CDC_PHY_INIT_COUNT; ++i) {
+        cdc_phy_write_mask(x, &tb710fu_cdc_phy_init[i], write_stages[i]);
+    }
+    cdc_mark("phy-settle");
+    cdc_checkpoint("phy-settle");
+    cdc_delay(NULL, 2000u);
+    return 1;
 }
 
 // Each controller descriptor occupies its own 64-byte cache line; the layout
@@ -199,23 +512,44 @@ static int cdc_consume(void *context, size_t bytes)
 #define CDC_GCC_BCR 0x00u          // block reset, bit0 = assert
 #define CDC_GCC_GDSCR 0x04u        // GDSC control, bit0 = software collapse
 #define CDC_GCC_GDSCR_STATUS 0x08u // GDSC status, bit16 = powered
+#define CDC_GCC_MASTER_SRC 0x2cu // usb30_prim_master_clk_src
 #define CDC_GCC_MASTER 0x18u       // usb30_prim_master_clk
+#define CDC_GCC_MOCK_UTMI_SRC 0x44u // usb30_prim_mock_utmi_clk_src
 #define CDC_GCC_SLEEP 0x24u        // usb30_prim_sleep_clk
 #define CDC_GCC_MOCK_UTMI 0x28u    // usb30_prim_mock_utmi_clk
 #define CDC_GCC_CFG_NOC 0x88u      // cfg_noc_usb3_prim_axi_clk, halt voted
 #define CDC_GCC_AGGRE_NOC 0x8cu    // aggre_usb3_prim_axi_clk, halt voted
 
-static void cdc_branch_on(struct tb710fu_cdc_xnu *x, unsigned offset, int hardware_gated)
+static int cdc_branch_on(struct tb710fu_cdc_xnu *x, unsigned offset,
+                         int hardware_gated)
 {
     uint32_t value = cdc_read(x->gcc, offset);
-    if (tb710fu_cdc_branch_active(value, hardware_gated)) return;
+    if (tb710fu_cdc_branch_active(value, hardware_gated)) return 1;
     // Linux's branch gate updates only BIT(0). Keep the NOC HWCG vote.
     if (!(value & 1u)) cdc_write(x->gcc, offset, value | 1u);
     for (unsigned i = 0; i < 50; ++i) {
         value = cdc_read(x->gcc, offset);
-        if (tb710fu_cdc_branch_active(value, hardware_gated)) return;
+        if (tb710fu_cdc_branch_active(value, hardware_gated)) return 1;
         cdc_delay(NULL, 10);
     }
+    return 0;
+}
+
+static int cdc_rcg_set(struct tb710fu_cdc_xnu *x, unsigned offset,
+                       uint32_t configuration, const char *stage)
+{
+    cdc_mark(stage);
+    cdc_checkpoint(stage);
+    uint32_t current = cdc_read(x->gcc, offset + 4u);
+    if ((current & 0x71fu) == configuration) return 1;
+    cdc_write(x->gcc, offset + 4u,
+              (current & ~0x71fu) | (configuration & 0x71fu));
+    cdc_write(x->gcc, offset, cdc_read(x->gcc, offset) | 1u);
+    for (unsigned attempt = 0; attempt < 1000u; ++attempt) {
+        if (!(cdc_read(x->gcc, offset) & 1u)) return 1;
+        cdc_delay(NULL, 10u);
+    }
+    return 0;
 }
 
 static int cdc_gcc_bring_up(struct tb710fu_cdc_xnu *x)
@@ -240,12 +574,20 @@ static int cdc_gcc_bring_up(struct tb710fu_cdc_xnu *x)
         cdc_refuse("gcc-power");
         return 0;
     }
+    if (!cdc_rcg_set(x, CDC_GCC_MASTER_SRC, (1u << 8) | 5u, "gcc-master") ||
+        !cdc_rcg_set(x, CDC_GCC_MOCK_UTMI_SRC, 0, "gcc-utmi")) {
+        cdc_refuse("gcc-rate");
+        return 0;
+    }
     cdc_step("gcc-branches", "cdcclks");
-    cdc_branch_on(x, CDC_GCC_MASTER, 0);
-    cdc_branch_on(x, CDC_GCC_SLEEP, 0);
-    cdc_branch_on(x, CDC_GCC_MOCK_UTMI, 0);
-    cdc_branch_on(x, CDC_GCC_CFG_NOC, 1);
-    cdc_branch_on(x, CDC_GCC_AGGRE_NOC, 1);
+    if (!cdc_branch_on(x, CDC_GCC_MASTER, 0) ||
+        !cdc_branch_on(x, CDC_GCC_SLEEP, 0) ||
+        !cdc_branch_on(x, CDC_GCC_MOCK_UTMI, 0) ||
+        !cdc_branch_on(x, CDC_GCC_CFG_NOC, 1) ||
+        !cdc_branch_on(x, CDC_GCC_AGGRE_NOC, 1)) {
+        cdc_refuse("gcc-branch");
+        return 0;
+    }
 
     // sm8650.dtsi names TCSR_USB3_CLKREF_EN as the wrapper's "xo".
     cdc_step("wrapper-xo", "cdcxoref");
@@ -253,6 +595,10 @@ static int cdc_gcc_bring_up(struct tb710fu_cdc_xnu *x)
     if (!(xo & 1u)) {
         cdc_write(x->reference, TB710FU_USB_WRAPPER_XO, xo | 1u);
         cdc_delay(NULL, 10);  // Linux BRANCH_HALT_DELAY.
+    }
+    if (!(cdc_read(x->reference, TB710FU_USB_WRAPPER_XO) & 1u)) {
+        cdc_refuse("wrapper-xo");
+        return 0;
     }
     return 1;
 }
@@ -291,24 +637,24 @@ static int cdc_active_controls(struct tb710fu_cdc_xnu *x)
         cdc_refuse("clocks");
         return 0;
     }
-    cdc_step("phy-gates", "cdcphyg");
-    gReport.phy[0] = cdc_read(x->phy_reset, 0);
-    gReport.phy[1] = cdc_read(x->reference, TB710FU_USB_PHY_XO);
+    gReport.phy[0] = cdc_phy_read(x->phy_reset, 0, "phy-rst");
+    gReport.phy[1] = cdc_phy_read(x->reference, TB710FU_USB_PHY_XO, "phy-ref");
     if (!tb710fu_cdc_phy_clocked(gReport.phy[0], gReport.phy[1])) {
         cdc_refuse("phy-gates");
         return 0;
     }
-    cdc_step("phy-sample", "cdcphyr");
     struct tb710fu_cdc_phy_state phy = {
         .reset = gReport.phy[0],
         .reference = gReport.phy[1],
-        .control0 = cdc_read(x->phy, 0x3c),
-        .control5 = cdc_read(x->phy, 0x50),
-        .common0 = cdc_read(x->phy, 0x54),
-        .control2 = cdc_read(x->phy, 0x64)
+        .control0 = 0,
+        .control5 = 0,
+        .common0 = 0,
+        .control2 = 0
     };
-    gReport.phy[2] = phy.control0; gReport.phy[3] = phy.control5;
-    gReport.phy[4] = phy.common0; gReport.phy[5] = phy.control2;
+    phy.control0 = gReport.phy[2] = cdc_phy_read(x->phy, 0x3c, "phy-u0");
+    phy.control5 = gReport.phy[3] = cdc_phy_read(x->phy, 0x50, "phy-u5");
+    phy.common0 = gReport.phy[4] = cdc_phy_read(x->phy, 0x54, "phy-c0");
+    phy.control2 = gReport.phy[5] = cdc_phy_read(x->phy, 0x64, "phy-h2");
     if (!tb710fu_cdc_phy_adoptable(&phy)) {
         cdc_refuse("phy");
         return 0;
@@ -340,10 +686,11 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
         cdc_refuse("clock-map");
         return 0;
     }
-    // Bounded GCC-side bring-up: GDSC power, five branch clocks, block reset.
-    // No PHY, PMIC, regulator or SMMU programming happens before the adoption
-    // predicates below, which still decide whether this session may proceed.
+    // Follow the device Linux order for the PHY, then initialize DWC3 clocks.
+    if (!cdc_power_rails(x)) return 0;
+    if (!cdc_pm8550b_repeater_start()) return 0;
     if (!cdc_gcc_bring_up(x)) return 0;
+    if (!cdc_phy_initialize(x)) return 0;
     cdc_sample_controls(x);
     if (!cdc_active_controls(x)) return 0;
     cdc_mark("map-controller");
@@ -488,6 +835,8 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
            "common0=%08x ctl2=%08x\n",
            gReport.phy[0], gReport.phy[1], gReport.phy[2], gReport.phy[3],
            gReport.phy[4], gReport.phy[5]);
+    cdc_log("TB710FU CDC: power rails=%02x repeater=%02x spmi-apid=%u\n",
+            gReport.power_flags, gReport.repeater_status, gReport.spmi_apid);
     cdc_log("TB710FU CDC: dwc id=%08x gctl=%08x role=%u bits=%u "
            "smmu scr0=%08x id0=%08x streams=%u\n",
            gReport.id, gReport.gctl, gReport.role, gReport.dma_bits,

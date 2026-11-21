@@ -1,5 +1,30 @@
 # TB710FU USB CDC port · 2026-11-17
 
+## PHY sampling checkpoint · 2026-11-21
+
+The latest supplied photo has SHA-256
+`3d17a8bdc7fa5c51b2eee4b52fc2fa25c801223e99a333951421a3299788bc24`. Its
+independent footer shows BSD `autoconf` and CDC `phy-data`, while the ordinary
+console remains at the DLIL wait. No complete build label is visible. Run
+44897167991's actual CDC archive and kernel contain `cdcphyg`, `phy-sample`,
+and `cdcphyr`, so the photo cannot be tied to that exact build.
+
+The adapter now follows the same-device Linux order. It votes the four board
+PHY rails through the apps RSC active TCS, enables the PM8550B eUSB2 repeater
+through the SPMI v7 arbiter, optionally votes `xo.lvl`, enables the USB clocks,
+pulses the QUSB2 reset and applies the 38.4 MHz PHY sequence. TCS 2 is held
+under the existing Apps SMMU lock when that symbol is present. The RSC completion
+latch is not a reliable CPU-readable success signal on this board, so each
+one-command vote uses the same bounded 2 ms delay and cleanup sequence as the
+same-device reference. No guessed `SN2` interconnect vote is issued.
+
+The adapter rejects an invalid SPMI version/count, non-owned or ambiguous
+repeater APID, failed SPMI transaction and repeater timeout. It also marks each
+PHY reset, reference-clock and data-register access before the volatile read as
+`phy-rst`, `phy-ref`, `phy-u0`, `phy-u5`, `phy-c0` or `phy-h2`, then saves each
+returned value immediately. The source changes still require a native arm64e
+cloud build and exact hardware test. They do not establish Windows enumeration.
+
 ## Device result on the first self-heal boot · 2026-11-21
 
 Run `44874414139` (`ca5c7f8`) booted through the whole UFS bring-up and printed
