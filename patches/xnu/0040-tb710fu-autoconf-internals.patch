@@ -17,7 +17,7 @@ stage instead of the caller.
 diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 --- a/bsd/kern/bsd_init.c
 +++ b/bsd/kern/bsd_init.c
-@@ -1432,23 +1432,70 @@
+@@ -1432,27 +1432,70 @@
  kern_return_t
  bsd_autoconf(void)
  {
@@ -35,7 +35,7 @@ diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 +		unsigned tbfu_pi_total = 0;
 +		struct pseudo_init *tbfu_scan;
 +		static const char tbfu_hex[] = "0123456789abcdef";
-+
+ 
 +		/* Count the table first: it is generated from the kernel
 +		 * configuration, so its length is not a source constant and a
 +		 * fixed set of lane names would merge the tail entries. */
@@ -44,7 +44,7 @@ diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 +		TB710FU_BSD_TEXT("pseudo-count", "total=%u\n", tbfu_pi_total);
 +
 +		TB710FU_BSD_MARK("pseudobg");
-+		for (pi = pseudo_inits; pi->ps_func; pi++) {
+ 		for (pi = pseudo_inits; pi->ps_func; pi++) {
 +			/* The band keeps 12 columns with a 4-character "BSD " prefix,
 +			 * so a lane label carries exactly 8 characters. Render the
 +			 * table index and the low byte of ps_count as hex pairs, which
@@ -64,11 +64,11 @@ diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 +			    "index=%u count=%d total=%u\n",
 +			    tbfu_pi_index, pi->ps_count, tbfu_pi_total);
 +			TB710FU_BSD_MARK(tbfu_lane);
-+			(*pi->ps_func)(pi->ps_count);
+ 			(*pi->ps_func)(pi->ps_count);
 +			TB710FU_BSD_TEXT("pseudo-leave", "index=%u count=%d\n",
 +			    tbfu_pi_index, pi->ps_count);
 +			++tbfu_pi_index;
-+		}
+ 		}
 +		TB710FU_BSD_TEXT("pseudo-done", "ran=%u of %u\n",
 +		    tbfu_pi_index, tbfu_pi_total);
 +		TB710FU_BSD_MARK("pseudort");
