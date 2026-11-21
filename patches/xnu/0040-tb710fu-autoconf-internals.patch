@@ -17,7 +17,7 @@ stage instead of the caller.
 diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 --- a/bsd/kern/bsd_init.c
 +++ b/bsd/kern/bsd_init.c
-@@ -1431,27 +1431,45 @@
+@@ -1432,23 +1432,70 @@
  kern_return_t
  bsd_autoconf(void)
  {
@@ -32,20 +32,45 @@ diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
  	{
  		struct pseudo_init *pi;
 +		unsigned tbfu_pi_index = 0;
- 
++		unsigned tbfu_pi_total = 0;
++		struct pseudo_init *tbfu_scan;
++		static const char tbfu_hex[] = "0123456789abcdef";
++
++		/* Count the table first: it is generated from the kernel
++		 * configuration, so its length is not a source constant and a
++		 * fixed set of lane names would merge the tail entries. */
++		for (tbfu_scan = pseudo_inits; tbfu_scan->ps_func; tbfu_scan++)
++			++tbfu_pi_total;
++		TB710FU_BSD_TEXT("pseudo-count", "total=%u\n", tbfu_pi_total);
++
 +		TB710FU_BSD_MARK("pseudobg");
- 		for (pi = pseudo_inits; pi->ps_func; pi++) {
-+			/* Publish which initialiser is running before entering it:
-+			 * a stop inside one of them otherwise looks like the loop.
-+			 * The bottom band keeps 8 characters after "BSD ", so these
-+			 * names are 8 characters or shorter by construction. */
-+			TB710FU_BSD_MARK(tbfu_pi_index == 0 ? "pseudo0" :
-+			    tbfu_pi_index == 1 ? "pseudo1" :
-+			    tbfu_pi_index == 2 ? "pseudo2" :
-+			    tbfu_pi_index == 3 ? "pseudo3" : "pseudo4");
- 			(*pi->ps_func)(pi->ps_count);
++		for (pi = pseudo_inits; pi->ps_func; pi++) {
++			/* The band keeps 12 columns with a 4-character "BSD " prefix,
++			 * so a lane label carries exactly 8 characters. Render the
++			 * table index and the low byte of ps_count as hex pairs, which
++			 * distinguishes whatever entries the configuration has. The
++			 * full record goes to the scrolling log instead. */
++			char tbfu_lane[9];
++			tbfu_lane[0] = 'p';
++			tbfu_lane[1] = tbfu_hex[(tbfu_pi_index >> 4) & 15u];
++			tbfu_lane[2] = tbfu_hex[tbfu_pi_index & 15u];
++			tbfu_lane[3] = '_';
++			tbfu_lane[4] = tbfu_hex[((unsigned)pi->ps_count >> 4) & 15u];
++			tbfu_lane[5] = tbfu_hex[(unsigned)pi->ps_count & 15u];
++			tbfu_lane[6] = '/';
++			tbfu_lane[7] = tbfu_hex[tbfu_pi_total & 15u];
++			tbfu_lane[8] = '\0';
++			TB710FU_BSD_TEXT("pseudo-enter",
++			    "index=%u count=%d total=%u\n",
++			    tbfu_pi_index, pi->ps_count, tbfu_pi_total);
++			TB710FU_BSD_MARK(tbfu_lane);
++			(*pi->ps_func)(pi->ps_count);
++			TB710FU_BSD_TEXT("pseudo-leave", "index=%u count=%d\n",
++			    tbfu_pi_index, pi->ps_count);
 +			++tbfu_pi_index;
- 		}
++		}
++		TB710FU_BSD_TEXT("pseudo-done", "ran=%u of %u\n",
++		    tbfu_pi_index, tbfu_pi_total);
 +		TB710FU_BSD_MARK("pseudort");
  	}
  
