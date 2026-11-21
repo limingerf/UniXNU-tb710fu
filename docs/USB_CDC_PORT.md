@@ -12,8 +12,9 @@ and `cdcphyr`, so the photo cannot be tied to that exact build.
 The adapter now follows the same-device Linux order. It votes the four board
 PHY rails through the apps RSC active TCS, enables the PM8550B eUSB2 repeater
 through the SPMI v7 arbiter, optionally votes `xo.lvl`, enables the USB clocks,
-pulses the QUSB2 reset and applies the 38.4 MHz PHY sequence. TCS 2 is held
-under the existing Apps SMMU lock when that symbol is present. The RSC completion
+pulses the QUSB2 reset and applies the 38.4 MHz PHY sequence. The current XNU
+tree does not export the same-device Apps SMMU lock, so the CDC worker uses an
+XNU `IOLock` to serialize its own TCS transaction window. The RSC completion
 latch is not a reliable CPU-readable success signal on this board, so each
 one-command vote uses the same bounded 2 ms delay and cleanup sequence as the
 same-device reference. No guessed `SN2` interconnect vote is issued.
@@ -367,3 +368,6 @@ Ace 5's CRC, partition LBAs, media policy, or its XNU 8796 class bindings. No
 partition or filesystem was modified; the sample was read through the existing
 TWRP/Linux UFS stack. The static hardware inventory and current adapter gaps
 are collected in [UFS_PORT.md](UFS_PORT.md).
+pinned same-device Apps SMMU lock is not exported by the current XNU tree, so
+the CDC worker uses an XNU `IOLock` to serialize its own TCS transaction window
+and does not claim cross-driver arbitration.

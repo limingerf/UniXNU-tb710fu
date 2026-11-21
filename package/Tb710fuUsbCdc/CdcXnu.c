@@ -41,8 +41,6 @@ extern volatile uint64_t armcpu_timer_interrupts;
 extern kern_return_t armcpu_spi_attach(uint32_t intid, bool edge,
     void (*handler)(void *), void *context, uint32_t *readback, uint64_t *router);
 extern kern_return_t armcpu_spi_mask(uint32_t intid, bool masked);
-extern bool sm8550_apps_smmu_lock(void) __attribute__((weak));
-extern void sm8550_apps_smmu_unlock(void) __attribute__((weak));
 
 struct tb710fu_cdc_xnu {
     vm_offset_t gcc, phy_reset, reference, phy, smmu, dwc, qscratch;
@@ -55,6 +53,7 @@ struct tb710fu_cdc_xnu {
 static struct tb710fu_cdc_xnu gCdc;
 static unsigned gAttempted;
 static unsigned gSleepChannel;
+static IOLock *gCdcTcsLock;
 
 static const char *gStage;
 // Only the worker reads or writes the platform samples.
@@ -155,14 +154,15 @@ static int cdc_rpmh_issue(struct tb710fu_cdc_xnu *x,
 
 static int cdc_tcs_lock(void)
 {
-    if (!sm8550_apps_smmu_lock) return 1;
-    return sm8550_apps_smmu_unlock && sm8550_apps_smmu_lock();
+    if (!gCdcTcsLock) gCdcTcsLock = IOLockAlloc();
+    if (!gCdcTcsLock) return 0;
+    IOLockLock(gCdcTcsLock);
+    return 1;
 }
 
 static void cdc_tcs_unlock(void)
 {
-    if (sm8550_apps_smmu_lock && sm8550_apps_smmu_unlock)
-        sm8550_apps_smmu_unlock();
+    if (gCdcTcsLock) IOLockUnlock(gCdcTcsLock);
 }
 
 static int cdc_power_rails(struct tb710fu_cdc_xnu *x)
