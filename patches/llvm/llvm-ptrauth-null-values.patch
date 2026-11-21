@@ -1,0 +1,121 @@
+Subject: [PATCH] clang: accept Apple's fourth __ptrauth argument
+
+macOS 27's os/base.h defines OS_PTRAUTH_SIGNED_PTR_AUTH_NULL as
+__ptrauth(key, 1, discriminator, "authenticates-null-values"), and
+bsd/sys/ucred.h uses it. Upstream rejects the fourth argument in three
+independent places, so all three are required:
+  - ParseDecl.cpp's ParsePtrauthQualifier caps the argument list at three
+    and discards the whole qualifier before Sema ever sees it;
+  - Attr.td declares only three PointerAuth arguments, which drives
+    SemaAttr.cpp's generic checkAtMostNumArgs(getMaxArgs);
+  - SemaType.cpp's HandlePtrAuthQualifier asserts <=3 and hard-codes
+    AuthenticatesNullValues to false.
+
+The flag is already modelled downstream (PointerAuthQualifier has an
+AuthenticatesNullValues field and the DWARF attribute exists), so only the
+syntax is missing. This patch teaches all three layers and forwards it.
+
+Only the exact string "authenticates-null-values" is accepted, or the
+integer values 0 and 1; anything else is an invalid target. The one-, two-
+and three-argument forms are unchanged. Apply after
+llvm-xnu-builtin-type.patch; touches none of that patch's changes.
+---
+--- a/clang/lib/Parse/ParseDecl.cpp
++++ b/clang/lib/Parse/ParseDecl.cpp
+@@ -3200,7 +3200,9 @@
+   T.consumeClose();
+   SourceLocation EndLoc = T.getCloseLocation();
+ 
+-  if (ArgExprs.empty() || ArgExprs.size() > 3) {
++  // Apple's clang accepts a fourth argument, "authenticates-null-values";
++  // macOS 27's os/base.h uses it in OS_PTRAUTH_SIGNED_PTR_AUTH_NULL.
++  if (ArgExprs.empty() || ArgExprs.size() > 4) {
+     Diag(KwLoc, diag::err_ptrauth_qualifier_bad_arg_count);
+     return;
+   }
+--- a/clang/lib/Sema/SemaType.cpp
++++ b/clang/lib/Sema/SemaType.cpp
+@@ -8659,13 +8659,43 @@
+ static void HandlePtrAuthQualifier(ASTContext &Ctx, QualType &T,
+                                    const ParsedAttr &Attr, Sema &S) {
+ 
+-  assert((Attr.getNumArgs() > 0 && Attr.getNumArgs() <= 3) &&
+-         "__ptrauth qualifier takes between 1 and 3 arguments");
++  assert((Attr.getNumArgs() > 0 && Attr.getNumArgs() <= 4) &&
++         "__ptrauth qualifier takes between 1 and 4 arguments");
+   Expr *KeyArg = Attr.getArgAsExpr(0);
+   Expr *IsAddressDiscriminatedArg =
+       Attr.getNumArgs() >= 2 ? Attr.getArgAsExpr(1) : nullptr;
+   Expr *ExtraDiscriminatorArg =
+       Attr.getNumArgs() >= 3 ? Attr.getArgAsExpr(2) : nullptr;
++  // Apple's clang accepts a fourth string argument, "authenticates-null-values".
++  // macOS 27's os/base.h uses it in OS_PTRAUTH_SIGNED_PTR_AUTH_NULL; upstream
++  // already models the flag, it was just never parsed off the qualifier.
++  bool AuthenticatesNullValues = false;
++  if (Attr.getNumArgs() >= 4) {
++    Expr *NullArg = Attr.getArgAsExpr(3);
++    if (auto *Literal = dyn_cast_or_null<StringLiteral>(
++            NullArg ? NullArg->IgnoreParenImpCasts() : nullptr)) {
++      if (Literal->getString() != "authenticates-null-values") {
++        S.Diag(Attr.getLoc(), diag::err_ptrauth_qualifier_invalid_target) << T;
++        Attr.setInvalid();
++        return;
++      }
++      AuthenticatesNullValues = true;
++    } else if (NullArg && !NullArg->isValueDependent()) {
++      Expr::EvalResult Evaluated;
++      if (!NullArg->EvaluateAsInt(Evaluated, S.Context)) {
++        S.Diag(Attr.getLoc(), diag::err_ptrauth_qualifier_invalid_target) << T;
++        Attr.setInvalid();
++        return;
++      }
++      llvm::APSInt Value = Evaluated.Val.getInt();
++      if (Value != 0 && Value != 1) {
++        S.Diag(Attr.getLoc(), diag::err_ptrauth_qualifier_invalid_target) << T;
++        Attr.setInvalid();
++        return;
++      }
++      AuthenticatesNullValues = Value != 0;
++    }
++  }
+ 
+   unsigned Key;
+   if (S.checkConstantPointerAuthKey(KeyArg, Key)) {
+@@ -8710,7 +8740,7 @@
+   PointerAuthQualifier Qual = PointerAuthQualifier::Create(
+       Key, IsAddressDiscriminated, ExtraDiscriminator,
+       PointerAuthenticationMode::SignAndAuth, /*IsIsaPointer=*/false,
+-      /*AuthenticatesNullValues=*/false);
++      AuthenticatesNullValues);
+   T = S.Context.getPointerAuthType(T, Qual);
+ }
+ 
+--- a/clang/include/clang/Basic/DiagnosticParseKinds.td
++++ b/clang/include/clang/Basic/DiagnosticParseKinds.td
+@@ -1627,7 +1627,7 @@
+   InGroup<CudaCompat>;
+ 
+ def err_ptrauth_qualifier_bad_arg_count : Error<
+-  "'__ptrauth' qualifier must take between 1 and 3 arguments">;
++  "'__ptrauth' qualifier must take between 1 and 4 arguments">;
+ 
+ def warn_cuda_attr_lambda_position : Warning<
+   "nvcc does not allow '__%0__' to appear after the parameter list in lambdas">,
+--- a/clang/include/clang/Basic/Attr.td
++++ b/clang/include/clang/Basic/Attr.td
+@@ -3834,9 +3834,14 @@
+ 
+ def PointerAuth : TypeAttr {
+   let Spellings = [CustomKeyword<"__ptrauth">];
++  // Apple accepts a fourth argument, "authenticates-null-values"; macOS 27's
++  // os/base.h uses it in OS_PTRAUTH_SIGNED_PTR_AUTH_NULL. Upstream's argument
++  // list stops at three, and the generic attribute-argument check rejects
++  // anything beyond that, so the flag is declared here as well.
+   let Args = [IntArgument<"Key">,
+               BoolArgument<"AddressDiscriminated", 1>,
+-              IntArgument<"ExtraDiscriminator", 1>];
++              IntArgument<"ExtraDiscriminator", 1>,
++              StringArgument<"AuthenticatesNullValues">];
+   let Documentation = [PtrAuthDocs];
+ }
+ 

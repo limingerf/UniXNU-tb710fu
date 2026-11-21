@@ -191,23 +191,37 @@ error: '__ptrauth' qualifier must take between 1 and 3 arguments
 **重要**：clang 二进制里**已有** `ptrAuthAuthenticatesNullValues` 和
 `DW_AT_LLVM_ptrauth_authenticates_null_values`——底层支持，只差语法解析层。
 
-### 5.4 已写好的 clang 补丁
+### 5.4 已写好的 clang 补丁（2026-11-21 11:45 定稿）
 
-`.work/llvm-ptrauth-null-values.patch`（2896 字节，2 hunk）
-已复制到 `.work/UniXNU/scripts/linux/llvm-ptrauth-null-values.patch`，
-并已接入 `setup-toolchain.py:220`：
+**文件**：`patches/llvm/llvm-ptrauth-null-values.patch`（5349 字节，5 hunk，
+4 个文件，SHA-256 `12aec19e13be0df8f96dc1a5d3687bffb0b9cad06e8b1b93d7e446abc29aeb22`），
+工作副本同步在 `.work/UniXNU/scripts/linux/llvm-ptrauth-null-values.patch`，
+已接入 `setup-toolchain.py:220`：
 
 ```python
 run(['git', '-C', src, 'apply', HERE / 'llvm-xnu-builtin-type.patch'])
 run(['git', '-C', src, 'apply', HERE / 'llvm-ptrauth-null-values.patch'])
 ```
 
-**补丁改三处**（`clang/lib/Sema/SemaType.cpp` 的 `HandlePtrAuthQualifier`）：
-1. 断言从 `<= 3` 放宽到 `<= 4`
-2. 解析第 4 个参数（只认 `"authenticates-null-values"`，其他值报错）
-3. 把 `AuthenticatesNullValues` 传给已有的 `PointerAuthQualifier::Create`
+**补丁改四层**（缺一层仍然失败，每修一层才会露出下一层的错误）：
+1. `ParseDecl.cpp` 的 `ParsePtrauthQualifier`：上限 `3` → `4`；
+2. `DiagnosticParseKinds.td`：提示语 `1 and 3` → `1 and 4`；
+3. `Attr.td` 的 `PointerAuth`：加 `StringArgument<"AuthenticatesNullValues">`，
+   否则 `SemaAttr.cpp` 的 `checkAtMostNumArgs(getMaxArgs())` 仍按 3 个拒绝；
+4. `SemaType.cpp` 的 `HandlePtrAuthQualifier`：断言放宽到 `<= 4`、解析第 4 个
+   参数（只认 `"authenticates-null-values"` 或整数 `0`/`1`）、把
+   `AuthenticatesNullValues` 传给已有的 `PointerAuthQualifier::Create`。
 
-**已验证**：`patch -p1 --dry-run` 对 `LLVM_COMMIT 58c46bae21181fb4240cf964461bea738d96d50e` 通过。
+**污染已修**：第一版生成器拿"已应用 builtin-type 补丁的工作树"当 baseline，
+把 `XnuUsageSemantics` 也算进了本补丁（会导致重复应用）。现在
+baseline = 纯净 tarball + builtin-type 的 `Attr.td` hunk，重新生成后
+`XnuUsageSemantics` 不再出现。
+
+**已验证**（2026-11-21）：`patch -p1` 与 `git apply` 对
+`LLVM_COMMIT 58c46bae21181fb4240cf964461bea738d96d50e`（先应用 builtin-type）
+均干净应用；应用后的 4 个文件与 `~/tb710fu-llvm-project` **SHA-256 逐个相同**，
+而后者正是编出 arm64e `libfirehose_kernel.a` 的那棵树。生成/验证脚本：
+`.work/regen-patch-v3.py`、`.work/verify-patch-v3.py`。
 
 **注意**：补丁必须基于该固定 commit 生成，**不能用 `llvm-project/main`**——两者行号
 不同（main 的 `HandlePtrAuthQualifier` 在 8727 行，固定 commit 在 8659 行），
@@ -356,9 +370,10 @@ CURRENT_STATUS.md                     权威状态（每次里程碑都要更新
 |---|---|
 | 验证 `0006` 并派发构建 | **待做（最高优先级）** |
 | 验证器适配 `0006` 的 `IOSleep` 变化 | 待做 |
-| clang 重建 | **运行中** |
-| 用新 clang 验证四参数 `__ptrauth` | 待做 |
-| 本地 `ci_kernel.py native` 越过 `firehose_buffer.c` | 待做 |
+| clang 重建 | **已完成**（`ninja exit=0`，2026-11-21 08:40 装入工具链） |
+| 用新 clang 验证四参数 `__ptrauth` | **已完成**（二进制报 `between 1 and 4 arguments`） |
+| 本地 `ci_kernel.py native` 越过 `firehose_buffer.c` | **已完成**（产出 arm64e `libfirehose_kernel.a`） |
+| 后续：`prepare-xnu.py libs` 的 Libc 网络 fetch | 待做（`GnuTLS handshake failed`，与补丁无关） |
 | `0006` 的实机验证 | 待做（预期：能走过 `lun-ready`，进入根布局） |
 | CDC 枚举（Windows 侧） | 长期目标，需内核能继续启动后才有意义 |
 

@@ -1,5 +1,26 @@
 # Current status · 2026-11-21
 
+## clang 四参数 `__ptrauth` 补丁定稿 · 2026-11-21 11:45
+
+本地 Linux/WSL arm64e 工具链打通后的收尾：把 `llvm-ptrauth-null-values.patch`
+从"只改 Sema 的旧版"重做成覆盖三层检查、且不含 builtin-type 污染的干净补丁。
+
+- 定稿文件 `patches/llvm/llvm-ptrauth-null-values.patch`，5349 B，5 hunk，
+  4 文件（`ParseDecl.cpp`、`DiagnosticParseKinds.td`、`Attr.td`、
+  `SemaType.cpp`×2），SHA-256 `12aec19e13be0df8f96dc1a5d3687bffb0b9cad06e8b1b93d7e446abc29aeb22`。
+  工作副本 `.work/UniXNU/scripts/linux/llvm-ptrauth-null-values.patch` 同步，
+  `setup-toolchain.py:220` 在 `llvm-xnu-builtin-type.patch` 之后应用。
+- 污染根因：旧生成器以"已应用 builtin-type 的工作树"当 baseline，把
+  `XnuUsageSemantics` 混进本补丁，重装工具链会重复应用。现改为
+  baseline = 纯净 tarball + builtin-type 的 `Attr.td` hunk。
+- 验证：`patch -p1` 与 `git apply` 均干净应用；应用结果与
+  `~/tb710fu-llvm-project` 四个文件 SHA-256 全同。该树的 clang（`ninja exit=0`）
+  已编出 arm64e `libfirehose_kernel.a`，`clang-24` 报
+  `'__ptrauth' qualifier must take between 1 and 4 arguments`。
+- 脚本：`.work/regen-patch-v3.py`、`.work/verify-patch-v3.py`。
+- 未做：clang 全量重编没有再跑（补丁与已重建源码树逐字节等价）；
+  本地 `prepare-xnu.py libs` 仍卡 Libc 的 `GnuTLS handshake`，属网络问题，与补丁无关。
+
 ## 0008 双系统运行时分区名补丁 · 云构建中 · 2026-11-21
 
 用户目标：保留安卓系统，给安卓 data 留 70 GiB，其余建 macOS 根卷分区；即官方
