@@ -16,7 +16,9 @@ CDC 归档和内核包含 `cdcphyg`、`phy-sample`、`cdcphyr` 标记，不含�
 PM8550B SPMI repeater、可选 `xo.lvl`、GCC/TCSR 时钟、reset 和 PHY 序列。
 RSC TCS 2 使用同设备 Apps SMMU 锁，完成等待采用同设备已验证的 2 ms bounded
 delay，不把 CPU 不可见的 IRQ latch 当作失败，也没有加入未经 USB 路径证实的
-`SN2` 投票。新增 APID 上限、SPMI 完成错误位和 repeater ready 检查。
+`SN2` 投票。当前 XNU 没有导出同设备 Apps SMMU 锁，CDC worker 使用自己的
+`IOLock` 串行化 TCS 窗口。新增 APID 上限、SPMI 完成错误位和 repeater ready
+检查。
 
 本地诊断改动在每次 PHY reset、ref、UTMI CTRL0/5、COMMON0、HS PHY CTRL2
 读取之前分别发布 `phy-rst`、`phy-ref`、`phy-u0`、`phy-u5`、`phy-c0`、
