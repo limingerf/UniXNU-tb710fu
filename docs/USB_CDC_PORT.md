@@ -47,6 +47,28 @@ Linux's `arm-smmu.c` derives the context-bank offset as
 adapter's `(pages + bank) * 4096` matches that for the 4 KiB register pages it
 accepts, so the formula was not the bug.
 
+## Native arm64e compilation of the classified route · 2026-11-22
+
+Commit `dca6c2c` (branch `cdc-smmu-claim`) compiled on the macOS runner in run
+[44933254831](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44933254831),
+which finished `success`. `archive-06-build-tb710fu-cdc-log` compiled all six
+CDC objects against the pinned XNU compile record: its `build-report.json`
+reports `transport_sources_compiled=true` with no failure, the source hashes it
+recorded (`CdcXnu.c` `e613e392…`, `CdcHardware.h` `6ee43021…`) match the
+committed files byte for byte, and `CdcXnu.o` is `17fbc7034cb4fa1d…`. The
+resulting native `kernel.macho` is
+`aedbb95c7c5709a72d6e18e90bd636ddde8ed38d692452f79aad3267336123b0`,
+25,474,536 bytes, `cpu_subtype 0xc0000002`.
+
+That run covers native compilation only. `linked_into_kernel` and
+`cdc_enumeration_verified` stay false in the report, and prelink, the UFS
+adapter, the fileset parser and the source-storage archive are skipped at this
+stage by design. A native build is not a prelinked kernel, a prelink is not a
+hardware boot, and no device CDC enumeration has been observed. The next
+evidence to collect is a photo of the bottom band after this kernel boots:
+`sidclaim`/`sidtake` would confirm the claim ran, `sidnone`, `sidamb`, `sidxl`,
+`sidgeom` or `sidfull` would name the remaining obstacle without another guess.
+
 ## PHY sampling checkpoint · 2026-11-21
 
 The latest supplied photo has SHA-256

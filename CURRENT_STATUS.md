@@ -1,4 +1,129 @@
-# Current status · 2026-11-21
+# Current status · 2026-11-22
+
+## CDC 停在 SID 0x40 路由；判定已分类并接管 · 2026-11-22
+
+本轮照片 SHA-256
+`4ee1ec7b97cb8e3aafb671cbc1c0ac8b977ed1a70ecf9be53717a13ea0db476e`。底栏三格为
+`DLIL 05 SEEN 7FFF`、`BSD autocbeg`、`CDC sid40`，普通页脚
+`CKPT=TEXT LOG=1003912 QR=998274 W=1 N=18 Q=1 B=0/1 R=1 ERR=0 dlwait`。
+
+这是首次有实机证据表明 BSD 线程与 CDC worker 都已运行：DLIL 已从等待返回，
+BSD 已进入 `bsd_autoconf`，CDC 走到 `cdc_route()` 并在 `cdc_refuse("sid40")` 停下。
+照片没有构建标签，仍不能确认它属于哪个包；但停点本身与源码一一对应，与包身份无关。
+
+旧判定有两处实质错误。其一，它要求 SID 0x40 已经存在一条身份路由，而启动链对
+一个从未用过的端口不会留下这种路由，因此该条件几乎必然失败。其二，它把十余个
+互斥原因（CLIENTPD、SMS、stage 1、IDR2 编码、寄存器几何、无匹配组、掩码别名、
+重复匹配、故障组、翻译组、上下文不支持）压缩成同一个八字符标签，照片无法区分。
+
+`tb710fu_cdc_identity_route_scan()` 现在返回类别：`OK`、`ABSENT`、`FAULTED`、
+`AMBIGUOUS`、`TRANSLATES`、`GEOMETRY`、`FULL`，底栏分别显示
+`sidok`、`sidclaim`、`sidtake`、`sidamb`、`sidxl`、`sidgeom`、`sidfull`。
+启动链对未拥有 SID 合法留下的两种状态是 `ABSENT` 与 `FAULTED`，这两种会被接管：
+先写 S2CR 的显式 BYPASS，再把 SMR 置为有效，每个写入都回读，任一不一致或第二次
+扫描不能证实就恢复两个字。接管不触碰任何上下文 bank，存储与 GPU 路由不变。
+
+槽位方向刻意与存储相反。存储规划器自顶向下并断言 127 号组，而 CDC 在存储之前入队，
+因此 CDC 自 0 号向上取，并停在最后一组之前，剩余槽位很少时两者也不会冲突。
+
+上下文基址公式经核对无误：Linux `arm-smmu.c` 为
+`size = 1 << (NUMPAGENDXB + 1)`、`CB = (size + bank) << pgshift`，与本适配器
+接受 4 KiB 寄存器页时的 `(pages + bank) * 4096` 一致，不是本轮缺陷。
+
+主机测试扩展覆盖每个类别、两条接管路径、写入被吞以及末组保留；三组 CDC 主机测试、
+aarch64 交叉语法检查与 clang `-Wshadow -Wconversion` 扫描均通过。
+
+提交 `dca6c2c` 已推送到分支 `cdc-smmu-claim`。native run
+[44933254831](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44933254831)
+整体 success，`archive-06-build-tb710fu-cdc-log` 真实编译了六个 CDC 对象：其
+`build-report.json` 记录 `transport_sources_compiled=true`、`CdcXnu.o` SHA-256
+`17fbc7034cb4fa1d…`，源码哈希 `CdcXnu.c` = `e613e392…`、
+`CdcHardware.h` = `6ee43021…`，与本地提交逐字节一致，编译日志无错误。
+本次 native `kernel.macho` SHA-256 为
+`aedbb95c7c5709a72d6e18e90bd636ddde8ed38d692452f79aad3267336123b0`，共
+25,474,536 字节，`cpu_subtype` 为 `0xc0000002`。产物
+`tb710fu-native-44933254831.zip`，artifact `14718274453`，9,971,796 字节。
+
+该 run 只覆盖 native 编译：`linked_into_kernel` 与 `cdc_enumeration_verified` 在
+报告中均为 false，prelink、UFS 适配器、fileset 校验和 source-storage 归档四步在
+native 阶段按设计跳过。原生 arm64e 编译不是预链接内核，预链接不是硬件启动，
+实机 CDC 枚举仍待验证。详见 [`USB_CDC_PORT.md`](docs/USB_CDC_PORT.md)。
+
+## 最新实机停点 · 2026-11-22
+
+本轮照片 SHA-256 `dc1e1d3ce22fcf05b32374b155c1303bb5dc2de38757467ea407758eb2638ee5`。
+屏幕最后可见 `TB710FU boot: kperf-topology-wait begin`，未见对应 `done`、
+`bsd-init begin`、`shm-sem-init done` 或 CDC worker 标记。XNU 0031 在
+`kperf_init_early()` 中用该 begin/done 对包住 `ml_wait_max_cpus()`；此前照片曾
+显示该 wait done、`bsd-init begin`，更晚一张到达 BSD 中的 `shm-sem-init done`。
+因此本图记录的启动进度早于此前 BSD 检查点，若属于同一镜像则停在 CPU 拓扑等待，
+BSD 与 CDC 均未执行，USB 无端口与该停点一致。
+
+本图没有 `src-*` 构建标签。底栏 `CKPT=QR-LOOP` 是成功绘制检查点二维码的状态值，
+不是构建标签或模式标识，无法据此判断包身份。当前只能记录启动停点前移，不能
+确认启动的是哪个镜像。后续审计发现 449221 错误候选保留了无 GIC 的 `61a7ef52…`
+ADT；若本图来自该包，`ml_wait_max_cpus()` 未返回与缺失 GIC ADT 相符。因照片无构建
+标签，仍不能将本图确定归属到该包。
+
+## 449221 打包基线回退与修正 · 2026-11-22
+
+449221 内核不是本地预链接。Native run `44921159116` 在 macOS runner 编译，
+strict prelink run `44922183850` 从该 run 导入 native artifact 后在 macOS runner
+执行官方 prelink。workflow 在收尾因缺少 CDC `build-report.json` 标为失败，
+但 kernel fileset 已生成，并通过 production parser 与 LZMA 回读。
+
+回退发生在本地镜像打包。我误用 `44124706860` signed baseline `a07f2549…`，原样
+保留其 `unixnu.toml` 和 ADT，丢失了此前 448831 包加入的 GIC `/arm-io/intc` 及
+`tb710fu-root-partition=unixnu`。449221 错误包的 ADT 为 `61a7ef52…`，配置为
+`ea386850…`；此前 BSD 检查点候选使用 GIC ADT `f9b955ba…` 和配置
+`1a1ca11a…`。缺 GIC 会使 ArmCpu 无法按这份 ADT 初始化 GIC 并发布 CPU 拓扑，
+与照片停在 `kperf-topology-wait begin` 相符，也解释了 BSD 中的 CDC 钩子没有运行。
+
+已用同一份 449221 kernel，基于 448831 已验证签名候选重新打包，恢复 GIC ADT 与
+CDC、滚动日志、root 启动参数。修正版 ZIP 为
+`out/tb710fu-cdc-bcm-prelink-44922183850-gic-scroll-signed.zip`，SHA-256
+`17228e6ab8763c6921b64d1f07b3358a38e02712f75c3595af24fedb4419b0b2`。
+`boot.img` SHA-256
+`a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`，
+`vendor_boot.img` SHA-256
+`d89f6a96dc0c9ca2053fd9f0bc8f3fb2af997d7adef0e2aecabe95b2ac37cf03`，
+`vbmeta.img` SHA-256
+`12980a9266f435ed3783f423c952b9fb5607c033e351e173110fb8893da33fd9`。
+签名、payload 回读、ZIP CRC、vbmeta header、公钥及其余 22 个 descriptor 均通过。
+未操作设备；修正版启动和 CDC 枚举待实测。
+
+## BCM CDC 候选 · 2026-11-22
+
+Native run `44921159116` 在 macOS arm64e runner 通过编译、CDC 主机测试与集成
+检查，源码提交 `0aea915079fc11b6984fdcbe8fafde559bc15ae7`。Strict prelink run
+`44922183850` 的流程状态为失败，失败发生在复用 native artifact 后的收尾检查，
+缺少 `build/tb710fu-cdc-log/build-report.json`。流程已产出 kernel fileset；其
+映射报告为 `mapping_complete=true`、`missing={}`、`stubbed={}`、
+`allow_missing=false`，下载内核通过 production DarwinBoot parser 和 LZMA 回读。
+因此不能把该 workflow 标成成功，也不能据此声称实机 CDC 已验证。
+
+GitHub 核对该 native 源码提交的标题为 `Fix mutable BCM vote saturation`；
+提交内 `vote_x`/`vote_y` 为可限幅的可变值，故下述候选包含此限幅修正。
+
+该内核包含 Linux 同源 eUSB2 rails/repeater 初始化及 `CN0`、`SN2`、`ACV`、
+`MC0` USB HS BCM 投票。由保留的 signed baseline 打包的滚动日志候选为
+`out/tb710fu-cdc-bcm-prelink-44922183850-scroll-signed.zip`，SHA-256
+`fdd41e90fcf9479152c200ed2fa37bd648b9c07816f2dab2c4652514cd965e16`。
+其中 `vendor_boot.img` SHA-256
+`6c4d8ca03dcf0d3d6fe5c5bcf33ae8217c9f4c8553f06bd86f088b1d1bb5022e`，
+`vbmeta.img` SHA-256
+`a2520c7c8b08820f69f16c575fe03e277bbfda412e5ab98170ce3b63fbc6d7e4`，
+解压 kernel SHA-256
+`48da5f20842ad612e77c06d3a69b9e422770bb3fecf75da3ad17369f95257ece`。
+参数回读包含 `tb710fu-cdc=1 tb710fu-live-log=1`
+`tb710fu-live-checkpoints=1 kc-segment-release=0`，对应单个检查点 QR 和滚动
+日志窗。签名、payload 回读、vbmeta header、公钥和其余 22 个 descriptor 校验通过。
+未执行设备刷写或重启。
+
+用户本轮反馈插入 USB 后仍未出现 CDC 端口，但尚未提供当前设备所用镜像的哈希或
+可辨认构建标记，故不能将该结果归属到此 BCM 候选。若测试的是此候选，则说明
+当前 BCM 投票及限幅修正仍未使设备枚举，需依据屏底 CDC/PHY 检查点继续定位。
+Windows 枚举、用户态及硬件启动均未验证。
 
 ## CDC 可刷写测试镜像 · 2026-11-21
 
