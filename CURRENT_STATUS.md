@@ -1,5 +1,26 @@
 # Current status · 2026-11-21
 
+## 0009 静默镜像已签名 · 2026-11-21 13:49
+
+用户授权本地签名。用 run 44870542276 的 prelinked 内核走标准色带衍生 → 无签名
+包装 → AVB 签名 → 回读校验，产出双系统镜像集。
+
+- 内核：`714a2a18bfee9ea4a0a30c717dd54b6ac41e3364a6f02e0833f2fa4080ac7805`，
+  142,835,712 B；标准色带衍生 `e4ddacf214a8063ce4d35b4194bc2bb458c5542ae506f3629cc3a0d1872b603f`。
+- `boot.img` `a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`
+  （基线 loader，未变）；`vendor_boot.img` `64d2d9596a8d47b780e33ad53f3d5bfe397e634f3748f3183e5370af755ef558`，
+  100,663,296 B；`vbmeta.img` `30454ef3808cfa44ab9fd0c14ad8a64819ece95be2834fd9e10c082eb1dac76d`，
+  8,000 B。vbmeta 只改 `vendor_boot` 一个描述符，其余 22 个与基线一致。
+- 包 `out/live-checkpoints-44870542276-quiet0009-signed.zip`，35,559,421 B，
+  SHA-256 `94a509a85f398462a91db97cf849eb05dd70379db57ad81da4dfce2f4fb3501a`；
+  11 个成员，ZIP CRC 与 SHA256SUMS 回读一致。
+- 独立复核：`avbtool verify_image` 对 `vendor_boot.img` 与 `boot.img` 均报
+  `Successfully verified footer and SHA256_RSA4096 vbmeta struct`。
+- 证据：`docs/evidence/nufs-quiet0009-signed-44870542276.json`。
+- 未验证：硬件启动与真实停点。按 `TESTING.txt` 成对写 `vendor_boot_b` 与
+  `vbmeta_b`，默认启动应当安静，只看最后一个 `ufs*` 标签和 CKPT-TEXT 页脚；
+  需要某阶段的逐命令细节时再加 `tb710fu-cmd-trace=1`。
+
 ## 0009 探针静默补丁：设备端声明顺序修正 · 2026-11-21 13:55
 
 用户要求撤掉每次开机刷屏的 `cmd-*` 日志、保留停点诊断。0009 把
