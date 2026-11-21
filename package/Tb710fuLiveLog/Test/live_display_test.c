@@ -257,6 +257,23 @@ static void surface(uint32_t width, uint32_t height, uint32_t stride)
         assert(!tb_live_display_checkpoint_status(&d, "NO TEXT REGION"));
     }
 
+    /* The scheduler marker must preserve the bands, log footer, QR and padding. */
+    if (d.CheckpointQrScale && d.Width >= 16U + 17U * 8U) {
+        uint8_t *copy = malloc(bytes);
+        assert(copy);
+        memcpy(copy, frame, bytes);
+        tb_live_display_scheduler_mark(&d, 12U, 0x0f87U);
+        assert(memcmp(copy, frame, bytes) != 0);
+        const unsigned scale = d.Width >= 16U + 17U * 16U ? 2U : 1U;
+        for (n = 0; n < bytes; ++n) {
+            const size_t row = n / stride, column = n % stride;
+            if (row < height - 16U || row >= height - 2U ||
+                column < 16U * 4U || column >= (16U + 17U * 8U * scale) * 4U)
+                assert(copy[n] == frame[n]);
+        }
+        guards(memory, bytes);
+        free(copy);
+    }
     /* Invalid bitmaps and tampered layouts refuse to draw. */
     {
         uint8_t *copy = malloc(bytes);

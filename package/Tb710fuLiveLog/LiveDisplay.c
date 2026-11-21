@@ -387,6 +387,32 @@ int tb_live_display_checkpoint_status(TB_LIVE_DISPLAY *d, const char *text)
     return 1;
 }
 
+void tb_live_display_scheduler_mark(TB_LIVE_DISPLAY *d, unsigned stage, unsigned visited)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    const char text[] = {
+        'D', 'L', 'I', 'L', ' ', hex[(stage >> 4) & 15u], hex[stage & 15u],
+        ' ', 'S', 'E', 'E', 'N', ' ', hex[(visited >> 12) & 15u],
+        hex[(visited >> 8) & 15u], hex[(visited >> 4) & 15u], hex[visited & 15u],
+    };
+    /* The checkpoint pane and the QR end above this margin. Paint only a
+     * fixed strip, without clearing scrollback or touching the capture ring. */
+    if (!d->CheckpointQrScale || d->Width < DISPLAY_MARGIN + sizeof(text) * GLYPH_WIDTH)
+        return;
+    const uint32_t scale = d->Width >= DISPLAY_MARGIN + sizeof(text) * GLYPH_WIDTH * 2u ? 2u : 1u;
+    for (uint32_t index = 0; index < sizeof(text); ++index) {
+        for (uint32_t row = 0; row < 14u; ++row) {
+            uint8_t bits = mEarlyFont[(unsigned char)text[index] - 32u][row + 2u];
+            for (uint32_t column = 0; column < GLYPH_WIDTH; ++column) {
+                uint32_t color = bits & (128u >> column) ? UINT32_C(0xffffffff) : UINT32_C(0xff000000);
+                uint32_t x = DISPLAY_MARGIN + (index * GLYPH_WIDTH + column) * scale;
+                for (uint32_t delta = 0; delta < scale; ++delta)
+                    pixel(d, x + delta, d->Height - DISPLAY_MARGIN + row, color);
+            }
+        }
+    }
+}
+
 int tb_live_display_status(TB_LIVE_DISPLAY *d, const char *text)
 {
     uint32_t x, y, index, maximum, scale;

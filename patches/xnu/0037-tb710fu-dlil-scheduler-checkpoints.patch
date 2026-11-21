@@ -1,0 +1,236 @@
+From: TB710FU clean board
+Subject: [PATCH] Trace only the DLIL startup wait through the scheduler
+
+Source: XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f with the ordered
+patches recorded by run 44887638464.
+
+The live log reached dlwait after creating both DLIL workers. Track
+the BSD waiter from before its mutex acquisition through sleep,
+scheduler selection and context switch, and mark entry to its workers.
+The raw stage provider is independent of console logging. Existing
+mutex operations, waits, and wakeups retain their original order.
+
+Verification: reconstruct the files from the pinned revision and
+hash-checked run inputs. Check forward application and byte-exact reversal.
+---
+
+diff --git a/bsd/net/dlil.c b/bsd/net/dlil.c
+--- a/bsd/net/dlil.c
++++ b/bsd/net/dlil.c
+@@ -51,6 +51,7 @@
+ #include <net/dlil.h>
+ #include <net/dlil_sysctl.h>
+ #include <net/dlil_var_private.h>
++#include <kern/tb710fu_live_log.h>
+ #include <net/if_arp.h>
+ #include <net/if_var_private.h>
+ #include <net/iptap.h>
+@@ -1623,13 +1624,18 @@
+ 	 * scheduled and run at least once before we proceed
+ 	 */
+ 	TB710FU_DLIL_TEXT("dlwait", "waiting for main input and detacher");
++	TB710FU_DLIL_SCHED_BEGIN();
+ 	lck_mtx_lock(&dlil_thread_sync_lock);
++	TB710FU_DLIL_SCHED_MARK(TB710FU_DLIL_MUTEX_ACQUIRED);
+ 	while (dlil_pending_thread_cnt != 0) {
++		TB710FU_DLIL_SCHED_MARK(TB710FU_DLIL_MSLEEP);
+ 		(void) msleep(&dlil_pending_thread_cnt, &dlil_thread_sync_lock,
+ 		    (PZERO - 1), __func__, NULL);
++		TB710FU_DLIL_SCHED_MARK(TB710FU_DLIL_MSLEEP_RETURNED);
+ 		LCK_MTX_ASSERT(&dlil_thread_sync_lock, LCK_ASSERT_OWNED);
+ 	}
+ 	lck_mtx_unlock(&dlil_thread_sync_lock);
++	TB710FU_DLIL_SCHED_END();
+ 	TB710FU_DLIL_TEXT("dlready", "main input and detacher ready");
+ }
+ 
+@@ -5633,6 +5639,7 @@
+ ifnet_detacher_thread_func(void *v, wait_result_t w)
+ {
+ #pragma unused(v, w)
++	TB710FU_DLIL_SCHED_MARK(TB710FU_DLIL_DETACHER_ENTRY);
+ 	TB710FU_DLIL_TEXT("dldtent", "detacher thread entered");
+ 	dlil_if_lock();
+ 	(void) assert_wait(&ifnet_delayed_run, THREAD_UNINT);
+
+diff --git a/bsd/net/dlil_input.c b/bsd/net/dlil_input.c
+--- a/bsd/net/dlil_input.c
++++ b/bsd/net/dlil_input.c
+@@ -29,6 +29,7 @@
+ #include <net/if_var.h>
+ #include <net/if_var_private.h>
+ #include <net/dlil_var_private.h>
++#include <kern/tb710fu_live_log.h>
+ #include <net/dlil.h>
+ #include <net/dlil_sysctl.h>
+ 
+@@ -1366,6 +1367,7 @@
+ dlil_main_input_thread_func(void *v, wait_result_t w)
+ {
+ #pragma unused(w)
++	TB710FU_DLIL_SCHED_MARK(TB710FU_DLIL_INPUT_ENTRY);
+ 	dlil_threading_info_ref_t inp = v;
+ 
+ 	VERIFY(inp == dlil_main_input_thread);
+
+diff --git a/osfmk/kern/sched_prim.c b/osfmk/kern/sched_prim.c
+--- a/osfmk/kern/sched_prim.c
++++ b/osfmk/kern/sched_prim.c
+@@ -107,6 +107,7 @@
+ #include <kern/syscall_subr.h>
+ #include <kern/task.h>
+ #include <kern/thread.h>
++#include <kern/tb710fu_live_log.h>
+ #include <kern/thread_group.h>
+ #include <kern/ledger.h>
+ #include <kern/timer_queue.h>
+@@ -2981,6 +2982,48 @@
+ 	return processor->idle_thread;
+ }
+ 
++#if defined(XNU_TB710FU_LIVE_LOG) && XNU_TB710FU_LIVE_LOG
++/* This pointer is used only as an identity while dlil_init owns the scope. */
++static thread_t tb710fu_dlil_waiter;
++
++void
++tb710fu_live_log_dlil_wait_begin(void)
++{
++	if (tb710fu_live_log_active()) {
++		__atomic_store_n(&tb710fu_dlil_waiter, current_thread(), __ATOMIC_RELEASE);
++		tb710fu_live_log_scheduler_mark(TB710FU_DLIL_BEFORE_MUTEX);
++	}
++}
++
++void
++tb710fu_live_log_dlil_wait_end(void)
++{
++	if (__atomic_exchange_n(&tb710fu_dlil_waiter, THREAD_NULL, __ATOMIC_ACQ_REL) != THREAD_NULL) {
++		tb710fu_live_log_scheduler_mark(TB710FU_DLIL_WAIT_COMPLETE);
++	}
++}
++
++void
++tb710fu_live_log_dlil_wait_mark(unsigned stage)
++{
++	if (__atomic_load_n(&tb710fu_dlil_waiter, __ATOMIC_ACQUIRE) != THREAD_NULL) {
++		tb710fu_live_log_scheduler_mark(stage);
++	}
++}
++
++static inline void
++tb710fu_dlil_sched_mark(thread_t thread, unsigned stage)
++{
++	if (thread != THREAD_NULL &&
++	    __atomic_load_n(&tb710fu_dlil_waiter, __ATOMIC_ACQUIRE) == thread) {
++		tb710fu_live_log_scheduler_mark(stage);
++	}
++}
++#define TB710FU_DLIL_SCHED_THREAD(thread, stage) tb710fu_dlil_sched_mark((thread), (stage))
++#else
++#define TB710FU_DLIL_SCHED_THREAD(thread, stage) do { } while (0)
++#endif
++
+ /*
+  * thread_invoke
+  *
+@@ -3001,6 +3044,7 @@
+ 	thread_t                        thread,
+ 	ast_t                           reason)
+ {
++	TB710FU_DLIL_SCHED_THREAD(self, TB710FU_DLIL_THREAD_INVOKE);
+ 	if (__improbable(get_preemption_level() != 0)) {
+ 		int pl = get_preemption_level();
+ 		panic("thread_invoke: preemption_level %d, possible cause: %s",
+@@ -3306,7 +3350,9 @@
+ 	 */
+ 
+ 	assert(continuation == self->continuation);
++	TB710FU_DLIL_SCHED_THREAD(self, TB710FU_DLIL_BEFORE_SWITCH);
+ 	thread = machine_switch_context(self, continuation, thread);
++	TB710FU_DLIL_SCHED_THREAD(self, TB710FU_DLIL_SWITCH_RETURNED);
+ 	assert(self == current_thread_volatile());
+ 	TLOG(1, "thread_invoke: returning machine_switch_context: self %p continuation %p thread %p\n", self, continuation, thread);
+ 
+@@ -3881,6 +3927,7 @@
+ 	thread_t        new_thread;
+ 	spl_t           s;
+ 
++	TB710FU_DLIL_SCHED_THREAD(self, TB710FU_DLIL_THREAD_BLOCK);
+ 	s = splsched();
+ 
+ 	processor = current_processor();
+@@ -3918,7 +3965,9 @@
+ 
+ 	do {
+ 		thread_lock(self);
++		TB710FU_DLIL_SCHED_THREAD(self, TB710FU_DLIL_BEFORE_SELECT);
+ 		new_thread = thread_select(self, processor, &reason);
++		TB710FU_DLIL_SCHED_THREAD(self, TB710FU_DLIL_AFTER_SELECT);
+ 		thread_unlock(self);
+ 	} while (!thread_invoke(self, new_thread, reason));
+ 
+@@ -4007,6 +4056,7 @@
+ 	thread_continue_t       continuation;
+ 	void                    *parameter;
+ 
++	TB710FU_DLIL_SCHED_THREAD(thread, TB710FU_DLIL_CONTINUE_ENTRY);
+ 	DTRACE_SCHED(on__cpu);
+ 
+ 	continuation = self->continuation;
+@@ -4042,6 +4092,7 @@
+ #endif /* KASAN_TBI */
+ 
+ 
++	TB710FU_DLIL_SCHED_THREAD(thread, TB710FU_DLIL_BEFORE_CONTINUATION);
+ 	call_continuation(continuation, parameter, self->wait_result, enable_interrupts);
+ 	/*NOTREACHED*/
+ }
+
+diff --git a/osfmk/kern/tb710fu_live_log.h b/osfmk/kern/tb710fu_live_log.h
+--- a/osfmk/kern/tb710fu_live_log.h
++++ b/osfmk/kern/tb710fu_live_log.h
+@@ -15,6 +15,34 @@
+ void tb710fu_live_log_freeze(void);
+ int tb710fu_live_log_active(void);
+ 
++/* These markers may run with interrupts masked or a scheduler lock held. */
++void tb710fu_live_log_scheduler_mark(unsigned stage);
++void tb710fu_live_log_dlil_wait_begin(void);
++void tb710fu_live_log_dlil_wait_end(void);
++void tb710fu_live_log_dlil_wait_mark(unsigned stage);
++
++enum {
++	TB710FU_DLIL_BEFORE_MUTEX = 1,
++	TB710FU_DLIL_MUTEX_ACQUIRED = 2,
++	TB710FU_DLIL_MSLEEP = 3,
++	TB710FU_DLIL_MSLEEP_RETURNED = 4,
++	TB710FU_DLIL_WAIT_COMPLETE = 5,
++	TB710FU_DLIL_INPUT_ENTRY = 6,
++	TB710FU_DLIL_DETACHER_ENTRY = 7,
++	TB710FU_DLIL_THREAD_BLOCK = 8,
++	TB710FU_DLIL_BEFORE_SELECT = 9,
++	TB710FU_DLIL_AFTER_SELECT = 10,
++	TB710FU_DLIL_THREAD_INVOKE = 11,
++	TB710FU_DLIL_BEFORE_SWITCH = 12,
++	TB710FU_DLIL_SWITCH_RETURNED = 13,
++	TB710FU_DLIL_CONTINUE_ENTRY = 14,
++	TB710FU_DLIL_BEFORE_CONTINUATION = 15,
++};
++
++#define TB710FU_DLIL_SCHED_BEGIN() tb710fu_live_log_dlil_wait_begin()
++#define TB710FU_DLIL_SCHED_END() tb710fu_live_log_dlil_wait_end()
++#define TB710FU_DLIL_SCHED_MARK(stage) tb710fu_live_log_dlil_wait_mark(stage)
++
+ #define TB710FU_BOOT_PRIORITY(stage, event) \
+ 	do { \
+ 		if (tb710fu_live_log_active()) { \
+@@ -31,6 +59,9 @@
+ 		} \
+ 	} while (0)
+ #else
++#define TB710FU_DLIL_SCHED_BEGIN() do { } while (0)
++#define TB710FU_DLIL_SCHED_END() do { } while (0)
++#define TB710FU_DLIL_SCHED_MARK(stage) do { } while (0)
+ #define TB710FU_BOOT_PRIORITY(stage, event) do { } while (0)
+ #define TB710FU_LOCKDOWN_CHECKPOINT(stage) do { } while (0)
+ #endif

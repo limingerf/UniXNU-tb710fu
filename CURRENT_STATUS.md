@@ -1,5 +1,31 @@
 # Current status · 2026-11-21
 
+## DLIL 等待两个启动线程 · 2026-11-21
+
+照片 SHA-256 `016148c87d499416c00778902ac62bf3efa06e19b2fdbcd1a6aed2ad7e0edc00`。
+屏显包含 run `44887638464` 新增的 0036 DLIL 标记和 CDC 入队行，完整构建标签
+未入镜。CDC 已入队，入队时 `gic=1 timer=6602 irq=1`。DLIL SUM16 自检通过，
+主输入与 detacher 两个线程创建都已返回。最后一行是
+`waiting for main input and detacher`，页脚为 `dlwait`，`W=1`。
+入口诊断尚未显示。定时器中断和 LiveLog worker 在这一启动中已经运行过。
+
+`dlwait` 在获取 DLIL 互斥锁之前刷新。此后若仍有待确认线程，BSD 使用无超时
+`msleep`，由两个 DLIL 线程确认后唤醒。复核同版二进制的初始内核栈、
+`Switch_context` 与 `Call_continuation`，指针认证参数吻合。
+
+0037（SHA-256 `b0cb990a16140e628775f42e565a40c95e4a12d3c3007dd585db1739804bad43`）
+仅追踪这一段等待和相应的调度切换。屏幕底缘 `DLIL XX SEEN YYYY` 使用独立于
+普通日志的固定帧缓冲区域。所有数值为十六进制，`XX` 为最近阶段，
+`YYYY` 对阶段 N 使用 bit N-1。主要阶段为 `01` 等锁、`02` 已获锁、
+`03` 调用 msleep、`08` 进入 thread_block、`09`/ `0A` 选择线程前后、
+`0B` thread_invoke、`0C` 切换前、`0E` 新线程进入 thread_continue、
+`0F` 调用 continuation 前。DLIL 主输入和 detacher 入口为 `06`/ `07`，
+返回 BSD 为 `0D`，等待完成为 `05`。
+
+补丁在前次精确输入上通过正向应用及逐字节反向恢复，三个 arm64e 对象编译通过。
+独立帧缓冲渲染测试验证了写入范围，LiveXnu 19 组主机测试通过。
+实机停点、CDC 枚举及根挂载待验证。
+
 ## CDC 枚举与 BSD 网络初始化 · 2026-11-21
 
 本轮照片 SHA-256 `a53308cb37ee92efe025a532dd1c38bfa32e7e168f71a23003fa20353324a11a`。

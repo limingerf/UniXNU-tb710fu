@@ -17,4 +17,5 @@ patches/xnu/0031-tb710fu-priority-boot-checkpoints.patch whitespace=-space-befor
 patches/xnu/0032-tb710fu-bsd-text-checkpoints.patch whitespace=-space-before-tab,-blank-at-eol
 patches/xnu/0035-tb710fu-root-userland-checkpoints.patch whitespace=-space-before-tab,-blank-at-eol,-blank-at-eof
 patches/xnu/0036-tb710fu-bsd-network-checkpoints.patch whitespace=-space-before-tab,-blank-at-eol,-blank-at-eof
+patches/xnu/0037-tb710fu-dlil-scheduler-checkpoints.patch whitespace=-space-before-tab,-blank-at-eol,-blank-at-eof
 patches/ufs/0010-event-driven-root-publication.patch whitespace=-blank-at-eol

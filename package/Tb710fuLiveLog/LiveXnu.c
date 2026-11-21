@@ -33,6 +33,7 @@ static uint8_t xnu_file[TB710FU_LIVE_LOG_MAX_BYTES], checkpoint_file[TB710FU_LIV
 static uint8_t early_bytes[512], frame[752];
 static unsigned enabled, guard, redraw, worker_started, sleep_channel, early_frozen, early_once;
 static unsigned checkpoint_mode, checkpoint_guard, checkpoint_failures, checkpoint_bands_pending;
+static unsigned scheduler_marks;
 static unsigned checkpoint_file_generation, checkpoint_qr_attempted, checkpoint_compact, checkpoint_text_attempted;
 static unsigned qr_encoded[2], qr_drawn[2];
 static unsigned next_slot;
@@ -514,6 +515,19 @@ void tb710fu_live_log_checkpoint_priority(const char *stage)
 void tb710fu_live_log_checkpoint_text(const char *stage)
 {
     checkpoint_publish(stage == NULL ? "unspecified" : stage, CHECKPOINT_TEXT);
+}
+
+/* Called from a scoped BSD scheduler diagnostic, including with spinlocks held
+ * or IRQs masked. Dependencies are the initialized framebuffer and a barrier.
+ */
+void tb710fu_live_log_scheduler_mark(unsigned stage)
+{
+    if (stage == 0u || stage > 16u || !tb710fu_live_log_active() ||
+        !__atomic_load_n(&checkpoint_mode, __ATOMIC_ACQUIRE)) return;
+    const unsigned bit = 1u << (stage - 1u);
+    unsigned visited = __atomic_fetch_or(&scheduler_marks, bit, __ATOMIC_RELAXED) | bit;
+    tb_live_display_scheduler_mark(&display, stage, visited);
+    live_barrier();
 }
 
 /* Preserve precisely this pre-machine_startup boundary once. A busy/empty

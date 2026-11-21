@@ -69,6 +69,12 @@ int tb_live_display_scroll_refresh(TB_LIVE_DISPLAY *display);
 /* One bounded ASCII status line below the scrollback pane, left of the QR. */
 int tb_live_display_checkpoint_status(TB_LIVE_DISPLAY *display, const char *text);
 
+/* Paint a small scheduler stage and visited mask in the reserved bottom margin.
+ * The caller must publish a bound display before using this lock-free path.
+ */
+void tb_live_display_scheduler_mark(TB_LIVE_DISPLAY *display, unsigned stage,
+                                    unsigned visited);
+
 /* One bounded ASCII line, truncated at the right edge. Unsupported bytes use ?.
  * This is the ordinary dual-stream status row below the legacy QR slots.
  */
