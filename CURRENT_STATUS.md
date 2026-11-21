@@ -26,6 +26,23 @@
 独立帧缓冲渲染测试验证了写入范围，LiveXnu 19 组主机测试通过。
 实机停点、CDC 枚举及根挂载待验证。
 
+macOS `ufs-integrated` run
+[44891383574](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/44891383574)
+在设备提交 `a2d2231db6295cdbaf2a7eab07de5031ede70634` 通过原生 arm64e 构建、
+严格预链接及 production DarwinBoot parser。产物 `14702980093` 共 39,216,318 字节，
+ZIP CRC 和 GitHub SHA-256
+`9b276edbb3868fbf42e3521b011dedc0a8128ea6374f34084a6dced09999449f` 回读通过。
+预链接内核 SHA-256 `04329df0a12417b191b19bc6735073c7949306adfb7c2c125c88ba0127cb6ce0`，
+屏显构建标识 `src-a2d2231d-ramoops`。
+
+打包工具来自该设备提交的 Git 导出。色带衍生内核 SHA-256
+`6015345e62619d3319fdc1771bd9a942b5abc365abe0d366dbc677df165bf6cc`。
+未签名镜像 `out/live-checkpoints-44891383574-dlil-scheduler-unsigned/vendor_boot.unsigned.img`
+共 37,859,328 字节，SHA-256
+`13c3101168bcc2df32f4d67ba83b31b21a3de51d1ef46b875cae4291dda32dc0`。
+从 FAT/LZMA 回读的内核包含 0037 的三个作用域函数和两个帧缓冲函数，均为唯一的
+强可执行定义。掌握的硬件证据尚未定位到具体调度操作，故本版用于诊断。
+
 ## CDC 枚举与 BSD 网络初始化 · 2026-11-21
 
 本轮照片 SHA-256 `a53308cb37ee92efe025a532dd1c38bfa32e7e168f71a23003fa20353324a11a`。
