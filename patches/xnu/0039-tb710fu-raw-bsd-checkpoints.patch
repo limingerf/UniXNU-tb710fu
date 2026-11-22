@@ -1,4 +1,4 @@
-From: TB710FU clean board
+﻿From: TB710FU clean board
 Subject: [PATCH] Trace DLIL return and BSD root startup without console output
 
 Source: XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f, the ordered patch
@@ -19,18 +19,15 @@ against the reconstructed two-file tree.
 diff --git a/osfmk/kern/tb710fu_live_log.h b/osfmk/kern/tb710fu_live_log.h
 --- a/osfmk/kern/tb710fu_live_log.h
 +++ b/osfmk/kern/tb710fu_live_log.h
-@@ -16,6 +16,7 @@
+@@ -16,6 +16,8 @@
  int tb710fu_live_log_active(void);
  
  /* These markers may run with interrupts masked or a scheduler lock held. */
 +void tb710fu_live_log_boot_mark(unsigned lane, const char *stage);
-+/* Mirror CDC transport bytes into the capture ring the QR frames use. The CDC
-+ * ring is otherwise readable only by the CDC channel that is still down. */
 +void tb710fu_live_log_cdc_bytes(const char *bytes, size_t length);
  void tb710fu_live_log_scheduler_mark(unsigned stage);
  void tb710fu_live_log_dlil_wait_begin(void);
  void tb710fu_live_log_dlil_wait_end(void);
-
 diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 index 1f15867..2be89e7 100644
 --- a/bsd/kern/bsd_init.c
