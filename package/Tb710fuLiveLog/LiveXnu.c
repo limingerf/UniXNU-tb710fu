@@ -45,6 +45,7 @@ static unsigned next_slot;
 static uint64_t frequency, next_frame, poll_count, xnu_generation, ramoops_generation;
 static uint64_t checkpoint_generation, checkpoint_last_qr_attempt_end, xnu_last_dropped;
 static uint64_t checkpoint_last_text_end, checkpoint_export_dropped, checkpoint_drawn_end;
+static uint64_t checkpoint_stage_generation, checkpoint_export_stage_generation;
 static char checkpoint_stage[49];
 
 /* This strong writer is capture only: no framebuffer, encoding, allocation,
@@ -299,13 +300,18 @@ void tb710fu_live_log_refresh(void)
 static void checkpoint_set_stage(const char *stage)
 {
     size_t index = 0;
+    int changed = 0;
     if (stage == NULL) stage = "unspecified";
     while (index < sizeof(checkpoint_stage) - 1u && stage[index] != '\0') {
         unsigned char c = (unsigned char)stage[index];
-        checkpoint_stage[index] = c >= 32u && c <= 126u ? (char)c : '?';
+        char mapped = c >= 32u && c <= 126u ? (char)c : '?';
+        if (checkpoint_stage[index] != mapped) changed = 1;
+        checkpoint_stage[index] = mapped;
         ++index;
     }
+    if (checkpoint_stage[index] != '\0') changed = 1;
     checkpoint_stage[index] = '\0';
+    if (changed) (void)__atomic_fetch_add(&checkpoint_stage_generation, 1u, __ATOMIC_RELAXED);
 }
 
 static void checkpoint_status(const char *result, const char *stage)
@@ -431,7 +437,8 @@ static __attribute__((noinline)) void checkpoint_publish(const char *stage, enum
 
     int backup_ready = backup_frozen && early_state.state == TB710FU_LIVE_CAPTURE_READY;
     if (can_replace && (priority_frame || !checkpoint_sender.valid || compact != (int)checkpoint_compact ||
-        export_end != checkpoint_sender.info.end || export_dropped != checkpoint_export_dropped)) {
+        export_end != checkpoint_sender.info.end || export_dropped != checkpoint_export_dropped ||
+        checkpoint_stage_generation != checkpoint_export_stage_generation)) {
         size_t early_available = backup_ready && !compact ? early_state.copied : 0u;
         size_t current_count = compact && export_count > 512u ? 512u : export_count;
         ++checkpoint_file_generation;
@@ -501,6 +508,7 @@ static __attribute__((noinline)) void checkpoint_publish(const char *stage, enum
                 if (replaced == TB710FU_LIVE_LOG_READY) {
                     checkpoint_compact = (unsigned)compact;
                     checkpoint_export_dropped = export_dropped;
+                    checkpoint_export_stage_generation = checkpoint_stage_generation;
                 } else if (replaced != TB710FU_LIVE_LOG_BUSY) {
                     (void)__atomic_fetch_add(&checkpoint_failures, 1u, __ATOMIC_RELAXED);
                     checkpoint_status("FILE-ERR", NULL);
