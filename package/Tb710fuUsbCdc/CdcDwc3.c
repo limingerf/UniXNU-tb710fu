@@ -545,34 +545,35 @@ void tb710fu_dwc3_enable_event_irq(struct tb710fu_dwc3 *d)
 }
 
 // Linux reaches this point on a core that its own power-on sequence just
-// brought out of reset. This core is adopted from firmware while running, so
-// the reset request can be discarded: hibernation keeps the reset FSM parked,
-// a gated clock withholds the clock the FSM runs on, and a suspended USB2 PHY
-// can hold the interface in its own reset. Clear all three first, then assert
-// the reset. Each retry is a separate hardware request, and the last attempt
-// retracts the bit so an unresponsive core is told apart from an unfinished
-// reset.
+// brought out of reset. This core is adopted from firmware while running,
+// which is the one state Linux never sees: the request can be discarded and
+// the bit stay set forever (the previous package proved exactly that, with
+// GCC still reporting power and clocks). So this asserts the request, retries
+// it once, and then retracts the bit by hand: retracting is reported as its
+// own stage, never as a completed reset, and the caller decides whether the
+// handed-over state is usable. Every step paints the lane tag first, because
+// a register access that never returns leaves no other evidence behind.
+static void reset_lane(struct tb710fu_dwc3 *d, const char *tag)
+{
+    if (d->ops.lane != NULL) d->ops.lane(d->ops.context, tag);
+}
+
 static int core_reset(struct tb710fu_dwc3 *d, uint32_t pre)
 {
-    uint32_t gctl = read_reg(d, GCTL);
-    gctl &= ~((1u << 1) | (3u << 12));
-    gctl |= (2u << 12) | 1u; // Device role, clock gating off for the FSM.
-    write_reg(d, GCTL, gctl);
     d->reset_trace[2] = read_reg(d, GCTL);
-    write_reg(d, USB2PHYCFG, read_reg(d, USB2PHYCFG) & ~PHY_SUSPEND);
     d->reset_trace[3] = read_reg(d, USB2PHYCFG);
     d->reset_trace[5] = read_reg(d, DSTS);
-    // Linux's core reset opens with a millisecond "make sure the PHY has been
-    // taken out of reset"; the suspend bit needs the same settle here.
-    d->ops.delay_us(d->ops.context, 1000);
 
+    reset_lane(d, "dwcset");
     write_reg(d, DCTL, (pre & ~RUN_STOP) | SOFT_RESET);
     d->reset_trace[1] = read_reg(d, DCTL);
     if (wait_reg(d, DCTL, SOFT_RESET, 0)) return 1;
 
+    reset_lane(d, "dwcw1");
     write_reg(d, DCTL, read_reg(d, DCTL) | SOFT_RESET);
     if (wait_reg(d, DCTL, SOFT_RESET, 0)) return 2;
 
+    reset_lane(d, "dwcw2");
     write_reg(d, DCTL, read_reg(d, DCTL) & ~SOFT_RESET);
     if (!(read_reg(d, DCTL) & SOFT_RESET)) return 3;
     return 0;
@@ -631,10 +632,18 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     if (!halt_firmware(d, interrupts)) return fail(d, "firmware controller did not halt");
     d->reset_stage = (uint8_t)core_reset(d, pre);
     d->reset_trace[4] = read_reg(d, GSTS);
-    // Stage 3 retracted the request: the bit cleared only because software
-    // cleared it, so the core never proved its reset. Treat that as failure.
-    if (d->reset_stage == 0 || d->reset_stage == 3)
-        return fail(d, "device reset never completed; retain DMA");
+    if (d->reset_stage == 0)
+        return fail(d, "device reset request is never answered; retain DMA");
+    if (d->reset_stage == 3) {
+        // The bit cleared because software retracted it, so the core is out of
+        // reset but was never reset by hardware. Firmware had left it running
+        // in device role with charger detection done, and everything this path
+        // relies on (halt, event ring, endpoint configuration) is rewritten
+        // below anyway, so adopt that state and let enumeration judge it.
+        // Recording the stage keeps the difference visible in the report.
+        d->reset_adopted = 1;
+        reset_lane(d, "dwcadopt");
+    }
     write_reg(d, DEVTEN, 0);
     write_reg(d, DALEPENA, 0);
     for (unsigned i = 0; i < interrupts; ++i) {

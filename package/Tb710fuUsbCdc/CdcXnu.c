@@ -97,8 +97,16 @@ static void cdc_checkpoint(const char *label)
         tb710fu_live_log_checkpoint_text(label);
 }
 
-/* CDC can carry its own diagnostics even if the ordinary console is blocked. */
-static void cdc_log(const char *format, ...) __printflike(1, 2);
+// Lane-only mark for steps that may never return: a register access that
+// wedges the bus cannot publish a frame, but it can still leave its tag on
+// the bottom band, which is what the next boot is read from.
+static void cdc_lane_op(void *context, const char *label)
+{
+    (void)context;
+    if (tb710fu_live_log_boot_mark) tb710fu_live_log_boot_mark(1, label);
+}
+
+/* CDC can carry its own diagnostics even if the ordinary console is blocked. */static void cdc_log(const char *format, ...) __printflike(1, 2);
 static void cdc_log(const char *format, ...)
 {
     char text[192];
@@ -127,8 +135,11 @@ static void cdc_mark(const char *stage)
 static void cdc_step(const char *stage, const char *label)
 {
     cdc_mark(stage);
-    cdc_checkpoint(label);
+    // Print first, publish second: a checkpoint captures the ring tail before
+    // this line exists otherwise, so the frame always showed the *previous*
+    // stage while the lane already named this one.
     cdc_log("TB710FU CDC: %s\n", stage);
+    cdc_checkpoint(label);
 }
 
 static void cdc_refuse(const char *reason)
@@ -995,7 +1006,7 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
         .context = x, .read32 = cdc_dwc_read, .write32 = cdc_dwc_write,
         .delay_us = cdc_delay, .sync_for_cpu = cdc_sync_cpu,
         .sync_for_device = cdc_sync_device, .log_copy = cdc_copy,
-        .log_consume = cdc_consume
+        .log_consume = cdc_consume, .lane = cdc_lane_op
     };
     // Development identity, deliberately synthetic and not a vendor serial.
     cdc_step("dwc3-start", "cdcdwc");
@@ -1004,12 +1015,12 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
     // The core reset is the first place this board disagrees with a freshly
     // powered Linux core, so keep its whole trace on the frame regardless of
     // whether the adoption succeeded.
-    cdc_log("TB710FU CDC: dwc reset stage=%u dctl=%08x/%08x gctl=%08x "
+    cdc_log("TB710FU CDC: dwc reset stage=%u adopt=%u dctl=%08x/%08x gctl=%08x "
            "pcfg=%08x gsts=%08x dsts=%08x\n",
-           x->controller.reset_stage, x->controller.reset_trace[0],
-           x->controller.reset_trace[1], x->controller.reset_trace[2],
-           x->controller.reset_trace[3], x->controller.reset_trace[4],
-           x->controller.reset_trace[5]);
+           x->controller.reset_stage, x->controller.reset_adopted,
+           x->controller.reset_trace[0], x->controller.reset_trace[1],
+           x->controller.reset_trace[2], x->controller.reset_trace[3],
+           x->controller.reset_trace[4], x->controller.reset_trace[5]);
     if (!started) {
         cdc_refuse(x->controller.failure ? x->controller.failure : "dwc3-start");
         return 0;

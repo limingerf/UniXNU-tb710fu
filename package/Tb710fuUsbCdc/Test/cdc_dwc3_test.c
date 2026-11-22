@@ -24,6 +24,7 @@ struct fixture {
     unsigned starts[6], active[6], buffer[6], length[6], kind[6];
     unsigned producer, halted, reset_complete;
     unsigned block_halt, block_reset, block_command, bad_command_status;
+    unsigned stick_reset;
     unsigned halt_needs_event_ack;
 };
 
@@ -67,9 +68,12 @@ static void write32(void *context, unsigned reg, uint32_t value)
             f->reset_complete = 1;
             value &= ~(1u << 30);
         }
+        // A core that never answers the request at all keeps the bit set even
+        // after software retracts it.
+        if (f->stick_reset) value |= 1u << 30;
     }
     if (reg >= 0xc400 && reg < 0xc600 && ((reg - 0xc400) & 15u) < 8) {
-        assert(f->halted && f->reset_complete);
+        assert(f->halted && (f->reset_complete || f->core.reset_adopted));
         ++f->address_writes;
     }
     if (reg >= 0xc40c && reg < 0xc600 && ((reg - 0xc40c) & 15u) == 0) {
@@ -114,8 +118,16 @@ static void write32(void *context, unsigned reg, uint32_t value)
 static void delay(void *context, unsigned us)
 {
     struct fixture *f = context;
-    assert(us == 1 || us == 1000); // Poll step and the pre-reset PHY settle.
+    assert(us == 1); // Poll step only; the pre-reset settle is gone.
     ++f->waits;
+}
+
+static const char *lane_tag;
+
+static void lane(void *context, const char *tag)
+{
+    (void)context;
+    lane_tag = tag;
 }
 
 static void sync_cpu(void *context, unsigned off, unsigned size)
@@ -160,7 +172,8 @@ static int log_consume(void *context, size_t count)
 static struct tb710fu_dwc3_ops operations(struct fixture *f)
 {
     const struct tb710fu_dwc3_ops ops = {
-        f, read32, write32, delay, sync_cpu, sync_device, log_copy, log_consume
+        f, read32, write32, delay, sync_cpu, sync_device, log_copy, log_consume,
+        lane
     };
     return ops;
 }
@@ -431,8 +444,19 @@ static void test_failures_retain_dma_and_do_not_restart(void)
     assert(f.cpu[0] == 0xa5 && f.waits >= 10000);
     prepare(&f);
     f.block_reset = 1;
+    // Retracting the bit is a controlled state, not a wedged one: the adoption
+    // path must program the core and expose its pull-up instead of giving up.
+    const unsigned before = f.address_writes;
+    assert(start(&f, "diagnostic-test-1"));
+    assert(f.core.reset_adopted && f.core.reset_stage == 3 && f.core.running);
+    assert(f.core.dma == f.cpu && f.address_writes > before);
+    prepare(&f);
+    f.stick_reset = 1;
+    // Not even the retraction clears the bit: the core is held in reset, so
+    // nothing may be programmed and the attempt must stop here.
     assert(!start(&f, "diagnostic-test-1"));
-    assert(f.core.failed && f.address_writes == 0 && f.cpu[0] == 0xa5);
+    assert(f.core.failed && !f.core.reset_adopted && f.address_writes == 0);
+    assert(f.cpu[0] == 0xa5);
     prepare(&f);
     f.block_command = 1;
     assert(!start(&f, "diagnostic-test-1"));

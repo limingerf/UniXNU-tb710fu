@@ -29,6 +29,9 @@ struct tb710fu_dwc3_ops {
     void (*sync_for_device)(void *, unsigned, unsigned);
     size_t (*log_copy)(void *, uint8_t *, size_t);
     int (*log_consume)(void *, size_t);
+    // Optional: paints the eight-character lane tag without rebuilding a frame,
+    // so a bus access that never returns still leaves its step on screen.
+    void (*lane)(void *, const char *);
 };
 
 enum tb710fu_dwc3_control_phase {
@@ -65,7 +68,8 @@ struct tb710fu_dwc3 {
     // end. reset_stage is how the bit finally cleared, 0 when it never did.
     uint32_t reset_trace[6];
     uint8_t reset_stage;
-    uint8_t reset_pad[3];
+    uint8_t reset_adopted;
+    uint8_t reset_pad[2];
 };
 
 // The XNU adapter must first validate live role/clocks/PHY/SMMU and permanent,
