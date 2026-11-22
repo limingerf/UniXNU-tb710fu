@@ -629,7 +629,11 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     const uint32_t pre = read_reg(d, DCTL);
     d->reset_trace[0] = pre;
     write_reg(d, DCTL, pre & ~RUN_STOP);
-    if (!halt_firmware(d, interrupts)) return fail(d, "firmware controller did not halt");
+    // A core that firmware already left stopped has nothing to halt; only a
+    // running one owes the DEVCTLHLT handshake. Everything the handshake would
+    // acknowledge is rewritten below anyway.
+    if ((pre & RUN_STOP) && !halt_firmware(d, interrupts))
+        return fail(d, "firmware controller did not halt");
     d->reset_stage = (uint8_t)core_reset(d, pre);
     d->reset_trace[4] = read_reg(d, GSTS);
     if (d->reset_stage == 0)
