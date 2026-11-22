@@ -787,22 +787,13 @@ static int cdc_active_controls(struct tb710fu_cdc_xnu *x)
     return 1;
 }
 
-// The core answered neither its soft reset nor the retraction of it: DCTL read
-// 0x00f00000 before, 0x40f00000 after the assert, and still 0x40f00000 after
-// software cleared the bit. That is a wrapped FSM, not a slow one, and the one
-// reset firmware cannot shadow is the one in GCC: asserting the USB30 block
-// reset resets wrapper and core together. The block lives at reset defaults
-// afterwards, so the bring-up runs again and refuses if power, rates, branches
-// or the wrapper clock did not come back.
-static int cdc_gcc_pulse(struct tb710fu_cdc_xnu *x)
-{
-    cdc_step("gcc-pulse", "cdcpulse");
-    cdc_write(x->gcc, CDC_GCC_BCR, cdc_read(x->gcc, CDC_GCC_BCR) | 1u);
-    cdc_delay(NULL, 500);
-    cdc_write(x->gcc, CDC_GCC_BCR, cdc_read(x->gcc, CDC_GCC_BCR) & ~1u);
-    cdc_delay(NULL, 2000);
-    return cdc_gcc_bring_up(x);
-}
+// The USB30 block reset in GCC was tried here as the reset firmware cannot
+// shadow, and it was withdrawn again: both boots that carried it stopped right
+// after the next checkpoint inside the stream route - once after the attach
+// returned, once after the read-only rescan - while every boot without it went
+// on to dwc3-start. That is one variable too expensive to keep while the
+// controller path itself is still unmeasured, so the pulse is gone until the
+// core has reported whether it accepts configuration at all.
 
 // The eight-character bottom band cannot carry a sentence, so every refusal
 // class gets its own short tag; "sid40" remains only as an unreachable default.
@@ -919,7 +910,6 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
     if (!cdc_power_rails(x)) return 0;
     if (!cdc_pm8550b_repeater_start()) return 0;
     if (!cdc_gcc_bring_up(x)) return 0;
-    if (!cdc_gcc_pulse(x)) return 0;
     if (!cdc_phy_initialize(x)) return 0;
     cdc_sample_controls(x);
     if (!cdc_active_controls(x)) return 0;
@@ -986,6 +976,11 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
     cdc_checkpoint("dmacheck");
     cdc_sample_controls(x);
     if (!cdc_active_controls(x) || !cdc_route(x, &refreshed)) return 0;
+    // The route rescan above is the last table access before this check, and two
+    // consecutive boots stopped with no output right after a checkpoint inside
+    // it. Tag the check itself so the band says whether the bus died in the
+    // stream table or in the controller registers.
+    cdc_lane_op(NULL, "ownchk");
     if (memcmp(&route, &refreshed, sizeof(route)) ||
         (cdc_read(x->dwc, 0xc120) & 0xffff0000u) != (id & 0xffff0000u) ||
         ((cdc_read(x->dwc, 0xc110) >> 12) & 3u) != role) {
