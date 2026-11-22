@@ -74,7 +74,7 @@ static struct {
     uint32_t id, gctl, dma_bits, scr0, id0;
     uint32_t smmu_saved_smr, smmu_saved_s2cr;
     uint32_t smmu_probe_smr, smmu_probe_s2cr;
-    uint32_t smmu_actions[5], smmu_acr, smmu_gfsr, smmu_scr0;
+    uint32_t smmu_actions[4], smmu_acr, smmu_gfsr, smmu_scr0;
     uint32_t smmu_smr, smmu_s2cr;
     unsigned streams, role, spmi_apid, smmu_slot, smmu_tries;
     unsigned smmu_claimed, smmu_masked, smmu_open;
@@ -839,8 +839,7 @@ static int cdc_route(struct tb710fu_cdc_xnu *x,
         gReport.smmu_actions[0] = actions.keep;
         gReport.smmu_actions[1] = actions.fault;
         gReport.smmu_actions[2] = actions.bypass;
-        gReport.smmu_actions[3] = actions.both;
-        gReport.smmu_actions[4] = actions.smr;
+        gReport.smmu_actions[3] = actions.smr;
         gReport.smmu_acr = cdc_read(x->smmu, 0x18);
         gReport.smmu_gfsr = cdc_read(x->smmu, 0x58);
         gReport.smmu_scr0 = cdc_read(x->smmu, 0);
@@ -1049,12 +1048,11 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
            gReport.smmu_smr, gReport.smmu_s2cr,
            gReport.smmu_probe_smr, gReport.smmu_probe_s2cr);
     cdc_log("TB710FU CDC: smmu probe slot=%u pre_smr=%08x pre_s2cr=%08x "
-           "keep w0=%08x w2=%08x w1=%08x w3=%08x smr=%08x acr=%08x gfsr=%08x scr0=%08x\n",
+           "keep=%08x fault=%08x bypass=%08x smr=%08x acr=%08x gfsr=%08x scr0=%08x\n",
            gReport.smmu_slot, gReport.smmu_saved_smr, gReport.smmu_saved_s2cr,
            gReport.smmu_actions[0], gReport.smmu_actions[1],
            gReport.smmu_actions[2], gReport.smmu_actions[3],
-           gReport.smmu_actions[4], gReport.smmu_acr, gReport.smmu_gfsr,
-           gReport.smmu_scr0);
+           gReport.smmu_acr, gReport.smmu_gfsr, gReport.smmu_scr0);
     if (ready) {
         cdc_checkpoint("irqroute");
         uint32_t spi_state = 0;

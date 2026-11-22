@@ -448,8 +448,8 @@ static void test_action_keep(void)
     registers[(0xc00 + 9 * 4) / 4] = saved.s2cr;
     tb710fu_cdc_smmu_probe_actions(read_register, write_register, barrier, NULL,
                                    9u, &saved, &actions);
-    assert(actions.keep == 0 && actions.fault == (2u << 16));
-    assert(actions.bypass == (1u << 16) && actions.both == (3u << 16));
+    assert(actions.keep == saved.s2cr && actions.fault == (2u << 16));
+    assert(actions.bypass == (1u << 16));
     assert(actions.smr == saved.smr);
     assert(registers[(0x800 + 9 * 4) / 4] == saved.smr);
     assert(registers[(0xc00 + 9 * 4) / 4] == saved.s2cr);
@@ -462,7 +462,7 @@ static void test_action_keep(void)
                                    9u, &saved, &actions);
     stuck_actions = 0;
     assert(actions.keep == saved.s2cr && actions.fault == saved.s2cr);
-    assert(actions.bypass == saved.s2cr && actions.both == saved.s2cr);
+    assert(actions.bypass == saved.s2cr);
     assert(actions.smr == saved.smr);
 }
 
