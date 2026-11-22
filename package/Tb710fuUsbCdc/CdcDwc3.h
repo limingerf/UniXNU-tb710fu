@@ -67,9 +67,15 @@ struct tb710fu_dwc3 {
     // GCTL/phycfg after the preconditions, plus the state registers read at the
     // end. reset_stage is how the bit finally cleared, 0 when it never did.
     uint32_t reset_trace[6];
+    // A core that never answered the reset request is still driven: reset_forced
+    // records that, and probe_trace keeps the readbacks of the writes actually
+    // issued afterwards plus DSTS as read once the pull-up was exposed, so a
+    // single frame says whether the core accepts configuration at all.
+    uint32_t probe_trace[4];
     uint8_t reset_stage;
     uint8_t reset_adopted;
-    uint8_t reset_pad[2];
+    uint8_t reset_forced;
+    uint8_t reset_pad;
 };
 
 // The XNU adapter must first validate live role/clocks/PHY/SMMU and permanent,

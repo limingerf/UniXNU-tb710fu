@@ -129,7 +129,9 @@ void tb710fu_dwc3_stop(struct tb710fu_dwc3 *d, const char *reason)
     // successful global halt here does not authorize freeing/restarting DMA.
     if (d->ops.read32 != NULL && d->ops.write32 != NULL) {
         write_reg(d, DEVTEN, 0);
-        write_reg(d, DCTL, read_reg(d, DCTL) & ~RUN_STOP);
+        // Stop clears both bits: leaving a stuck CSFTRST in DCTL would keep the
+        // core claiming reset for whatever runs next.
+        write_reg(d, DCTL, read_reg(d, DCTL) & ~(RUN_STOP | SOFT_RESET));
         if (d->ops.delay_us != NULL)
             (void)wait_reg(d, DSTS, CONTROLLER_HALTED, CONTROLLER_HALTED);
     }
@@ -636,8 +638,20 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
         return fail(d, "firmware controller did not halt");
     d->reset_stage = (uint8_t)core_reset(d, pre);
     d->reset_trace[4] = read_reg(d, GSTS);
-    if (d->reset_stage == 0)
-        return fail(d, "device reset request is never answered; retain DMA");
+    if (d->reset_stage == 0) {
+        // The request was never answered and the retraction did not clear the
+        // bit either, so the status still claims the core is in reset. Stopping
+        // on that bit is what has kept this board on this one line for every
+        // boot: it never learns whether the core accepts configuration in that
+        // state. Drive the rest of the path anyway. A command that completes is
+        // proof the core is clocked and answering, which is stronger evidence
+        // than the status bit, and a command that times out already fails with
+        // its own reason. Every step below paints its lane tag first, so an
+        // access that never returns names itself on the bottom band instead of
+        // taking the whole report with it.
+        d->reset_forced = 1;
+        reset_lane(d, "dwcfail");
+    }
     if (d->reset_stage == 3) {
         // The bit cleared because software retracted it, so the core is out of
         // reset but was never reset by hardware. Firmware had left it running
@@ -658,15 +672,30 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     }
     zero_bytes(dma, TB710FU_DWC3_DMA_SIZE);
     d->ops.sync_for_device(d->ops.context, 0, TB710FU_DWC3_DMA_SIZE);
-    write_reg(d, GCTL, (read_reg(d, GCTL) & ~((3u << 12) | (1u << 1))) | (2u << 12));
+    // Role and phycfg are written only when they actually differ: this board
+    // hands over a core already in device role with the USB2 suspend bit clear,
+    // and a write that changes nothing is one more bus access that can wedge -
+    // which is exactly what the last precondition attempt did and cost a boot.
+    const uint32_t gctl_now = read_reg(d, GCTL);
+    const uint32_t gctl_want = (gctl_now & ~((3u << 12) | (1u << 1))) | (2u << 12);
+    if (gctl_want != gctl_now) write_reg(d, GCTL, gctl_want);
     // sm8650.dtsi declares both USB2 suspend quirks for the primary core.
-    write_reg(d, USB2PHYCFG, read_reg(d, USB2PHYCFG) & ~PHY_SUSPEND);
+    const uint32_t pcfg_now = read_reg(d, USB2PHYCFG);
+    if ((pcfg_now & PHY_SUSPEND) != 0) write_reg(d, USB2PHYCFG, pcfg_now & ~PHY_SUSPEND);
+    reset_lane(d, "dcfgrw");
     write_reg(d, DCFG, read_reg(d, DCFG) & ~((127u << 3) | 7u | (1u << 22)));
+    d->probe_trace[0] = read_reg(d, DCFG);
+    reset_lane(d, "evtrw");
     write_reg(d, EVENT_LO(0), (uint32_t)dma_physical);
     write_reg(d, EVENT_HI(0), (uint32_t)(dma_physical >> 32));
     write_reg(d, EVENT_SIZE(0), TB710FU_DWC3_EVENT_BYTES | EVENT_INTERRUPT_MASK);
     write_reg(d, EVENT_COUNT(0), 0);
-    if (!command(d, 0, COMMAND_START_CONFIGURATION, 0, 0, 0)) return 0;
+    d->probe_trace[2] = read_reg(d, EVENT_LO(0));
+    reset_lane(d, "starcfg");
+    if (!command(d, 0, COMMAND_START_CONFIGURATION, 0, 0, 0)) {
+        d->probe_trace[3] = read_reg(d, DSTS);
+        return 0;
+    }
     for (unsigned ep = 0; ep < 6; ++ep) {
         if (ep == 4) continue;
         const unsigned type = ep < 2 ? 0u : ep == EP_NOTIFY ? 3u : 2u;
@@ -679,7 +708,13 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     // before the worker has drained CONNECT_DONE.
     if (!setup_phase(d)) return 0;
     write_reg(d, DEVTEN, (1u << 11) | (1u << 9) | 7u);
-    write_reg(d, DCTL, read_reg(d, DCTL) | RUN_STOP);
+    d->probe_trace[1] = read_reg(d, DEVTEN);
+    reset_lane(d, "dwcrun");
+    // A core whose reset request was never answered hands over a DCTL that still
+    // carries CSFTRST. Run must not be written with that bit set: that re-asserts
+    // the reset the core already ignored once, so clear it in the same write.
+    write_reg(d, DCTL, (read_reg(d, DCTL) & ~SOFT_RESET) | RUN_STOP);
+    d->probe_trace[3] = read_reg(d, DSTS);
     d->running = 1;
     return 1;
 }

@@ -73,7 +73,8 @@ static void write32(void *context, unsigned reg, uint32_t value)
         if (f->stick_reset) value |= 1u << 30;
     }
     if (reg >= 0xc400 && reg < 0xc600 && ((reg - 0xc400) & 15u) < 8) {
-        assert(f->halted && (f->reset_complete || f->core.reset_adopted));
+        assert(f->halted && (f->reset_complete || f->core.reset_adopted ||
+                             f->core.reset_forced));
         ++f->address_writes;
     }
     if (reg >= 0xc40c && reg < 0xc600 && ((reg - 0xc40c) & 15u) == 0) {
@@ -452,11 +453,23 @@ static void test_failures_retain_dma_and_do_not_restart(void)
     assert(f.core.dma == f.cpu && f.address_writes > before);
     prepare(&f);
     f.stick_reset = 1;
-    // Not even the retraction clears the bit: the core is held in reset, so
-    // nothing may be programmed and the attempt must stop here.
-    assert(!start(&f, "diagnostic-test-1"));
-    assert(f.core.failed && !f.core.reset_adopted && f.address_writes == 0);
-    assert(f.cpu[0] == 0xa5);
+    // Not even the retraction clears the bit. The status keeps saying "in reset",
+    // so it cannot be the verdict on its own: the core is driven anyway and the
+    // commands that complete are what decide. Without that the board would stay
+    // on this one line for every boot and never test the configuration path.
+    const unsigned forced_before = f.address_writes;
+    assert(start(&f, "diagnostic-test-1"));
+    assert(f.core.reset_forced && f.core.reset_stage == 0 && f.core.running);
+    assert(!f.core.reset_adopted && f.core.dma == f.cpu);
+    assert(f.address_writes > forced_before);
+    // The arena is handed to the core on this path, so its contents are gone by
+    // design; only the register traffic proves the core was driven.
+    assert(f.cpu[0] == 0);
+    // The probe keeps the readbacks, not the values software wrote: that is what
+    // the report needs to tell a core that accepted the write from one that
+    // ignored it.
+    assert(f.core.probe_trace[1] == ((1u << 11) | (1u << 9) | 7u));
+    assert(f.core.probe_trace[2] == (uint32_t)PHYSICAL);
     prepare(&f);
     f.block_command = 1;
     assert(!start(&f, "diagnostic-test-1"));

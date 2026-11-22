@@ -1048,6 +1048,14 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
            x->controller.reset_trace[0], x->controller.reset_trace[1],
            x->controller.reset_trace[2], x->controller.reset_trace[3],
            x->controller.reset_trace[4], x->controller.reset_trace[5]);
+    // The status bit above only says what the core thinks of itself. These are
+    // the readbacks of the writes actually issued after it, so one frame
+    // separates "core deaf to reset but alive" from "core not clocked at all".
+    cdc_log("TB710FU CDC: dwc probe forced=%u dcfg=%08x devten=%08x evtlo=%08x "
+           "dsts=%08x\n",
+           x->controller.reset_forced, x->controller.probe_trace[0],
+           x->controller.probe_trace[1], x->controller.probe_trace[2],
+           x->controller.probe_trace[3]);
     if (!started) {
         cdc_refuse(x->controller.failure ? x->controller.failure : "dwc3-start");
         return 0;
