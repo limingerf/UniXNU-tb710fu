@@ -149,6 +149,7 @@ static void reset_fixture(void)
     memset(&xnu_sender, 0, sizeof(xnu_sender)); memset(&ramoops_sender, 0, sizeof(ramoops_sender));
     memset(&checkpoint_sender, 0, sizeof(checkpoint_sender));
     memset(&xnu_capture, 0, sizeof(xnu_capture));
+    memset(&cdc_capture, 0, sizeof(cdc_capture));
     early_state = (struct tb710fu_live_capture_info){0}; xnu_state = early_state;
     ramoops_state = (struct tb710fu_ramoops_snapshot){0}; memset(early_bytes, 0, sizeof(early_bytes));
     enabled = guard = redraw = worker_started = sleep_channel = early_frozen = early_once = next_slot = 0;
@@ -688,6 +689,27 @@ static void test_text_checkpoint_refreshes_stale_frame(void)
     assert(strstr((const char *)body(&checkpoint_sender), "checkpoint=boot-four"));
     guards();
 }
+static void test_compact_frame_prefers_cdc_tail(void)
+{
+    static const char cdc[] = "TB710FU CDC: stage=smmu-route failure=sidamb\n";
+    reset_fixture(); feed_xnu(1800);
+    checkpoint_arg_present = checkpoint_arg_value = 1;
+    tb710fu_live_log_init(); tb710fu_live_log_freeze();
+    tb710fu_live_log_cdc_bytes(cdc, sizeof(cdc) - 1u);
+    tb710fu_live_log_checkpoint_priority("cdc-one");
+    const char *file = (const char *)body(&checkpoint_sender);
+    const char *marker = strstr(file, "raw_bytes_begin\n");
+    assert(marker);
+    assert(memcmp(marker + strlen("raw_bytes_begin\n"), cdc, sizeof(cdc) - 1u) == 0);
+    assert(strstr(file, "current_bytes=") && strstr(file, "checkpoint=cdc-one"));
+    char field[64];
+    snprintf(field, sizeof(field), "current_end=%u\n", (unsigned)(sizeof(cdc) - 1u));
+    assert(strstr(file, "current_start=0\n") && strstr(file, field));
+    /* The console tail is still longer than the CDC ring; the frame carries the
+     * CDC transcript anyway, which is the whole point of the reserved ring. */
+    assert(xnu_capture.written > cdc_capture.written);
+    guards();
+}
 static void test_dual_slots_do_not_clear_each_other(void)
 {
     reset_fixture(); feed_xnu(700); tb710fu_live_log_init(); tb710fu_live_log_freeze(); tick(); tick();
@@ -768,5 +790,6 @@ int main(void)
     test_priority_publishes_latest_single_frame_before_possible_stall();
     test_text_checkpoint_only_updates_scroll_and_footer();
     test_text_checkpoint_refreshes_stale_frame();
-    free(frame_allocation); puts("PASS: 19 dual/live-checkpoint LiveXnu adapter groups (15 invalid video cases)"); return 0;
+    test_compact_frame_prefers_cdc_tail();
+    free(frame_allocation); puts("PASS: 21 dual/live-checkpoint LiveXnu adapter groups (15 invalid video cases)"); return 0;
 }

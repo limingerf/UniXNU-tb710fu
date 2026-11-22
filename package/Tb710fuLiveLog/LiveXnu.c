@@ -26,6 +26,11 @@ static struct tb710fu_live_log_sender checkpoint_sender;
 /* Zero initialization is the capture-ring initialization. Never clear this in
  * display init: PE/console output can arrive before VM and LiveLog init. */
 static struct tb710fu_live_capture xnu_capture;
+/* CDC runs before BSD fills the console, so its lines are the oldest bytes in
+ * the shared ring and are the first to leave a compact frame's tail. Keep its
+ * transcript in its own ring; a compact frame prefers it when it has any. */
+static struct tb710fu_live_capture cdc_capture;
+static uint8_t cdc_tail[512];
 static struct tb710fu_live_capture_info early_state, xnu_state;
 static struct tb710fu_ramoops_snapshot ramoops_state;
 static uint8_t snapshot[TB710FU_LIVE_LOG_MAX_BYTES];
@@ -400,15 +405,39 @@ static __attribute__((noinline)) void checkpoint_publish(const char *stage, enum
         checkpoint_last_text_end = live_ticks();
     }
 
+    /* A compact frame has room for one tail. CDC runs before BSD fills the
+     * console, so its transcript is the part a shared tail would drop first.
+     * Once the CDC ring holds anything, the frame carries that instead; the
+     * header's current_start/current_end then name that ring's bytes. */
+    const uint8_t *export_bytes = snapshot;
+    size_t export_count = (size_t)copied;
+    uint64_t export_end = state.end;
+    uint64_t export_dropped = state.dropped;
+    if (compact) {
+        struct tb710fu_live_capture_info cdc_state = {0};
+        int cdc_copied = 0;
+        for (unsigned attempt = 0; attempt < 8u; ++attempt) {
+            cdc_copied = tb710fu_live_capture_copy(&cdc_capture, cdc_tail,
+                sizeof(cdc_tail), &cdc_state);
+            if (cdc_state.state != TB710FU_LIVE_CAPTURE_BUSY) break;
+        }
+        if (cdc_copied > 0) {
+            export_bytes = cdc_tail;
+            export_count = (size_t)cdc_copied;
+            export_end = cdc_state.end;
+            export_dropped = cdc_state.dropped;
+        }
+    }
+
     int backup_ready = backup_frozen && early_state.state == TB710FU_LIVE_CAPTURE_READY;
     if (can_replace && (priority_frame || !checkpoint_sender.valid || compact != (int)checkpoint_compact ||
-        state.end != checkpoint_sender.info.end || state.dropped != checkpoint_export_dropped)) {
+        export_end != checkpoint_sender.info.end || export_dropped != checkpoint_export_dropped)) {
         size_t early_available = backup_ready && !compact ? early_state.copied : 0u;
-        size_t current_count = compact && copied > 512 ? 512u : (size_t)copied;
+        size_t current_count = compact && export_count > 512u ? 512u : export_count;
         ++checkpoint_file_generation;
         if (checkpoint_file_generation == 0) checkpoint_file_generation = 1u;
         for (;;) {
-            uint64_t current_start = state.end - current_count;
+            uint64_t current_start = export_end - current_count;
             size_t early_count = 0u;
             if (early_available && current_start > early_state.start) {
                 uint64_t distinct_early = current_start - early_state.start;
@@ -440,18 +469,18 @@ static __attribute__((noinline)) void checkpoint_publish(const char *stage, enum
                 (unsigned long long)early_state.start,
                 (unsigned long long)(early_state.start + early_count),
                 (unsigned)early_count, backup_export, (unsigned long long)current_start,
-                (unsigned long long)state.end, (unsigned)current_count,
+                (unsigned long long)export_end, (unsigned)current_count,
                 (unsigned long long)gap_start, (unsigned long long)gap_end,
                 (unsigned long long)gap_bytes,
-                (unsigned long long)state.dropped, layout);
+                (unsigned long long)export_dropped, layout);
             size_t capacity = compact ? tb710fu_live_log_single_file_capacity(
-                TB710FU_LIVE_LOG_XNU, checkpoint_file_generation, current_start, state.end) :
+                TB710FU_LIVE_LOG_XNU, checkpoint_file_generation, current_start, export_end) :
                 sizeof(checkpoint_file);
             if (header >= 0 && (size_t)header + early_count + current_count <= capacity) {
                 size_t offset = (size_t)header;
                 for (size_t i = 0; i < early_count; ++i) checkpoint_file[offset++] = early_bytes[i];
                 for (size_t i = 0; i < current_count; ++i)
-                    checkpoint_file[offset++] = snapshot[(size_t)copied - current_count + i];
+                    checkpoint_file[offset++] = export_bytes[export_count - current_count + i];
                 /* The compact sender has already completed its own dwell.
                  * Start a new multiframe session with its independent dwell. */
                 if (!compact && checkpoint_compact) {
@@ -461,17 +490,17 @@ static __attribute__((noinline)) void checkpoint_publish(const char *stage, enum
                 enum tb710fu_live_log_result replaced;
                 if (priority_frame) {
                     replaced = tb710fu_live_log_replace_single_file(&checkpoint_sender, checkpoint_file,
-                        offset, checkpoint_file_generation, current_start, state.end);
+                        offset, checkpoint_file_generation, current_start, export_end);
                 } else if (compact) {
                     replaced = tb710fu_live_log_snapshot_single_file(&checkpoint_sender, checkpoint_file,
-                        offset, checkpoint_file_generation, current_start, state.end);
+                        offset, checkpoint_file_generation, current_start, export_end);
                 } else {
                     replaced = tb710fu_live_log_snapshot_file(&checkpoint_sender, checkpoint_file,
-                        offset, checkpoint_file_generation, current_start, state.end);
+                        offset, checkpoint_file_generation, current_start, export_end);
                 }
                 if (replaced == TB710FU_LIVE_LOG_READY) {
                     checkpoint_compact = (unsigned)compact;
-                    checkpoint_export_dropped = state.dropped;
+                    checkpoint_export_dropped = export_dropped;
                 } else if (replaced != TB710FU_LIVE_LOG_BUSY) {
                     (void)__atomic_fetch_add(&checkpoint_failures, 1u, __ATOMIC_RELAXED);
                     checkpoint_status("FILE-ERR", NULL);
@@ -558,15 +587,16 @@ void tb710fu_live_log_boot_mark(unsigned lane, const char *stage)
  * may be blocked while it runs. That ring is only readable by the CDC channel,
  * which is exactly the channel that is not up yet, so a CDC failure used to
  * leave no trace anywhere: the eight-character bottom lane was the only record.
- * Mirror the same bytes into the capture ring the QR frames are built from, so a
- * stopped CDC run still leaves a readable transcript on screen. Nothing here
- * waits, allocates or touches the display; contention drops a byte like every
- * other capture writer. */
+ * The same bytes already reach the console ring through tb710fu_live_log_putc();
+ * a second copy here keeps the CDC transcript selectable on its own, because
+ * CDC runs before BSD floods the console and a compact frame's tail would
+ * otherwise drop it. Nothing here waits, allocates or touches the display;
+ * contention drops a byte like every other capture writer. */
 void tb710fu_live_log_cdc_bytes(const char *bytes, unsigned long length)
 {
     if (!bytes || !length) return;
     for (unsigned long i = 0; i < length; ++i)
-        (void)tb710fu_live_capture_putc(&xnu_capture, bytes[i]);
+        (void)tb710fu_live_capture_putc(&cdc_capture, bytes[i]);
 }
 
 /* Preserve precisely this pre-machine_startup boundary once. A busy/empty
