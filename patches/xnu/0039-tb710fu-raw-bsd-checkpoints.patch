@@ -24,7 +24,7 @@ diff --git a/osfmk/kern/tb710fu_live_log.h b/osfmk/kern/tb710fu_live_log.h
  
  /* These markers may run with interrupts masked or a scheduler lock held. */
 +void tb710fu_live_log_boot_mark(unsigned lane, const char *stage);
-+void tb710fu_live_log_cdc_bytes(const char *bytes, size_t length);
++void tb710fu_live_log_cdc_bytes(const char *bytes, unsigned long length);
  void tb710fu_live_log_scheduler_mark(unsigned stage);
  void tb710fu_live_log_dlil_wait_begin(void);
  void tb710fu_live_log_dlil_wait_end(void);

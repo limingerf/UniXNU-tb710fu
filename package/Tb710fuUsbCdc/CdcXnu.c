@@ -39,8 +39,10 @@ extern void tb710fu_live_log_boot_mark(unsigned lane, const char *stage)
 extern void tb710fu_live_log_putc(char byte)
     __attribute__((weak_import));
 /* Optional: only the LiveLog archive provides this, and CDC must still link and
- * run when that archive is not linked in. */
-extern void tb710fu_live_log_cdc_bytes(const char *bytes, size_t length)
+ * run when that archive is not linked in. The length is unsigned long rather
+ * than size_t so the declaration also matches the osfmk header, which does not
+ * include the C library type. */
+extern void tb710fu_live_log_cdc_bytes(const char *bytes, unsigned long length)
     __attribute__((weak_import));
 extern volatile uint32_t armcpu_gic_ready;
 extern volatile uint64_t armcpu_timer_interrupts;

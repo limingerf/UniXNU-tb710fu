@@ -546,10 +546,10 @@ void tb710fu_live_log_boot_mark(unsigned lane, const char *stage)
  * stopped CDC run still leaves a readable transcript on screen. Nothing here
  * waits, allocates or touches the display; contention drops a byte like every
  * other capture writer. */
-void tb710fu_live_log_cdc_bytes(const char *bytes, size_t length)
+void tb710fu_live_log_cdc_bytes(const char *bytes, unsigned long length)
 {
     if (!bytes || !length) return;
-    for (size_t i = 0; i < length; ++i)
+    for (unsigned long i = 0; i < length; ++i)
         (void)tb710fu_live_capture_putc(&xnu_capture, bytes[i]);
 }
 
