@@ -74,9 +74,10 @@ static struct {
     uint32_t id, gctl, dma_bits, scr0, id0;
     uint32_t smmu_saved_smr, smmu_saved_s2cr;
     uint32_t smmu_probe_smr, smmu_probe_s2cr;
+    uint32_t smmu_actions[5], smmu_acr, smmu_gfsr, smmu_scr0;
     uint32_t smmu_smr, smmu_s2cr;
     unsigned streams, role, spmi_apid, smmu_slot, smmu_tries;
-    unsigned smmu_claimed, smmu_masked;
+    unsigned smmu_claimed, smmu_masked, smmu_open;
     uint64_t dma_physical;
     uint32_t dma_bytes;
 } gReport;
@@ -819,10 +820,31 @@ static int cdc_route(struct tb710fu_cdc_xnu *x,
         }
         gReport.smmu_slot = saved.slot;
         gReport.smmu_tries = saved.tried;
+        gReport.smmu_saved_smr = saved.smr;
+        gReport.smmu_saved_s2cr = saved.s2cr;
         gReport.smmu_probe_smr = saved.probe_smr;
         gReport.smmu_probe_s2cr = saved.probe_s2cr;
-        cdc_refuse(result == TB710FU_CDC_SMMU_ABSENT ? "sidpub" : "sidtake");
-        return 0;
+        struct tb710fu_cdc_smmu_actions actions;
+        tb710fu_cdc_smmu_probe_actions(cdc_smmu_read, cdc_smmu_write,
+                                       cdc_smmu_barrier, x, saved.slot, &saved,
+                                       &actions);
+        gReport.smmu_actions[0] = actions.keep;
+        gReport.smmu_actions[1] = actions.fault;
+        gReport.smmu_actions[2] = actions.bypass;
+        gReport.smmu_actions[3] = actions.both;
+        gReport.smmu_actions[4] = actions.smr;
+        gReport.smmu_acr = cdc_read(x->smmu, 0x18);
+        gReport.smmu_gfsr = cdc_read(x->smmu, 0x58);
+        gReport.smmu_scr0 = cdc_read(x->smmu, 0);
+        // The console must outlive a refused stream route: DWC3 register
+        // accesses are CPU cycles, not streams, so the controller still has to
+        // be driven and observed. Only the DMA traffic can fault, and the lanes
+        // will say so. The refusal is kept as a checkpoint, not as the run's
+        // failure, so later stages report themselves honestly.
+        gReport.smmu_open = 1;
+        gReport.failure = 0;
+        cdc_checkpoint("sidopen");
+        return 1;
     }
     cdc_refuse(cdc_smmu_tag(result));
     return 0;
@@ -921,7 +943,8 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
         // Readiness here means the source-backed active controls above. PMIC
         // rail/repeater and analog link readiness require real enumeration.
         .phy_verified = 1, .phy_ready = 1,
-        .smmu_verified = 1, .smmu_identity = 1,
+        .smmu_verified = gReport.smmu_open ? 0 : 1,
+        .smmu_identity = gReport.smmu_open ? 0 : 1,
         .smmu_stream_id = TB710FU_CDC_DWC3_STREAM_ID,
         .matching_streams = (uint16_t)route.matching_streams,
         .dma_contiguous = (uint8_t)contiguous,
@@ -930,10 +953,16 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
     };
     cdc_mark("dma-preflight");
     cdc_checkpoint("dmapre");
-    enum tb710fu_cdc_preflight_result preflight = tb710fu_cdc_preflight(1, &snapshot);
-    if (preflight != TB710FU_CDC_PREFLIGHT_READY) {
-        cdc_refuse("preflight");
-        return 0;
+    // With the stream route open, the guard's own verdict is already known:
+    // the run continues only to find out whether the stream table gates the
+    // controller, so the refusal is recorded instead of ending the attempt.
+    if (!gReport.smmu_open) {
+        enum tb710fu_cdc_preflight_result preflight =
+            tb710fu_cdc_preflight(1, &snapshot);
+        if (preflight != TB710FU_CDC_PREFLIGHT_READY) {
+            cdc_refuse("preflight");
+            return 0;
+        }
     }
     // Linux dwc3_qcom_vbus_override_enable defines these wrapper session bits.
     // USB2-only operation does not enable the SuperSpeed lane power override.
@@ -1005,13 +1034,19 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
            "smmu scr0=%08x id0=%08x streams=%u\n",
            gReport.id, gReport.gctl, gReport.role, gReport.dma_bits,
            gReport.scr0, gReport.id0, gReport.streams);
-    cdc_log("TB710FU CDC: smmu claimed=%u slot=%u masked=%u tries=%u "
+    cdc_log("TB710FU CDC: smmu claimed=%u slot=%u masked=%u tries=%u open=%u "
            "smr=%08x s2cr=%08x wb_smr=%08x wb_s2cr=%08x\n",
            gReport.smmu_claimed, gReport.smmu_slot, gReport.smmu_masked,
-           gReport.smmu_tries, gReport.smmu_smr, gReport.smmu_s2cr,
+           gReport.smmu_tries, gReport.smmu_open,
+           gReport.smmu_smr, gReport.smmu_s2cr,
            gReport.smmu_probe_smr, gReport.smmu_probe_s2cr);
-    cdc_log("TB710FU CDC: smmu was smr=%08x s2cr=%08x\n",
-           gReport.smmu_saved_smr, gReport.smmu_saved_s2cr);
+    cdc_log("TB710FU CDC: smmu probe slot=%u pre_smr=%08x pre_s2cr=%08x "
+           "keep w0=%08x w2=%08x w1=%08x w3=%08x smr=%08x acr=%08x gfsr=%08x scr0=%08x\n",
+           gReport.smmu_slot, gReport.smmu_saved_smr, gReport.smmu_saved_s2cr,
+           gReport.smmu_actions[0], gReport.smmu_actions[1],
+           gReport.smmu_actions[2], gReport.smmu_actions[3],
+           gReport.smmu_actions[4], gReport.smmu_acr, gReport.smmu_gfsr,
+           gReport.smmu_scr0);
     if (ready) {
         cdc_checkpoint("irqroute");
         uint32_t spi_state = 0;

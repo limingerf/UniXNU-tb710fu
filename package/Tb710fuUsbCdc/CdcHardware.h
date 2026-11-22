@@ -263,6 +263,41 @@ static inline int tb710fu_cdc_identity_route_read(tb710fu_cdc_register_read read
     return tb710fu_cdc_identity_route_scan(read, context, r) == TB710FU_CDC_SMMU_OK;
 }
 
+// What a group actually keeps of each action encoding. The measured board
+// wrote TYPE=BYPASS into a free group and read back TYPE=FAULT, so the value
+// that survives a write has to be observed rather than assumed.
+struct tb710fu_cdc_smmu_actions {
+    uint32_t keep, fault, bypass, both, smr;
+};
+
+static inline void tb710fu_cdc_smmu_probe_actions(
+    tb710fu_cdc_register_read read, tb710fu_cdc_register_write write,
+    tb710fu_cdc_register_barrier barrier, void *context, unsigned slot,
+    struct tb710fu_cdc_smmu_saved *saved,
+    struct tb710fu_cdc_smmu_actions *out)
+{
+    const unsigned s2cr_offset = 0xc00u + 4u * slot;
+    const unsigned smr_offset = 0x800u + 4u * slot;
+    write(context, s2cr_offset, 0);
+    barrier(context);
+    out->keep = read(context, s2cr_offset);
+    write(context, s2cr_offset, 2u << 16);
+    barrier(context);
+    out->fault = read(context, s2cr_offset);
+    write(context, s2cr_offset, 1u << 16);
+    barrier(context);
+    out->bypass = read(context, s2cr_offset);
+    write(context, s2cr_offset, 3u << 16);
+    barrier(context);
+    out->both = read(context, s2cr_offset);
+    write(context, smr_offset, (1u << 31) | 0x40u);
+    barrier(context);
+    out->smr = read(context, smr_offset);
+    write(context, s2cr_offset, saved->s2cr);
+    write(context, smr_offset, saved->smr);
+    barrier(context);
+}
+
 // Publish an explicit BYPASS route for SID 0x40 in a group the scan proved free
 // or faulted. S2CR is written before SMR is made valid, so an interrupted
 // publication leaves the stream unmatched rather than pointed at a live bank.

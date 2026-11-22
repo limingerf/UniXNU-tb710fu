@@ -111,7 +111,9 @@ static void write_register(void *context, unsigned offset, uint32_t value)
     // A register that silently drops a write models the resource-owned SMMU a
     // firmware handoff can leave behind; the caller must undo its own writes.
     if (offset == stuck_offset) return;
-    if (stuck_actions && offset >= 0xc00u && offset < 0xc00u + 4u * 128u) return;
+    if (stuck_actions &&
+        ((offset >= 0x800u && offset < 0x800u + 4u * 128u) ||
+         (offset >= 0xc00u && offset < 0xc00u + 4u * 128u))) return;
     registers[offset / 4u] = value;
 }
 
@@ -435,6 +437,35 @@ static void test_board_power(void)
            0xa5a500f5u);
 }
 
+static void test_action_keep(void)
+{
+    struct tb710fu_cdc_smmu_saved saved = {.slot = 9, .smr = 0x80000123u, .s2cr = 0x00020005u};
+    struct tb710fu_cdc_smmu_actions actions;
+    // A writable bank keeps whatever action is written, and the probe puts the
+    // group back exactly as it found it.
+    fixture();
+    registers[(0x800 + 9 * 4) / 4] = saved.smr;
+    registers[(0xc00 + 9 * 4) / 4] = saved.s2cr;
+    tb710fu_cdc_smmu_probe_actions(read_register, write_register, barrier, NULL,
+                                   9u, &saved, &actions);
+    assert(actions.keep == 0 && actions.fault == (2u << 16));
+    assert(actions.bypass == (1u << 16) && actions.both == (3u << 16));
+    assert(actions.smr == ((1u << 31) | 0x40u));
+    assert(registers[(0x800 + 9 * 4) / 4] == saved.smr);
+    assert(registers[(0xc00 + 9 * 4) / 4] == saved.s2cr);
+    // A bank that drops the writes shows its old contents for every encoding.
+    fixture();
+    registers[(0x800 + 9 * 4) / 4] = saved.smr;
+    registers[(0xc00 + 9 * 4) / 4] = saved.s2cr;
+    stuck_actions = 1;
+    tb710fu_cdc_smmu_probe_actions(read_register, write_register, barrier, NULL,
+                                   9u, &saved, &actions);
+    stuck_actions = 0;
+    assert(actions.keep == saved.s2cr && actions.fault == saved.s2cr);
+    assert(actions.bypass == saved.s2cr && actions.both == saved.s2cr);
+    assert(actions.smr == saved.smr);
+}
+
 int main(void)
 {
     test_clocks();
@@ -442,6 +473,7 @@ int main(void)
     test_route();
     test_route_classes();
     test_route_claim();
+    test_action_keep();
     test_rpmh();
     test_board_power();
     puts("CDC hardware predicates: clock/PHY/SMMU, RPMh and board sequencing cases passed");
