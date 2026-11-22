@@ -38,6 +38,10 @@ extern void tb710fu_live_log_boot_mark(unsigned lane, const char *stage)
     __attribute__((weak_import));
 extern void tb710fu_live_log_putc(char byte)
     __attribute__((weak_import));
+/* Optional: only the LiveLog archive provides this, and CDC must still link and
+ * run when that archive is not linked in. */
+extern void tb710fu_live_log_cdc_bytes(const char *bytes, size_t length)
+    __attribute__((weak_import));
 extern volatile uint32_t armcpu_gic_ready;
 extern volatile uint64_t armcpu_timer_interrupts;
 extern kern_return_t armcpu_spi_attach(uint32_t intid, bool edge,
@@ -94,6 +98,11 @@ static void cdc_log(const char *format, ...)
     if (tb710fu_live_log_putc) {
         for (size_t i = 0; i < count; ++i) tb710fu_live_log_putc(text[i]);
     }
+    // The tap above is readable only by the CDC channel, so it cannot report the
+    // failure that keeps that channel down. Mirror the same line into the ring
+    // the QR frames are built from; the ordinary console scrolls far too fast
+    // to be read by eye during a CDC start.
+    if (tb710fu_live_log_cdc_bytes) tb710fu_live_log_cdc_bytes(text, count);
 }
 
 static void cdc_mark(const char *stage)

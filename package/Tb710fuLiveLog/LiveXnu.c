@@ -538,6 +538,21 @@ void tb710fu_live_log_boot_mark(unsigned lane, const char *stage)
     live_barrier();
 }
 
+/* The CDC transport keeps its own bounded log ring because the ordinary console
+ * may be blocked while it runs. That ring is only readable by the CDC channel,
+ * which is exactly the channel that is not up yet, so a CDC failure used to
+ * leave no trace anywhere: the eight-character bottom lane was the only record.
+ * Mirror the same bytes into the capture ring the QR frames are built from, so a
+ * stopped CDC run still leaves a readable transcript on screen. Nothing here
+ * waits, allocates or touches the display; contention drops a byte like every
+ * other capture writer. */
+void tb710fu_live_log_cdc_bytes(const char *bytes, size_t length)
+{
+    if (!bytes || !length) return;
+    for (size_t i = 0; i < length; ++i)
+        (void)tb710fu_live_capture_putc(&xnu_capture, bytes[i]);
+}
+
 /* Preserve precisely this pre-machine_startup boundary once. A busy/empty
  * result is exported honestly; a later post-startup tail is never called early.
  * Freeze itself never encodes, draws, waits or depends on a worker. */
