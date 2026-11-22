@@ -95,6 +95,11 @@ struct tb710fu_cdc_identity_route {
     // Set when the group that routes 0x40 is a masked (range) group, so the
     // log can say the route is shared rather than exclusive to this SID.
     unsigned masked;
+    // How many groups matched at all, and how many of those pin the SID bits
+    // (SMR.MASK leaves every bit of SID 0x40 in place). A catch-all group such
+    // as {ID=0, MASK=0x7fff} matches every stream, so "more than one match" on
+    // its own says nothing about a conflict.
+    unsigned candidates, exact_candidates;
     uint32_t smr, s2cr, cbar, cba2r, sctlr;
 };
 
@@ -175,30 +180,55 @@ static inline enum tb710fu_cdc_smmu_result tb710fu_cdc_identity_route_scan(
     // when only a couple of groups remain.
     const unsigned reserved = g.groups - 1u;
     unsigned free_slot = g.groups;
+    // SMMUv2 matches when (sid & ~SMR.MASK) == (SMR.ID & ~SMR.MASK). A group
+    // whose MASK covers the whole SID therefore matches every stream, including
+    // 0x40; Android leaves exactly one such catch-all behind. Counting it as a
+    // second route made every board look ambiguous. Selection is therefore two
+    // tiers: a group that pins every SID bit (exact) wins outright, and the
+    // wide groups are only considered when no exact one exists. Conflicting
+    // groups within the same tier are still refused, because which one the SMMU
+    // applies then depends on group order.
+    unsigned exact_slot = g.groups, wide_slot = g.groups;
+    unsigned exact_count = 0, wide_count = 0;
+    uint32_t exact_smr = 0, exact_s2cr = 0, wide_smr = 0, wide_s2cr = 0;
     for (unsigned i = 0; i < reserved; ++i) {
         const uint32_t smr = read(context, 0x800u + 4u * i);
         if (!(smr & (1u << 31))) {
             if (free_slot == g.groups) free_slot = i;
             continue;
         }
-        // SMMUv2 matches when (sid & ~SMR.MASK) == (SMR.ID & ~SMR.MASK), so a
-        // masked group already routes 0x40 as long as the masked-away bits of
-        // the stored ID agree. Android commonly leaves one wide group behind;
-        // treating every mask as ambiguous hid exactly that case.
         const uint32_t mask = (smr >> 16) & 0x7fffu;
         if ((smr ^ 0x40u) & 0xffffu & ~mask) continue;
-        ++r->matching_streams;
-        r->slot = i;
-        r->smr = smr;
-        r->s2cr = read(context, 0xc00u + 4u * i);
-        // A second group that also routes 0x40 makes the outcome depend on
-        // group priority, which this adapter will not guess.
-        if (r->matching_streams > 1u) return TB710FU_CDC_SMMU_AMBIGUOUS;
+        const uint32_t s2cr = read(context, 0xc00u + 4u * i);
+        if ((mask & 0x40u) == 0u) {
+            ++exact_count;
+            exact_slot = i;
+            exact_smr = smr;
+            exact_s2cr = s2cr;
+        } else {
+            ++wide_count;
+            wide_slot = i;
+            wide_smr = smr;
+            wide_s2cr = s2cr;
+        }
     }
-    if (!r->matching_streams) {
+    r->candidates = exact_count + wide_count;
+    r->exact_candidates = exact_count;
+    if (exact_count > 1u || (exact_count == 0u && wide_count > 1u))
+        return TB710FU_CDC_SMMU_AMBIGUOUS;
+    if (exact_count) {
+        r->slot = exact_slot;
+        r->smr = exact_smr;
+        r->s2cr = exact_s2cr;
+    } else if (wide_count) {
+        r->slot = wide_slot;
+        r->smr = wide_smr;
+        r->s2cr = wide_s2cr;
+    } else {
         r->slot = free_slot;
         return free_slot < g.groups ? TB710FU_CDC_SMMU_ABSENT : TB710FU_CDC_SMMU_FULL;
     }
+    r->matching_streams = 1u;
     if (r->smr & 0x7fff0000u) r->masked = 1;
     const unsigned type = (r->s2cr >> 16) & 3u;
     if (type == 1) return TB710FU_CDC_SMMU_OK; // Explicit bypass, no bank.

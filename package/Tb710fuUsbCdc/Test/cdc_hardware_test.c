@@ -230,6 +230,36 @@ static void test_route_classes(void)
     fixture();
     registers[(0x800 + 7 * 4) / 4] = (1u << 31) | (1u << 16) | 0x41;
     assert(scan(&r) == TB710FU_CDC_SMMU_OK && r.masked);
+    // A wide catch-all plus one exact group is not a conflict: the exact group
+    // pins every SID bit, so it wins regardless of group order. This is the
+    // shape Android leaves behind and it produced sidamb before.
+    fixture();
+    registers[(0x800 + 0 * 4) / 4] = (1u << 31) | (0x7fffu << 16) | 0x0000u;
+    registers[(0xc00 + 0 * 4) / 4] = 2u << 16;
+    assert(scan(&r) == TB710FU_CDC_SMMU_OK && r.slot == 7);
+    assert(r.candidates == 2 && r.exact_candidates == 1);
+    // Two exact groups remain ambiguous even with a catch-all present.
+    fixture();
+    registers[(0x800 + 0 * 4) / 4] = (1u << 31) | (0x7fffu << 16) | 0x0000u;
+    registers[(0xc00 + 0 * 4) / 4] = 2u << 16;
+    registers[(0x800 + 8 * 4) / 4] = (1u << 31) | 0x40;
+    assert(scan(&r) == TB710FU_CDC_SMMU_AMBIGUOUS);
+    // Two wide groups with no exact one are ambiguous too.
+    fixture();
+    registers[(0x800 + 7 * 4) / 4] = 0;
+    registers[(0xc00 + 7 * 4) / 4] = 0;
+    registers[(0x800 + 0 * 4) / 4] = (1u << 31) | (0x7fffu << 16) | 0x0000u;
+    registers[(0xc00 + 0 * 4) / 4] = 2u << 16;
+    registers[(0x800 + 1 * 4) / 4] = (1u << 31) | (0x7ff0u << 16) | 0x0000u;
+    registers[(0xc00 + 1 * 4) / 4] = 2u << 16;
+    assert(scan(&r) == TB710FU_CDC_SMMU_AMBIGUOUS);
+    // A lone catch-all is a usable route, flagged as shared.
+    fixture();
+    registers[(0x800 + 7 * 4) / 4] = 0;
+    registers[(0xc00 + 7 * 4) / 4] = 0;
+    registers[(0x800 + 0 * 4) / 4] = (1u << 31) | (1u << 16) | 0x0041u;
+    registers[(0xc00 + 0 * 4) / 4] = 1u << 16;
+    assert(scan(&r) == TB710FU_CDC_SMMU_OK && r.slot == 0 && r.masked);
     // Two exact groups for one SID are genuinely ambiguous.
     fixture();
     registers[(0x800 + 8 * 4) / 4] = (1u << 31) | 0x40;
