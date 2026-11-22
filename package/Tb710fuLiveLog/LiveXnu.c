@@ -535,6 +535,14 @@ void tb710fu_live_log_boot_mark(unsigned lane, const char *stage)
     if (!tb710fu_live_log_active() || !__atomic_load_n(&checkpoint_mode, __ATOMIC_ACQUIRE))
         return;
     tb_live_display_boot_mark(&display, lane, stage);
+    /* The QR header carries checkpoint_stage, and the worker only ever calls
+     * checkpoint_publish(NULL, ...), so nothing refreshed that string after the
+     * first explicit publish. The frame therefore kept naming an early stage
+     * while the bottom lane moved on, and the QR stopped being evidence. Every
+     * mark now also moves the stage the next frame will carry. Only the CDC lane
+     * is mirrored, because lane 0 carries the BSD/console walk and the QR header
+     * has one stage field. */
+    if (lane == 1u) checkpoint_set_stage(stage);
     live_barrier();
 }
 
