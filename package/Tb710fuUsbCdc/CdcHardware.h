@@ -92,6 +92,9 @@ typedef void (*tb710fu_cdc_register_barrier)(void *);
 
 struct tb710fu_cdc_identity_route {
     unsigned address_bits, matching_streams, slot, bank, context_offset;
+    // Group count from the geometry pass, so a claim can walk every group
+    // without a second register sweep.
+    unsigned groups;
     // Set when the group that routes 0x40 is a masked (range) group, so the
     // log can say the route is shared rather than exclusive to this SID.
     unsigned masked;
@@ -126,6 +129,11 @@ struct tb710fu_cdc_smmu_geometry {
 struct tb710fu_cdc_smmu_saved {
     unsigned slot;
     uint32_t smr, s2cr;
+    // What the last publication attempt actually read back, plus how many
+    // groups were tried. Without these a refused claim cannot say whether a
+    // write was ignored, landed somewhere else, or never ran at all.
+    unsigned tried;
+    uint32_t probe_smr, probe_s2cr;
 };
 
 static inline unsigned tb710fu_cdc_smmu_width(unsigned field)
@@ -174,6 +182,7 @@ static inline enum tb710fu_cdc_smmu_result tb710fu_cdc_identity_route_scan(
         tb710fu_cdc_smmu_geometry_read(read, context, &g);
     if (status != TB710FU_CDC_SMMU_OK) return status;
     r->address_bits = g.address_bits;
+    r->groups = g.groups;
     // The storage planner scans groups from the top down and expects the last
     // one free (its own test asserts slot 127). CDC is queued before storage
     // starts, so claiming from the bottom keeps the two claims disjoint even
@@ -270,47 +279,62 @@ static inline int tb710fu_cdc_stream_bypass_attach(
     struct tb710fu_cdc_smmu_saved *saved)
 {
     if (!planned || !saved || planned->slot >= 128u || planned->masked) return 0;
-    const unsigned smr_offset = 0x800u + 4u * planned->slot;
-    const unsigned s2cr_offset = 0xc00u + 4u * planned->slot;
-    saved->slot = planned->slot;
-    saved->smr = read(context, smr_offset);
-    saved->s2cr = read(context, s2cr_offset);
+    unsigned groups = planned->groups ? planned->groups : 128u;
+    if (groups > 128u) groups = 128u;
+    // Never take the top group: the storage planner claims downwards from there.
+    const unsigned stop = groups > 2u ? groups - 1u : groups;
+    const unsigned first = planned->slot < stop ? planned->slot : 0u;
     // SMMUv2 S2CR.TYPE: 0 translate, 1 bypass, 2 fault. CBNDX is irrelevant
     // to bypass, so the value is fixed rather than taken from the old route.
     const uint32_t bypass = 1u << 16;
-    int ok = 0;
-    if (!(saved->smr & (1u << 31))) {
-        // A free group: block it first, then nominate the exact SID.
+    const uint32_t match = (1u << 31) | 0x40u;
+    saved->tried = 0;
+    saved->probe_smr = 0;
+    saved->probe_s2cr = 0;
+    // The measured board accepts the scan's first free group in the scan but
+    // drops the publication, and only the read-back says so. Walking the free
+    // groups keeps one hard-wired or locked group from killing the console:
+    // every candidate is tried, and the last read-back is reported.
+    for (unsigned slot = first; slot < stop; ++slot) {
+        const unsigned smr_offset = 0x800u + 4u * slot;
+        const unsigned s2cr_offset = 0xc00u + 4u * slot;
+        const uint32_t smr = read(context, smr_offset);
+        if ((smr & (1u << 31)) && slot != planned->slot) continue;
+        saved->slot = slot;
+        saved->smr = smr;
+        saved->s2cr = read(context, s2cr_offset);
+        ++saved->tried;
+        int ok = 0;
+        // Block first, then nominate the exact SID, so an interrupted
+        // publication leaves the stream unmatched rather than pointed at a bank.
         write(context, s2cr_offset, bypass);
         barrier(context);
-        ok = read(context, s2cr_offset) == bypass;
-        if (ok) {
-            const uint32_t match = (1u << 31) | 0x40u;
+        saved->probe_s2cr = read(context, s2cr_offset);
+        ok = saved->probe_s2cr == bypass;
+        if (ok && !(smr & (1u << 31))) {
             write(context, smr_offset, match);
             barrier(context);
-            ok = read(context, smr_offset) == match;
+            saved->probe_smr = read(context, smr_offset);
+            ok = saved->probe_smr == match;
         }
-    } else {
-        // An exact group that already faults: only its action changes.
-        write(context, s2cr_offset, bypass);
-        barrier(context);
-        ok = read(context, s2cr_offset) == bypass;
+        if (!ok) {
+            write(context, smr_offset, saved->smr);
+            write(context, s2cr_offset, saved->s2cr);
+            barrier(context);
+            continue;
+        }
+        struct tb710fu_cdc_identity_route attested;
+        if (tb710fu_cdc_identity_route_scan(read, context, &attested) !=
+                TB710FU_CDC_SMMU_OK ||
+            attested.slot != slot || attested.matching_streams != 1u) {
+            write(context, smr_offset, saved->smr);
+            write(context, s2cr_offset, saved->s2cr);
+            barrier(context);
+            continue;
+        }
+        return 1;
     }
-    if (!ok) {
-        write(context, smr_offset, saved->smr);
-        write(context, s2cr_offset, saved->s2cr);
-        barrier(context);
-        return 0;
-    }
-    struct tb710fu_cdc_identity_route attested;
-    if (tb710fu_cdc_identity_route_scan(read, context, &attested) != TB710FU_CDC_SMMU_OK ||
-        attested.slot != planned->slot || attested.matching_streams != 1u) {
-        write(context, smr_offset, saved->smr);
-        write(context, s2cr_offset, saved->s2cr);
-        barrier(context);
-        return 0;
-    }
-    return 1;
+    return 0;
 }
 
 #endif

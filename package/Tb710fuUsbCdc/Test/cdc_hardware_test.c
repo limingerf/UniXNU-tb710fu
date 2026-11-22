@@ -99,6 +99,9 @@ static enum tb710fu_cdc_smmu_result scan(struct tb710fu_cdc_identity_route *r)
 }
 
 static unsigned stuck_offset = UINT32_MAX;
+// Models an SMMU whose whole action bank ignores writes, so every candidate
+// group fails the read-back and the walk has to run to the end.
+static int stuck_actions;
 
 static void write_register(void *context, unsigned offset, uint32_t value)
 {
@@ -108,6 +111,7 @@ static void write_register(void *context, unsigned offset, uint32_t value)
     // A register that silently drops a write models the resource-owned SMMU a
     // firmware handoff can leave behind; the caller must undo its own writes.
     if (offset == stuck_offset) return;
+    if (stuck_actions && offset >= 0xc00u && offset < 0xc00u + 4u * 128u) return;
     registers[offset / 4u] = value;
 }
 
@@ -292,6 +296,9 @@ static void test_route_claim(void)
     assert(scan(&planned) == TB710FU_CDC_SMMU_ABSENT && planned.slot == 0);
     assert(attach(&planned, &saved));
     assert(saved.slot == 0 && saved.smr == 0 && saved.s2cr == 0);
+    assert(saved.tried == 1);
+    assert(saved.probe_s2cr == (1u << 16));
+    assert(saved.probe_smr == ((1u << 31) | 0x40u));
     assert(registers[0x800 / 4] == ((1u << 31) | 0x40u));
     assert(registers[0xc00 / 4] == (1u << 16));
     assert(scan(&planned) == TB710FU_CDC_SMMU_OK && planned.slot == 0);
@@ -303,15 +310,31 @@ static void test_route_claim(void)
     assert(saved.smr == ((1u << 31) | 0x40u) && saved.s2cr == (2u << 16));
     assert(registers[(0xc00 + 7 * 4) / 4] == (1u << 16));
     assert(scan(&planned) == TB710FU_CDC_SMMU_OK);
-    // A publication that does not read back is undone in full.
+    // One dropped action write no longer ends the claim: the walk moves on and
+    // the untouched group is left exactly as it was found.
     fixture();
     registers[(0x800 + 7 * 4) / 4] = 0;
     assert(scan(&planned) == TB710FU_CDC_SMMU_ABSENT && planned.slot == 0);
-    stuck_offset = 0xc00; // The S2CR write is silently dropped.
-    assert(!attach(&planned, &saved));
+    stuck_offset = 0xc00; // The S2CR write to the bottom group is dropped.
+    assert(attach(&planned, &saved));
     stuck_offset = UINT32_MAX;
+    assert(saved.slot == 1 && saved.tried == 2);
     assert(registers[0x800 / 4] == 0 && registers[0xc00 / 4] == 0);
-    assert(scan(&planned) == TB710FU_CDC_SMMU_ABSENT);
+    assert(registers[(0x800 + 4) / 4] == ((1u << 31) | 0x40u));
+    assert(registers[(0xc00 + 4) / 4] == (1u << 16));
+    assert(scan(&planned) == TB710FU_CDC_SMMU_OK && planned.slot == 1);
+    // When every action register drops writes, the refusal has to carry the
+    // read-back and the number of groups tried instead of a bare "no".
+    fixture();
+    registers[(0x800 + 7 * 4) / 4] = 0;
+    registers[(0xc00 + 7 * 4) / 4] = 0; // The fixture's bypass would mask a drop.
+    assert(scan(&planned) == TB710FU_CDC_SMMU_ABSENT && planned.slot == 0);
+    stuck_actions = 1;
+    assert(!attach(&planned, &saved));
+    stuck_actions = 0;
+    assert(saved.tried == 127 && saved.slot == 126);
+    assert(saved.probe_smr == 0 && saved.probe_s2cr == 0);
+    assert(registers[0x800 / 4] == 0 && registers[0xc00 / 4] == 0);
 }
 
 static void put16(uint8_t *target, uint16_t value)

@@ -73,8 +73,9 @@ static struct {
     uint32_t bcm_flags, bcm_values[4];
     uint32_t id, gctl, dma_bits, scr0, id0;
     uint32_t smmu_saved_smr, smmu_saved_s2cr;
+    uint32_t smmu_probe_smr, smmu_probe_s2cr;
     uint32_t smmu_smr, smmu_s2cr;
-    unsigned streams, role, spmi_apid, smmu_slot;
+    unsigned streams, role, spmi_apid, smmu_slot, smmu_tries;
     unsigned smmu_claimed, smmu_masked;
     uint64_t dma_physical;
     uint32_t dma_bytes;
@@ -806,9 +807,20 @@ static int cdc_route(struct tb710fu_cdc_xnu *x,
                                              cdc_smmu_barrier, x, route, &saved)) {
             gReport.smmu_saved_smr = saved.smr;
             gReport.smmu_saved_s2cr = saved.s2cr;
+            gReport.smmu_slot = saved.slot;
+            gReport.smmu_tries = saved.tried;
+            gReport.smmu_probe_smr = saved.probe_smr;
+            gReport.smmu_probe_s2cr = saved.probe_s2cr;
             gReport.smmu_claimed = 1;
+            // A publication the first free group dropped but a later one kept
+            // means the bottom groups are not uniformly writable.
+            cdc_checkpoint(saved.slot ? "sidmove" : "sidpin");
             return 1;
         }
+        gReport.smmu_slot = saved.slot;
+        gReport.smmu_tries = saved.tried;
+        gReport.smmu_probe_smr = saved.probe_smr;
+        gReport.smmu_probe_s2cr = saved.probe_s2cr;
         cdc_refuse(result == TB710FU_CDC_SMMU_ABSENT ? "sidpub" : "sidtake");
         return 0;
     }
@@ -993,10 +1005,11 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
            "smmu scr0=%08x id0=%08x streams=%u\n",
            gReport.id, gReport.gctl, gReport.role, gReport.dma_bits,
            gReport.scr0, gReport.id0, gReport.streams);
-    cdc_log("TB710FU CDC: smmu claimed=%u slot=%u masked=%u "
-           "smr=%08x s2cr=%08x\n",
+    cdc_log("TB710FU CDC: smmu claimed=%u slot=%u masked=%u tries=%u "
+           "smr=%08x s2cr=%08x wb_smr=%08x wb_s2cr=%08x\n",
            gReport.smmu_claimed, gReport.smmu_slot, gReport.smmu_masked,
-           gReport.smmu_smr, gReport.smmu_s2cr);
+           gReport.smmu_tries, gReport.smmu_smr, gReport.smmu_s2cr,
+           gReport.smmu_probe_smr, gReport.smmu_probe_s2cr);
     cdc_log("TB710FU CDC: smmu was smr=%08x s2cr=%08x\n",
            gReport.smmu_saved_smr, gReport.smmu_saved_s2cr);
     if (ready) {
