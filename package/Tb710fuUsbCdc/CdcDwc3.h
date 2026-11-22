@@ -60,6 +60,12 @@ struct tb710fu_dwc3 {
     uint16_t control_bytes;
     size_t tx_commit;
     uint64_t events, setup_requests, transmitted, discarded_input;
+    // Core reset evidence: DCTL before the halt, right after the assert, and
+    // GCTL/phycfg after the preconditions, plus the state registers read at the
+    // end. reset_stage is how the bit finally cleared, 0 when it never did.
+    uint32_t reset_trace[6];
+    uint8_t reset_stage;
+    uint8_t reset_pad[3];
 };
 
 // The XNU adapter must first validate live role/clocks/PHY/SMMU and permanent,

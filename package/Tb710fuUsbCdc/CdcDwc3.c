@@ -7,6 +7,7 @@
 #include "CdcAcmProtocol.h"
 
 #define GCTL 0xc110u
+#define GSTS 0xc118u
 #define GSNPSID 0xc120u
 #define GHWPARAMS1 0xc144u
 #define GHWPARAMS3 0xc14cu
@@ -543,6 +544,40 @@ void tb710fu_dwc3_enable_event_irq(struct tb710fu_dwc3 *d)
     write_reg(d, EVENT_SIZE(0), TB710FU_DWC3_EVENT_BYTES);
 }
 
+// Linux reaches this point on a core that its own power-on sequence just
+// brought out of reset. This core is adopted from firmware while running, so
+// the reset request can be discarded: hibernation keeps the reset FSM parked,
+// a gated clock withholds the clock the FSM runs on, and a suspended USB2 PHY
+// can hold the interface in its own reset. Clear all three first, then assert
+// the reset. Each retry is a separate hardware request, and the last attempt
+// retracts the bit so an unresponsive core is told apart from an unfinished
+// reset.
+static int core_reset(struct tb710fu_dwc3 *d, uint32_t pre)
+{
+    uint32_t gctl = read_reg(d, GCTL);
+    gctl &= ~((1u << 1) | (3u << 12));
+    gctl |= (2u << 12) | 1u; // Device role, clock gating off for the FSM.
+    write_reg(d, GCTL, gctl);
+    d->reset_trace[2] = read_reg(d, GCTL);
+    write_reg(d, USB2PHYCFG, read_reg(d, USB2PHYCFG) & ~PHY_SUSPEND);
+    d->reset_trace[3] = read_reg(d, USB2PHYCFG);
+    d->reset_trace[5] = read_reg(d, DSTS);
+    // Linux's core reset opens with a millisecond "make sure the PHY has been
+    // taken out of reset"; the suspend bit needs the same settle here.
+    d->ops.delay_us(d->ops.context, 1000);
+
+    write_reg(d, DCTL, (pre & ~RUN_STOP) | SOFT_RESET);
+    d->reset_trace[1] = read_reg(d, DCTL);
+    if (wait_reg(d, DCTL, SOFT_RESET, 0)) return 1;
+
+    write_reg(d, DCTL, read_reg(d, DCTL) | SOFT_RESET);
+    if (wait_reg(d, DCTL, SOFT_RESET, 0)) return 2;
+
+    write_reg(d, DCTL, read_reg(d, DCTL) & ~SOFT_RESET);
+    if (!(read_reg(d, DCTL) & SOFT_RESET)) return 3;
+    return 0;
+}
+
 int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *ops,
                        uint8_t *dma, uint64_t dma_physical,
                        uint16_t vendor_id, uint16_t product_id, const char *serial)
@@ -590,10 +625,16 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     }
     // Do not replace firmware DMA addresses before proving the core halted and
     // its device reset completed. No endpoint ENDTRANSFER assumption is used.
-    write_reg(d, DCTL, read_reg(d, DCTL) & ~RUN_STOP);
+    const uint32_t pre = read_reg(d, DCTL);
+    d->reset_trace[0] = pre;
+    write_reg(d, DCTL, pre & ~RUN_STOP);
     if (!halt_firmware(d, interrupts)) return fail(d, "firmware controller did not halt");
-    write_reg(d, DCTL, read_reg(d, DCTL) | SOFT_RESET);
-    if (!wait_reg(d, DCTL, SOFT_RESET, 0)) return fail(d, "device reset timeout; retain DMA");
+    d->reset_stage = (uint8_t)core_reset(d, pre);
+    d->reset_trace[4] = read_reg(d, GSTS);
+    // Stage 3 retracted the request: the bit cleared only because software
+    // cleared it, so the core never proved its reset. Treat that as failure.
+    if (d->reset_stage == 0 || d->reset_stage == 3)
+        return fail(d, "device reset never completed; retain DMA");
     write_reg(d, DEVTEN, 0);
     write_reg(d, DALEPENA, 0);
     for (unsigned i = 0; i < interrupts; ++i) {

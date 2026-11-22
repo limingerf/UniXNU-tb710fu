@@ -999,8 +999,18 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
     };
     // Development identity, deliberately synthetic and not a vendor serial.
     cdc_step("dwc3-start", "cdcdwc");
-    if (!tb710fu_dwc3_start(&x->controller, &ops, (uint8_t *)x->dma,
-                            physical, 0x1209, 0x0001, "TB710FUCDC001")) {
+    const int started = tb710fu_dwc3_start(&x->controller, &ops, (uint8_t *)x->dma,
+                                          physical, 0x1209, 0x0001, "TB710FUCDC001");
+    // The core reset is the first place this board disagrees with a freshly
+    // powered Linux core, so keep its whole trace on the frame regardless of
+    // whether the adoption succeeded.
+    cdc_log("TB710FU CDC: dwc reset stage=%u dctl=%08x/%08x gctl=%08x "
+           "pcfg=%08x gsts=%08x dsts=%08x\n",
+           x->controller.reset_stage, x->controller.reset_trace[0],
+           x->controller.reset_trace[1], x->controller.reset_trace[2],
+           x->controller.reset_trace[3], x->controller.reset_trace[4],
+           x->controller.reset_trace[5]);
+    if (!started) {
         cdc_refuse(x->controller.failure ? x->controller.failure : "dwc3-start");
         return 0;
     }

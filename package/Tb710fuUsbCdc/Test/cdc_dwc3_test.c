@@ -114,7 +114,7 @@ static void write32(void *context, unsigned reg, uint32_t value)
 static void delay(void *context, unsigned us)
 {
     struct fixture *f = context;
-    assert(us == 1);
+    assert(us == 1 || us == 1000); // Poll step and the pre-reset PHY settle.
     ++f->waits;
 }
 
