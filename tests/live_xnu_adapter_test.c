@@ -625,7 +625,7 @@ static void test_text_checkpoint_only_updates_scroll_and_footer(void)
     assert(checkpoint_qr_attempted && checkpoint_last_qr_attempt_end == last_qr_attempt);
     assert(checkpoint_file_generation == last_file_generation && checkpoint_bands_pending == 1);
     assert(memcmp(&last_qr, &checkpoint_sender, sizeof(last_qr)) == 0);
-    assert(strcmp(checkpoint_stage, "display-refresh") == 0 && slot_pixel(0) == 0xff112233u);
+    assert(strcmp(checkpoint_stage, "throttle") == 0 && slot_pixel(0) == 0xff112233u);
 
     marker = frame_allocation + 64u + (display.Height - 16u) * display.StrideBytes + 304u * 4u;
     const uint64_t status_end = display.LogEnd;
@@ -653,6 +653,40 @@ static uint32_t slot_pixel(unsigned slot)
     }
     unsigned x = slot ? display.QrSecondX : display.QrX;
     return *(uint32_t *)(frame_allocation + 64u + (size_t)display.QrY * display.StrideBytes + x * 4u);
+}
+static void test_text_checkpoint_refreshes_stale_frame(void)
+{
+    reset_fixture(); feed_xnu(1800);
+    checkpoint_arg_present = checkpoint_arg_value = 1;
+    tb710fu_live_log_init(); tb710fu_live_log_freeze();
+    assert(checkpoint_mode && !worker_started && early_frozen);
+    tb710fu_live_log_checkpoint_priority("boot-one");
+    assert(qr_calls == 1 && checkpoint_generation == 1 && checkpoint_compact == 1);
+    assert(strstr((const char *)body(&checkpoint_sender), "checkpoint=boot-one"));
+
+    /* Inside the dwell a text checkpoint only paints the scroll tail. */
+    feed_xnu(40);
+    clock_now += 250;
+    tb710fu_live_log_checkpoint_text("boot-two");
+    assert(checkpoint_generation == 1 && qr_calls == 1);
+    assert(strstr(last_status, "CKPT=TEXT"));
+
+    /* The first text checkpoint after the dwell completes the second round, so
+     * this publish only advances the carousel; the file is still the priority one. */
+    feed_xnu(40);
+    clock_now += frequency;
+    tb710fu_live_log_checkpoint_text("boot-three");
+    assert(checkpoint_generation == 2 && qr_calls == 2);
+    assert(strstr((const char *)body(&checkpoint_sender), "checkpoint=boot-one"));
+
+    /* The next one may replace it, and the new header names the live stage. */
+    feed_xnu(40);
+    clock_now += frequency;
+    tb710fu_live_log_checkpoint_text("boot-four");
+    assert(checkpoint_generation == 3 && qr_calls == 3);
+    assert(strcmp(checkpoint_stage, "boot-four") == 0);
+    assert(strstr((const char *)body(&checkpoint_sender), "checkpoint=boot-four"));
+    guards();
 }
 static void test_dual_slots_do_not_clear_each_other(void)
 {
@@ -733,5 +767,6 @@ int main(void)
     test_checkpoint_multiframe_qr_worker_loops_without_new_snapshot();
     test_priority_publishes_latest_single_frame_before_possible_stall();
     test_text_checkpoint_only_updates_scroll_and_footer();
+    test_text_checkpoint_refreshes_stale_frame();
     free(frame_allocation); puts("PASS: 19 dual/live-checkpoint LiveXnu adapter groups (15 invalid video cases)"); return 0;
 }

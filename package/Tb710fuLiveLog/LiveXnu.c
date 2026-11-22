@@ -349,7 +349,7 @@ static __attribute__((noinline)) void checkpoint_publish(const char *stage, enum
         return;
     }
 
-    if (stage != NULL && !text_only) checkpoint_set_stage(stage);
+    if (stage != NULL) checkpoint_set_stage(stage);
     int refresh = !text_only && __atomic_exchange_n(&checkpoint_bands_pending, 0u, __ATOMIC_ACQ_REL);
     uint64_t now = live_ticks();
     int text_due = refresh || kind != CHECKPOINT_SAMPLED || !checkpoint_text_attempted ||
@@ -357,7 +357,15 @@ static __attribute__((noinline)) void checkpoint_publish(const char *stage, enum
     int backup_frozen = __atomic_load_n(&early_frozen, __ATOMIC_ACQUIRE);
     int compact = !__atomic_load_n(&worker_started, __ATOMIC_ACQUIRE);
     int priority_frame = kind == CHECKPOINT_PRIORITY && compact && backup_frozen;
-    int qr_due = !text_only && (priority_frame || !checkpoint_qr_attempted ||
+    /* A text checkpoint paints the scroll tail, and before the worker runs it is
+     * the only publish the boot chain makes. If a text checkpoint could never
+     * replace the frame, the QR would keep naming a stage the boot had already
+     * passed, which is exactly the photograph disagreeing with the bottom lane.
+     * A one second dwell keeps the rectangle stable for a photograph in progress
+     * while letting every BSD stage reach the frame. */
+    int qr_refresh = !text_only || (checkpoint_qr_attempted &&
+        now - checkpoint_last_qr_attempt_end >= frequency);
+    int qr_due = qr_refresh && (priority_frame || !checkpoint_qr_attempted ||
         now - checkpoint_last_qr_attempt_end >= frequency / 4u);
     int can_replace = qr_due && backup_frozen && (priority_frame || (checkpoint_compact ?
         tb710fu_live_log_can_snapshot_single(&checkpoint_sender) :
@@ -539,10 +547,10 @@ void tb710fu_live_log_boot_mark(unsigned lane, const char *stage)
      * checkpoint_publish(NULL, ...), so nothing refreshed that string after the
      * first explicit publish. The frame therefore kept naming an early stage
      * while the bottom lane moved on, and the QR stopped being evidence. Every
-     * mark now also moves the stage the next frame will carry. Only the CDC lane
-     * is mirrored, because lane 0 carries the BSD/console walk and the QR header
-     * has one stage field. */
-    if (lane == 1u) checkpoint_set_stage(stage);
+     * mark now moves the stage the next frame will carry. The header has one
+     * stage field, so the most recent mark on any lane wins: a mark names what
+     * just ran, which is exactly what the frame should say. */
+    checkpoint_set_stage(stage);
     live_barrier();
 }
 
