@@ -3,7 +3,6 @@
  * lock. One renderer owns the immutable senders and private Mu arena at a time.
  */
 #ifndef TB_LIVE_HOST_TEST
-#include <kern/kalloc.h>
 #include <kern/misc_protos.h>
 #include <kern/clock.h>
 #include <kern/thread.h>
@@ -27,17 +26,16 @@ static struct tb710fu_live_log_sender checkpoint_sender;
 /* Zero initialization is the capture-ring initialization. Never clear this in
  * display init: PE/console output can arrive before VM and LiveLog init. */
 static struct tb710fu_live_capture xnu_capture;
-/* CDC runs before BSD fills the console, so its transcript is the first thing a
- * compact frame's 512-byte tail drops. It keeps its own store instead. A static
- * ring of the capture size grew native __DATA into a retained kext segment and
- * failed the prelink layout, so the store lives on the heap: 2 KiB covers every
- * CDC line this bring-up emits, and an overflow falls back to the console tail. */
-#define TB710FU_CDC_STORE_BYTES 2048u
-#define TB710FU_CDC_TAIL_BYTES 512u
-#define TB710FU_CDC_BLOCK_BYTES (TB710FU_CDC_STORE_BYTES + TB710FU_CDC_TAIL_BYTES)
-static uint8_t *cdc_store;
-static uint64_t cdc_store_total, cdc_store_drops;
-static uint32_t cdc_store_guard;
+/* CDC runs before BSD fills the console, so a compact frame's 512-byte tail drops
+ * its transcript first. A ring of its own is not affordable here: 64 KiB of
+ * native __DATA grew into a retained kext segment and failed the prelink layout
+ * (run 44996796149), and the kit build cannot reach kalloc. Keep the opening
+ * bytes instead, one frame's worth: the report header names stage and failure,
+ * and the first register dump lands inside the same window. */
+#define TB710FU_CDC_FRAME_BYTES 512u
+static uint8_t cdc_frame[TB710FU_CDC_FRAME_BYTES];
+static uint32_t cdc_frame_kept;
+static uint64_t cdc_stream_total;
 static struct tb710fu_live_capture_info early_state, xnu_state;
 static struct tb710fu_ramoops_snapshot ramoops_state;
 static uint8_t snapshot[TB710FU_LIVE_LOG_MAX_BYTES];
@@ -54,15 +52,7 @@ static uint64_t checkpoint_generation, checkpoint_last_qr_attempt_end, xnu_last_
 static uint64_t checkpoint_last_text_end, checkpoint_export_dropped, checkpoint_drawn_end;
 static uint64_t checkpoint_stage_generation, checkpoint_export_stage_generation;
 static char checkpoint_stage[49];
-static int cdc_store_tail(unsigned *count, uint64_t *end, uint64_t *dropped);
-
-/* The tail buffer lives past the store in the same heap block: every byte this
- * feature needs is off native __DATA, whose end is flush against a retained
- * segment and cannot absorb even a small static array. */
-static uint8_t *cdc_tail_bytes(void)
-{
-    return cdc_store + TB710FU_CDC_STORE_BYTES;
-}
+static int cdc_frame_view(unsigned *count, uint64_t *dropped);
 
 /* This strong writer is capture only: no framebuffer, encoding, allocation,
  * polling or logging. A contending writer records a drop and returns. */
@@ -427,21 +417,21 @@ static __attribute__((noinline)) void checkpoint_publish(const char *stage, enum
         checkpoint_last_text_end = live_ticks();
     }
 
-    /* A compact frame has room for one tail. CDC runs before BSD fills the
+    /* A compact frame has room for one window. CDC runs before BSD fills the
      * console, so its transcript is the part a shared tail would drop first.
-     * Once the CDC ring holds anything, the frame carries that instead; the
-     * header's current_start/current_end then name that ring's bytes. */
+     * Once the CDC window holds anything, the frame carries that instead; the
+     * header's current_start/current_end then name those CDC bytes. */
     const uint8_t *export_bytes = snapshot;
     size_t export_count = (size_t)copied;
     uint64_t export_end = state.end;
     uint64_t export_dropped = state.dropped;
     if (compact) {
         unsigned cdc_count = 0;
-        uint64_t cdc_end = 0, cdc_dropped = 0;
-        if (cdc_store_tail(&cdc_count, &cdc_end, &cdc_dropped)) {
-            export_bytes = cdc_tail_bytes();
+        uint64_t cdc_dropped = 0;
+        if (cdc_frame_view(&cdc_count, &cdc_dropped)) {
+            export_bytes = cdc_frame;
             export_count = cdc_count;
-            export_end = cdc_end;
+            export_end = cdc_count;
             export_dropped = cdc_dropped;
         }
     }
@@ -609,77 +599,34 @@ void tb710fu_live_log_boot_mark(unsigned lane, const char *stage)
  * The same bytes already reach the console ring through tb710fu_live_log_putc();
  * a second copy here keeps the CDC transcript selectable on its own, because
  * CDC runs before BSD floods the console and a compact frame's tail would
- * otherwise drop it. Nothing here waits or touches the display; a second writer
- * or a failed allocation drops the chunk like every other capture writer. */
-static uint8_t *cdc_store_allocate(void)
-{
-#ifdef TB_LIVE_HOST_TEST
-    static uint8_t host_store[TB710FU_CDC_BLOCK_BYTES];
-    return host_store;
-#else
-    return (uint8_t *)kalloc(TB710FU_CDC_BLOCK_BYTES);
-#endif
-}
-
+ * otherwise drop it. Nothing here waits, allocates or touches the display. */
 void tb710fu_live_log_cdc_bytes(const char *bytes, unsigned long length)
 {
-    uint32_t token = 0;
+    uint32_t kept;
     if (!bytes || !length) return;
-    if (!cdc_store) {
-        uint8_t *store = cdc_store_allocate();
-        if (!store) {
-            __atomic_fetch_add(&cdc_store_drops, (uint64_t)length, __ATOMIC_RELAXED);
-            return;
-        }
-        cdc_store = store;
-    }
-    token = __atomic_load_n(&cdc_store_guard, __ATOMIC_RELAXED);
-    if ((token & 1u) ||
-        !__atomic_compare_exchange_n(&cdc_store_guard, &token, token + 1u, 0,
-                                     __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {
-        __atomic_fetch_add(&cdc_store_drops, (uint64_t)length, __ATOMIC_RELAXED);
-        return;
-    }
+    kept = __atomic_load_n(&cdc_frame_kept, __ATOMIC_RELAXED);
     for (unsigned long i = 0; i < length; ++i) {
-        if (cdc_store_total < TB710FU_CDC_STORE_BYTES)
-            cdc_store[cdc_store_total] = (uint8_t)bytes[i];
-        else
-            __atomic_fetch_add(&cdc_store_drops, 1u, __ATOMIC_RELAXED);
-        ++cdc_store_total;
+        if (kept < TB710FU_CDC_FRAME_BYTES) {
+            cdc_frame[kept] = (uint8_t)bytes[i];
+            ++kept;
+            __atomic_store_n(&cdc_frame_kept, kept, __ATOMIC_RELEASE);
+        }
     }
-    __atomic_store_n(&cdc_store_guard, token + 2u, __ATOMIC_RELEASE);
+    __atomic_fetch_add(&cdc_stream_total, (uint64_t)length, __ATOMIC_RELAXED);
 }
 
-/* Tail of the retained CDC prefix, copied into the block's tail area while the
- * writer is quiet. A stream that already overflowed the store is reported as
- * absent: its retained bytes are no longer a tail, so the console stays the
- * safer source. */
-static int cdc_store_tail(unsigned *count, uint64_t *end, uint64_t *dropped)
+/* The exported prefix always starts at CDC byte zero, so the header can name it
+ * honestly: current_start=0, current_end=kept, dropped counts bytes the window
+ * never kept. Bytes below cdc_frame_kept are written before the count is
+ * published, so a frame built at any moment carries complete lines or a cut. */
+static int cdc_frame_view(unsigned *count, uint64_t *dropped)
 {
-    uint32_t before = 0, after = 0;
-    uint64_t total, drops;
-    unsigned kept;
-    uint8_t *tail;
-    if (!cdc_store) return 0;
-    tail = cdc_tail_bytes();
-    for (unsigned attempt = 0; attempt < 8u; ++attempt) {
-        before = __atomic_load_n(&cdc_store_guard, __ATOMIC_ACQUIRE);
-        if (before & 1u) continue;
-        total = __atomic_load_n(&cdc_store_total, __ATOMIC_RELAXED);
-        drops = __atomic_load_n(&cdc_store_drops, __ATOMIC_RELAXED);
-        if (drops || !total) return 0;
-        kept = total > TB710FU_CDC_TAIL_BYTES ? TB710FU_CDC_TAIL_BYTES : (unsigned)total;
-        for (unsigned i = 0; i < kept; ++i)
-            tail[i] = cdc_store[(size_t)(total - kept) + i];
-        after = __atomic_load_n(&cdc_store_guard, __ATOMIC_ACQUIRE);
-        if (after == before) {
-            if (count) *count = kept;
-            if (end) *end = total;
-            if (dropped) *dropped = drops;
-            return 1;
-        }
-    }
-    return 0;
+    uint32_t kept = __atomic_load_n(&cdc_frame_kept, __ATOMIC_ACQUIRE);
+    uint64_t total = __atomic_load_n(&cdc_stream_total, __ATOMIC_RELAXED);
+    if (!kept) return 0;
+    *count = kept;
+    *dropped = total > (uint64_t)kept ? total - (uint64_t)kept : 0u;
+    return 1;
 }
 
 /* Preserve precisely this pre-machine_startup boundary once. A busy/empty
