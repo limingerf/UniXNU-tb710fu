@@ -36,6 +36,12 @@ void tb710fu_cdc_start(void);
 extern int vsnprintf(char *, size_t, const char *, va_list) __printflike(3, 0);
 extern void tb710fu_live_log_boot_mark(unsigned lane, const char *stage)
     __attribute__((weak_import));
+/* A boot mark only paints the lane strip; it never builds a frame. CDC text
+ * therefore stayed outside every QR frame, since frames are only rebuilt by a
+ * checkpoint publish. The text checkpoint paints the captured tail, which is
+ * where the CDC transcript lives once BSD has flooded the console. */
+extern void tb710fu_live_log_checkpoint_text(const char *stage)
+    __attribute__((weak_import));
 extern void tb710fu_live_log_putc(char byte)
     __attribute__((weak_import));
 /* Optional: only the LiveLog archive provides this, and CDC must still link and
@@ -85,6 +91,10 @@ static struct {
 static void cdc_checkpoint(const char *label)
 {
     if (tb710fu_live_log_boot_mark) tb710fu_live_log_boot_mark(1, label);
+    // Marks move the bottom lane, not the frame; without this publish the CDC
+    // transcript never reaches a QR frame at all.
+    if (tb710fu_live_log_checkpoint_text)
+        tb710fu_live_log_checkpoint_text(label);
 }
 
 /* CDC can carry its own diagnostics even if the ordinary console is blocked. */
@@ -1072,6 +1082,12 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
         cdc_checkpoint("cdcready");
         unsigned previous = 0;
         int bus_seen = 0, setup_seen = 0;
+        /* The checkpoint worker and every 1 ms sleep in this loop depend on a
+         * timer interrupt. This board has no mapped interrupt controller, so a
+         * blocked wait can park the CDC thread forever and take the transcript
+         * with it. Watch the counter and fall back to a busy wait instead. */
+        uint64_t observed_ticks = armcpu_timer_interrupts;
+        unsigned quiet_rounds = 0, timer_dead = 0;
         while (gCdc.controller.running && !gCdc.controller.failed) {
             tb710fu_dwc3_poll(&gCdc.controller);
             if (!bus_seen && gCdc.controller.connected) {
@@ -1095,6 +1111,17 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                 previous = state;
             }
             if (!gCdc.controller.running) break;
+            if (armcpu_timer_interrupts != observed_ticks) {
+                observed_ticks = armcpu_timer_interrupts;
+                quiet_rounds = 0;
+            } else if (!timer_dead && ++quiet_rounds > 4u) {
+                timer_dead = 1;
+                cdc_log("TB710FU CDC: timer quiet, polling without sleep\n");
+            }
+            if (timer_dead) {
+                cdc_delay(NULL, 1000);
+                continue;
+            }
             uint64_t deadline;
             clock_interval_to_deadline(1, NSEC_PER_MSEC, &deadline);
             (void)assert_wait_deadline((event_t)&gSleepChannel, THREAD_UNINT, deadline);
@@ -1108,6 +1135,10 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
         cdc_log("TB710FU CDC: transport stopped: %s\n",
                gCdc.controller.failure ? gCdc.controller.failure : "stopped");
     }
+    // One last text checkpoint after the report: the QR frame is rebuilt on a
+    // one second dwell, so a failure that ends the worker right after printing
+    // would otherwise leave the newest lines out of every frame.
+    cdc_checkpoint("cdcrept");
     (void)thread_terminate(current_thread());
     thread_block(THREAD_CONTINUE_NULL);
 }
