@@ -957,13 +957,21 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
 {
     (void)argument;
     (void)wait_result;
-    cdc_checkpoint("cdcentry");
+    /* Entry marker before anything that can take a lock or a guard. The adapter
+     * putc is capture-only and returns on contention, so these bytes prove the
+     * new thread was scheduled and reached user code. A missing marker means the
+     * thread never ran, which is a scheduler/interrupt problem, not a CDC one. */
+    if (tb710fu_live_log_putc) {
+        const char entry[] = "\nCDC-ENTRY\n";
+        for (size_t index = 0; index < sizeof(entry) - 1u; ++index)
+            tb710fu_live_log_putc(entry[index]);
+    }
     uint64_t timer_ctl;
     __asm__ volatile("mrs %0, cntv_ctl_el0" : "=r"(timer_ctl));
     cdc_log("TB710FU CDC: worker gic=%u timer=%llu cntv_ctl=%llx irq=%u\n",
            armcpu_gic_ready, (unsigned long long)armcpu_timer_interrupts,
            (unsigned long long)timer_ctl, (unsigned)ml_get_interrupts_enabled());
-    cdc_checkpoint("cdcwork");
+    cdc_checkpoint("cdcentry");
     const int ready = cdc_prepare(&gCdc);
     cdc_log("TB710FU CDC: stage=%s failure=%s\n", gStage,
            gReport.failure ? gReport.failure : "-");

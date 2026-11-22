@@ -51,6 +51,11 @@ static uint64_t frequency, next_frame, poll_count, xnu_generation, ramoops_gener
 static uint64_t checkpoint_generation, checkpoint_last_qr_attempt_end, xnu_last_dropped;
 static uint64_t checkpoint_last_text_end, checkpoint_export_dropped, checkpoint_drawn_end;
 static uint64_t checkpoint_stage_generation, checkpoint_export_stage_generation;
+/* Liveness evidence: publishes that happen while the console is quiet. A frame
+ * carries heartbeat=<publish count> and is rebuilt even without new bytes once
+ * the window has been current for ten seconds, so two photographs ten seconds
+ * apart separate "kernel quiet" from "nothing is running any more". */
+static uint64_t checkpoint_beat, checkpoint_export_beat_time;
 static char checkpoint_stage[49];
 static int cdc_frame_view(unsigned *count, uint64_t *dropped);
 
@@ -356,6 +361,7 @@ enum checkpoint_kind {
 static __attribute__((noinline)) void checkpoint_publish(const char *stage, enum checkpoint_kind kind)
 {
     if (!tb710fu_live_log_active()) return;
+    (void)__atomic_fetch_add(&checkpoint_beat, 1u, __ATOMIC_RELAXED);
     int text_only = kind == CHECKPOINT_TEXT;
     if (!__atomic_load_n(&checkpoint_mode, __ATOMIC_ACQUIRE)) {
         if (!text_only) tb710fu_live_log_poll();
@@ -439,7 +445,8 @@ static __attribute__((noinline)) void checkpoint_publish(const char *stage, enum
     int backup_ready = backup_frozen && early_state.state == TB710FU_LIVE_CAPTURE_READY;
     if (can_replace && (priority_frame || !checkpoint_sender.valid || compact != (int)checkpoint_compact ||
         export_end != checkpoint_sender.info.end || export_dropped != checkpoint_export_dropped ||
-        checkpoint_stage_generation != checkpoint_export_stage_generation)) {
+        checkpoint_stage_generation != checkpoint_export_stage_generation ||
+        (frequency && now - checkpoint_export_beat_time >= 10u * frequency))) {
         size_t early_available = backup_ready && !compact ? early_state.copied : 0u;
         size_t current_count = compact && export_count > 512u ? 512u : export_count;
         ++checkpoint_file_generation;
@@ -465,7 +472,7 @@ static __attribute__((noinline)) void checkpoint_publish(const char *stage, enum
             }
             int header = snprintf((char *)checkpoint_file, sizeof(checkpoint_file),
                 "TB710FU XNU DEBUG EXPORT v1\nsource=xnu-debug\nbuild=%.64s\n"
-                "checkpoint=%.48s\ncheckpoint_mode=%s\n"
+                "checkpoint=%.48s\ncheckpoint_mode=%s\nheartbeat=%llu\n"
                 "earlybackup_state=%s\nearlybackup_start=%llu\nearlybackup_end=%llu\n"
                 "earlybackup_bytes=%u\nearlybackup_export=%s\n"
                 "current_start=%llu\ncurrent_end=%llu\ncurrent_bytes=%u\n"
@@ -473,6 +480,7 @@ static __attribute__((noinline)) void checkpoint_publish(const char *stage, enum
                 "dropped=%llu\nraw_layout=%s\nraw_bytes_begin\n",
                 TB_LIVE_BUILD_LABEL, checkpoint_stage,
                 compact ? "synchronous_single_frame_loop" : "synchronous_multiframe_loop",
+                (unsigned long long)checkpoint_beat,
                 state_name(early_state.state),
                 (unsigned long long)early_state.start,
                 (unsigned long long)(early_state.start + early_count),
@@ -510,6 +518,7 @@ static __attribute__((noinline)) void checkpoint_publish(const char *stage, enum
                     checkpoint_compact = (unsigned)compact;
                     checkpoint_export_dropped = export_dropped;
                     checkpoint_export_stage_generation = checkpoint_stage_generation;
+                    checkpoint_export_beat_time = now;
                 } else if (replaced != TB710FU_LIVE_LOG_BUSY) {
                     (void)__atomic_fetch_add(&checkpoint_failures, 1u, __ATOMIC_RELAXED);
                     checkpoint_status("FILE-ERR", NULL);

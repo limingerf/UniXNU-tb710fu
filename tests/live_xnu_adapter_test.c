@@ -159,6 +159,7 @@ static void reset_fixture(void)
     checkpoint_file_generation = checkpoint_qr_attempted = checkpoint_compact = checkpoint_text_attempted = 0;
     checkpoint_last_text_end = checkpoint_export_dropped = checkpoint_drawn_end = 0;
     checkpoint_stage_generation = checkpoint_export_stage_generation = 0;
+    checkpoint_beat = checkpoint_export_beat_time = 0;
     checkpoint_stage[0] = '\0';
     qr_encoded[0] = qr_encoded[1] = qr_drawn[0] = qr_drawn[1] = 0;
     frequency = next_frame = xnu_generation = ramoops_generation = xnu_last_dropped = 0;
