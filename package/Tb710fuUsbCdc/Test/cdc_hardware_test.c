@@ -450,7 +450,7 @@ static void test_action_keep(void)
                                    9u, &saved, &actions);
     assert(actions.keep == 0 && actions.fault == (2u << 16));
     assert(actions.bypass == (1u << 16) && actions.both == (3u << 16));
-    assert(actions.smr == ((1u << 31) | 0x40u));
+    assert(actions.smr == saved.smr);
     assert(registers[(0x800 + 9 * 4) / 4] == saved.smr);
     assert(registers[(0xc00 + 9 * 4) / 4] == saved.s2cr);
     // A bank that drops the writes shows its old contents for every encoding.

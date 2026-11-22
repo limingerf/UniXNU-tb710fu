@@ -804,8 +804,14 @@ static int cdc_route(struct tb710fu_cdc_xnu *x,
     if (result == TB710FU_CDC_SMMU_ABSENT || result == TB710FU_CDC_SMMU_FAULTED) {
         cdc_checkpoint(result == TB710FU_CDC_SMMU_ABSENT ? "sidclaim" : "sidtake");
         struct tb710fu_cdc_smmu_saved saved;
-        if (tb710fu_cdc_stream_bypass_attach(cdc_smmu_read, cdc_smmu_write,
-                                             cdc_smmu_barrier, x, route, &saved)) {
+        // Separate checkpoints bracket the walk and the probe: the frame only
+        // advances on a checkpoint, so a stall inside either step leaves the
+        // last label behind as the only evidence of how far the worker got.
+        cdc_checkpoint("sidwalk");
+        const int attached = tb710fu_cdc_stream_bypass_attach(
+            cdc_smmu_read, cdc_smmu_write, cdc_smmu_barrier, x, route, &saved);
+        cdc_checkpoint("sidwlkd");
+        if (attached) {
             gReport.smmu_saved_smr = saved.smr;
             gReport.smmu_saved_s2cr = saved.s2cr;
             gReport.smmu_slot = saved.slot;
@@ -825,9 +831,11 @@ static int cdc_route(struct tb710fu_cdc_xnu *x,
         gReport.smmu_probe_smr = saved.probe_smr;
         gReport.smmu_probe_s2cr = saved.probe_s2cr;
         struct tb710fu_cdc_smmu_actions actions;
+        cdc_checkpoint("sidprob");
         tb710fu_cdc_smmu_probe_actions(cdc_smmu_read, cdc_smmu_write,
                                        cdc_smmu_barrier, x, saved.slot, &saved,
                                        &actions);
+        cdc_checkpoint("sidprbd");
         gReport.smmu_actions[0] = actions.keep;
         gReport.smmu_actions[1] = actions.fault;
         gReport.smmu_actions[2] = actions.bypass;

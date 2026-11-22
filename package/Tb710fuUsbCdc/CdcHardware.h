@@ -290,11 +290,12 @@ static inline void tb710fu_cdc_smmu_probe_actions(
     write(context, s2cr_offset, 3u << 16);
     barrier(context);
     out->both = read(context, s2cr_offset);
-    write(context, smr_offset, (1u << 31) | 0x40u);
-    barrier(context);
+    // Only the action word is exercised here. The stream table is left exactly
+    // as measured: a group whose action is FAULT was the one place the walk
+    // could still stall, and the SID write is only worth trying once an action
+    // has held.
     out->smr = read(context, smr_offset);
     write(context, s2cr_offset, saved->s2cr);
-    write(context, smr_offset, saved->smr);
     barrier(context);
 }
 
