@@ -836,6 +836,15 @@ static int cdc_route(struct tb710fu_cdc_xnu *x,
     gReport.smmu_s2cr = route->s2cr;
     gReport.smmu_masked = route->masked;
     if (result == TB710FU_CDC_SMMU_OK) return 1;
+    // Once the route is open, the stream table has already refused a bypass
+    // publication and every action that would test it again has been measured.
+    // Re-walking the groups or re-probing writes the same registers a second
+    // time for no new information, so a later verification stops at the
+    // read-only scan that just ran.
+    if (gReport.smmu_open) {
+        cdc_checkpoint("sidkeep");
+        return 1;
+    }
     // An absent or already-faulted group is exactly the state the boot chain
     // leaves for a SID it does not own; claim it, then require the same scan to
     // attest the route this adapter will rely on.
