@@ -1,0 +1,32 @@
+From: TB710FU clean board
+Subject: [PATCH] Preserve MPIDR Affinity1 in secondary CPU reset vector for BCM2837/SM8650
+
+Source: Pinned official UniXNU@0c1bac3d51a3009dca1708b15a5198f4b43d057a
+patches/xnu/native-smp-secondary.patch (second hunk only; MAX_CPUS=8 is
+already applied by bcm2837-machine-config.patch).
+
+Reason: SM8650Q-AB numbers its 6 enabled cores in MPIDR Affinity1
+(0x000, 0x300, 0x400, 0x500, 0x600, 0x700). Without HAS_CLUSTER,
+start.s masks MPIDR_EL1 to 0xFF, causing all secondary cores to collide
+with BootCpuData (0x00, cpu_reset_handler == 0) and spin forever at
+Lskip_cpu_reset_handler. Enabling the 0xFFFF mask under BCM2837 lets
+secondary cores match their own CPU_PHYS_ID when smp=1 is enabled.
+
+Verification: dry-run forward and reverse apply against pinned XNU
+osfmk/arm64/start.s; single-core boot path (_start/start_first_cpu) is
+unchanged when smp=0.
+---
+
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -145,8 +145,8 @@
+ 	adrp	x19, EXT(ResetHandlerData)@page			// Get address of the reset handler data
+ 	add		x19, x19, EXT(ResetHandlerData)@pageoff
+ 	mrs		x15, MPIDR_EL1						// Load MPIDR to get CPU number
+-#if HAS_CLUSTER
+-	and		x0, x15, #0xFFFF					// CPU number in Affinity0, cluster ID in Affinity1
++#if HAS_CLUSTER || defined(BCM2837)
++	and		x0, x15, #0xFFFF					// CPU number in Affinity0, cluster ID in Affinity1 (SM8650 numbers cores in Affinity1)
+ #else
+ 	and		x0, x15, #0xFF						// CPU number is in MPIDR Affinity Level 0
+ #endif

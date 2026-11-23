@@ -97,7 +97,7 @@ static struct {
 /* Bump this literal on every build. Three boots were already spent
  * reverse-identifying a photographed frame by grepping kernel strings; a frame
  * that names its own image costs one line and ends that. */
-#define TB710FU_CDC_IMAGE "pl11"
+#define TB710FU_CDC_IMAGE "pl12"
 
 static void cdc_checkpoint(const char *label)
 {
@@ -688,6 +688,15 @@ static void cdc_psci_system_reset(void)
     for (;;) __asm__ volatile("wfi");
 }
 
+/* PSCI 1.1 SYSTEM_RESET2 (SYSTEM_WARM_RESET = 0): preserves TCSR_BOOT_MISC_DETECT
+ * (0x01fd9000 = 0x01) across reset so SM8650 PBL enters 9008 (EDL). */
+static void cdc_psci_warm_reset(void)
+{
+    (void)cdc_smc4(0xC4000012ull, 0ull, 0ull, 0ull, NULL);
+    (void)cdc_smc4(0x84000012ull, 0ull, 0ull, 0ull, NULL);
+    cdc_psci_system_reset();
+}
+
 static int cdc_set_edl_cookie(void)
 {
     uint64_t old_val = 0, new_val = 0;
@@ -771,7 +780,11 @@ static void cdc_exec_pending_cmd(void)
         tb710fu_dwc3_poll(&gCdc.controller);
         cdc_delay(NULL, 100u);
     }
-    cdc_psci_system_reset();
+    if (cmd == 1u) {
+        cdc_psci_warm_reset();
+    } else {
+        cdc_psci_system_reset();
+    }
 }
 
 // SM8650 USB30_PRIM block inside GCC (GCC 0x00100000 + 0x39000). Linux's
