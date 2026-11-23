@@ -102,6 +102,8 @@ static unsigned stuck_offset = UINT32_MAX;
 // Models an SMMU whose whole action bank ignores writes, so every candidate
 // group fails the read-back and the walk has to run to the end.
 static int stuck_actions;
+// Models Qualcomm SM8650 QHEE coercing S2CR.TYPE=BYPASS (1) to FAULT (2).
+static int qhee_block_bypass;
 
 static void write_register(void *context, unsigned offset, uint32_t value)
 {
@@ -114,6 +116,12 @@ static void write_register(void *context, unsigned offset, uint32_t value)
     if (stuck_actions &&
         ((offset >= 0x800u && offset < 0x800u + 4u * 128u) ||
          (offset >= 0xc00u && offset < 0xc00u + 4u * 128u))) return;
+    if (qhee_block_bypass &&
+        offset >= 0xc00u && offset < 0xc00u + 4u * 128u &&
+        ((value >> 16) & 3u) == 1u) {
+        registers[offset / 4u] = 2u << 16;
+        return;
+    }
     registers[offset / 4u] = value;
 }
 
@@ -466,6 +474,71 @@ static void test_action_keep(void)
     assert(actions.smr == saved.smr);
 }
 
+static void fixture_sm8650(void)
+{
+    memset(registers, 0, sizeof(registers));
+    registers[0] = 0x002a0406u; // CLIENTPD=0, USFCFG=1 (live TB710FU value).
+    registers[0x20 / 4] = 0x4c017e6bu; // 107 groups, S1TS=1, SMS=1.
+    registers[0x24 / 4] = (6u << 28) | 70u; // 128 global pages, 70 banks.
+    registers[0x28 / 4] = 0x5111u; // PTFSv8_4K=1, 36-bit address widths.
+    for (unsigned i = 0; i < 107u; ++i)
+        registers[(0xc00u + 4u * i) / 4] = 2u << 16; // QHEE default FAULT.
+}
+
+static void test_cb_bypass_claim(void)
+{
+    struct tb710fu_cdc_identity_route planned, attested, refreshed;
+    struct tb710fu_cdc_smmu_saved saved;
+    // QHEE blocks S2CR.TYPE=BYPASS, so explicit bypass fails while Stage-1 VA64
+    // disabled context-bank attach succeeds using bank 61 (top 8 kept for UFS).
+    fixture_sm8650();
+    qhee_block_bypass = 1;
+    assert(scan(&planned) == TB710FU_CDC_SMMU_ABSENT && planned.slot == 0);
+    assert(!attach(&planned, &saved));
+    assert(tb710fu_cdc_stream_cb_bypass_attach(read_register, write_register,
+                                               barrier, NULL, &planned, &saved));
+    assert(saved.slot == 0 && saved.bank == 61 && saved.bank_tries == 1);
+    assert(registers[(0x1000u + 61u * 4u) / 4] == 0x10000u);
+    assert(registers[(0x1800u + 61u * 4u) / 4] == 1u);
+    assert(registers[((128u + 61u) * 4096u) / 4] == 0u);
+    assert(registers[0xc00u / 4] == 61u);
+    assert(registers[0x800u / 4] == ((1u << 31) | 0x40u));
+    assert(scan(&attested) == TB710FU_CDC_SMMU_OK);
+    assert(attested.slot == 0 && attested.bank == 61 && attested.matching_streams == 1);
+    assert(scan(&refreshed) == TB710FU_CDC_SMMU_OK);
+    assert(memcmp(&attested, &refreshed, sizeof(attested)) == 0);
+
+    // Skip banks owned by another stream or actively translating (SCTLR.M=1),
+    // and skip a TZ-locked bank whose CBAR drops writes (restoring it cleanly).
+    fixture_sm8650();
+    registers[(0x800u + 5u * 4u) / 4] = (1u << 31) | 0x123u;
+    registers[(0xc00u + 5u * 4u) / 4] = 61u; // Bank 61 already in use.
+    registers[((128u + 60u) * 4096u) / 4] = 1u; // Bank 60 actively translating.
+    registers[(0x1000u + 59u * 4u) / 4] = 0x20000u;
+    registers[(0x1800u + 59u * 4u) / 4] = 0u;
+    stuck_offset = 0x1000u + 59u * 4u; // Bank 59 CBAR locked.
+    assert(scan(&planned) == TB710FU_CDC_SMMU_ABSENT);
+    assert(tb710fu_cdc_stream_cb_bypass_attach(read_register, write_register,
+                                               barrier, NULL, &planned, &saved));
+    stuck_offset = UINT32_MAX;
+    assert(saved.bank == 58 && saved.slot == 0);
+    assert(registers[((128u + 60u) * 4096u) / 4] == 1u); // Never touched.
+    assert(registers[(0x1800u + 59u * 4u) / 4] == 0u); // Rolled back cleanly.
+    assert(scan(&attested) == TB710FU_CDC_SMMU_OK && attested.bank == 58);
+
+    // When all SMR/S2CR writes are dropped, context bank state is restored.
+    fixture_sm8650();
+    registers[(0x1000u + 61u * 4u) / 4] = 0x30000u;
+    stuck_actions = 1;
+    assert(scan(&planned) == TB710FU_CDC_SMMU_ABSENT);
+    assert(!tb710fu_cdc_stream_cb_bypass_attach(read_register, write_register,
+                                                barrier, NULL, &planned, &saved));
+    stuck_actions = 0;
+    qhee_block_bypass = 0;
+    assert(registers[(0x1000u + 61u * 4u) / 4] == 0x30000u);
+    assert(registers[(0x1800u + 61u * 4u) / 4] == 0u);
+}
+
 int main(void)
 {
     test_clocks();
@@ -474,6 +547,7 @@ int main(void)
     test_route_classes();
     test_route_claim();
     test_action_keep();
+    test_cb_bypass_claim();
     test_rpmh();
     test_board_power();
     puts("CDC hardware predicates: clock/PHY/SMMU, RPMh and board sequencing cases passed");

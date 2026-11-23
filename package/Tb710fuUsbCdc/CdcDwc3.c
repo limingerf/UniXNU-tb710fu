@@ -37,6 +37,7 @@
 #define COMMAND_START 6u
 #define COMMAND_START_CONFIGURATION 9u
 #define PHY_SUSPEND ((1u << 6) | (1u << 8))
+#define PIPE_SUSPEND (1u << 17)
 // One microsecond per poll gave the core 10 ms to answer a reset and a command.
 // Linux allows 500 ms for the reset alone, and this core is adopted from
 // firmware with its clock still gated by whatever the boot chain left running;
@@ -571,13 +572,26 @@ static void reset_lane(struct tb710fu_dwc3 *d, const char *tag)
 static int core_reset(struct tb710fu_dwc3 *d, uint32_t pre)
 {
     reset_lane(d, "dwcreg");
+    // Synopsys DWC3 / Linux dwc3_gadget_soft_reset: PHY suspend/SLPM bits must
+    // be clear BEFORE asserting DCTL.CSFTRST, or the reset FSM can stall
+    // waiting on a gated PHY clock (observed on TB710FU with pcfg=00102500).
+    const uint32_t pcfg_pre = read_reg(d, USB2PHYCFG);
+    if ((pcfg_pre & PHY_SUSPEND) != 0)
+        write_reg(d, USB2PHYCFG, pcfg_pre & ~PHY_SUSPEND);
+    const uint32_t pectl_pre = read_reg(d, GUSB3PIPECTL);
+    if ((pectl_pre & PIPE_SUSPEND) != 0)
+        write_reg(d, GUSB3PIPECTL, pectl_pre & ~PIPE_SUSPEND);
+    if (((pcfg_pre & PHY_SUSPEND) != 0) || ((pectl_pre & PIPE_SUSPEND) != 0))
+        d->ops.delay_us(d->ops.context, WAIT_DELAY_US);
     d->reset_trace[2] = read_reg(d, GCTL);
     d->reset_trace[3] = read_reg(d, USB2PHYCFG);
     d->reset_trace[5] = read_reg(d, DSTS);
 
     reset_lane(d, "dwcset");
     write_reg(d, DCTL, (pre & ~RUN_STOP) | SOFT_RESET);
+    reset_lane(d, "dwcrd");
     d->reset_trace[1] = read_reg(d, DCTL);
+    reset_lane(d, "dwcwt");
     if (wait_reg(d, DCTL, SOFT_RESET, 0)) return 1;
 
     reset_lane(d, "dwcw1");
@@ -698,11 +712,13 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     const uint32_t gctl_now = read_reg(d, GCTL);
     const uint32_t gctl_want = (gctl_now & ~((3u << 12) | (1u << 1))) | (2u << 12);
     if (gctl_want != gctl_now) write_reg(d, GCTL, gctl_want);
-    // sm8650.dtsi declares both USB2 suspend quirks for the primary core.
+    // sm8650.dtsi declares both USB2 and USB3 suspend quirks for the primary core.
     const uint32_t pcfg_now = read_reg(d, USB2PHYCFG);
     if ((pcfg_now & PHY_SUSPEND) != 0) write_reg(d, USB2PHYCFG, pcfg_now & ~PHY_SUSPEND);
+    const uint32_t pectl_now = read_reg(d, GUSB3PIPECTL);
+    if ((pectl_now & PIPE_SUSPEND) != 0) write_reg(d, GUSB3PIPECTL, pectl_now & ~PIPE_SUSPEND);
     reset_lane(d, "dcfgrw");
-    write_reg(d, DCFG, read_reg(d, DCFG) & ~((127u << 3) | 7u | (1u << 22)));
+    write_reg(d, DCFG, read_reg(d, DCFG) & ~((127u << 3) | (31u << 12) | 7u | (1u << 22)));
     d->probe_trace[0] = read_reg(d, DCFG);
     reset_lane(d, "evtrw");
     write_reg(d, EVENT_LO(0), (uint32_t)dma_physical);
@@ -710,6 +726,7 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     write_reg(d, EVENT_SIZE(0), TB710FU_DWC3_EVENT_BYTES | EVENT_INTERRUPT_MASK);
     write_reg(d, EVENT_COUNT(0), 0);
     d->probe_trace[2] = read_reg(d, EVENT_LO(0));
+    d->probe_trace[4] = read_reg(d, EVENT_HI(0));
     reset_lane(d, "starcfg");
     if (!command(d, 0, COMMAND_START_CONFIGURATION, 0, 0, 0)) {
         d->probe_trace[3] = read_reg(d, DSTS);

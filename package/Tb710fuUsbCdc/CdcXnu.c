@@ -81,8 +81,9 @@ static struct {
     uint32_t smmu_saved_smr, smmu_saved_s2cr;
     uint32_t smmu_probe_smr, smmu_probe_s2cr;
     uint32_t smmu_actions[4], smmu_acr, smmu_gfsr, smmu_scr0;
-    uint32_t smmu_smr, smmu_s2cr;
-    unsigned streams, role, spmi_apid, smmu_slot, smmu_tries;
+    uint32_t smmu_smr, smmu_s2cr, smmu_cbar, smmu_cba2r, smmu_sctlr;
+    uint32_t qscratch_gen[2], qscratch_hs[2];
+    unsigned streams, role, spmi_apid, smmu_slot, smmu_bank, smmu_tries, smmu_bank_tries;
     unsigned smmu_claimed, smmu_masked, smmu_open;
     uint64_t dma_physical;
     uint32_t dma_bytes;
@@ -91,7 +92,7 @@ static struct {
 /* Bump this literal on every build. Three boots were already spent
  * reverse-identifying a photographed frame by grepping kernel strings; a frame
  * that names its own image costs one line and ends that. */
-#define TB710FU_CDC_IMAGE "pl3"
+#define TB710FU_CDC_IMAGE "pl4"
 
 static void cdc_checkpoint(const char *label)
 {
@@ -828,8 +829,12 @@ static int cdc_route(struct tb710fu_cdc_xnu *x,
     gReport.id0 = cdc_read(x->smmu, 0x20);
     gReport.streams = route->matching_streams;
     gReport.smmu_slot = route->slot;
+    gReport.smmu_bank = route->bank;
     gReport.smmu_smr = route->smr;
     gReport.smmu_s2cr = route->s2cr;
+    gReport.smmu_cbar = route->cbar;
+    gReport.smmu_cba2r = route->cba2r;
+    gReport.smmu_sctlr = route->sctlr;
     gReport.smmu_masked = route->masked;
     if (result == TB710FU_CDC_SMMU_OK) return 1;
     // Once the route is open, the stream table has already refused a bypass
@@ -850,25 +855,52 @@ static int cdc_route(struct tb710fu_cdc_xnu *x,
         // Separate checkpoints bracket the walk and the probe: the frame only
         // advances on a checkpoint, so a stall inside either step leaves the
         // last label behind as the only evidence of how far the worker got.
-        cdc_checkpoint("sidwalk");
-        const int attached = tb710fu_cdc_stream_bypass_attach(
+        // Qualcomm SM8650 QHEE coerces S2CR.TYPE=BYPASS to FAULT, so try the
+        // UFS-proven Stage-1 disabled VA64 context-bank route first and fall
+        // back to explicit bypass only if no context bank is available.
+        cdc_checkpoint("sidcbwk");
+        int cb_attached = tb710fu_cdc_stream_cb_bypass_attach(
             cdc_smmu_read, cdc_smmu_write, cdc_smmu_barrier, x, route, &saved);
+        int attached = cb_attached;
+        if (!attached) {
+            cdc_checkpoint("sidwalk");
+            attached = tb710fu_cdc_stream_bypass_attach(
+                cdc_smmu_read, cdc_smmu_write, cdc_smmu_barrier, x, route, &saved);
+        }
         cdc_checkpoint("sidwlkd");
         if (attached) {
+            // Re-scan into *route so callers comparing this route against a
+            // post-DMA-alloc rescan see the newly published state rather than
+            // the stale pre-claim ABSENT snapshot.
+            if (tb710fu_cdc_identity_route_scan(cdc_smmu_read, x, route) !=
+                TB710FU_CDC_SMMU_OK) {
+                cdc_refuse("sidver");
+                return 0;
+            }
+            gReport.streams = route->matching_streams;
+            gReport.smmu_smr = route->smr;
+            gReport.smmu_s2cr = route->s2cr;
+            gReport.smmu_cbar = route->cbar;
+            gReport.smmu_cba2r = route->cba2r;
+            gReport.smmu_sctlr = route->sctlr;
             gReport.smmu_saved_smr = saved.smr;
             gReport.smmu_saved_s2cr = saved.s2cr;
             gReport.smmu_slot = saved.slot;
+            gReport.smmu_bank = saved.bank;
             gReport.smmu_tries = saved.tried;
+            gReport.smmu_bank_tries = saved.bank_tries;
             gReport.smmu_probe_smr = saved.probe_smr;
             gReport.smmu_probe_s2cr = saved.probe_s2cr;
             gReport.smmu_claimed = 1;
             // A publication the first free group dropped but a later one kept
             // means the bottom groups are not uniformly writable.
-            cdc_checkpoint(saved.slot ? "sidmove" : "sidpin");
+            cdc_checkpoint(cb_attached ? "sidcb" : saved.slot ? "sidmove" : "sidpin");
             return 1;
         }
         gReport.smmu_slot = saved.slot;
+        gReport.smmu_bank = saved.bank;
         gReport.smmu_tries = saved.tried;
+        gReport.smmu_bank_tries = saved.bank_tries;
         gReport.smmu_saved_smr = saved.smr;
         gReport.smmu_saved_s2cr = saved.s2cr;
         gReport.smmu_probe_smr = saved.probe_smr;
@@ -1019,13 +1051,32 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
             return 0;
         }
     }
+    // Linux drivers/usb/dwc3/dwc3-qcom.c: dwc3_qcom_select_utmi_clk().
+    // USB2-only bring-up does not power the SuperSpeed QMP PHY, so DWC3 has no
+    // PIPE3 clock until QSCRATCH_GENERAL_CFG switches PIPE to UTMI. Without it
+    // DCTL.CSFTRST cannot finish its clock-domain reset handshake.
+    cdc_step("qscratch-utmi", "cdcqutmi");
+    const uint32_t gen0 = cdc_read(x->qscratch, 0x08);
+    cdc_write(x->qscratch, 0x08, gen0 | (1u << 8));
+    cdc_delay(NULL, 200u);
+    cdc_write(x->qscratch, 0x08, cdc_read(x->qscratch, 0x08) | (1u << 0) | (1u << 3));
+    cdc_delay(NULL, 200u);
+    cdc_write(x->qscratch, 0x08, cdc_read(x->qscratch, 0x08) & ~(1u << 8));
+    cdc_delay(NULL, 200u);
+    const uint32_t gen1 = cdc_read(x->qscratch, 0x08);
+    gReport.qscratch_gen[0] = gen0;
+    gReport.qscratch_gen[1] = gen1;
     // Linux dwc3_qcom_vbus_override_enable defines these wrapper session bits.
     // USB2-only operation does not enable the SuperSpeed lane power override.
     cdc_step("vbus", "cdcvbus");
-    uint32_t hs = cdc_read(x->qscratch, 0x10);
-    cdc_write(x->qscratch, 0x10, hs | (1u << 20) | (1u << 28));
-    if ((cdc_read(x->qscratch, 0x10) & ((1u << 20) | (1u << 28))) !=
-        ((1u << 20) | (1u << 28))) {
+    const uint32_t hs0 = cdc_read(x->qscratch, 0x10);
+    cdc_write(x->qscratch, 0x10, hs0 | (1u << 20) | (1u << 28));
+    const uint32_t hs1 = cdc_read(x->qscratch, 0x10);
+    gReport.qscratch_hs[0] = hs0;
+    gReport.qscratch_hs[1] = hs1;
+    cdc_log("TB710FU CDC: qscratch gen=%08x->%08x hs=%08x->%08x\n",
+            gen0, gen1, hs0, hs1);
+    if ((hs1 & ((1u << 20) | (1u << 28))) != ((1u << 20) | (1u << 28))) {
         cdc_refuse("vbus");
         return 0;
     }
@@ -1066,11 +1117,12 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
     // The status bit above only says what the core thinks of itself. These are
     // the readbacks of the writes actually issued after it, so one frame
     // separates "core deaf to reset but alive" from "core not clocked at all".
-    cdc_log("TB710FU CDC: dwc probe forced=%u dcfg=%08x devten=%08x evtlo=%08x "
+    cdc_log("TB710FU CDC: dwc probe forced=%u dcfg=%08x devten=%08x evt=%08x/%08x "
            "dsts=%08x pectl=%08x\n",
            x->controller.reset_forced, x->controller.probe_trace[0],
            x->controller.probe_trace[1], x->controller.probe_trace[2],
-           x->controller.probe_trace[3], x->controller.probe_trace[5]);
+           x->controller.probe_trace[4], x->controller.probe_trace[3],
+           x->controller.probe_trace[5]);
     if (!started) {
         cdc_refuse(x->controller.failure ? x->controller.failure : "dwc3-start");
         return 0;
@@ -1123,12 +1175,12 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
            "smmu scr0=%08x id0=%08x streams=%u\n",
            gReport.id, gReport.gctl, gReport.role, gReport.dma_bits,
            gReport.scr0, gReport.id0, gReport.streams);
-    cdc_log("TB710FU CDC: smmu claimed=%u slot=%u masked=%u tries=%u open=%u "
-           "smr=%08x s2cr=%08x wb_smr=%08x wb_s2cr=%08x\n",
-           gReport.smmu_claimed, gReport.smmu_slot, gReport.smmu_masked,
-           gReport.smmu_tries, gReport.smmu_open,
-           gReport.smmu_smr, gReport.smmu_s2cr,
-           gReport.smmu_probe_smr, gReport.smmu_probe_s2cr);
+    cdc_log("TB710FU CDC: smmu claimed=%u slot=%u bank=%u masked=%u tries=%u/%u open=%u "
+           "smr=%08x s2cr=%08x cbar=%08x cba2r=%08x sctlr=%08x\n",
+           gReport.smmu_claimed, gReport.smmu_slot, gReport.smmu_bank,
+           gReport.smmu_masked, gReport.smmu_tries, gReport.smmu_bank_tries,
+           gReport.smmu_open, gReport.smmu_smr, gReport.smmu_s2cr,
+           gReport.smmu_cbar, gReport.smmu_cba2r, gReport.smmu_sctlr);
     cdc_log("TB710FU CDC: smmu probe slot=%u pre_smr=%08x pre_s2cr=%08x "
            "keep=%08x fault=%08x bypass=%08x smr=%08x acr=%08x gfsr=%08x scr0=%08x\n",
            gReport.smmu_slot, gReport.smmu_saved_smr, gReport.smmu_saved_s2cr,
@@ -1156,13 +1208,15 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                cdc_read(gCdc.dwc, 0xc708), cdc_read(gCdc.dwc, 0xc720));
         cdc_log("TB710FU CDC: dwc evt want=%08x lo=%08x hi=%08x sz=%08x "
                "cnt=%08x\n", evtbase, evtlo_now, evthi_now, evtsz_now, evtcnt_now);
-        if (evtlo_now != evtbase) {
-            cdc_write(gCdc.dwc, 0xc400, 0xdeadb000u);
-            const uint32_t sentinel = cdc_read(gCdc.dwc, 0xc400);
+        if (evtlo_now != evtbase ||
+            evthi_now != (uint32_t)(gReport.dma_physical >> 32)) {
             cdc_write(gCdc.dwc, 0xc400, evtbase);
+            cdc_write(gCdc.dwc, 0xc404, (uint32_t)(gReport.dma_physical >> 32));
+            cdc_write(gCdc.dwc, 0xc408, TB710FU_DWC3_EVENT_BYTES | (1u << 31));
+            cdc_write(gCdc.dwc, 0xc40c, 0);
             evtlo_now = cdc_read(gCdc.dwc, 0xc400);
-            cdc_log("TB710FU CDC: dwc evt sentinel=%08x rearm=%08x\n",
-                   sentinel, evtlo_now);
+            cdc_log("TB710FU CDC: dwc evt rearm lo=%08x hi=%08x sz=%08x\n",
+                   evtlo_now, cdc_read(gCdc.dwc, 0xc404), cdc_read(gCdc.dwc, 0xc408));
         }
         cdc_checkpoint("irqroute");
         uint32_t spi_state = 0;
@@ -1195,12 +1249,13 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
              * separates "events are arriving" from "nothing ever arrives". */
             if ((++rounds % 1000u) == 0u) {
                 cdc_log("TB710FU CDC: beat dsts=%08x evtcnt=%08x events=%llu "
-                       "connected=%u conf=%u dtr=%u\n",
+                       "connected=%u conf=%u dtr=%u gfsr=%08x\n",
                        cdc_read(gCdc.dwc, 0xc70c), cdc_read(gCdc.dwc, 0xc40c),
                        (unsigned long long)gCdc.controller.events,
                        (unsigned)gCdc.controller.connected,
                        (unsigned)gCdc.controller.configured,
-                       (unsigned)gCdc.controller.dtr);
+                       (unsigned)gCdc.controller.dtr,
+                       cdc_read(gCdc.smmu, 0x58));
             }
             if (!bus_seen && gCdc.controller.connected) {
                 cdc_checkpoint("cdcbus");

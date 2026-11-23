@@ -127,13 +127,15 @@ struct tb710fu_cdc_smmu_geometry {
 // One group quarantined from the boot chain, kept so a failed publication can
 // put it back exactly as it was found.
 struct tb710fu_cdc_smmu_saved {
-    unsigned slot;
+    unsigned slot, bank;
     uint32_t smr, s2cr;
+    uint32_t cbar, cba2r, sctlr;
     // What the last publication attempt actually read back, plus how many
-    // groups were tried. Without these a refused claim cannot say whether a
-    // write was ignored, landed somewhere else, or never ran at all.
-    unsigned tried;
+    // groups/banks were tried. Without these a refused claim cannot say whether
+    // a write was ignored, landed somewhere else, or never ran at all.
+    unsigned tried, bank_tries;
     uint32_t probe_smr, probe_s2cr;
+    uint32_t probe_cbar, probe_cba2r, probe_sctlr;
 };
 
 static inline unsigned tb710fu_cdc_smmu_width(unsigned field)
@@ -366,6 +368,120 @@ static inline int tb710fu_cdc_stream_bypass_attach(
             continue;
         }
         return 1;
+    }
+    return 0;
+}
+
+// Publish an identity Stage-1 VA64 context-bank bypass route for SID 0x40.
+// Qualcomm SM8650 Apps SMMU (QHEE) rejects S2CR.TYPE=BYPASS (1) and coerces it
+// to FAULT (2), which left SID 0x40 unmapped under sCR0.USFCFG=1. The board's
+// UFS path (SmmuTakeover.h) verified that S2CR.TYPE=TRANSLATE (0) pointing to a
+// disabled VA64 Stage-1 context bank (SCTLR=0, CBA2R=1, CBAR=0x10000) works on
+// this exact hardware. Reserve the top 8 banks and the top stream-match group
+// exclusively for UFS so the two claims never collide.
+static inline int tb710fu_cdc_stream_cb_bypass_attach(
+    tb710fu_cdc_register_read read, tb710fu_cdc_register_write write,
+    tb710fu_cdc_register_barrier barrier, void *context,
+    const struct tb710fu_cdc_identity_route *planned,
+    struct tb710fu_cdc_smmu_saved *saved)
+{
+    if (!planned || !saved || planned->slot >= 128u || planned->masked) return 0;
+    struct tb710fu_cdc_smmu_geometry g;
+    if (tb710fu_cdc_smmu_geometry_read(read, context, &g) != TB710FU_CDC_SMMU_OK)
+        return 0;
+    if (!(g.id0 & (1u << 30)) || !(g.id2 & (1u << 12)) || g.banks < 2u)
+        return 0;
+    uint8_t bank_used[128] = {0};
+    for (unsigned i = 0; i < g.groups; ++i) {
+        const uint32_t smr = read(context, 0x800u + 4u * i);
+        if (!(smr & (1u << 31))) continue;
+        const uint32_t s2cr = read(context, 0xc00u + 4u * i);
+        if (((s2cr >> 16) & 3u) == 0u) {
+            const unsigned b = s2cr & 255u;
+            if (b < 128u) bank_used[b] = 1u;
+        }
+    }
+    const unsigned stop = g.groups > 2u ? g.groups - 1u : g.groups;
+    const unsigned first = planned->slot < stop ? planned->slot : 0u;
+    const unsigned start_bank = g.banks > 9u ? g.banks - 9u : g.banks - 2u;
+    const uint32_t match = (1u << 31) | 0x40u;
+    *saved = (struct tb710fu_cdc_smmu_saved){0};
+    for (unsigned step = 0; step <= start_bank; ++step) {
+        const unsigned bank = start_bank - step;
+        if (bank_used[bank]) continue;
+        const unsigned cb_off = (g.pages + bank) * 4096u;
+        const unsigned cbar_off = 0x1000u + 4u * bank;
+        const unsigned cba2r_off = 0x1800u + 4u * bank;
+        const uint32_t saved_sctlr = read(context, cb_off);
+        if (saved_sctlr & 1u) continue; // Never disable a live translating bank.
+        const uint32_t saved_cbar = read(context, cbar_off);
+        const uint32_t saved_cba2r = read(context, cba2r_off);
+        ++saved->bank_tries;
+        saved->bank = bank;
+        saved->cbar = saved_cbar;
+        saved->cba2r = saved_cba2r;
+        saved->sctlr = saved_sctlr;
+        write(context, cb_off, 0u);
+        barrier(context);
+        saved->probe_sctlr = read(context, cb_off);
+        if (saved->probe_sctlr != 0u) {
+            write(context, cb_off, saved_sctlr);
+            barrier(context);
+            continue;
+        }
+        write(context, cba2r_off, 1u);
+        barrier(context);
+        saved->probe_cba2r = read(context, cba2r_off);
+        write(context, cbar_off, 0x10000u);
+        barrier(context);
+        saved->probe_cbar = read(context, cbar_off);
+        if (saved->probe_cba2r != 1u || saved->probe_cbar != 0x10000u ||
+            read(context, cb_off) != 0u) {
+            write(context, cb_off, 0u);
+            write(context, cba2r_off, saved_cba2r);
+            write(context, cbar_off, saved_cbar);
+            write(context, cb_off, saved_sctlr);
+            barrier(context);
+            continue;
+        }
+        for (unsigned slot = first; slot < stop; ++slot) {
+            const unsigned smr_off = 0x800u + 4u * slot;
+            const unsigned s2cr_off = 0xc00u + 4u * slot;
+            const uint32_t smr = read(context, smr_off);
+            if ((smr & (1u << 31)) && slot != planned->slot) continue;
+            saved->slot = slot;
+            saved->smr = smr;
+            saved->s2cr = read(context, s2cr_off);
+            ++saved->tried;
+            write(context, s2cr_off, bank);
+            barrier(context);
+            saved->probe_s2cr = read(context, s2cr_off);
+            int ok = (saved->probe_s2cr == bank);
+            if (ok && !(smr & (1u << 31))) {
+                write(context, smr_off, match);
+                barrier(context);
+                saved->probe_smr = read(context, smr_off);
+                ok = (saved->probe_smr == match);
+            }
+            if (ok) {
+                struct tb710fu_cdc_identity_route attested;
+                if (tb710fu_cdc_identity_route_scan(read, context, &attested) ==
+                        TB710FU_CDC_SMMU_OK &&
+                    attested.slot == slot && attested.bank == bank &&
+                    attested.matching_streams == 1u) {
+                    return 1;
+                }
+            }
+            write(context, smr_off, saved->smr & ~(1u << 31));
+            write(context, s2cr_off, saved->s2cr);
+            write(context, smr_off, saved->smr);
+            barrier(context);
+        }
+        write(context, cb_off, 0u);
+        write(context, cba2r_off, saved_cba2r);
+        write(context, cbar_off, saved_cbar);
+        write(context, cb_off, saved_sctlr);
+        barrier(context);
     }
     return 0;
 }

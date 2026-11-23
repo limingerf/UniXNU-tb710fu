@@ -65,6 +65,8 @@ static void write32(void *context, unsigned reg, uint32_t value)
         }
         if ((value & (1u << 30)) && !f->block_reset) {
             assert(f->halted);
+            assert((f->regs[0xc200 / 4] & ((1u << 6) | (1u << 8))) == 0);
+            assert((f->regs[0xc2c0 / 4] & (1u << 17)) == 0);
             f->reset_complete = 1;
             value &= ~(1u << 30);
         }
@@ -190,6 +192,7 @@ static void prepare(struct fixture *f)
     f->regs[0xc144 / 4] = 1u << 15;
     f->regs[0xc14c / 4] = (6u << 12) | (3u << 18);
     f->regs[0xc200 / 4] = (1u << 6) | (1u << 8);
+    f->regs[0xc2c0 / 4] = 0x030e1002u; // Includes GUSB3PIPECTL.SUSPHY bit 17.
     f->regs[0xc704 / 4] = 1u << 31;
 }
 
@@ -472,6 +475,7 @@ static void test_failures_retain_dma_and_do_not_restart(void)
     // ignored it.
     assert(f.core.probe_trace[1] == ((1u << 11) | (1u << 9) | 7u));
     assert(f.core.probe_trace[2] == (uint32_t)PHYSICAL);
+    assert(f.core.probe_trace[4] == (uint32_t)(PHYSICAL >> 32));
     prepare(&f);
     f.block_command = 1;
     assert(!start(&f, "diagnostic-test-1"));
