@@ -19,6 +19,11 @@ on:
         type: boolean
         required: false
         default: true
+      upload_root_image:
+        description: Also upload the 16.4 GiB root image (slow; only when the OS profile changes)
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
   actions: read
@@ -99,11 +104,17 @@ jobs:
             --data-seed-max-bytes 5752320
       - name: Collect reports
         if: always()
+        env:
+          UPLOAD_ROOT_IMAGE: ${{ inputs.upload_root_image }}
         run: |
           python3 tools/ci_userdata.py collect || true
-          # stage the large image next to the reports for upload
+          # The root image is 16.4 GiB. Uploading it every run costs more than a
+          # build and it never changes unless the OS profile does, so it is staged
+          # only when explicitly asked for. The seed and the reports always go up:
+          # they are the output this workflow exists to produce.
           WORK=$(cat .work/resolved-work.txt 2>/dev/null || true)
-          if [ -n "$WORK" ] && [ -f "$WORK/userdata/userdata-root.img" ]; then
+          if [ "${UPLOAD_ROOT_IMAGE:-false}" = "true" ] && [ -n "$WORK" ] \
+             && [ -f "$WORK/userdata/userdata-root.img" ]; then
             cp "$WORK/userdata/userdata-root.img" .work/artifacts/userdata-root.img
           fi
       - name: Upload private userdata evidence
