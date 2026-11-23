@@ -66,7 +66,8 @@ struct tb710fu_cdc_xnu {
 
 static struct tb710fu_cdc_xnu gCdc;
 static unsigned gAttempted;
-static unsigned gSleepChannel;
+static boolean_t gSavedIrq;
+static unsigned gIrqMasked;
 static IOLock *gCdcTcsLock;
 
 static const char *gStage;
@@ -92,7 +93,7 @@ static struct {
 /* Bump this literal on every build. Three boots were already spent
  * reverse-identifying a photographed frame by grepping kernel strings; a frame
  * that names its own image costs one line and ends that. */
-#define TB710FU_CDC_IMAGE "pl6"
+#define TB710FU_CDC_IMAGE "pl7"
 
 static void cdc_checkpoint(const char *label)
 {
@@ -152,14 +153,6 @@ static void cdc_refuse(const char *reason)
 {
     gReport.failure = reason;
     cdc_checkpoint(reason);
-}
-
-static void cdc_irq(void *argument)
-{
-    (void)argument;
-    // Level IRQ stays asserted until the worker drains the event ring.
-    (void)armcpu_spi_mask(TB710FU_USB_DWC3_INTID, true);
-    thread_wakeup_one((event_t)&gSleepChannel);
 }
 
 static uint32_t cdc_read(vm_offset_t base, unsigned offset)
@@ -1103,6 +1096,11 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
     cdc_log("TB710FU CDC: dwc pre pectl=%08x dctl=%08x gctl=%08x pcfg=%08x "
            "gsts=%08x dsts=%08x\n", pectl, dctl0, gctl0, pcfg0, gsts0, dsts0);
     cdc_step("dwc3-start", "cdcdwc");
+    // Mask IRQs before asserting RUN_STOP: on single-core (smp=0), pl6 was
+    // preempted at irqroute before reaching the poll loop. Everything from here
+    // through USB enumeration is pure MMIO + CNTVCT_EL0 + lock-free ring.
+    gSavedIrq = ml_set_interrupts_enabled(FALSE);
+    gIrqMasked = 1u;
     const int started = tb710fu_dwc3_start(&x->controller, &ops, (uint8_t *)x->dma,
                                           physical, 0x1209, 0x0001, "TB710FUCDC001");
     // The core reset is the first place this board disagrees with a freshly
@@ -1218,30 +1216,12 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
             cdc_log("TB710FU CDC: dwc evt rearm lo=%08x hi=%08x sz=%08x\n",
                    evtlo_now, cdc_read(gCdc.dwc, 0xc404), cdc_read(gCdc.dwc, 0xc408));
         }
-        cdc_checkpoint("irqroute");
-        uint32_t spi_state = 0;
-        kern_return_t spi = armcpu_spi_attach(TB710FU_USB_DWC3_INTID, false,
-                                              cdc_irq, NULL, &spi_state, NULL);
-        const int event_irq = spi == KERN_SUCCESS && (spi_state & 7u) == 3u;
-        if (spi == KERN_SUCCESS) {
-            // Keep the GIC line masked and poll every 100 us directly on this
-            // core: with smp=0, calling thread_block() on round 1 handed the
-            // single CPU to a BSD thread that never yielded back (observed on
-            // pl4, where neither "beat" nor "timer quiet" ever ran).
-            (void)armcpu_spi_mask(TB710FU_USB_DWC3_INTID, true);
-        }
-        cdc_log("TB710FU CDC: event irq=%u kr=%d gic=%08x guctl1=%08x\n",
-               (unsigned)event_irq, spi, spi_state, cdc_read(gCdc.dwc, 0xc11c));
+        cdc_log("TB710FU CDC: poll-start irq=%u guctl1=%08x\n",
+               (unsigned)ml_get_interrupts_enabled(), cdc_read(gCdc.dwc, 0xc11c));
         cdc_log("TB710FU CDC: platform up dma=%llx/%x, waiting for enumeration "
                "and host DTR\n",
                (unsigned long long)gReport.dma_physical, (unsigned)gReport.dma_bytes);
         cdc_checkpoint("cdcready");
-        // On pl5 (smp=0), beat #1 ran at 50 ms with ev=1 (USBRST) and High-Speed
-        // chirp (dsts=000e0000), then the worker was preempted away to the hung
-        // BSD p0a_01/e thread before beat #2 (100 ms), causing Windows to fail
-        // GET_DESCRIPTOR(DEVICE) with Code 43. Mask IRQs while polling DWC3 via
-        // CNTVCT_EL0 so this core stays dedicated to USB enumeration and log TX.
-        const boolean_t prev_irq = ml_set_interrupts_enabled(FALSE);
         unsigned previous = 0;
         int bus_seen = 0, setup_seen = 0;
         unsigned rounds = 0, beats = 0;
@@ -1299,13 +1279,16 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
             if (!gCdc.controller.running) break;
             cdc_delay(NULL, 100u);
         }
-        (void)ml_set_interrupts_enabled(prev_irq);
         cdc_checkpoint("cdcstop");
         cdc_log("TB710FU CDC: transport stopped: %s (ev=%llu last=%08x req=%llu)\n",
                gCdc.controller.failure ? gCdc.controller.failure : "stopped",
                (unsigned long long)gCdc.controller.events,
                gCdc.controller.last_event,
                (unsigned long long)gCdc.controller.setup_requests);
+    }
+    if (gIrqMasked) {
+        gIrqMasked = 0u;
+        (void)ml_set_interrupts_enabled(gSavedIrq);
     }
     // One last text checkpoint after the report: the QR frame is rebuilt on a
     // one second dwell, so a failure that ends the worker right after printing
