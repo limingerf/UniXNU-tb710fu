@@ -13,12 +13,15 @@ Modes:
   collect   copy reports and small evidence into the artifact directory
 """
 import argparse
+import contextlib
 import hashlib
 import json
 import os
+import plistlib
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -237,22 +240,21 @@ def build_data_seed(args, source, work, output, env, common, driver):
         # (DBRDISK1, zero pages dropped) and grows it to the requested size. That
         # packed form is what the payload carries; a raw multi-GiB seed would not
         # fit in the payload FAT, whose spare space is only a few MiB.
+        #
+        # It takes a mounted volume, not an image: it reads private/var and
+        # checks /sbin/launchd directly under that path. Attach the image here and
+        # hand over the mount point.
         make = source / "scripts" / "make-data-seed.py"
         if not make.is_file():
             raise SystemExit(f"seed tool missing: {make}")
-        # The OS build number seeds the migration record. PROFILE is
-        # "<name>-<version>-<build>", so the last dash-separated field is it.
         build = os.environ.get("UNIXNU_BUILD") or PROFILE.rsplit("-", 1)[-1]
-        # --skip-setup marks the Setup Assistant complete so the seed reaches a
-        # login rather than the Hello pages. An account is created by the raw-seed
-        # tool (make-macos-data-seed.py), not by this packed builder, so the flag
-        # is always on here: a seed with no account still needs Setup done.
-        cmd = [sys.executable, str(make), str(os_image), str(seed),
-               "--gib", str(gib), "--build", build, "--skip-setup"]
         log = output / "data-seed-build.log"
-        with log.open("w") as s:
-            r = subprocess.run([str(c) for c in cmd], cwd=source, stdout=s,
-                               stderr=subprocess.STDOUT, env=env)
+        with mount_os_image(os_image, output / "data-seed-attach.log") as volume:
+            cmd = [sys.executable, str(make), str(volume), str(seed),
+                   "--gib", str(gib), "--build", build, "--skip-setup"]
+            with log.open("w") as s:
+                r = subprocess.run([str(c) for c in cmd], cwd=source, stdout=s,
+                                   stderr=subprocess.STDOUT, env=env)
         if r.returncode:
             sys.stderr.write(log.read_text(errors="replace")[-6000:])
             raise SystemExit("data seed build failed")
@@ -321,6 +323,38 @@ def os_disk_image(args, source, work):
                          "Pass --os-image FILE to reuse an extracted OS image instead")
     require_os_volume(plain)
     return plain
+
+
+@contextlib.contextmanager
+def mount_os_image(image, log_path):
+    """Attach an OS disk image read-only and yield the system volume mount point.
+
+    make-data-seed.py reads private/var and checks /sbin/launchd under the path it
+    is given, so it needs the mounted volume, not the image. The image holds one
+    system volume; the mount point is the entry whose system-entities carry it.
+    """
+    image = Path(image).resolve()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="tb710fu-os-") as tmp:
+        point = Path(tmp) / "os"
+        point.mkdir()
+        cmd = ["hdiutil", "attach", "-readonly", "-nobrowse", "-noverify",
+               "-mountpoint", str(point), "-plist", str(image)]
+        with log_path.open("w") as s:
+            r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=s, text=True)
+        if r.returncode:
+            raise SystemExit(f"hdiutil attach failed for {image}: see {log_path}")
+        try:
+            attached = plistlib.loads(r.stdout)
+            device = attached["system-entities"][0]["dev-entry"]
+            if not (point / "sbin" / "launchd").is_file() or not (point / "private" / "var").is_dir():
+                raise SystemExit(
+                    f"the attached OS image has no system volume at {point}: "
+                    "expected sbin/launchd and private/var")
+            yield point
+        finally:
+            subprocess.run(["hdiutil", "detach", device], check=False,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def require_os_volume(image):
