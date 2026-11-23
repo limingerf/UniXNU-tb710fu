@@ -68,7 +68,7 @@ jobs:
           xcrun --sdk macosx --show-sdk-version
           df -h .
       - name: Initialize the pinned UFS interface headers
-        run: git -C .work/UniXNU submodule update --init --depth 1 -- kits/VerifiedRoot drivers/VirtioMmioBlock
+        run: git -C .work/UniXNU submodule update --init --depth 1 -- kits/VerifiedRoot drivers/VirtioMmioBlock drivers/RamBlock
       - name: Build and verify the native arm64e kernel
         env:
           GITHUB_TOKEN: ${{ github.token }}

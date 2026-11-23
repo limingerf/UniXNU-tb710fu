@@ -3,6 +3,7 @@
 // package/SourceStorage.cpp. This slice starts only authenticated, read-only UFS.
 // See Tb710fuSourceStorage/README.md for the separate ABI and integration gates.
 #include <IOKit/IOService.h>
+#include <IOKit/IODeviceTreeSupport.h>
 #include <IOKit/IOLib.h>
 #include <IOKit/storage/IOBlockStorageDevice.h>
 #include <libkern/OSKextLib.h>
@@ -12,6 +13,7 @@
 extern kmod_info_t g_kernel_kmod_info;
 extern "C" void source_storage_base_init(void) __asm__("__GLOBAL__sub_I_IOBlockStorageDevice.cpp");
 extern "C" void source_storage_ufs_init(void) __asm__("__GLOBAL__sub_I_NativeUfs.cpp");
+extern "C" void source_storage_ram_init(void) __asm__("__GLOBAL__sub_I_NativeRamBlock.cpp");
 extern "C" IOService *native_ufs_source_create(void);
 extern "C" bool native_source_root_policies_load(void);
 extern "C" volatile uint32_t native_ufs_root_step;
@@ -105,6 +107,9 @@ extern "C" void native_source_storage_start(void)
     TB710FU_SS_STEP("class-reg-ufs-begin");
     source_storage_ufs_init();
     TB710FU_SS_STEP("class-reg-ufs-done");
+    TB710FU_SS_STEP("class-reg-ram-begin");
+    source_storage_ram_init();
+    TB710FU_SS_STEP("class-reg-ram-done");
     TB710FU_SS_STEP("postmodload-begin");
     status = OSMetaClass::postModLoad(handle);
     if (status != kOSReturnSuccess)
@@ -149,6 +154,22 @@ extern "C" void native_source_storage_start(void)
     if (step)
         panic("TB710FU SourceStorage: UFS %s failed (root step %u: %s)", step, native_ufs_root_step,
               native_ufs_root_failure ? native_ufs_root_failure : "no reason recorded");
+
+    // Start the Data seed RAM disk after UFS (whose store window persists
+    // changed Data pages when data-persist=2 is active).
+    IORegistryEntry *dtMap = IORegistryEntry::fromPath("/chosen/memory-map", gIODTPlane);
+    const bool hasSeed = dtMap && (dtMap->getProperty("PackedRAMDisk") || dtMap->getProperty("RAMDisk"));
+    OSSafeReleaseNULL(dtMap);
+    if (hasSeed) {
+        TB710FU_SS_STEP("ramdisk-start-begin");
+        IOService *disk = OSDynamicCast(IOService, OSMetaClass::allocClassWithName("NativeRamBlock"));
+        if (!disk) panic("TB710FU SourceStorage: cannot allocate NativeRamBlock");
+        const char *rstep = !disk->init() ? "init" : !disk->attach(provider) ? "attach" :
+                            !disk->start(provider) ? "start" : nullptr;
+        if (rstep) panic("TB710FU SourceStorage: NativeRamBlock %s failed", rstep);
+        TB710FU_SS_STEP("ramdisk-start-done");
+    }
+
     provider->release();
     TB710FU_SS_STEP("started");
 }

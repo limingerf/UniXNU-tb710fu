@@ -26,7 +26,6 @@ archives = [
   "build-corecrypto-14.py --namespace",
   "component:ArmDTPlatform",
   "component:ArmCpu",
-  "component:RamBlock",
   "build-libpthread-kernel.py",
   "build-tb710fu-cdc-log.py",
   "build-tb710fu-live-log.py",

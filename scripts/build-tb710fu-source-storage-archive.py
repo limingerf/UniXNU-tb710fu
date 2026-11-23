@@ -112,7 +112,7 @@ def main():
     if revision(framework) != lock['unixnu']['commit']:
         raise SystemExit('Framework revision differs from the device source lock')
     link_rule = verify_link_rule(tree, lock['xnu_commit'])
-    for relative in ('kits/VerifiedRoot', 'drivers/VirtioMmioBlock'):
+    for relative in ('kits/VerifiedRoot', 'drivers/VirtioMmioBlock', 'drivers/RamBlock'):
         expected = subprocess.check_output(
             ['git', '-C', str(framework), 'rev-parse', lock['unixnu']['commit'] + ':' + relative],
             text=True).strip()

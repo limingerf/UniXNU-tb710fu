@@ -39,6 +39,48 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def defer_constructor(obj, late, init):
+    # llvm-objcopy refuses --remove-section on Mach-O, so neutralise the eager
+    # metaclass constructor in place: rename the section so the linker no longer
+    # treats it as __mod_init_func pointers, clear its section type, and mark the
+    # constructor symbol external so the runtime's strong reference binds to it.
+    data = bytearray(obj.read_bytes())
+    if struct.unpack_from('<I', data)[0] != 0xfeedfacf:
+        raise SystemExit(f'{obj}: not a 64-bit Mach-O object')
+    count = struct.unpack_from('<I', data, 16)[0]
+    symtab, renamed, offset = None, 0, 32
+    for _ in range(count):
+        command, size = struct.unpack_from('<II', data, offset)
+        if command == 0x19:
+            sections = struct.unpack_from('<I', data, offset + 64)[0]
+            for index in range(sections):
+                section = offset + 72 + index * 80
+                if data[section:section + 16].rstrip(b'\0') == b'__mod_init_func':
+                    data[section:section + 16] = b'__mod_deferred\0\0'
+                    flags = struct.unpack_from('<I', data, section + 64)[0]
+                    struct.pack_into('<I', data, section + 64, flags & ~0xff)
+                    renamed += 1
+        elif command == 0x2:
+            symtab = struct.unpack_from('<IIII', data, offset + 8)
+        offset += size
+    if not renamed:
+        raise SystemExit(f'{obj}: expected eager metaclass constructor section missing')
+    if symtab is None:
+        raise SystemExit(f'{obj}: no symbol table')
+    symoff, nsyms, stroff, _ = symtab
+    external = 0
+    for index in range(nsyms):
+        entry = symoff + index * 16
+        string, n_type = struct.unpack_from('<IB', data, entry)
+        name = bytes(data[stroff + string:]).split(b'\0', 1)[0]
+        if name == init.encode():
+            struct.pack_into('<B', data, entry + 4, n_type | 0x01)
+            external += 1
+    if not external:
+        raise SystemExit(f'{obj}: expected deferred constructor {init} missing from symbols')
+    late.write_bytes(bytes(data))
+
+
 def require_no_eager_constructors(data, name):
     # target.check_object has already checked the Mach-O header/architecture.
     count = struct.unpack_from('<I', data, 16)[0]
@@ -142,11 +184,13 @@ def main():
     anchor, policies = policy_bundle(framework, output)
     verified_root = framework / 'kits/VerifiedRoot'
     virtio_block = framework / 'drivers/VirtioMmioBlock'
+    ram_block = framework / 'drivers/RamBlock'
+    ram_block_cpp = ram_block / 'NativeRamBlock.cpp'
     interface_revisions = {}
-    for directory in (verified_root / 'include', virtio_block):
+    for directory in (verified_root / 'include', virtio_block, ram_block):
         if not directory.is_dir():
             raise SystemExit(f'Initialize the pinned interface component first: {directory}')
-    for directory in (verified_root, virtio_block):
+    for directory in (verified_root, virtio_block, ram_block):
         relative = directory.relative_to(framework).as_posix()
         gitlink = subprocess.check_output(['git', '-C', str(framework), 'ls-tree', revision, relative], text=True).split()
         if len(gitlink) != 4 or gitlink[:2] != ['160000', 'commit']:
@@ -183,13 +227,18 @@ OSDefineOperatorMethods(IOBlockStorageDevice)
         stage = Path(temporary) / 'ShengUfs'
         adapter.stage_source(source, stage, patches=patches)
         host_tests = adapter.run_host_tests(stage, output, patches=patches)
-        sources = [base, stage / 'NativeUfs.cpp', ROOT / 'package/SourceStorage.cpp',
+        sources = [base, stage / 'NativeUfs.cpp', ram_block_cpp, ROOT / 'package/SourceStorage.cpp',
                    ROOT / 'package/SourceRootPolicies.cpp', ROOT / 'package/SourceRootBinding.cpp',
                    verified_root / 'src/verified_root.c', verified_root / 'adapters/xnu_crypto.c', anchor]
         for path in sources:
             record = recipes['c' if path.suffix == '.c' else 'cpp']
             obj = output / (path.stem + '.o')
             command = adapter.compile_command(record, path, obj, includes, flags)
+            # The XNU records carry the kernel's 17.0 triple (twice); this archive
+            # is pinned to the macOS 27 profile, and the last --target wins, so
+            # rewrite every target flag or the deployment check below rejects it.
+            command = ['--target=arm64e-apple-ios27.0' if value.startswith('--target=')
+                       else value for value in command]
             # The public base retains upstream warning behavior, as in the
             # pinned official recipe. Warnings are preserved in its log.
             if path == base:
@@ -207,14 +256,13 @@ OSDefineOperatorMethods(IOBlockStorageDevice)
                 if not dependency.is_absolute():
                     dependency = Path(record['directory']) / dependency
                 inputs[str(dependency.resolve())] = sha(dependency)
-            if path in (base, stage / 'NativeUfs.cpp'):
+            if path in (base, stage / 'NativeUfs.cpp', ram_block_cpp):
                 init = '__GLOBAL__sub_I_' + path.name
                 defined = subprocess.check_output(['xcrun', 'nm', '-j', '-U', str(obj)], text=True).splitlines()
                 if init not in defined:
                     raise SystemExit(f'{path.name}: expected deferred constructor {init} missing')
                 late = obj.with_suffix('.late.o')
-                subprocess.run([objcopy, '--remove-section=__DATA,__mod_init_func',
-                                '--globalize-symbol=' + init, str(obj), str(late)], check=True)
+                defer_constructor(obj, late, init)
                 target.check_object(late.read_bytes(), path.name + ' deferred')
                 require_no_eager_constructors(late.read_bytes(), path.name)
                 # The late constructor must be externally visible for the
