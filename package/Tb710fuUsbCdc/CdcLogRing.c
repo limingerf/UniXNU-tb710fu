@@ -66,6 +66,38 @@ size_t tb710fu_cdc_log_ring_append(struct tb710fu_cdc_log_ring *ring,
     return written;
 }
 
+size_t tb710fu_cdc_log_ring_append_overwrite(struct tb710fu_cdc_log_ring *ring,
+                                             const uint8_t *bytes, size_t length)
+{
+    if (ring == NULL || bytes == NULL || length == 0 ||
+        ring->storage == NULL || ring->capacity == 0) {
+        return 0;
+    }
+    if (!try_lock(ring)) {
+        drop_bytes(ring, length);
+        return 0;
+    }
+    const uint8_t *src = bytes;
+    size_t to_write = length;
+    if (to_write > ring->capacity) {
+        const size_t skip = to_write - ring->capacity;
+        src += skip;
+        to_write = ring->capacity;
+        drop_bytes(ring, skip);
+    }
+    const uint64_t used = ring->write_index - ring->read_index;
+    const size_t available = ring->capacity - (size_t)used;
+    if (to_write > available) {
+        const size_t evict = to_write - available;
+        ring->read_index += evict;
+        drop_bytes(ring, evict);
+    }
+    ring_copy_in(ring, ring->write_index, src, to_write);
+    ring->write_index += to_write;
+    unlock(ring);
+    return to_write;
+}
+
 size_t tb710fu_cdc_log_ring_copy(struct tb710fu_cdc_log_ring *ring,
                                  uint8_t *out, size_t capacity)
 {

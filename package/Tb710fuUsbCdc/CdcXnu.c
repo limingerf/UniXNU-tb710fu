@@ -94,7 +94,7 @@ static struct {
 /* Bump this literal on every build. Three boots were already spent
  * reverse-identifying a photographed frame by grepping kernel strings; a frame
  * that names its own image costs one line and ends that. */
-#define TB710FU_CDC_IMAGE "pl9"
+#define TB710FU_CDC_IMAGE "pl10"
 
 static void cdc_checkpoint(const char *label)
 {
@@ -1282,11 +1282,13 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
             if (gIrqMasked) {
                 if (gCdc.controller.configured) ++configured_rounds;
                 if (gCdc.controller.dtr) ++dtr_rounds;
-                // Keep IRQs masked through enumeration and a short host-DTR
-                // drain window (50 ms after DTR, or 3 s after configured, or
-                // 5 s unplugged cap), then restore IRQs with explicit lane
-                // markers to pinpoint unmask vs thread_block behavior.
-                if (dtr_rounds >= 500u || configured_rounds >= 30000u || rounds >= 50000u) {
+                // Keep IRQs masked through enumeration and host-DTR drain of
+                // the 256 KiB tail ring (until empty for 20 ms or 500 ms DTR
+                // cap, or 3 s configured / 5 s unplugged cap), then restore
+                // IRQs with explicit lane markers.
+                const int dtr_drained = (dtr_rounds >= 200u && tb710fu_cdc_log_tap_pending() == 0u);
+                if (dtr_drained || dtr_rounds >= 5000u ||
+                    configured_rounds >= 30000u || rounds >= 50000u) {
                     cdc_lane_op(NULL, "cdcunmk");
                     gIrqMasked = 0u;
                     (void)ml_set_interrupts_enabled(gSavedIrq);

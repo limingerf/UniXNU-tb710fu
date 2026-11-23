@@ -2,7 +2,7 @@
 
 #include "CdcLogRing.h"
 
-#define TB710FU_CDC_KERNEL_LOG_CAPACITY (64u * 1024u)
+#define TB710FU_CDC_KERNEL_LOG_CAPACITY (256u * 1024u)
 
 static uint8_t gKernelLogBytes[TB710FU_CDC_KERNEL_LOG_CAPACITY]
     __attribute__((aligned(64)));
@@ -17,12 +17,12 @@ void tb710fu_cdc_log_tap_putc(char byte)
     if (value == '\r') {
         return;
     }
-    (void)tb710fu_cdc_log_ring_append(&gKernelLog, &value, sizeof(value));
+    (void)tb710fu_cdc_log_ring_append_overwrite(&gKernelLog, &value, sizeof(value));
 }
 
 void tb710fu_cdc_log_tap_append(const char *bytes, size_t length)
 {
-    (void)tb710fu_cdc_log_ring_append(&gKernelLog, (const uint8_t *)bytes, length);
+    (void)tb710fu_cdc_log_ring_append_overwrite(&gKernelLog, (const uint8_t *)bytes, length);
 }
 
 size_t tb710fu_cdc_log_tap_copy(uint8_t *out, size_t capacity)
