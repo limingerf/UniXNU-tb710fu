@@ -10,7 +10,7 @@ description = "Lenovo TB710FU: minimal macOS 27 kernel bring-up, storage and har
 example = false
 
 [components]
-include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "DarwinBoot"]
+include = ["ArmDTPlatform", "ArmCpu", "RamBlock", "XnuPrelink", "DarwinBoot"]
 
 [kernel]
 defconfig = "tb710fu_macos_defconfig"
@@ -26,6 +26,7 @@ archives = [
   "build-corecrypto-14.py --namespace",
   "component:ArmDTPlatform",
   "component:ArmCpu",
+  "component:RamBlock",
   "build-libpthread-kernel.py",
   "build-tb710fu-cdc-log.py",
   "build-tb710fu-live-log.py",

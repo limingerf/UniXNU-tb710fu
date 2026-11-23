@@ -14,16 +14,21 @@ CONFIG_XNU_SOURCE_STORAGE=y
 # SourceStorage creates the service after loading the original storage family.
 # Keep the separate automatic NativeUfs personalities disabled.
 CONFIG_XNU_NATIVE_UFS=n
-CONFIG_XNU_NATIVE_RAM_BLOCK=n
+CONFIG_XNU_NATIVE_RAM_BLOCK=y
 CONFIG_XNU_VERIFIED_ROOT_PROBE=n
 CONFIG_XNU_OWNER_ROOT_AUDIT=y
 CONFIG_XNU_OWNER_ROOT_TRUST=y
-CONFIG_XNU_OWNER_CACHE_MOUNT=n
-# launchd reached userspace (run 45214948832) but restarted because the writable
-# Data volume never mounted: the seeded Data ramdisk is only consumed when this
-# is on, and the ShengUfs persistent window is only opened when the
-# sheng-data-persist boot argument is non-zero. Both halves are required.
+CONFIG_XNU_OWNER_CACHE_MOUNT=y
+CONFIG_XNU_OWNER_CACHE_STARTUP=y
+CONFIG_XNU_OWNER_BOOT_MANIFEST=y
+# launchd reached userspace (run 45214948832) but exited 0 because the writable
+# Data volume and SystemOS/Preboot cryptex view were never mounted. Enable the
+# complete upstream chain (RamBlock -> CACHE_MOUNT -> CACHE_STARTUP ->
+# BOOT_MANIFEST -> DATA_MOUNT -> UNION_SYSTEMOS) with a fixed Data volume UUID
+# matching the macos-userdata.yml seed run.
 CONFIG_XNU_OWNER_DATA_MOUNT=y
+CONFIG_XNU_OWNER_UNION_SYSTEMOS=y
+CONFIG_XNU_OWNER_DATA_VOLUME_UUID="A7B710F0-8650-4D27-9A01-26C5035F0001"
 CONFIG_XNU_BOOT_PROGRESS=n
 CONFIG_XNU_NATIVE_ADRENO=n
 CONFIG_XNU_NATIVE_LEGACY_DISPLAY=n

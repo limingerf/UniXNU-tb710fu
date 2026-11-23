@@ -33,7 +33,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: tb710fu-macos-cloud
+  group: tb710fu-macos-userdata
   cancel-in-progress: false
 env:
   DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
@@ -67,6 +67,11 @@ jobs:
           # matches the loader the payload is later built against.
           git -C .work/UniXNU submodule update --init --depth 1 -- drivers/DarwinBoot
           test -f .work/UniXNU/drivers/DarwinBoot/Test/packed_ramdisk.py
+          # Apply upstream UniXNU/UniXNU seed-data-grow.py fixes for macOS 26
+          # runners (1a71ace5: wait for attached APFS container before resizing;
+          # ce025d6b: identify attached disks by type instead of output order).
+          git -C .work/UniXNU fetch --depth 1 origin ce025d6bc87e550590aa1e972191d98a67fa17c5
+          git -C .work/UniXNU checkout ce025d6bc87e550590aa1e972191d98a67fa17c5 -- scripts/seed-data-grow.py
       - name: Install the AEA key tool and verify macOS image tools
         run: |
           set -euo pipefail
@@ -90,9 +95,10 @@ jobs:
           # restarts. The limit is the payload FAT's spare space, measured at
           # 5,752,320 bytes: mcopy never grows that filesystem.
           python3 tools/ci_userdata.py seed \
-            --data-gib "${DATA_GIB:-0}" \
+            --data-gib "${DATA_GIB:-120}" \
             --data-user "${{ inputs.data_user }}" \
-            --data-seed-max-bytes 5752320
+            --volume-uuid "A7B710F0-8650-4D27-9A01-26C5035F0001" \
+            --data-seed-max-bytes 0
       - name: Collect seed evidence
         if: always()
         run: python3 tools/ci_userdata.py collect || true
@@ -131,6 +137,11 @@ jobs:
           # matches the loader the payload is later built against.
           git -C .work/UniXNU submodule update --init --depth 1 -- drivers/DarwinBoot
           test -f .work/UniXNU/drivers/DarwinBoot/Test/packed_ramdisk.py
+          # Apply upstream UniXNU/UniXNU seed-data-grow.py fixes for macOS 26
+          # runners (1a71ace5: wait for attached APFS container before resizing;
+          # ce025d6b: identify attached disks by type instead of output order).
+          git -C .work/UniXNU fetch --depth 1 origin ce025d6bc87e550590aa1e972191d98a67fa17c5
+          git -C .work/UniXNU checkout ce025d6bc87e550590aa1e972191d98a67fa17c5 -- scripts/seed-data-grow.py
       - name: Install the AEA key tool and verify macOS image tools
         run: |
           set -euo pipefail

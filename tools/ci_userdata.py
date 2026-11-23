@@ -88,6 +88,8 @@ def main():
     ap.add_argument("--data-seed-max-bytes", type=int, default=0,
                     help="refuse a seed larger than this (0 = no limit); the payload FAT "
                          "has only about 9.4 MiB spare in the current baseline")
+    ap.add_argument("--volume-uuid", default="A7B710F0-8650-4D27-9A01-26C5035F0001",
+                    help="fixed APFS Data volume UUID matching CONFIG_XNU_OWNER_DATA_VOLUME_UUID")
     args = ap.parse_args()
     source = args.source.resolve()
     output = ROOT / ".work/artifacts"
@@ -253,7 +255,7 @@ def build_data_seed(args, source, work, output, env, common, driver):
         # on the directory itself. Create it rather than patching the pinned script.
         (source / "build").mkdir(parents=True, exist_ok=True)
         cmd = [sys.executable, str(make), str(os_image), str(seed),
-               "--gib", str(gib), "--skip-setup"]
+               "--gib", str(gib), "--skip-setup", "--volume-uuid", args.volume_uuid]
         if dh:
             cmd += ["--user", args.data_user]
         log = output / "data-seed-build.log"
