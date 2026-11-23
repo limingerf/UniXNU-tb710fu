@@ -18,6 +18,15 @@ extern "C" IOService *native_ufs_source_create(void);
 extern "C" bool native_source_root_policies_load(void);
 extern "C" volatile uint32_t native_ufs_root_step;
 extern "C" const char *volatile native_ufs_root_failure;
+extern "C" int native_ufs_store_write(uint64_t block, uint32_t count, const void *src);
+
+// Pinned ShengUfsPort provides FUA native_ufs_store_write() without the newer
+// non-FUA cached variant; delegate directly to real FUA UFS writes so every
+// NativeRamBlock persistent overlay write lands durably on media.
+extern "C" int native_ufs_store_write_cached(uint64_t block, uint32_t count, const void *src)
+{
+    return native_ufs_store_write(block, count, src);
+}
 
 namespace {
 const OSMetaClass *storageParent;
