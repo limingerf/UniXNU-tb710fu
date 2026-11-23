@@ -32,6 +32,8 @@ struct tb710fu_dwc3_ops {
     // Optional: paints the eight-character lane tag without rebuilding a frame,
     // so a bus access that never returns still leaves its step on screen.
     void (*lane)(void *, const char *);
+    // Optional: receives host-to-device bulk OUT bytes on EP_RX.
+    void (*on_rx)(void *, const uint8_t *, unsigned);
 };
 
 enum tb710fu_dwc3_control_phase {

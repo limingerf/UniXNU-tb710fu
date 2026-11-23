@@ -70,6 +70,9 @@ static unsigned gSleepChannel;
 static boolean_t gSavedIrq;
 static unsigned gIrqMasked;
 static IOLock *gCdcTcsLock;
+static char gRxLine[32];
+static unsigned gRxLen;
+static unsigned gPendingCmd; /* 1=edl, 2=reboot, 3=bootloader */
 
 static const char *gStage;
 // Only the worker reads or writes the platform samples.
@@ -94,7 +97,7 @@ static struct {
 /* Bump this literal on every build. Three boots were already spent
  * reverse-identifying a photographed frame by grepping kernel strings; a frame
  * that names its own image costs one line and ends that. */
-#define TB710FU_CDC_IMAGE "pl10"
+#define TB710FU_CDC_IMAGE "pl11"
 
 static void cdc_checkpoint(const char *label)
 {
@@ -630,6 +633,147 @@ static int cdc_consume(void *context, size_t bytes)
     return tb710fu_cdc_log_tap_consume(bytes);
 }
 
+/* Host-to-device CDC serial commands (line-delimited ASCII):
+ *   edl        -> QCOM_SCM_IO_WRITE(0x01fd9000, EDL=0x01) + PSCI SYSTEM_RESET
+ *                 (0x01fd9000 verified from live-fdt.dtb qcom,dload-mode <0x03 0x19000>)
+ *   reboot     -> PSCI SYSTEM_RESET (0x84000009)
+ *   bootloader -> PMK8550 SDAM2 (SID 0, PPID 0x071, off 0x48, bits <1 7> = 0x02)
+ *                 + PSCI SYSTEM_RESET (verified from pmk8550.dtsi:12-18) */
+#define TB710FU_TCSR_BOOT_MISC_DETECT 0x01fd9000u
+#define TB710FU_QCOM_DLOAD_MASK       0x33u
+#define TB710FU_QCOM_DLOAD_EDL        0x01u
+#define TB710FU_PMK8550_SDAM2_PPID    0x071u
+#define TB710FU_PMK8550_SDAM2_BASE    0x7100u
+#define TB710FU_PMK8550_REBOOT_OFF    0x48u
+
+static void cdc_on_rx(void *context, const uint8_t *bytes, unsigned length)
+{
+    (void)context;
+    for (unsigned i = 0; i < length; ++i) {
+        const char ch = (char)bytes[i];
+        if (ch == '\r' || ch == '\n') {
+            if (gRxLen > 0u) {
+                gRxLine[gRxLen] = '\0';
+                if (gRxLen == 3u && memcmp(gRxLine, "edl", 3u) == 0) {
+                    gPendingCmd = 1u;
+                } else if (gRxLen == 6u && memcmp(gRxLine, "reboot", 6u) == 0) {
+                    gPendingCmd = 2u;
+                } else if (gRxLen == 10u && memcmp(gRxLine, "bootloader", 10u) == 0) {
+                    gPendingCmd = 3u;
+                }
+                gRxLen = 0u;
+            }
+        } else if (ch >= 'A' && ch <= 'Z') {
+            if (gRxLen + 1u < sizeof(gRxLine)) gRxLine[gRxLen++] = (char)(ch + ('a' - 'A'));
+        } else if (ch >= 0x20 && ch < 0x7f) {
+            if (gRxLen + 1u < sizeof(gRxLine)) gRxLine[gRxLen++] = ch;
+        }
+    }
+}
+
+static int64_t cdc_smc4(uint64_t fn, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t *r1)
+{
+    register uint64_t x0 __asm__("x0") = fn;
+    register uint64_t x1 __asm__("x1") = a1;
+    register uint64_t x2 __asm__("x2") = a2;
+    register uint64_t x3 __asm__("x3") = a3;
+    __asm__ volatile("smc #0" : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3) :: "memory");
+    if (r1) *r1 = x1;
+    return (int64_t)x0;
+}
+
+static void cdc_psci_system_reset(void)
+{
+    (void)cdc_smc4(0x84000009ull, 0ull, 0ull, 0ull, NULL);
+    for (;;) __asm__ volatile("wfi");
+}
+
+static int cdc_set_edl_cookie(void)
+{
+    uint64_t old_val = 0, new_val = 0;
+    /* QCOM_SCM_SVC_IO (0x05): IO_READ=0x01, IO_WRITE=0x02 (SMC64 0xC20005xx, fallback SMC32 0x820005xx) */
+    int64_t rc = cdc_smc4(0xC2000501ull, 1ull, TB710FU_TCSR_BOOT_MISC_DETECT, 0ull, &old_val);
+    uint64_t write_fn = 0xC2000502ull;
+    uint64_t read_fn = 0xC2000501ull;
+    if (rc != 0) {
+        rc = cdc_smc4(0x82000501ull, 1ull, TB710FU_TCSR_BOOT_MISC_DETECT, 0ull, &old_val);
+        write_fn = 0x82000502ull;
+        read_fn = 0x82000501ull;
+    }
+    const uint32_t want = ((uint32_t)old_val & ~TB710FU_QCOM_DLOAD_MASK) | TB710FU_QCOM_DLOAD_EDL;
+    int64_t wrc = cdc_smc4(write_fn, 2ull, TB710FU_TCSR_BOOT_MISC_DETECT, (uint64_t)want, NULL);
+    int64_t rrc = cdc_smc4(read_fn, 1ull, TB710FU_TCSR_BOOT_MISC_DETECT, 0ull, &new_val);
+    int64_t brc = 0;
+    if (wrc != 0) {
+        /* Fallback: QCOM_SCM_SVC_BOOT (0x01) SET_DLOAD_MODE (0x10) */
+        brc = cdc_smc4(0xC2000110ull, 2ull, TB710FU_QCOM_DLOAD_EDL, 0ull, NULL);
+        if (brc != 0) brc = cdc_smc4(0x82000110ull, 2ull, TB710FU_QCOM_DLOAD_EDL, 0ull, NULL);
+    }
+    cdc_log("TB710FU CDC: edl-cookie rc=%lld/%lld/%lld/%lld val=%08x->%08x\n",
+            (long long)rc, (long long)wrc, (long long)rrc, (long long)brc,
+            (unsigned)old_val, (unsigned)new_val);
+    return (wrc == 0 || brc == 0) ? 1 : 0;
+}
+
+static int cdc_set_bootloader_sdam(void)
+{
+    const vm_offset_t core = ml_io_map(TB710FU_USB_SPMI_CORE_BASE, TB710FU_USB_SPMI_CORE_BYTES);
+    const vm_offset_t config = ml_io_map(TB710FU_USB_SPMI_CONFIG_BASE, TB710FU_USB_SPMI_CONFIG_BYTES);
+    if (!core || !config) return 0;
+    const uint32_t count = (cdc_read(core, 0x04) >> 16) & 0x3ffu;
+    int apid = -1;
+    for (uint32_t i = 0; i < count && i < 1024u; ++i) {
+        const uint32_t mapping = cdc_read(core, 0x0900u + i * 4u);
+        const uint32_t owner = cdc_read(config, i * 4u) & 7u;
+        if (((mapping >> 8) & 0xfffu) == TB710FU_PMK8550_SDAM2_PPID &&
+            owner == TB710FU_CDC_SPMI_EE) {
+            apid = (int)i;
+            break;
+        }
+    }
+    if (apid < 0) {
+        cdc_log("TB710FU CDC: bootloader-sdam apid not found\n");
+        return 0;
+    }
+    const size_t obs_bytes = TB710FU_USB_SPMI_OBSERVER_STRIDE * ((size_t)apid + 1u);
+    const size_t ch_bytes = TB710FU_USB_SPMI_CHANNEL_STRIDE * ((size_t)apid + 1u);
+    const vm_offset_t obs = ml_io_map(TB710FU_USB_SPMI_OBSERVER_BASE, obs_bytes);
+    const vm_offset_t ch = ml_io_map(TB710FU_USB_SPMI_CHANNEL_BASE, ch_bytes);
+    if (!obs || !ch) return 0;
+    const uint8_t addr = TB710FU_PMK8550_REBOOT_OFF;
+    uint8_t oldv = 0, newv = 0;
+    const int r1 = cdc_spmi_read(obs, (unsigned)apid, addr, &oldv);
+    const uint8_t want = (uint8_t)((oldv & 0x01u) | (0x02u << 1));
+    const int w1 = cdc_spmi_write(ch, (unsigned)apid, addr, want);
+    const int r2 = cdc_spmi_read(obs, (unsigned)apid, addr, &newv);
+    cdc_log("TB710FU CDC: bootloader-sdam apid=%d ok=%d/%d/%d val=%02x->%02x\n",
+            apid, r1, w1, r2, (unsigned)oldv, (unsigned)newv);
+    return w1;
+}
+
+static void cdc_exec_pending_cmd(void)
+{
+    const unsigned cmd = gPendingCmd;
+    gPendingCmd = 0u;
+    if (cmd == 1u) {
+        cdc_log("TB710FU CDC: cmd=edl\n");
+        (void)cdc_set_edl_cookie();
+    } else if (cmd == 2u) {
+        cdc_log("TB710FU CDC: cmd=reboot\n");
+    } else if (cmd == 3u) {
+        cdc_log("TB710FU CDC: cmd=bootloader\n");
+        (void)cdc_set_bootloader_sdam();
+    } else {
+        return;
+    }
+    /* Flush reply over USB Bulk IN for 30 ms before issuing PSCI reset. */
+    for (unsigned i = 0; i < 300u && gCdc.controller.running && !gCdc.controller.failed; ++i) {
+        tb710fu_dwc3_poll(&gCdc.controller);
+        cdc_delay(NULL, 100u);
+    }
+    cdc_psci_system_reset();
+}
+
 // SM8650 USB30_PRIM block inside GCC (GCC 0x00100000 + 0x39000). Linux's
 // dwc3-qcom probe powers the USB30_PRIM GDSC, enables the five branch clocks
 // and deasserts the block reset before it touches DWC3; a normal ABL handoff
@@ -1078,7 +1222,8 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
         .context = x, .read32 = cdc_dwc_read, .write32 = cdc_dwc_write,
         .delay_us = cdc_delay, .sync_for_cpu = cdc_sync_cpu,
         .sync_for_device = cdc_sync_device, .log_copy = cdc_copy,
-        .log_consume = cdc_consume, .lane = cdc_lane_op
+        .log_consume = cdc_consume, .lane = cdc_lane_op,
+        .on_rx = cdc_on_rx
     };
     // Development identity, deliberately synthetic and not a vendor serial.
     // The controller's own report prints only after tb710fu_dwc3_start returns,
@@ -1232,6 +1377,7 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
         uint64_t last_events = 0;
         while (gCdc.controller.running && !gCdc.controller.failed) {
             tb710fu_dwc3_poll(&gCdc.controller);
+            if (gPendingCmd) cdc_exec_pending_cmd();
             ++rounds;
             if (!gCdc.controller.configured && beats < 6u) {
                 const uint32_t dsts_now = cdc_read(gCdc.dwc, 0xc70c);
@@ -1282,12 +1428,10 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
             if (gIrqMasked) {
                 if (gCdc.controller.configured) ++configured_rounds;
                 if (gCdc.controller.dtr) ++dtr_rounds;
-                // Keep IRQs masked through enumeration and host-DTR drain of
-                // the 256 KiB tail ring (until empty for 20 ms or 500 ms DTR
-                // cap, or 3 s configured / 5 s unplugged cap), then restore
-                // IRQs with explicit lane markers.
-                const int dtr_drained = (dtr_rounds >= 200u && tb710fu_cdc_log_tap_pending() == 0u);
-                if (dtr_drained || dtr_rounds >= 5000u ||
+                // Keep IRQs masked through enumeration, host-DTR tail drain,
+                // and a 500 ms command window (edl/reboot/bootloader) before
+                // restoring IRQs (or 3 s configured / 5 s unplugged cap).
+                if (dtr_rounds >= 5000u ||
                     configured_rounds >= 30000u || rounds >= 50000u) {
                     cdc_lane_op(NULL, "cdcunmk");
                     gIrqMasked = 0u;

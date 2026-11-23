@@ -446,7 +446,11 @@ static int endpoint_event(struct tb710fu_dwc3 *d, uint32_t event)
     if (trb_status != 0) return fail(d, "non-control TRB failed");
     if (ep == EP_RX) {
         d->ops.sync_for_cpu(d->ops.context, TB710FU_DWC3_RX, d->requested[ep]);
-        d->discarded_input += bytes;
+        if (d->ops.on_rx && bytes > 0u) {
+            d->ops.on_rx(d->ops.context, d->dma + TB710FU_DWC3_RX, bytes);
+        } else {
+            d->discarded_input += bytes;
+        }
         return 1;
     }
     if (residual != 0) return fail(d, "short IN completion; log consumption ambiguous");

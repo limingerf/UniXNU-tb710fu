@@ -178,7 +178,7 @@ static struct tb710fu_dwc3_ops operations(struct fixture *f)
 {
     const struct tb710fu_dwc3_ops ops = {
         f, read32, write32, delay, sync_cpu, sync_device, log_copy, log_consume,
-        lane
+        lane, NULL
     };
     return ops;
 }
