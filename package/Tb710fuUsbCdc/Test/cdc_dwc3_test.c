@@ -119,7 +119,9 @@ static void write32(void *context, unsigned reg, uint32_t value)
 static void delay(void *context, unsigned us)
 {
     struct fixture *f = context;
-    assert(us == 1); // Poll step only; the pre-reset settle is gone.
+    // The poll step is the only delay the core asks for; it is long enough to be
+    // a real window (100 us) rather than a single microsecond.
+    assert(us >= 1 && us <= 100);
     ++f->waits;
 }
 
@@ -442,7 +444,7 @@ static void test_failures_retain_dma_and_do_not_restart(void)
     f.block_halt = 1;
     assert(!start(&f, "diagnostic-test-1"));
     assert(f.core.failed && f.core.dma == f.cpu && f.address_writes == 0);
-    assert(f.cpu[0] == 0xa5 && f.waits >= 10000);
+    assert(f.cpu[0] == 0xa5 && f.waits >= 1000);
     prepare(&f);
     f.block_reset = 1;
     // Retracting the bit is a controlled state, not a wedged one: the adoption

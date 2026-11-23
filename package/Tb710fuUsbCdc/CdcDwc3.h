@@ -71,7 +71,7 @@ struct tb710fu_dwc3 {
     // records that, and probe_trace keeps the readbacks of the writes actually
     // issued afterwards plus DSTS as read once the pull-up was exposed, so a
     // single frame says whether the core accepts configuration at all.
-    uint32_t probe_trace[4];
+    uint32_t probe_trace[6];
     uint8_t reset_stage;
     uint8_t reset_adopted;
     uint8_t reset_forced;

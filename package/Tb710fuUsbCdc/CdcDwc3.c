@@ -12,6 +12,7 @@
 #define GHWPARAMS1 0xc144u
 #define GHWPARAMS3 0xc14cu
 #define USB2PHYCFG 0xc200u
+#define GUSB3PIPECTL 0xc2c0u
 #define EVENT_LO(n) (0xc400u + (n) * 16u)
 #define EVENT_HI(n) (0xc404u + (n) * 16u)
 #define EVENT_SIZE(n) (0xc408u + (n) * 16u)
@@ -36,7 +37,14 @@
 #define COMMAND_START 6u
 #define COMMAND_START_CONFIGURATION 9u
 #define PHY_SUSPEND ((1u << 6) | (1u << 8))
-#define WAIT_POLLS 10000u
+// One microsecond per poll gave the core 10 ms to answer a reset and a command.
+// Linux allows 500 ms for the reset alone, and this core is adopted from
+// firmware with its clock still gated by whatever the boot chain left running;
+// a window that short reads as "never answered" even when the answer is merely
+// late. Each phase now polls a realistic window, and the delay step is the
+// clock the report already carries (cntv_ctl=1), not a fixed spin count.
+#define WAIT_POLLS 2000u
+#define WAIT_DELAY_US 100u
 #define EVENT_BUDGET 64u
 #define EVENT_COUNT_MASK 0xfffcu
 #define EVENT_INTERRUPT_MASK (1u << 31)
@@ -96,7 +104,7 @@ static int wait_reg(struct tb710fu_dwc3 *d, unsigned reg, uint32_t mask, uint32_
 {
     for (unsigned i = 0; i < WAIT_POLLS; ++i) {
         if ((read_reg(d, reg) & mask) == expected) return 1;
-        d->ops.delay_us(d->ops.context, 1);
+        d->ops.delay_us(d->ops.context, WAIT_DELAY_US);
     }
     return 0;
 }
@@ -114,7 +122,7 @@ static int halt_firmware(struct tb710fu_dwc3 *d, unsigned interrupts)
                 write_reg(d, EVENT_COUNT(i), count & EVENT_COUNT_MASK);
         }
         if (read_reg(d, DSTS) & CONTROLLER_HALTED) return 1;
-        d->ops.delay_us(d->ops.context, 1);
+        d->ops.delay_us(d->ops.context, WAIT_DELAY_US);
     }
     return 0;
 }
@@ -628,6 +636,10 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     }
     // Do not replace firmware DMA addresses before proving the core halted and
     // its device reset completed. No endpoint ENDTRANSFER assumption is used.
+    // The SS PIPE control is read but never written: it is the register that says
+    // whether the PHY handed the core a PIPE clock at all, which is the one
+    // reason a live controller would answer commands but never finish them.
+    d->probe_trace[5] = read_reg(d, GUSB3PIPECTL);
     const uint32_t pre = read_reg(d, DCTL);
     d->reset_trace[0] = pre;
     write_reg(d, DCTL, pre & ~RUN_STOP);
