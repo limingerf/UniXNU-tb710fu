@@ -1,4 +1,34 @@
-# Current status · 2026-11-23
+# Current status · 2026-11-24
+
+## 🎉 历史性里程碑：`pl14-ctrr-tc` 首次在 TB710FU 实机跑通完整 XNU 内核并正式拉起 macOS 27 ARM64E 用户态 **`/sbin/launchd`（PID 1）与 `Darwin Ignition Sequence 1.0.0`**！ · 2026-11-24
+
+- 镜像：`out/tb710fu-cdc-pl14-ctrr-tc-qr-prelink-45214948832-signed.zip`（SHA-256 `6bb1ad222bc8ca5cc2149634da1658b6b2f627002130d87afc477bf4c6431d3d`；`vendor_boot.img` `01a3e15d4b8da6e14fee51a9f2089497c6f4f8adb24d10d3ba9bebac02e42fbc`；`vbmeta.img` `6c41460cfece59cadfaa44c7197db6f19c9bad9e49b587f8e28e40f6bcd4f03f`）。
+- 关键组成（零 AMFI 绕过参数，纯官方安全链）：
+  - `pl14` 预链接内核（`88c3d35`，run [45214948832](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45214948832)，`218970e9...`）：开启 `CONFIG_XNU_OWNER_ROOT_AUDIT=y`、`CONFIG_XNU_OWNER_ROOT_TRUST=y`、`-DXNU_TB710FU_OWNER_AUTH_OPEN=1`；
+  - `Payloads/kernel.macho.trustcache`（`451,264` B，SHA-256 `002db2e6ee9000c891bad43247bfa9c55ad6d3b2ee62e6c0b9e1965e78926da6`）：从苹果官方 `UniversalMac_27.3_26C5035r_Restore.ipsw` 提取并经 `BuildManifest.plist` SHA-384 校验的 3 个原版 v2 TrustCache 模块（`StaticTrustCache` 18,568 条 + `SystemTrustCache` 144 条 + `AppTrustCache` 87 条）；
+  - `Payloads/kernel.macho.adt`（`14,644` B，SHA-256 `a85a86e13743a520064268e61333dd565c82119cb7e39d22d46e79849f43b294`）：含 `/chosen/kernel-ctrr-to-be-enabled = 1` 与 16 字节 `/chosen/memory-map/TrustCache` 占位符。
+- 实机 QR 导出日志（`build=src-88c3d358-ramoops`，`checkpoint=init-exec`，`heartbeat=20899`）证实：
+  - `apfs_log_op_with_proc:3290: disk5s1 mount-complete volume Macintosh HD` → `TB710FU bsd: vfs-mountroot result=0`
+  - **`TB710FU bsd: root-decision apple=80 owner=1`**
+  - `TB710FU bsd: devfs-mount done` → `init-task bootstrap done` → `TB710FU boot: bsd-init done` → `VM Swap Subsystem is ON` → `vm-launchd done`
+  - `load_init_program: attempting to load /sbin/launchd`
+  - **`shared_region: 0x8ee30486f9692ad1 [1(launchd)] check_np(0x16f2e3908) vm_shared_region_start_address() returned 0x1`**
+  - **`Darwin Ignition Sequence Version 1.0.0: Wed Oct 28 21:34:12 PDT 2026; root:libignition-64~30353/libignition_core/RELEASE_ARM64E`**（`ignition level : 0x5`）
+  - **`TB710FU bsd: init-exec returned`**（XNU 内核启动 100% 完成，PID 1 `/sbin/launchd` 已进入用户态执行！）
+- **当前精确阶段**：已进入 macOS 27 ARM64E 早期用户态（PID 1 `/sbin/launchd` + `libignition` 已运行，尚未到达桌面/WindowServer）。下一阶段主线：关闭同步 QR 停顿（或开启 `CONFIG_XNU_OWNER_DATA_MOUNT=y` + Data ramdisk 与 `exec-log=1`）观察 `launchd` 后续用户态服务启动，并合入 W2/W3/W4/W5 二阶段硬件驱动与 W7 的 `PS_HOLD` EDL 闭环。
+
+---
+
+## 历史里程碑：`pl14-ctrr` 打通 `owner=1` 根卷认证并首次抵达 **`load_init_program: attempting to load /sbin/launchd`（PID 1）** · 2026-11-24
+
+- 提交 `88c3d35`（分支 `cdc-smmu-claim`，run [45214948832](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45214948832)）：开启 `CONFIG_XNU_OWNER_ROOT_AUDIT=y`、`CONFIG_XNU_OWNER_ROOT_TRUST=y`、`-DXNU_TB710FU_OWNER_AUTH_OPEN=1` 并为 `CdcXnu.c` 新增 `recovery` 命令；预链接 `kernel.macho`（`142,852,096` B，SHA-256 `218970e9cbb474eb68f34b0263dc2e9e861019c43badacb9f3292993682eb79e`）按单核（无 `smp=1`）+ 注入 `/chosen/kernel-ctrr-to-be-enabled = 1` 打包并 AVB 签名：`out/tb710fu-cdc-pl14-ctrr-qr-prelink-45214948832-signed.zip`（SHA-256 `9a945d6f0149af06fbcea2308d2db1ee4db8cd3285904af9b1f7592ac445c6b0`；`vendor_boot.img` `26308a96ae9fb899816e78547979e0ec7903981cc7419877cfd5109d796efb92`；`vbmeta.img` `eace0946e063a00eb764d828a24dc0aaf7c9b6ee2e18a5be4d40aaf67135f199`）。
+- 实机照片 `media_1795451958767_802c7f52.jpg` 证实：**单核模式一次稳定启动，全部 BSD 内核初始化阶段全部通过**：
+  - `vfs-mountroot result=0` → **`owner=1`（真实加密校验 `native_verified_block_root_authorized` 通过！）** → `devfs-mount done` → `init-task bootstrap done` → `VM Swap Subsystem is ON` → `vm-launchd done` → **`TB710FU bsd: init-exec begin`**；
+  - **`load_init_program: attempting to load /sbin/launchd`**（底栏 `DLIL 05 SEEN 7FFF BSD initexec CDC cdcwake`）；
+  - 当前停在 AMFI 校验：`AMFI: /sbin/launchd: Rejecting signature, binary has platform identifier but is not in the trustcache` → `proc 1: load code signature error 4 for file "launchd"`。
+- 精确根因：`payload.img` 的 `::/EFI/UniXNU/Payloads/` 中目前只有 `kernel.macho`、`kernel.macho.adt`、`kernel.macho.vroot`，**缺少官方 `static trustcache`（或未配置 `amfi_get_out_of_my_way=1` 启动参数）**；该修复无需重新编译内核，仅需本地更新 `payload.img` 并 AVB 重签即可直接拉起 `/sbin/launchd`。
+
+---
 
 ## 历史里程碑：`pl13-smp-ctrr` 首次突破 `BSD p0a_01/e` 并成功挂载 APFS 根分区 **`Macintosh HD` (`disk5s1`)** · 2026-11-23
 

@@ -690,13 +690,17 @@ static void cdc_psci_system_reset(void)
     for (;;) __asm__ volatile("wfi");
 }
 
-/* PSCI 1.1 SYSTEM_RESET2 (SYSTEM_WARM_RESET = 0): preserves TCSR_BOOT_MISC_DETECT
- * (0x01fd9000 = 0x01) across reset so SM8650 PBL enters 9008 (EDL). */
+/* SM8650 downstream msm-6.1 reboot-edl path (qcom-dload-mode.c + msm-poweroff.c):
+ * Pulling PS_HOLD low via QCOM_SCM_SVC_PWR/DEASSERT_PS_HOLD (0xC2000902) or
+ * QCOM_SCM_SVC_OEM_POWER/REBOOT (0xC3000922) triggers PMIC warm reset without
+ * clearing AOSS/TCSR 0x01fd9000=0x01, so XBL enters 9008 (EDL) directly. */
 static void cdc_psci_warm_reset(void)
 {
-    (void)cdc_smc4(0xC4000012ull, 0ull, 0ull, 0ull, NULL);
-    (void)cdc_smc4(0x84000012ull, 0ull, 0ull, 0ull, NULL);
-    cdc_psci_system_reset();
+    (void)cdc_smc4(0xC2000902ull, 1ull, 0ull, 0ull, NULL);
+    (void)cdc_smc4(0x82000902ull, 1ull, 0ull, 0ull, NULL);
+    (void)cdc_smc4(0xC3000922ull, 0ull, 0ull, 0ull, NULL);
+    (void)cdc_smc4(0x83000922ull, 0ull, 0ull, 0ull, NULL);
+    for (;;) __asm__ volatile("wfi");
 }
 
 static int cdc_set_edl_cookie(void)
@@ -711,7 +715,7 @@ static int cdc_set_edl_cookie(void)
         write_fn = 0x82000502ull;
         read_fn = 0x82000501ull;
     }
-    const uint32_t want = ((uint32_t)old_val & ~TB710FU_QCOM_DLOAD_MASK) | TB710FU_QCOM_DLOAD_EDL;
+    const uint32_t want = TB710FU_QCOM_DLOAD_EDL;
     int64_t wrc = cdc_smc4(write_fn, 2ull, TB710FU_TCSR_BOOT_MISC_DETECT, (uint64_t)want, NULL);
     int64_t rrc = cdc_smc4(read_fn, 1ull, TB710FU_TCSR_BOOT_MISC_DETECT, 0ull, &new_val);
     int64_t brc = 0;
@@ -1312,6 +1316,17 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
            armcpu_gic_ready, (unsigned long long)armcpu_timer_interrupts,
            (unsigned long long)timer_ctl, (unsigned)ml_get_interrupts_enabled());
     cdc_checkpoint("cdcentry");
+    /* On 6-core SMP, tb710fu_cdc_start() is queued right before
+     * native_source_storage_start(). Defer CDC SMMU/GCC takeover by 1500 ms
+     * when native-source-storage=1 so NativeUfs has exclusive access to APPS
+     * SMMU (0x15000000) and GCC during UFS bring-up. */
+    int ss_enabled = 0;
+    if (PE_parse_boot_argn("native-source-storage", &ss_enabled, sizeof(ss_enabled)) && ss_enabled == 1) {
+        uint64_t ss_deadline;
+        clock_interval_to_deadline(1500u, NSEC_PER_MSEC, &ss_deadline);
+        (void)assert_wait_deadline((event_t)&gSleepChannel, THREAD_UNINT, ss_deadline);
+        thread_block(THREAD_CONTINUE_NULL);
+    }
     cdc_log("TB710FU CDC: image %s\n", TB710FU_CDC_IMAGE);
     const int ready = cdc_prepare(&gCdc);
     cdc_log("TB710FU CDC: stage=%s failure=%s\n", gStage,
