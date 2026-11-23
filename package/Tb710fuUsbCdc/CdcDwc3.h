@@ -63,6 +63,7 @@ struct tb710fu_dwc3 {
     uint16_t control_bytes;
     size_t tx_commit;
     uint64_t events, setup_requests, transmitted, discarded_input;
+    uint32_t last_event;
     // Core reset evidence: DCTL before the halt, right after the assert, and
     // GCTL/phycfg after the preconditions, plus the state registers read at the
     // end. reset_stage is how the bit finally cleared, 0 when it never did.

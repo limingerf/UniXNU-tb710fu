@@ -543,6 +543,7 @@ void tb710fu_dwc3_poll(struct tb710fu_dwc3 *d)
     while (bytes >= 4 && budget-- != 0) {
         d->ops.sync_for_cpu(d->ops.context, d->event_position, 4);
         const uint32_t event = get32(d->dma + d->event_position);
+        d->last_event = event;
         d->event_position = (d->event_position + 4u) % TB710FU_DWC3_EVENT_BYTES;
         ++d->events;
         // ACK the consumed event without rewinding the producer or touching any
