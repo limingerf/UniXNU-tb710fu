@@ -247,6 +247,11 @@ def build_data_seed(args, source, work, output, env, common, driver):
         if not make.is_file():
             raise SystemExit(f"seed tool missing: {make}")
         build = os.environ.get("UNIXNU_BUILD") or PROFILE.rsplit("-", 1)[-1]
+        # seed-data-grow.py, called by the seed tool, makes its scratch directory
+        # under <framework>/build. That path exists in a developer working tree but
+        # not in a fresh clone, and the grow step then fails with FileNotFoundError
+        # on the directory itself. Create it rather than patching the pinned script.
+        (source / "build").mkdir(parents=True, exist_ok=True)
         cmd = [sys.executable, str(make), str(os_image), str(seed),
                "--gib", str(gib), "--skip-setup"]
         if dh:
