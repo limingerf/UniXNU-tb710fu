@@ -94,7 +94,7 @@ static struct {
 /* Bump this literal on every build. Three boots were already spent
  * reverse-identifying a photographed frame by grepping kernel strings; a frame
  * that names its own image costs one line and ends that. */
-#define TB710FU_CDC_IMAGE "pl8"
+#define TB710FU_CDC_IMAGE "pl9"
 
 static void cdc_checkpoint(const char *label)
 {
@@ -1224,8 +1224,8 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                (unsigned long long)gReport.dma_physical, (unsigned)gReport.dma_bytes);
         cdc_checkpoint("cdcready");
         unsigned previous = 0;
-        int bus_seen = 0, setup_seen = 0;
-        unsigned rounds = 0, beats = 0, configured_rounds = 0;
+        int bus_seen = 0, setup_seen = 0, yield_marked = 0;
+        unsigned rounds = 0, beats = 0, configured_rounds = 0, dtr_rounds = 0;
         // Mask only link state (21:18) and speed (2:0), NOT SOFFN (16:3),
         // which ticks every 125 us and previously flooded the 64 KiB log ring.
         uint32_t last_dsts_link = cdc_read(gCdc.dwc, 0xc70c) & ((0xfu << 18) | 7u);
@@ -1259,48 +1259,60 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                 }
             }
             if (!bus_seen && gCdc.controller.connected) {
-                cdc_checkpoint("cdcbus");
                 cdc_log("TB710FU CDC: connect-done maxpacket=%u\n", gCdc.controller.packet_size);
+                cdc_checkpoint("cdcbus");
                 bus_seen = 1;
             }
             if (!setup_seen && gCdc.controller.setup_requests) {
-                cdc_checkpoint("cdcsetup");
                 cdc_log("TB710FU CDC: first EP0 SETUP\n");
+                cdc_checkpoint("cdcsetup");
                 setup_seen = 1;
             }
             unsigned state = gCdc.controller.configured |
                              ((unsigned)gCdc.controller.dtr << 1);
             if (state != previous) {
-                cdc_checkpoint(gCdc.controller.dtr ? "cdcdtr" :
-                               gCdc.controller.configured ? "cdccfg" : "cdcevent");
                 cdc_log("TB710FU CDC: configured=%u dtr=%u\n",
                        (unsigned)gCdc.controller.configured,
                        (unsigned)gCdc.controller.dtr);
+                cdc_checkpoint(gCdc.controller.dtr ? "cdcdtr" :
+                               gCdc.controller.configured ? "cdccfg" : "cdcevent");
                 previous = state;
             }
             if (!gCdc.controller.running) break;
             if (gIrqMasked) {
                 if (gCdc.controller.configured) ++configured_rounds;
-                // Keep IRQs masked only through initial USB enumeration (plus
-                // 200 ms settle for host line-coding/DTR) or a 3 s unplugged
-                // cap, then re-enable IRQs and yield cooperatively so BSD/UFS
-                // continue booting while CDC streams live logs.
-                if (configured_rounds >= 2000u || rounds >= 30000u) {
+                if (gCdc.controller.dtr) ++dtr_rounds;
+                // Keep IRQs masked through enumeration and a short host-DTR
+                // drain window (50 ms after DTR, or 3 s after configured, or
+                // 5 s unplugged cap), then restore IRQs with explicit lane
+                // markers to pinpoint unmask vs thread_block behavior.
+                if (dtr_rounds >= 500u || configured_rounds >= 30000u || rounds >= 50000u) {
+                    cdc_lane_op(NULL, "cdcunmk");
                     gIrqMasked = 0u;
                     (void)ml_set_interrupts_enabled(gSavedIrq);
+                    cdc_lane_op(NULL, "cdcirqok");
                     cdc_log("TB710FU CDC: resuming kernel cfg=%u dtr=%u irq=%u\n",
                            (unsigned)gCdc.controller.configured,
                            (unsigned)gCdc.controller.dtr,
                            (unsigned)ml_get_interrupts_enabled());
+                    cdc_checkpoint("cdcresm");
                 } else {
                     cdc_delay(NULL, 100u);
                     continue;
                 }
             }
+            if (!yield_marked) cdc_lane_op(NULL, "cdcblk");
             uint64_t deadline;
             clock_interval_to_deadline(2u, NSEC_PER_MSEC, &deadline);
             (void)assert_wait_deadline((event_t)&gSleepChannel, THREAD_UNINT, deadline);
             thread_block(THREAD_CONTINUE_NULL);
+            if (!yield_marked) {
+                yield_marked = 1;
+                cdc_lane_op(NULL, "cdcwake");
+                cdc_log("TB710FU CDC: woke after yield irq=%u\n",
+                       (unsigned)ml_get_interrupts_enabled());
+                cdc_checkpoint("cdcwake");
+            }
         }
         cdc_checkpoint("cdcstop");
         cdc_log("TB710FU CDC: transport stopped: %s (ev=%llu last=%08x req=%llu)\n",
