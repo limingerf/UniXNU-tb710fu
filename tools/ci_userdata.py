@@ -82,6 +82,9 @@ def main():
                          "accountless and relies on --skip-setup only")
     ap.add_argument("--data-seed-in", type=Path,
                     help="grow this existing packed seed instead of creating one")
+    ap.add_argument("--os-image", type=Path,
+                    help="reuse this already-extracted OS disk image instead of "
+                         "fetching the OS component from the IPSW")
     ap.add_argument("--data-seed-max-bytes", type=int, default=0,
                     help="refuse a seed larger than this (0 = no limit); the payload FAT "
                          "has only about 9.4 MiB spare in the current baseline")
@@ -106,10 +109,28 @@ def main():
                 shutil.copy2(p, output / name)
         return
 
-    # Resolve the real work path like ci_kernel.py does.
+    # seed needs the framework's checkout revision but not its build: it reads the
+    # OS component from the IPSW directly, so defconfig, the dry-run and the root
+    # image build are all skipped. That keeps a seed-only run to one component
+    # download instead of a full 16.4 GiB image build.
     actual = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
     if actual != LOCK["unixnu"]["commit"]:
         raise SystemExit("Official source revision differs from upstream.lock.json")
+
+    seed_value = args.unique_chip_id or os.environ.get("UNIXNU_UNIQUE_CHIP_ID")
+    if not seed_value:
+        raise SystemExit("set UNIXNU_UNIQUE_CHIP_ID (device serial as hex) for the payload ADT")
+    env = dict(os.environ, UNIXNU_UNIQUE_CHIP_ID=seed_value)
+
+    if args.mode == "seed":
+        sys.path.insert(0, str(source / "scripts"))
+        from unixnu.cli import parser as cli_parser
+        from unixnu.config import Context
+        ctx = Context(cli_parser().parse_args(["status"] + common))
+        (ROOT / ".work/resolved-work.txt").write_text(str(ctx.work) + "\n")
+        build_data_seed(args, source, ctx.work, output, env, common, driver)
+        return
+
     command(driver + ["defconfig", "tb710fu_macos_defconfig"] + common, source, output / "defconfig.log")
     sys.path.insert(0, str(source / "scripts"))
     from unixnu.cli import parser as cli_parser
@@ -120,10 +141,7 @@ def main():
 
     # userdata.build runs before prepare() in cmd_build, so no fetch is needed.
     # defconfig establishes the selected configuration and work directory.
-    seed = args.unique_chip_id or os.environ.get("UNIXNU_UNIQUE_CHIP_ID")
-    if not seed:
-        raise SystemExit("set UNIXNU_UNIQUE_CHIP_ID (device serial as hex) for the payload ADT")
-    env = dict(os.environ, UNIXNU_UNIQUE_CHIP_ID=seed)
+    seed = seed_value
 
     # dry-run: verify the windows exist in the IPSW and the image fits capacity
     cmd = driver + ["build", "userdata", "--dry-run"] + common
@@ -179,26 +197,11 @@ def build_data_seed(args, source, work, output, env, common, driver):
     persistent window carries the writes. Without it launchd starts and then
     restarts, because there is no writable Data volume to attach.
 
-    Input is the OS disk image this run already produced, so the seed is built
-    from exactly the same OS revision as the root image it will be paired with.
+    Input is the OS disk image straight from the IPSW, exactly as the framework's
+    own seed recipe uses it. The root image is not involved: the seed only needs a
+    readable OS volume (it copies private/var and checks /sbin/launchd), so
+    building the 16.4 GiB root image first would be pure waste.
     """
-    # The OS window of the root image is written to <work>/userdata/OS.raw (or
-    # the window is read straight out of userdata-root.img). Prefer the raw
-    # window; fall back to the packed root image's first window.
-    os_image = work / "userdata" / "OS.raw"
-    root_image = work / "userdata" / "userdata-root.img"
-    if not os_image.is_file():
-        if not root_image.is_file():
-            raise SystemExit("build the userdata root image first: OS.raw / userdata-root.img missing")
-        report = work / "userdata" / "userdata-root.json"
-        if not report.is_file():
-            raise SystemExit("userdata-root.json missing; cannot locate the OS window")
-        data = json.loads(report.read_text())
-        windows = {w["name"]: w for w in data.get("windows", [])}
-        if "OS" not in windows:
-            raise SystemExit("userdata-root.json has no OS window")
-        os_image = slice_window(root_image, windows["OS"], work / "userdata" / "OS.raw")
-
     gib = args.data_gib or args.data_gib_default or default_data_gib()
     if not 3 <= gib <= 1024:
         raise SystemExit(f"derived Data size {gib} GiB is outside the 3..1024 range the "
@@ -206,6 +209,8 @@ def build_data_seed(args, source, work, output, env, common, driver):
     dh, sep, pw = args.data_user.partition(":") if args.data_user else ("", "", "")
     if args.data_user and (not dh or not sep or not pw):
         raise SystemExit("--data-user must be NAME:PASSWORD")
+
+    os_image = os_disk_image(args, source, work)
 
     seed_dir = work / "data-seed"
     seed_dir.mkdir(parents=True, exist_ok=True)
@@ -280,6 +285,60 @@ def build_data_seed(args, source, work, output, env, common, driver):
     (output / "data-seed.json").write_text(json.dumps(record, indent=2) + "\n")
     shutil.copy2(seed, output / "data.dbr")
     print(json.dumps(record, indent=2), flush=True)
+
+
+def os_disk_image(args, source, work):
+    """The OS disk image the seed is built from.
+
+    Prefers the IPSW directly (the framework's own recipe), which needs no root
+    image. Falls back to slicing the OS window out of a root image that a
+    previous run already built, so an existing artefact can still be reused.
+    """
+    cache = work / "userdata"
+    cache.mkdir(parents=True, exist_ok=True)
+    os_image = cache / "OS.raw"
+
+    if args.os_image:
+        candidate = Path(args.os_image).expanduser().resolve(strict=True)
+        require_os_volume(candidate)
+        return candidate
+
+    if os_image.is_file() and os_image.stat().st_size > 0:
+        require_os_volume(os_image)
+        return os_image
+
+    # Ask the pinned framework for the component; it downloads by range, decrypts
+    # AEA and caches the plain image beside the archive.
+    try:
+        sys.path.insert(0, str(source / "scripts"))
+        from unixnu.cli import parser as cli_parser
+        from unixnu.config import Context
+        from unixnu.ipsw import Ipsw
+        ctx = Context(cli_parser().parse_args(["status", "-D", str(ROOT), "--os", PROFILE]))
+        plain = Path(Ipsw(ctx).disk_image("OS"))
+    except Exception as exc:                                   # noqa: BLE001
+        raise SystemExit(f"could not obtain the OS disk image from the IPSW: {exc}\n"
+                         "Pass --os-image FILE to reuse an extracted OS image instead")
+    require_os_volume(plain)
+    return plain
+
+
+def require_os_volume(image):
+    """Refuse an image that cannot be an IPSW OS volume.
+
+    make-data-seed.py mounts the file and then needs /sbin/launchd plus
+    private/var; checking the file looks like a disk image here turns a confusing
+    mount error into a clear one.
+    """
+    if not image.is_file() or image.stat().st_size == 0:
+        raise SystemExit(f"OS image is missing or empty: {image}")
+    with Path(image).open("rb") as stream:
+        head = stream.read(4096)
+    if len(head) < 4096:
+        raise SystemExit(f"OS image is too small to be a disk image: {image}")
+    # APFS containers carry NXSB at offset 32; HFS+ carries H+/HX at 1024.
+    if head[32:36] != b"NXSB" and head[1024:1026] not in (b"H+", b"HX"):
+        raise SystemExit(f"OS image is neither an APFS nor an HFS+ container: {image}")
 
 
 def slice_window(root_image, window, destination):
