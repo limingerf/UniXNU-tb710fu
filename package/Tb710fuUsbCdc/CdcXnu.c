@@ -67,8 +67,6 @@ struct tb710fu_cdc_xnu {
 static struct tb710fu_cdc_xnu gCdc;
 static unsigned gAttempted;
 static unsigned gSleepChannel;
-static boolean_t gSavedIrq;
-static unsigned gIrqMasked;
 static IOLock *gCdcTcsLock;
 static char gRxLine[32];
 static unsigned gRxLen;
@@ -97,7 +95,7 @@ static struct {
 /* Bump this literal on every build. Three boots were already spent
  * reverse-identifying a photographed frame by grepping kernel strings; a frame
  * that names its own image costs one line and ends that. */
-#define TB710FU_CDC_IMAGE "pl12"
+#define TB710FU_CDC_IMAGE "pl13"
 
 static void cdc_checkpoint(const char *label)
 {
@@ -1255,11 +1253,8 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
     cdc_log("TB710FU CDC: dwc pre pectl=%08x dctl=%08x gctl=%08x pcfg=%08x "
            "gsts=%08x dsts=%08x\n", pectl, dctl0, gctl0, pcfg0, gsts0, dsts0);
     cdc_step("dwc3-start", "cdcdwc");
-    // Mask IRQs before asserting RUN_STOP: on single-core (smp=0), pl6 was
-    // preempted at irqroute before reaching the poll loop. Everything from here
-    // through USB enumeration is pure MMIO + CNTVCT_EL0 + lock-free ring.
-    gSavedIrq = ml_set_interrupts_enabled(FALSE);
-    gIrqMasked = 1u;
+    // Do NOT mask IRQs on 6-core SMP: holding DAIF.I=1 across enumeration
+    // blocks cross-CPU IPIs and tripped at cdcunmk in pl12-smp.
     const int started = tb710fu_dwc3_start(&x->controller, &ops, (uint8_t *)x->dma,
                                           physical, 0x1209, 0x0001, "TB710FUCDC001");
     // The core reset is the first place this board disagrees with a freshly
@@ -1383,7 +1378,7 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
         cdc_checkpoint("cdcready");
         unsigned previous = 0;
         int bus_seen = 0, setup_seen = 0, yield_marked = 0;
-        unsigned rounds = 0, beats = 0, configured_rounds = 0, dtr_rounds = 0;
+        unsigned rounds = 0, beats = 0;
         // Mask only link state (21:18) and speed (2:0), NOT SOFFN (16:3),
         // which ticks every 125 us and previously flooded the 64 KiB log ring.
         uint32_t last_dsts_link = cdc_read(gCdc.dwc, 0xc70c) & ((0xfu << 18) | 7u);
@@ -1438,27 +1433,9 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                 previous = state;
             }
             if (!gCdc.controller.running) break;
-            if (gIrqMasked) {
-                if (gCdc.controller.configured) ++configured_rounds;
-                if (gCdc.controller.dtr) ++dtr_rounds;
-                // Keep IRQs masked through enumeration, host-DTR tail drain,
-                // and a 500 ms command window (edl/reboot/bootloader) before
-                // restoring IRQs (or 3 s configured / 5 s unplugged cap).
-                if (dtr_rounds >= 5000u ||
-                    configured_rounds >= 30000u || rounds >= 50000u) {
-                    cdc_lane_op(NULL, "cdcunmk");
-                    gIrqMasked = 0u;
-                    (void)ml_set_interrupts_enabled(gSavedIrq);
-                    cdc_lane_op(NULL, "cdcirqok");
-                    cdc_log("TB710FU CDC: resuming kernel cfg=%u dtr=%u irq=%u\n",
-                           (unsigned)gCdc.controller.configured,
-                           (unsigned)gCdc.controller.dtr,
-                           (unsigned)ml_get_interrupts_enabled());
-                    cdc_checkpoint("cdcresm");
-                } else {
-                    cdc_delay(NULL, 100u);
-                    continue;
-                }
+            if (!gCdc.controller.configured && rounds < 30000u) {
+                cdc_delay(NULL, 100u);
+                continue;
             }
             if (!yield_marked) cdc_lane_op(NULL, "cdcblk");
             uint64_t deadline;
@@ -1479,10 +1456,6 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                (unsigned long long)gCdc.controller.events,
                gCdc.controller.last_event,
                (unsigned long long)gCdc.controller.setup_requests);
-    }
-    if (gIrqMasked) {
-        gIrqMasked = 0u;
-        (void)ml_set_interrupts_enabled(gSavedIrq);
     }
     // One last text checkpoint after the report: the QR frame is rebuilt on a
     // one second dwell, so a failure that ends the worker right after printing
