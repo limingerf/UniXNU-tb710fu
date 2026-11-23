@@ -88,6 +88,11 @@ static struct {
     uint32_t dma_bytes;
 } gReport;
 
+/* Bump this literal on every build. Three boots were already spent
+ * reverse-identifying a photographed frame by grepping kernel strings; a frame
+ * that names its own image costs one line and ends that. */
+#define TB710FU_CDC_IMAGE "pl2"
+
 static void cdc_checkpoint(const char *label)
 {
     if (tb710fu_live_log_boot_mark) tb710fu_live_log_boot_mark(1, label);
@@ -1031,6 +1036,21 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
         .log_consume = cdc_consume, .lane = cdc_lane_op
     };
     // Development identity, deliberately synthetic and not a vendor serial.
+    // The controller's own report prints only after tb710fu_dwc3_start returns,
+    // so a boot that stops inside that routine leaves no register evidence at
+    // all - the last frame ended at "dwc3-start" with nothing after it. Read the
+    // same registers from this side first, one frame earlier, and read
+    // GUSB3PIPECTL before any halt or reset write so the PIPE-control access is
+    // proven safe on its own rather than inside the sequence that wedges.
+    cdc_step("dwc-pre", "dwcpre");
+    const uint32_t pectl = cdc_read(x->dwc, 0xc2c0);
+    const uint32_t dctl0 = cdc_read(x->dwc, 0xc704);
+    const uint32_t gctl0 = cdc_read(x->dwc, 0xc110);
+    const uint32_t pcfg0 = cdc_read(x->dwc, 0xc200);
+    const uint32_t gsts0 = cdc_read(x->dwc, 0xc118);
+    const uint32_t dsts0 = cdc_read(x->dwc, 0xc70c);
+    cdc_log("TB710FU CDC: dwc pre pectl=%08x dctl=%08x gctl=%08x pcfg=%08x "
+           "gsts=%08x dsts=%08x\n", pectl, dctl0, gctl0, pcfg0, gsts0, dsts0);
     cdc_step("dwc3-start", "cdcdwc");
     const int started = tb710fu_dwc3_start(&x->controller, &ops, (uint8_t *)x->dma,
                                           physical, 0x1209, 0x0001, "TB710FUCDC001");
@@ -1081,6 +1101,7 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
            armcpu_gic_ready, (unsigned long long)armcpu_timer_interrupts,
            (unsigned long long)timer_ctl, (unsigned)ml_get_interrupts_enabled());
     cdc_checkpoint("cdcentry");
+    cdc_log("TB710FU CDC: image %s\n", TB710FU_CDC_IMAGE);
     const int ready = cdc_prepare(&gCdc);
     cdc_log("TB710FU CDC: stage=%s failure=%s\n", gStage,
            gReport.failure ? gReport.failure : "-");

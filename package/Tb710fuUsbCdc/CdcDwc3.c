@@ -570,6 +570,7 @@ static void reset_lane(struct tb710fu_dwc3 *d, const char *tag)
 
 static int core_reset(struct tb710fu_dwc3 *d, uint32_t pre)
 {
+    reset_lane(d, "dwcreg");
     d->reset_trace[2] = read_reg(d, GCTL);
     d->reset_trace[3] = read_reg(d, USB2PHYCFG);
     d->reset_trace[5] = read_reg(d, DSTS);
@@ -639,9 +640,15 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     // The SS PIPE control is read but never written: it is the register that says
     // whether the PHY handed the core a PIPE clock at all, which is the one
     // reason a live controller would answer commands but never finish them.
+    // Each access below names itself before it runs: this sequence is the one
+    // place a frame died with no line at all, and only a lane tag survives an
+    // access that never returns.
+    reset_lane(d, "pctlrd");
     d->probe_trace[5] = read_reg(d, GUSB3PIPECTL);
+    reset_lane(d, "dctlrd");
     const uint32_t pre = read_reg(d, DCTL);
     d->reset_trace[0] = pre;
+    reset_lane(d, "haltwr");
     write_reg(d, DCTL, pre & ~RUN_STOP);
     // A core that firmware already left stopped has nothing to halt; only a
     // running one owes the DEVCTLHLT handshake. Everything the handshake would
