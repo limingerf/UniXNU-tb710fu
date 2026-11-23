@@ -66,6 +66,7 @@ struct tb710fu_cdc_xnu {
 
 static struct tb710fu_cdc_xnu gCdc;
 static unsigned gAttempted;
+static unsigned gSleepChannel;
 static boolean_t gSavedIrq;
 static unsigned gIrqMasked;
 static IOLock *gCdcTcsLock;
@@ -93,7 +94,7 @@ static struct {
 /* Bump this literal on every build. Three boots were already spent
  * reverse-identifying a photographed frame by grepping kernel strings; a frame
  * that names its own image costs one line and ends that. */
-#define TB710FU_CDC_IMAGE "pl7"
+#define TB710FU_CDC_IMAGE "pl8"
 
 static void cdc_checkpoint(const char *label)
 {
@@ -1224,35 +1225,36 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
         cdc_checkpoint("cdcready");
         unsigned previous = 0;
         int bus_seen = 0, setup_seen = 0;
-        unsigned rounds = 0, beats = 0;
-        uint32_t last_dsts_link = cdc_read(gCdc.dwc, 0xc70c) & 0x007fffffu;
+        unsigned rounds = 0, beats = 0, configured_rounds = 0;
+        // Mask only link state (21:18) and speed (2:0), NOT SOFFN (16:3),
+        // which ticks every 125 us and previously flooded the 64 KiB log ring.
+        uint32_t last_dsts_link = cdc_read(gCdc.dwc, 0xc70c) & ((0xfu << 18) | 7u);
         uint64_t last_events = 0;
         while (gCdc.controller.running && !gCdc.controller.failed) {
             tb710fu_dwc3_poll(&gCdc.controller);
             ++rounds;
-            const uint32_t dsts_now = cdc_read(gCdc.dwc, 0xc70c);
-            const uint32_t dsts_link = dsts_now & 0x007fffffu;
-            const int early_beat = (rounds == 1000u || rounds == 3000u || rounds == 6000u);
-            const int periodic_beat = ((rounds % 10000u) == 0u && beats < 12u);
-            const int state_changed = (dsts_link != last_dsts_link ||
-                                       gCdc.controller.events != last_events);
-            if (early_beat || periodic_beat ||
-                (state_changed && (rounds % 500u) == 0u)) {
-                last_dsts_link = dsts_link;
-                last_events = gCdc.controller.events;
-                ++beats;
-                cdc_log("TB710FU CDC: beat #%u r=%u dsts=%08x cnt=%08x ev=%llu "
-                       "last=%08x req=%llu conn=%u cfg=%u dtr=%u\n",
-                       beats, rounds / 10u, dsts_now, cdc_read(gCdc.dwc, 0xc40c),
-                       (unsigned long long)gCdc.controller.events,
-                       gCdc.controller.last_event,
-                       (unsigned long long)gCdc.controller.setup_requests,
-                       (unsigned)gCdc.controller.connected,
-                       (unsigned)gCdc.controller.configured,
-                       (unsigned)gCdc.controller.dtr);
-                if (!gCdc.controller.dtr) {
-                    cdc_checkpoint(gCdc.controller.configured ? "cdccfg" :
-                                   gCdc.controller.setup_requests ? "cdcsetup" :
+            if (!gCdc.controller.configured && beats < 6u) {
+                const uint32_t dsts_now = cdc_read(gCdc.dwc, 0xc70c);
+                const uint32_t dsts_link = dsts_now & ((0xfu << 18) | 7u);
+                const int early_beat = (rounds == 1000u || rounds == 3000u || rounds == 6000u);
+                const int periodic_beat = ((rounds % 10000u) == 0u);
+                const int state_changed = (dsts_link != last_dsts_link ||
+                                           gCdc.controller.events != last_events);
+                if (early_beat || periodic_beat ||
+                    (state_changed && (rounds % 500u) == 0u)) {
+                    last_dsts_link = dsts_link;
+                    last_events = gCdc.controller.events;
+                    ++beats;
+                    cdc_log("TB710FU CDC: beat #%u r=%u dsts=%08x cnt=%08x ev=%llu "
+                           "last=%08x req=%llu conn=%u cfg=%u dtr=%u\n",
+                           beats, rounds / 10u, dsts_now, cdc_read(gCdc.dwc, 0xc40c),
+                           (unsigned long long)gCdc.controller.events,
+                           gCdc.controller.last_event,
+                           (unsigned long long)gCdc.controller.setup_requests,
+                           (unsigned)gCdc.controller.connected,
+                           (unsigned)gCdc.controller.configured,
+                           (unsigned)gCdc.controller.dtr);
+                    cdc_checkpoint(gCdc.controller.setup_requests ? "cdcsetup" :
                                    gCdc.controller.connected ? "cdcbus" : "cdcbeat");
                 }
             }
@@ -1277,7 +1279,28 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                 previous = state;
             }
             if (!gCdc.controller.running) break;
-            cdc_delay(NULL, 100u);
+            if (gIrqMasked) {
+                if (gCdc.controller.configured) ++configured_rounds;
+                // Keep IRQs masked only through initial USB enumeration (plus
+                // 200 ms settle for host line-coding/DTR) or a 3 s unplugged
+                // cap, then re-enable IRQs and yield cooperatively so BSD/UFS
+                // continue booting while CDC streams live logs.
+                if (configured_rounds >= 2000u || rounds >= 30000u) {
+                    gIrqMasked = 0u;
+                    (void)ml_set_interrupts_enabled(gSavedIrq);
+                    cdc_log("TB710FU CDC: resuming kernel cfg=%u dtr=%u irq=%u\n",
+                           (unsigned)gCdc.controller.configured,
+                           (unsigned)gCdc.controller.dtr,
+                           (unsigned)ml_get_interrupts_enabled());
+                } else {
+                    cdc_delay(NULL, 100u);
+                    continue;
+                }
+            }
+            uint64_t deadline;
+            clock_interval_to_deadline(2u, NSEC_PER_MSEC, &deadline);
+            (void)assert_wait_deadline((event_t)&gSleepChannel, THREAD_UNINT, deadline);
+            thread_block(THREAD_CONTINUE_NULL);
         }
         cdc_checkpoint("cdcstop");
         cdc_log("TB710FU CDC: transport stopped: %s (ev=%llu last=%08x req=%llu)\n",
