@@ -70,7 +70,7 @@ static unsigned gSleepChannel;
 static IOLock *gCdcTcsLock;
 static char gRxLine[32];
 static unsigned gRxLen;
-static unsigned gPendingCmd; /* 1=edl, 2=reboot, 3=bootloader */
+static unsigned gPendingCmd; /* 1=edl, 2=reboot, 3=bootloader, 4=recovery */
 
 static const char *gStage;
 // Only the worker reads or writes the platform samples.
@@ -632,10 +632,12 @@ static int cdc_consume(void *context, size_t bytes)
 }
 
 /* Host-to-device CDC serial commands (line-delimited ASCII):
- *   edl        -> QCOM_SCM_IO_WRITE(0x01fd9000, EDL=0x01) + PSCI SYSTEM_RESET
+ *   edl        -> QCOM_SCM_IO_WRITE(0x01fd9000, EDL=0x01) + PSCI SYSTEM_RESET2
  *                 (0x01fd9000 verified from live-fdt.dtb qcom,dload-mode <0x03 0x19000>)
  *   reboot     -> PSCI SYSTEM_RESET (0x84000009)
- *   bootloader -> PMK8550 SDAM2 (SID 0, PPID 0x071, off 0x48, bits <1 7> = 0x02)
+ *   bootloader -> PMK8550 SDAM2 (SID 0, PPID 0x071, off 0x48, bits <1 7> = 0x02 -> 0x04)
+ *                 + PSCI SYSTEM_RESET (verified from pmk8550.dtsi:12-18)
+ *   recovery   -> PMK8550 SDAM2 (SID 0, PPID 0x071, off 0x48, bits <1 7> = 0x01 -> 0x02)
  *                 + PSCI SYSTEM_RESET (verified from pmk8550.dtsi:12-18) */
 #define TB710FU_TCSR_BOOT_MISC_DETECT 0x01fd9000u
 #define TB710FU_QCOM_DLOAD_MASK       0x33u
@@ -658,6 +660,8 @@ static void cdc_on_rx(void *context, const uint8_t *bytes, unsigned length)
                     gPendingCmd = 2u;
                 } else if (gRxLen == 10u && memcmp(gRxLine, "bootloader", 10u) == 0) {
                     gPendingCmd = 3u;
+                } else if (gRxLen == 8u && memcmp(gRxLine, "recovery", 8u) == 0) {
+                    gPendingCmd = 4u;
                 }
                 gRxLen = 0u;
             }
@@ -722,7 +726,7 @@ static int cdc_set_edl_cookie(void)
     return (wrc == 0 || brc == 0) ? 1 : 0;
 }
 
-static int cdc_set_bootloader_sdam(void)
+static int cdc_set_reboot_mode_sdam(uint8_t mode, const char *label)
 {
     const vm_offset_t core = ml_io_map(TB710FU_USB_SPMI_CORE_BASE, TB710FU_USB_SPMI_CORE_BYTES);
     const vm_offset_t config = ml_io_map(TB710FU_USB_SPMI_CONFIG_BASE, TB710FU_USB_SPMI_CONFIG_BYTES);
@@ -739,7 +743,7 @@ static int cdc_set_bootloader_sdam(void)
         }
     }
     if (apid < 0) {
-        cdc_log("TB710FU CDC: bootloader-sdam apid not found\n");
+        cdc_log("TB710FU CDC: %s-sdam apid not found\n", label);
         return 0;
     }
     const size_t obs_bytes = TB710FU_USB_SPMI_OBSERVER_STRIDE * ((size_t)apid + 1u);
@@ -750,11 +754,11 @@ static int cdc_set_bootloader_sdam(void)
     const uint8_t addr = TB710FU_PMK8550_REBOOT_OFF;
     uint8_t oldv = 0, newv = 0;
     const int r1 = cdc_spmi_read(obs, (unsigned)apid, addr, &oldv);
-    const uint8_t want = (uint8_t)((oldv & 0x01u) | (0x02u << 1));
+    const uint8_t want = (uint8_t)((oldv & 0x01u) | (uint8_t)((mode & 0x7fu) << 1));
     const int w1 = cdc_spmi_write(ch, (unsigned)apid, addr, want);
     const int r2 = cdc_spmi_read(obs, (unsigned)apid, addr, &newv);
-    cdc_log("TB710FU CDC: bootloader-sdam apid=%d ok=%d/%d/%d val=%02x->%02x\n",
-            apid, r1, w1, r2, (unsigned)oldv, (unsigned)newv);
+    cdc_log("TB710FU CDC: %s-sdam apid=%d ok=%d/%d/%d val=%02x->%02x\n",
+            label, apid, r1, w1, r2, (unsigned)oldv, (unsigned)newv);
     return w1;
 }
 
@@ -769,7 +773,10 @@ static void cdc_exec_pending_cmd(void)
         cdc_log("TB710FU CDC: cmd=reboot\n");
     } else if (cmd == 3u) {
         cdc_log("TB710FU CDC: cmd=bootloader\n");
-        (void)cdc_set_bootloader_sdam();
+        (void)cdc_set_reboot_mode_sdam(0x02u, "bootloader");
+    } else if (cmd == 4u) {
+        cdc_log("TB710FU CDC: cmd=recovery\n");
+        (void)cdc_set_reboot_mode_sdam(0x01u, "recovery");
     } else {
         return;
     }
