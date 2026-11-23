@@ -21,7 +21,6 @@ import plistlib
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -101,8 +100,10 @@ def main():
     common = ["-D", str(ROOT), "--os", PROFILE]
 
     if args.mode == "collect":
-        # All logs and reports land in output/ directly; just make sure the
-        # resolved work path is recorded for the workflow's image staging step.
+        # All logs and reports land in output/ directly (seed mode writes
+        # data-seed-build.log, data-seed-attach.log, data-seed.json and data.dbr
+        # there), so collecting only has to record the resolved work path and the
+        # pinned revisions for the artifact.
         resolved = ROOT / ".work/resolved-work.txt"
         if resolved.is_file():
             shutil.copy2(resolved, output / "resolved-work.txt")
@@ -327,34 +328,39 @@ def os_disk_image(args, source, work):
 
 @contextlib.contextmanager
 def mount_os_image(image, log_path):
-    """Attach an OS disk image read-only and yield the system volume mount point.
+    """Attach an OS disk image read-only and yield its system volume mount point.
 
     make-data-seed.py reads private/var and checks /sbin/launchd under the path it
-    is given, so it needs the mounted volume, not the image. The image holds one
-    system volume; the mount point is the entry whose system-entities carry it.
+    is given, so it needs the mounted volume, not the image.
+
+    The IPSW OS image is an APFS container holding several volumes, so no single
+    -mountpoint can be assumed: hdiutil mounts them under /Volumes and the system
+    volume is whichever entity carries sbin/launchd. Passing -mountpoint would
+    pin only the first volume and hide the system one.
     """
     image = Path(image).resolve()
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="tb710fu-os-") as tmp:
-        point = Path(tmp) / "os"
-        point.mkdir()
-        cmd = ["hdiutil", "attach", "-readonly", "-nobrowse", "-noverify",
-               "-mountpoint", str(point), "-plist", str(image)]
-        with log_path.open("w") as s:
-            r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=s, text=True)
-        if r.returncode:
-            raise SystemExit(f"hdiutil attach failed for {image}: see {log_path}")
-        try:
-            attached = plistlib.loads(r.stdout)
-            device = attached["system-entities"][0]["dev-entry"]
-            if not (point / "sbin" / "launchd").is_file() or not (point / "private" / "var").is_dir():
-                raise SystemExit(
-                    f"the attached OS image has no system volume at {point}: "
-                    "expected sbin/launchd and private/var")
-            yield point
-        finally:
-            subprocess.run(["hdiutil", "detach", device], check=False,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    cmd = ["hdiutil", "attach", "-readonly", "-nobrowse", "-noverify", "-plist", str(image)]
+    with log_path.open("w") as s:
+        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=s, text=True)
+    if r.returncode:
+        raise SystemExit(f"hdiutil attach failed for {image}: see {log_path}")
+    attached = plistlib.loads(r.stdout)
+    device = attached["system-entities"][0]["dev-entry"]
+    try:
+        volumes = [Path(item["mount-point"]) for item in attached["system-entities"]
+                   if item.get("mount-point")]
+        system = [p for p in volumes
+                  if (p / "sbin" / "launchd").is_file() and (p / "private" / "var").is_dir()]
+        if len(system) != 1:
+            listing = ", ".join(str(p) for p in volumes) or "none"
+            raise SystemExit(
+                f"the attached OS image has {len(system)} system volumes; expected exactly one "
+                f"with sbin/launchd and private/var. Mounted: {listing}")
+        yield system[0]
+    finally:
+        subprocess.run(["hdiutil", "detach", device], check=False,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def require_os_volume(image):
