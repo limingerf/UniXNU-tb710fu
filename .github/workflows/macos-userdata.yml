@@ -47,6 +47,15 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.13'
+      - name: Check out DarwinBoot for the packed RAM disk module
+        run: |
+          set -euo pipefail
+          # make-data-seed.py imports packed_ramdisk from drivers/DarwinBoot/Test,
+          # which is a submodule the framework checkout leaves empty. Fetch only
+          # that one at the revision the framework pins, so the packing format
+          # matches the loader the payload is later built against.
+          git -C .work/UniXNU submodule update --init --depth 1 -- drivers/DarwinBoot
+          test -f .work/UniXNU/drivers/DarwinBoot/Test/packed_ramdisk.py
       - name: Install the AEA key tool and verify macOS image tools
         run: |
           set -euo pipefail
