@@ -2,7 +2,9 @@
 
 #include "CdcLogRing.h"
 
-#define TB710FU_CDC_KERNEL_LOG_CAPACITY (256u * 1024u)
+/* Keep static __DATA at 64 KiB so native __DATA fits the MH_FILESET slot;
+ * drop-oldest overwrite preserves the newest ~1,100 lines of BSD/UFS/DLIL/CDC. */
+#define TB710FU_CDC_KERNEL_LOG_CAPACITY (64u * 1024u)
 
 static uint8_t gKernelLogBytes[TB710FU_CDC_KERNEL_LOG_CAPACITY]
     __attribute__((aligned(64)));
