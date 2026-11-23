@@ -91,7 +91,7 @@ static struct {
 /* Bump this literal on every build. Three boots were already spent
  * reverse-identifying a photographed frame by grepping kernel strings; a frame
  * that names its own image costs one line and ends that. */
-#define TB710FU_CDC_IMAGE "pl2"
+#define TB710FU_CDC_IMAGE "pl3"
 
 static void cdc_checkpoint(const char *label)
 {
@@ -1136,6 +1136,34 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
            gReport.smmu_actions[2], gReport.smmu_actions[3],
            gReport.smmu_acr, gReport.smmu_gfsr, gReport.smmu_scr0);
     if (ready) {
+        /* For the first time the controller returned with no failure: every
+         * command issued after the ignored reset was acknowledged. What that
+         * leaves is the event ring, whose base has read back as zero on every
+         * boot so far. Read the live copy of every register that decides whether
+         * an event can arrive at all, and if the base did not stick, drop a
+         * sentinel into the same address to separate "register not writable"
+         * from "value dropped", then put the real base back. That late re-arm,
+         * made while the core is actually running, has never been tried. */
+        cdc_step("dwc-state", "dwcstate");
+        const uint32_t evtbase = (uint32_t)gReport.dma_physical;
+        uint32_t evtlo_now = cdc_read(gCdc.dwc, 0xc400);
+        const uint32_t evthi_now = cdc_read(gCdc.dwc, 0xc404);
+        const uint32_t evtsz_now = cdc_read(gCdc.dwc, 0xc408);
+        const uint32_t evtcnt_now = cdc_read(gCdc.dwc, 0xc40c);
+        cdc_log("TB710FU CDC: dwc state dctl=%08x dsts=%08x devten=%08x "
+               "dalepn=%08x\n",
+               cdc_read(gCdc.dwc, 0xc704), cdc_read(gCdc.dwc, 0xc70c),
+               cdc_read(gCdc.dwc, 0xc708), cdc_read(gCdc.dwc, 0xc720));
+        cdc_log("TB710FU CDC: dwc evt want=%08x lo=%08x hi=%08x sz=%08x "
+               "cnt=%08x\n", evtbase, evtlo_now, evthi_now, evtsz_now, evtcnt_now);
+        if (evtlo_now != evtbase) {
+            cdc_write(gCdc.dwc, 0xc400, 0xdeadb000u);
+            const uint32_t sentinel = cdc_read(gCdc.dwc, 0xc400);
+            cdc_write(gCdc.dwc, 0xc400, evtbase);
+            evtlo_now = cdc_read(gCdc.dwc, 0xc400);
+            cdc_log("TB710FU CDC: dwc evt sentinel=%08x rearm=%08x\n",
+                   sentinel, evtlo_now);
+        }
         cdc_checkpoint("irqroute");
         uint32_t spi_state = 0;
         kern_return_t spi = armcpu_spi_attach(TB710FU_USB_DWC3_INTID, false,
@@ -1159,9 +1187,21 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
          * blocked wait can park the CDC thread forever and take the transcript
          * with it. Watch the counter and fall back to a busy wait instead. */
         uint64_t observed_ticks = armcpu_timer_interrupts;
-        unsigned quiet_rounds = 0, timer_dead = 0;
+        unsigned quiet_rounds = 0, timer_dead = 0, rounds = 0;
         while (gCdc.controller.running && !gCdc.controller.failed) {
             tb710fu_dwc3_poll(&gCdc.controller);
+            /* One line a second, because a dead event ring and a silent host bus
+             * produce the same still frame otherwise: only a changing count
+             * separates "events are arriving" from "nothing ever arrives". */
+            if ((++rounds % 1000u) == 0u) {
+                cdc_log("TB710FU CDC: beat dsts=%08x evtcnt=%08x events=%llu "
+                       "connected=%u conf=%u dtr=%u\n",
+                       cdc_read(gCdc.dwc, 0xc70c), cdc_read(gCdc.dwc, 0xc40c),
+                       (unsigned long long)gCdc.controller.events,
+                       (unsigned)gCdc.controller.connected,
+                       (unsigned)gCdc.controller.configured,
+                       (unsigned)gCdc.controller.dtr);
+            }
             if (!bus_seen && gCdc.controller.connected) {
                 cdc_checkpoint("cdcbus");
                 cdc_log("TB710FU CDC: connect-done maxpacket=%u\n", gCdc.controller.packet_size);
