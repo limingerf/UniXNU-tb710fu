@@ -6,6 +6,19 @@ on:
         description: Device-specific platform seed as hex (from /sys/devices/soc0/serial_number)
         required: true
         default: "0x30c18713"
+      data_gib:
+        description: Data volume logical size in GiB (empty derives the largest the unixnu partition holds)
+        required: false
+        default: ""
+      data_user:
+        description: Local administrator NAME:PASSWORD for the seed (empty = no account)
+        required: false
+        default: ""
+      build_data_seed:
+        description: Also build the writable Data seed (data.dbr) from the same OS image
+        type: boolean
+        required: false
+        default: true
 permissions:
   contents: read
   actions: read
@@ -58,6 +71,23 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/ci_userdata.py build
+      - name: Build the writable Data seed
+        if: ${{ inputs.build_data_seed }}
+        env:
+          UNIXNU_UNIQUE_CHIP_ID: ${{ inputs.unique_chip_id }}
+          DATA_GIB: ${{ inputs.data_gib }}
+        run: |
+          set -euo pipefail
+          # The seed is a small packed APFS OwnerData container (DBRDISK1: zero
+          # pages dropped), cut from the OS window this run already built, so seed
+          # and root image share one OS revision. It is mounted as the ramdisk
+          # behind /System/Volumes/Data; without it launchd starts and restarts.
+          # The limit is the payload FAT's spare space, measured at 5,752,320
+          # bytes in the reviewed baseline: mcopy never grows that filesystem.
+          python3 tools/ci_userdata.py seed \
+            --data-gib "${DATA_GIB:-0}" \
+            --data-user "${{ inputs.data_user }}" \
+            --data-seed-max-bytes 5752320
       - name: Collect reports
         if: always()
         run: |

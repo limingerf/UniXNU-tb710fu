@@ -59,6 +59,11 @@ INPUTS = {'source_vendor', 'source_vbmeta', 'kernel', 'kernel_report', 'kernel_m
           'build_report', 'integration_report', 'source_storage_archive',
           'source_storage_report', 'root_policies', 'loader_boot', 'loader_artifact'}
 CDC_INPUTS = {'usb_cdc_integration_report', 'usb_cdc_archive', 'usb_cdc_report'}
+# The writable Data volume seed. Optional: present only for an image that
+# publishes /System/Volumes/Data, in which case the kernel build must also have
+# CONFIG_XNU_OWNER_DATA_MOUNT=y and the boot args must open the Sheng window.
+DATA_SEED_INPUTS = {'data_seed'}
+DATA_SEED_NAME = 'Payloads/scratch-data.img'
 DIAGNOSTIC_INPUTS = {'diagnostic_kernel', 'diagnostic_report'}
 LIVE_INPUTS = {'live_log_integration_report', 'live_log_archive', 'live_log_report'}
 STANDARD_INPUTS = {'standard_kernel', 'standard_report'}
@@ -117,7 +122,7 @@ def validate_args(text):
     # parameters, root-device overrides, memory disk or old physical ramoops PA.
     allowed = {'-v', 'serial', 'native-source-storage', 'native-ufs-root',
                'tb710fu-cdc', 'tb710fu-live-log', 'tb710fu-live-checkpoints',
-               'tb710fu-root-partition',
+               'tb710fu-root-partition', 'sheng-data-persist', 'sheng-log-reserve',
                'debug', '-enable_kprintf_spam', 'startup_debug', 'kc-segment-release',
                'ramoops_size', 'ramoops_ecc', 'ramoops_panic_delay', 'ramoops_reset_after'}
     require(set(values) <= allowed, 'Unsupported boot arguments: ' + ', '.join(sorted(set(values) - allowed)))
@@ -146,6 +151,17 @@ def validate_args(text):
     if 'kc-segment-release' in values:
         require(values['kc-segment-release'] == '0',
                 'kc-segment-release must be exactly 0 for the reviewed checkpoint image')
+    # The ShengUfs persistent window: 0 off, 1 read-only probe, 2 writable Data
+    # store. Only 2 lets launchd keep a writable /System/Volumes/Data, so the
+    # value is pinned rather than free-form.
+    if 'sheng-data-persist' in values:
+        require(values['sheng-data-persist'] is not None and
+                int(values['sheng-data-persist'], 0) in (0, 1, 2),
+                'sheng-data-persist must be 0, 1 or 2')
+    if 'sheng-log-reserve' in values:
+        require(values['sheng-log-reserve'] is not None and
+                0 <= int(values['sheng-log-reserve'], 0) <= 16384,
+                'sheng-log-reserve must be between 0 and 16384 MiB')
     return values
 
 
@@ -572,18 +588,30 @@ def reuse_root_adt(data, serializer, profile):
     return data, report
 
 
-def reuse_root_payload(adt, config, old_kernel, old_policies, policies, args, serializer, profile):
+def reuse_root_payload(adt, config, old_kernel, old_policies, policies, args, serializer, profile,
+                       initrd=None):
     validate_args(args)
     require(sha(old_kernel) == ROOTED_KERNEL, 'Rooted baseline kernel differs from the reviewed payload')
-    require(sha(config) == ROOTED_CONFIG, 'Rooted baseline config differs from the reviewed payload')
+    if initrd is None:
+        require(sha(config) == ROOTED_CONFIG, 'Rooted baseline config differs from the reviewed payload')
+    else:
+        # Adding the Data initrd rewrites this one root entry; every other field
+        # must still match the reviewed baseline exactly, which update_config
+        # proves by comparing against the parsed original.
+        base = tomllib.loads(config.decode())
+        root = next(e for e in base['entry'] if e.get('id') == 'xnu')
+        require(root.get('initrd') is None and
+                root.get('path') == 'Payloads/kernel.macho' and
+                base['boot'].get('default') == 'xnu',
+                'Rooted baseline root entry is not the expected shape for an initrd insert')
     require(old_policies == policies and sha(old_policies) == POLICIES,
             'Rooted baseline policies differ from the selected verified policy bundle')
-    config = update_config(config, args)
+    config = update_config(config, args, initrd)
     tree, report = reuse_root_adt(adt, serializer, profile)
     return tree, config, report
 
 
-def update_config(data, args):
+def update_config(data, args, initrd=None):
     original = tomllib.loads(data.decode())
     matches = [entry for entry in original['entry'] if entry.get('id') == 'xnu' and entry.get('type') == 'xnu']
     require(len(matches) == 1 and matches[0].get('path') == 'Payloads/kernel.macho' and matches[0].get('enabled') is True and
@@ -594,11 +622,22 @@ def update_config(data, args):
         if section.startswith('[[entry]]') and tomllib.loads(section)['entry'][0].get('id') == 'xnu':
             sections[index], changed = re.subn(r'(?m)^args\s*=.*$', lambda _: 'args = ' + json.dumps(args), section)
             require(changed == 1, 'Require one explicit root args field')
+            # The Data seed rides in the payload as an initrd. Inserting it only
+            # when a seed is present keeps every existing image byte-identical.
+            if initrd is not None:
+                require(matches[0].get('initrd') is None, 'Baseline root entry already declares an initrd')
+                sections[index], inserted = re.subn(r'(?m)^(args\s*=.*)$',
+                                                    lambda m: 'initrd = ' + json.dumps(initrd) + '\n' + m.group(1),
+                                                    sections[index])
+                require(inserted == 1, 'Could not insert the root initrd field')
             count += 1
     require(count == 1, 'Could not replace exactly one root entry')
     result = ''.join(sections).encode()
     expected = deepcopy(original)
-    next(e for e in expected['entry'] if e.get('id') == 'xnu')['args'] = args
+    root = next(e for e in expected['entry'] if e.get('id') == 'xnu')
+    root['args'] = args
+    if initrd is not None:
+        root['initrd'] = initrd
     require(tomllib.loads(result.decode()) == expected, 'Config change exceeded the explicit root args replacement')
     return result
 
@@ -719,6 +758,16 @@ def checked_inputs(manifest_path, expected):
         require('tb710fu-cdc' in arguments, 'Reporter derivative requires tb710fu-cdc=1')
     if 'gic_device_fdt' in supplied:
         expected_inputs = expected_inputs | {'gic_device_fdt'}
+    # The Data seed is opt-in but must agree with the boot arguments: a seed with
+    # the Sheng window closed would be carried and never used, and an open window
+    # without a seed has no volume to publish.
+    if supplied & DATA_SEED_INPUTS:
+        expected_inputs |= DATA_SEED_INPUTS
+        require(arguments.get('sheng-data-persist') == '2',
+                'A Data seed requires sheng-data-persist=2 in the boot arguments')
+    else:
+        require(arguments.get('sheng-data-persist') is None,
+                'sheng-data-persist=2 requires a data_seed input to publish Data')
     require(supplied == expected_inputs,
             'Manifest must name exactly these files' +
             (' for CDC transport' if expected_inputs != INPUTS else '') + ': ' + ', '.join(sorted(expected_inputs)))
@@ -821,15 +870,22 @@ def package(manifest_path, manifest_sha, output):
         rooted = inputs['source_vendor']['sha256'] == ROOTED_BASELINE
         if rooted:
             expected_listing |= {'::/EFI/UniXNU/Payloads/kernel.macho.vroot'}
+        # The Data seed rides in the same FAT as the kernel. DarwinBoot resolves
+        # the entry's initrd through the SimpleFileSystem protocol, so a plain
+        # file at this path is what the kernel receives.
+        seed_bytes = paths['data_seed'].read_bytes() if 'data_seed' in paths else None
+        if seed_bytes is not None:
+            expected_listing |= {'::/EFI/UniXNU/' + DATA_SEED_NAME}
         require(listing() == expected_listing, 'Unexpected files in the fixed baseline payload')
         before_adt, before_config = read('Payloads/kernel.macho.adt'), read('unixnu.toml')
+        root_initrd = DATA_SEED_NAME if seed_bytes is not None else None
         if rooted:
             tree, config, adt_report = reuse_root_payload(before_adt, before_config,
                 read('Payloads/kernel.macho'), read('Payloads/kernel.macho.vroot'), policies,
-                manifest['boot_args'], serializer, profile)
+                manifest['boot_args'], serializer, profile, root_initrd)
         else:
             tree, adt_report = extend_adt(before_adt, serializer, profile)
-            config = update_config(before_config, manifest['boot_args'])
+            config = update_config(before_config, manifest['boot_args'], root_initrd)
         if 'gic_device_fdt' in paths:
             tree, gic_report = add_device_gic(tree, paths['gic_device_fdt'].read_bytes(),
                                               importlib.import_module('unixnu.devicetree'))
@@ -847,24 +903,36 @@ def package(manifest_path, manifest_sha, output):
                 'LZMA raw-stream roundtrip/bounds failed')
         expected_files = {'Payloads/kernel.macho': encoded, 'Payloads/kernel.macho.adt': tree,
                           'Payloads/kernel.macho.vroot': policies, 'unixnu.toml': config}
-        updates = {'Payloads/kernel.macho': encoded} if rooted else expected_files
+        if seed_bytes is not None:
+            expected_files[DATA_SEED_NAME] = seed_bytes
+        updates = {'Payloads/kernel.macho': encoded} if rooted else dict(expected_files)
         if rooted and tree != before_adt:
             updates['Payloads/kernel.macho.adt'] = tree
         if rooted and config != before_config:
             updates['unixnu.toml'] = config
+        if rooted and seed_bytes is not None:
+            updates[DATA_SEED_NAME] = seed_bytes
         for index, (name, content) in enumerate(updates.items()):
             local = work / f'payload-input-{index}'
             local.write_bytes(content)
             subprocess.run(['mcopy', '-o', '-i', str(payload), str(local), '::/EFI/UniXNU/' + name], check=True)
-        require(listing() == expected_listing | {'::/EFI/UniXNU/Payloads/kernel.macho.vroot'}, 'Unexpected output payload files')
+        expect_final = expected_listing | {'::/EFI/UniXNU/Payloads/kernel.macho.vroot'}
+        require(listing() == expect_final, 'Unexpected output payload files')
         readbacks = {name: read(name) for name in expected_files}
         require(readbacks == expected_files, 'FAT kernel/TOML/ADT/policy byte readback failed')
-        require(tomllib.loads(readbacks['unixnu.toml'].decode())['entry'][0]['args'] == manifest['boot_args'], 'Root args parsed readback failed')
+        parsed = tomllib.loads(readbacks['unixnu.toml'].decode())
+        require(parsed['entry'][0]['args'] == manifest['boot_args'], 'Root args parsed readback failed')
+        require(parsed['entry'][0].get('initrd') == (DATA_SEED_NAME if seed_bytes is not None else None),
+                'Root initrd parsed readback does not match the Data seed decision')
         parse_bundle(readbacks['Payloads/kernel.macho.vroot'])
         require(dict(unique_child(unique_child(read_nodes(readbacks['Payloads/kernel.macho.adt']), 'chosen'), 'memory-map')[0])['RootPolicies'] == bytes(16),
                 'Readback ADT RootPolicies handoff is not zero16')
         fat = payload.read_bytes()
         fat_geometry = geometry(fat)
+        # The Data seed is written into existing FAT space: mcopy allocates from
+        # free clusters and never resizes the filesystem, so the container is
+        # patched in place exactly as for the kernel-only build. A seed that does
+        # not fit fails inside mcopy, before this point.
         require(len(fat) == length and fat_geometry['mountable'] and
                 fat_geometry == geometry(original[page:page + length]), 'Output payload FAT geometry/length changed or failed')
         image = bytearray(original[:body])
