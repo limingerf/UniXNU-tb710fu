@@ -10,7 +10,7 @@ description = "Lenovo TB710FU: minimal macOS 27 kernel bring-up, storage and har
 example = false
 
 [components]
-include = ["ArmDTPlatform", "ArmCpu", "RamBlock", "XnuPrelink", "DarwinBoot"]
+include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "DarwinBoot"]
 
 [kernel]
 defconfig = "tb710fu_macos_defconfig"
