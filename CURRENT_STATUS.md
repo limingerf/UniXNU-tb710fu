@@ -1,4 +1,392 @@
-# Current status · 2026-11-22
+# Current status · 2026-11-23
+
+## 历史里程碑：`pl13-smp-ctrr` 首次突破 `BSD p0a_01/e` 并成功挂载 APFS 根分区 **`Macintosh HD` (`disk5s1`)** · 2026-11-23
+
+- 根因定位（Doubao W1，报告 `scratch/doubao_w1_root.md`）：`BSD p0a_01/e` 为 `sdt_init()` → `ml_unsafe_kernel_text()` 断言 `_unsafe_kernel_text_initialized` 失败，因为 ADT `/chosen` 缺少 `kernel-ctrr-to-be-enabled`。
+- 实机验证镜像：`out/cdc-qr-prelink-45177987375-ctrr-signed/`（在 `pl13-smp` run `45177987375` 基础上向 ADT `/chosen` 注入 `kernel-ctrr-to-be-enabled = <u32 1>`，新 ADT 14,592 B SHA-256 `25818bce...`；已 AVB 签名 `vendor_boot.img` `f318d55a...`、`vbmeta.img` `37902ceb...`）。
+- 实机照片 SHA-256 `a67befaa2d45c546b8d3779fdb887cfb63c3389c1a21aa3dea634e5cca421ff8`（`media_1795445057065_9e3e8652.jpg`）证实：
+  - `handle_mount:906: disk5s1 setting dev block size to 4096 from 512`
+  - **`apfs_log_op_with_proc:3290: disk5s1 mount-complete volume Macintosh HD, requested by: kernel`**
+  - **`TB710FU bsd: vfs-mountroot result=0`**
+  - `TB710FU bsd: secure-root done` → `root-vnode done` → `root-auth begin`
+  - `is_root_hash_authentication_required:611: disk5s1 Root Volume, root hash authentication is required`
+  - `TB710FU bsd: root-auth result=80`（`EAUTH`，预期：无 Apple 封印的 owner 根卷）
+  - **`TB710FU bsd: root-decision apple=80 owner=0`**（底栏 `DLIL 05 SEEN 0013 BSD authretn CDC cdccfg`）——当前已到达**已挂载 APFS 根分区、尚未进入 `/sbin/launchd` 用户态**的最后一道门禁。
+- 精确根因已查明：`configs/tb710fu_macos_defconfig` 中 `CONFIG_XNU_OWNER_ROOT_AUDIT=n`、`CONFIG_XNU_OWNER_ROOT_TRUST=n` 尚未开启（且 `CONFIG_XNU_EXTRA_CFLAGS` 未开启 `-DXNU_TB710FU_OWNER_AUTH_OPEN=1`），而真实加密校验链 `SourceRootPolicies` + `SourceRootBinding` (`native_verified_block_root_authorized`) + `NativeUfs` 已全部链接并运行通过。
+- 伴随现象：6 核 `smp=1` 下 `NativeUfs` 存在间歇性 `ufswcd` 竞态卡死（多次重启后偶发通过），后续同步排查或先以单核 `smp=0` 验证 100% 稳定直达 `/sbin/launchd`。
+
+---
+
+## 里程碑：`pl13-smp` 实现 **6 核全程开中断协作式 `COM5` 常驻在线**（run `45177987375`）· 2026-11-23
+
+- 提交 `9771d6c`（分支 `cdc-smmu-claim`，run [45177987375](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45177987375)）移除 `CdcXnu.c` 的关中断，保持全程 `irq=1` 枚举并以 2 ms 协作式 `thread_block` 常驻运行；已签名包 `out/tb710fu-cdc-pl13-smp-qr-prelink-45177987375-signed.zip`（SHA-256 `b9c460d2e717dc7f934107a53f501716b78d47ac79ebea27af5e113a51e5921c`；`vendor_boot.img` `ff4f829b057297fc703e04b46ae922be076cce7318c240cd9598451c47a82ce1`；`vbmeta.img` `9fd9a36f04f4937578b48815a3b0d93939bc2d6ff27e0c54487e3a49e35b9278`）。
+- 实机照片 SHA-256 `a8db099de1d47c3efdbe32962ea1119efc9c4465815a6c05eaed0b13cef420e4` 证实：
+  - `TB710FU CDC: poll-start irq=1 guctl1=04001808` → `configured=1 dtr=0` → **`TB710FU CDC: woke after yield irq=1`**，底栏 **`DLIL 05 SEEN 0013 BSD p0a_01/e CDC cdcwake`**；
+  - 开机数分钟后 Windows 打开 `COM5` 仍能正常完成 EP0 握手，6 核下 `cdc_worker` 永久常驻不再卡死；
+  - 同时也确认 `BSD` 在 6 核模式下依然停在 `BSD p0a_01/e`（`bsd_autoconf` 第 `0x0a` 号伪设备），这是当前通往 `vfs_mountroot` 的 P0 内核主线阻塞点。
+
+---
+
+## 里程碑：TB710FU SM8650Q-AB **6 核 SMP 首次全部实机上线**（`pl12`，run `45173791567`）· 2026-11-23
+
+- 提交 `479982c`（分支 `cdc-smmu-claim`，run [45173791567](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45173791567)）合入官方 `native-smp-secondary.patch` 第二段（`patches/xnu/0041-tb710fu-smp-secondary-reset-vector.patch`）并将 `COM5` `cmd=edl` 改为 `PSCI_SYSTEM_RESET2`（`0xC4000012`, `reset_type=0` 热重启）。
+- 打包并在 `unixnu.toml` 追加 `smp=1 armcpu-spi-ipi=1 armcpu-self-ipi=1`，本地 AVB 签名并独立验签通过（`out/tb710fu-cdc-pl12-smp-qr-prelink-45173791567-signed.zip`，SHA-256 `017356e82bca2bf43c25a063e5c9d752724edbb56f3fa53477bee171a8e5f942`；`vendor_boot.img` `a54c25ccc02c75de80346fa47cbf919decf18a86cfca505fe548902ce3abdf96`；`vbmeta.img` `2a8905a85b1e33460ae2a0c1bbfaec543574bf3da567c0e3df6cc9ae485d5c76`）。
+- 经由 9008 (`COM3`) 自动刷入 `vbmeta_b` + `vendor_boot_b` 并重启后，**6.14 秒** 即在 `COM5` 抓取到 65,536 字节实时内核日志（`com5_pl12_smp.log`），**首次实机证实 SM8650Q-AB 全部 6 核（`cpu 0..5`）全部成功上线且并发执行**：
+  - `cpu_start() cpu: 0..5` → `arm_cpu_init(): cpu 1..5 online` 全部成功；
+  - `NativeUfs` 与 `TB710FU CDC` 在不同核上真实交错并行，UFS root layout（`first=165e5a8 last=3a8bffa windows=3`）与 CDC 枚举均完成。
+- 此前 `pl11`（`a5ae58c`，run `45169601227`）已实机验证 `COM5` `EP_RX` 双向指令通道与 `QCOM_SCM_IO_WRITE(0x01fd9000, 0x01)` 成功（`rc=0/0/0/0 val=00000000->00000001`）。
+
+---
+
+## CDC `pl10` 预链接与签名候选：`pl9` 证实 `cdcunmk` 瞬间被抢占且 64 KiB 满后丢新日志，`pl10` 改为 64 KiB drop-oldest 尾日志 · 2026-11-23
+
+`image pl9`（run `45151508841`，`adaa6f6`）实机照片 SHA-256
+`c2c1797bf55806ba50a05ad9e52e290730d8bb6b6a6ea1fdf6850f01e59786c7` 与 `COM5` 抓取日志验证结果：
+
+- `COM5` 上线瞬间成功抓回 65,536 字节（`com5_pl9.log`），屏幕完整显示 `configured=1 dtr=0` → `configured=1 dtr=1` → `cdcdtr`；
+- 底栏停在 `DLIL 0F SEEN 6F87 BSD cdcret   CDC cdcunmk`，证实 `ml_set_interrupts_enabled(gSavedIrq)` 恢复中断瞬间即被定时器抢占进入 `DLIL 0F`（`call_continuation`），随后单核未再调度回 `cdc_worker`；
+- 同时发现 `CdcLogRing.c` 为 64 KiB drop-newest，导致早期 `TB710FU kalloc:` 填满缓冲后丢弃了后续所有 BSD / NativeUfs / DLIL / CDC 尾日志。
+
+修复提交 `5217af8` + `10d72ec`（`10d72ec9345ea83f7768d68822fe37b901347332`，分支 `cdc-smmu-claim`，标签 `pl10`）：
+
+- `5217af8`（run `45157484430`）将静态环扩至 256 KiB 触发 prelink `ValueError: Native __DATA overlaps a retained segment`；
+- `10d72ec` 保持 64 KiB 静态 `__DATA` 大小不变，通过 `tb710fu_cdc_log_ring_append_overwrite()`（drop-oldest）保留最新 ~1,100 行尾日志，并由 `CdcXnu.c` 在 DTR 后排空至环空（上限 500 ms）再恢复中断。4 项本地 CDC 测试（含覆写/回绕单测）与 `clang aarch64` 语法检查全绿。
+
+云端预链接构建与本地签名交付包：
+
+- macOS `macos-kernel.yml`（`stage=prelink`）run
+  [45159559366](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45159559366)
+  （`10d72ec`）整体 `success`；产物 `out/artifacts/tb710fu-prelink-45159559366.zip`（artifact
+  `14811150704`，39,354,658 字节），SHA-256
+  `a8d591ac6461c5cfcd80dee4f84fad2a8859a33cbe3dd5122e4041efdf81d5cc` 与 GitHub digest 一致。
+- 预链接 `out/artifacts/tb710fu-prelink-45159559366/kernel/kernel.macho` 共 142,852,096 字节，SHA-256
+  `6e77f3c64f90d64c97da85d65e950772cac8a5174fc8ca863f2262b96f8dbd92`（确认含 `pl10`、`cdcunmk`、`cdcirqok`、`cdcresm`、`cdcblk`、`cdcwake`）。
+- LZMA1 压缩共 24,125,610 字节，SHA-256 `c22c06b3486eb1877b10489db51a95a089cc53db44a1ca72593cb1d64f8863f1`；
+  未签名 `vendor_boot.unsigned.img`（37,859,328 B）SHA-256 `37c0ed9b0b0c67c164be635933ba315cc7017c01595f809944007659841fed6e`。
+- 已签名交付包 `out/tb710fu-cdc-pl10-qr-prelink-45159559366-signed.zip`（35,561,234 字节，
+  SHA-256 `040835736a25689e3c358a3f5ddb8be8d53ae15b6e536d7830d2a3a527daeca4`）：
+  - `vendor_boot.img`（100,663,296 B）：`6bda5431453ab080b66bf7dfa0f344283f658df2d5b338d95837bff6ddc1c9e8`
+  - `vbmeta.img`（8,000 B）：`8d945dfc0d62ad6436b62f1754a7927d53fb3ddc078a9f2c5ac86b53d968a735`
+  - `boot.img`（100,663,296 B）：`a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`
+  - `avbtool verify_image`、22 条未改 descriptor、签名镜像内 FAT `kernel.macho` 回读与 ZIP CRC 全部 PASS。
+
+---
+
+## CDC `pl9` 预链接与签名候选：`pl8` 消除 `beat` 刷屏后恢复中断即停在 `DLIL 0C`，`pl9` 增加开中断/让出路标与 DTR 排空窗口 · 2026-11-23
+
+`image pl8`（run `45140753638`，`0b54590`）实机照片 SHA-256
+`5ab80d14743afd6f6d01afbb0c7487a586ffc34cae02f68532150650cc11a522` 验证结果：
+
+- Windows 枚举 `USB 串行设备 (COM5)`（`USB\VID_1209&PID_0001\TB710FUCDC001`，`Status: OK`）成功，且 `beat` 刷屏彻底消除（仅打印到 `beat #3 r=150` 后进入 `CDC cdccfg`）。
+- 但在 `cdccfg` 后 200 ms 恢复中断并让出 CPU 后，底栏停留在 `DLIL 0C SEEN 0F87 BSD cdcret   CDC cdccfg`（`0C` 为 `TB710FU_DLIL_BEFORE_SWITCH`，`dlil_main_input_thread` 与 `ifnet_detacher_thread` 均未进入），`COM5` 后续 `Open()` 无 EP0 应答。
+
+修复提交 `adaa6f6`（`adaa6f67abc7db67a209ed72846d2b35d6dd30c2`，分支 `cdc-smmu-claim`，标签 `pl9`）：
+
+- `package/Tb710fuUsbCdc/CdcXnu.c`：
+  - 将 `cdc_log` 提前到 `cdc_checkpoint` 之前，确保 `configured`/`dtr` 行完整绘制到帧缓冲；
+  - 保留 50 ms 主机 DTR 排空窗口（或 `configured` 后 3 s / 未插线 5 s 上限），使附着的 `COM5` 监听脚本能在让出 CPU 前收齐干净的启动日志；
+  - 在 `ml_set_interrupts_enabled(gSavedIrq)` 前后及首次 `thread_block` 前后增加 5 个 raw/text 路标（`cdcunmk`、`cdcirqok`、`cdcresm`、`cdcblk`、`cdcwake`），精确区分“开中断瞬间异常”与“让出单核后未再被调度”。
+- 4 项本地 CDC/路标脚本测试与 `clang --target=aarch64-apple-darwin -Wall -Wextra -Werror -Wshadow -Wconversion` 语法检查全绿。
+
+云端预链接构建与本地签名交付包：
+
+- macOS `macos-kernel.yml`（`stage=prelink`）run
+  [45151508841](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45151508841)
+  （`adaa6f6`）整体 `success`；产物 `out/artifacts/tb710fu-prelink-45151508841.zip`（artifact
+  `14806948284`，39,353,581 字节），SHA-256
+  `8b3eadf63e705a191abffea3daeec41ec81fee91ef223258a25279d1e761d5a6` 与 GitHub digest 一致。
+- `build-result.json` 为 `stage=prelinked`、`usb_cdc_transport_linked=true`、`live_log_linked=true`、`source_storage_linked=true`。
+- 预链接 `out/artifacts/tb710fu-prelink-45151508841/kernel/kernel.macho` 共 142,852,096 字节，SHA-256
+  `a77a632001f0f9e10ca6bda233a0e0cfae9526c5456b9b236bccb4b584ec7925`，确认链接进 `cdcunmk`、`cdcirqok`、`cdcresm`、`cdcblk`、`cdcwake`、`woke after yield`。
+- LZMA1 压缩 `out/artifacts/tb710fu-prelink-45151508841/kernel/kernel.macho.lzma` 共 24,120,894 字节，SHA-256
+  `5383d323f9740711730956e9defa3e8d183f96f49e6443afb052a10f4f7c20ca`（双路解压回读一致）；
+  未签名 `out/cdc-qr-prelink-45151508841-unsigned/vendor_boot.unsigned.img` 共 37,859,328 字节，SHA-256
+  `70a311be75830668f40c7f703c323e8db051652c5af03ad7ca6e96139e8e0a6e`（`cdc_platform_check=PASS`，`kernel_file_readback=PASS`）。
+- 已签名交付包 `out/tb710fu-cdc-pl9-qr-prelink-45151508841-signed.zip`（35,560,739 字节，
+  SHA-256 `03c83d82b69bd8d4d496fd45f5aacae38e24c24fbeccfa5dcdef77441d7ead42`）：
+  - `vendor_boot.img`（100,663,296 B）：`b1ca99170f5f17869018250ddcaee863f14a5f16403c4bcec8edf4e155548fd3`
+  - `vbmeta.img`（8,000 B）：`02d04e30f2931270d482a9fe16ea29a1afdb211b41815fa15cd5c02fc90f89be`
+  - `boot.img`（100,663,296 B）：`a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`
+  - 独立 `avbtool verify_image`、22 条未改 descriptor、签名镜像内 FAT `kernel.macho` 解压回读与 ZIP CRC 全部 PASS。当前阶段：**预链接并完成本地测试密钥签名，未执行设备刷写或重启，实机启动待验证**。
+
+---
+
+## CDC `pl8` 预链接与签名候选：`pl7` 实机 `COM5` 枚举成功并抓取 71,688 B 实时日志，`pl8` 消除 `beat` 刷屏并在枚举后恢复中断 · 2026-11-23
+
+`image pl7`（run `45136237392`，`c6cea2b`）**实机验证突破**：
+
+- Windows 成功枚举 `USB 串行设备 (COM5)`（硬件 ID `USB\VID_1209&PID_0001\TB710FUCDC001`，High-Speed，无 Code 43，`conn=1 cfg=1 dtr=1 req=42 ev=530`）。
+- 直接从 `COM5` 实时抓取到 **71,688 字节** XNU 内核日志（`com5_pl7.log`），证实 SM8650 SMMU bank 62 + DWC3 USB2-only + 关中断枚举链路完全贯通。
+- 从实机 `COM5` 日志发现两处需要收口的问题：
+  1. `dsts & 0x007fffff` 包含每 125 us 跳变的 `SOFFN`（bits `16:3`），导致枚举后每 50 ms 持续刷屏 `beat` 行并冲刷 64 KiB 环形缓冲；
+  2. `cdc_worker` 全程关中断轮询，导致单核（`smp=0`）上其余内核线程（BSD / IOKit / UFS）在枚举完成后无法继续推进。
+
+修复提交 `0b54590`（`0b5459066023aa2e11080621cf652d53342ca749`，分支 `cdc-smmu-claim`，标签 `pl8`）：
+
+- `package/Tb710fuUsbCdc/CdcXnu.c`：
+  - 将 `dsts` 链路变化掩码收敛为 `(0xfu << 18) | 7u`（仅比较链路状态与速率，排除 `SOFFN`），并在 `configured == 1`（或 `beats >= 6`）后停止打印 `beat` 行；
+  - 在 `configured == 1` 后延迟 200 ms（或未插线 3 s 上限）恢复 `ml_set_interrupts_enabled(gSavedIrq)`，随后切回 2 ms 协作式 `assert_wait_deadline` + `thread_block(THREAD_CONTINUE_NULL)` 轮询，让 BSD / IOKit / UFS 继续启动。
+- 三组 CDC 主机测试（ASan+UBSan）、`clang --target=aarch64-apple-darwin -Wall -Wextra -Werror -Wshadow -Wconversion` 交叉语法检查与 `check_boot_mark_names.py` 均通过。
+
+云端预链接构建与本地签名交付包：
+
+- macOS `macos-kernel.yml`（`stage=prelink`）run
+  [45140753638](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45140753638)
+  （`0b54590`）整体 `success`；产物 `out/artifacts/tb710fu-prelink-45140753638.zip`（artifact
+  `14801649757`，39,352,473 字节），SHA-256
+  `60c561eef2853a211414a73d8abcb70518bf2dced88e2b77937950e51071d18d` 与 GitHub digest 一致。
+- `build-result.json` 为 `stage=prelinked`、`usb_cdc_transport_linked=true`、`live_log_linked=true`、`source_storage_linked=true`；
+  `usb-cdc/build-report.json` 记录 `transport_sources_compiled=true`，`CdcXnu.c` 源码哈希
+  `de2fa23f134fc4c353571070747e5b8f30a6d10033a8ff53cbbcdfce946a119d` 与 `0b54590` 一致。
+- 预链接 `out/artifacts/tb710fu-prelink-45140753638/kernel/kernel.macho` 共 142,852,096 字节，SHA-256
+  `92e202909f107fc41e6e086673ad6acc001badfec483ed83180c3fd42a76307f`，确认链接进 `resuming kernel` 与 `TB710FUCDC001`。
+- LZMA1 压缩 `out/artifacts/tb710fu-prelink-45140753638/kernel/kernel.macho.lzma` 共 24,113,979 字节，SHA-256
+  `b28f44dc7d886c260d70dd6ba20feb758148e2881293f4ac05c2b2df13fb5de6`（双路 `FORMAT_ALONE` + `FORMAT_RAW` 解压回读一致）；
+  未签名 `out/cdc-qr-prelink-45140753638-unsigned/vendor_boot.unsigned.img` 共 37,859,328 字节，SHA-256
+  `b7595902cf944e9ab684b6c1061a9f315ba7fc2f2b500e4a0a820174da94c569`（`cdc_platform_check=PASS`，`kernel_file_readback=PASS`）。
+- 已签名交付包 `out/tb710fu-cdc-pl8-qr-prelink-45140753638-signed.zip`（35,561,184 字节，
+  SHA-256 `6277b015c0da668106b4cce6b761a7f486133370fd8dda4d943d26af1585f67e`）：
+  - `vendor_boot.img`（100,663,296 B）：`263c3134680e7844dddaa5c012a49217ca7734814daa611d42e5c6825de0ecb2`
+  - `vbmeta.img`（8,000 B）：`bb9493f65871c52d9f4826bb04dd8f41b91a1d65b58c1354591c15f003b1792b`
+  - `boot.img`（100,663,296 B）：`a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`
+  - 独立 `avbtool verify_image`（`vendor_boot.img` 与 `vbmeta.img` SHA256_RSA4096 均通过）、22 条未改 descriptor 与公钥一致、
+    签名镜像内 FAT `kernel.macho` 解压回读（SHA-256 一致）及 ZIP CRC 校验全部 PASS。当前阶段：**预链接并完成本地测试密钥签名，未执行设备刷写或重启，实机启动待验证**。
+
+---
+
+## CDC `pl7` 预链接与签名候选：移除 `irqroute`，在 `dwc3-start` 前关中断防抢占 · 2026-11-23
+
+`image pl6`（run `45132374742`，`5b2ea09`）实机照片 SHA-256
+`2a17da347c88fb4154e13bbe7ebab59db1e5b3195b74c20209617888d6bb9633`（293,032 字节）显示
+停在底栏 `CDC irqroute`（末行 `dwc evt want=ca704000 lo=ca704000 hi=00000008 sz=80001000 cnt=00000000`），
+在单核（`smp=0`）下尚未到达 `cdcready` 及循环前的 `ml_set_interrupts_enabled(FALSE)` 即于
+`irqroute` / `armcpu_spi_attach` 处被抢占，Windows 端仍报 Code 43（请求设备描述符失败）。
+
+修复提交 `c6cea2b`（`c6cea2b041e203ed8f990f2c1cd7e70503a0c37e`，分支 `cdc-smmu-claim`，标签 `pl7`）：
+
+- `package/Tb710fuUsbCdc/CdcXnu.c`：移除轮询模式下无用的 `armcpu_spi_attach`（消除
+  `irqroute` 停点），在 `tb710fu_dwc3_start()` 之前即调用 `ml_set_interrupts_enabled(FALSE)`
+  （worker 退出时恢复），并打印 `poll-start irq=%u guctl1=%08x` 证实以 `irq=0` 进入轮询。
+- 三组 CDC 主机测试（ASan+UBSan）、`clang --target=aarch64-apple-darwin -Wall -Wextra -Werror -Wshadow -Wconversion`
+  交叉语法检查与 `check_boot_mark_names.py` 均通过。
+
+云端预链接构建与本地签名交付包：
+
+- macOS `macos-kernel.yml`（`stage=prelink`）run
+  [45136237392](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45136237392)
+  （`c6cea2b`）整体 `success`；产物 `out/tb710fu-prelink-45136237392.zip`（artifact
+  `14800183254`，39,351,524 字节），SHA-256
+  `d805d4987e755c0c28c572c58fb6735eb31987f2ad36ff50641cb8ffa99e7532` 与 GitHub digest 一致。
+- `kernel.json` 为 `mapping_complete=true`、`missing={}`、`stubbed={}`、`allow_missing=false`；
+  `usb-cdc/build-report.json` 记录 `transport_sources_compiled=true`、
+  `archive_sha256=4efc3943…`，源码哈希与本地 `c6cea2b` 逐字节一致。
+- 预链接 `out/prelink-45136237392/kernel/kernel.macho` 共 142,835,712 字节，SHA-256
+  `6b65a2c15ba9bd46aff48cc9ae5f16dec230cac813ba8ae46d858438c6d3c434`，确认链接进 `pl7`、
+  `poll-start irq=`、`last=%08x`，且已无 `irqroute`。
+- LZMA1 压缩 `out/prelink-45136237392/kernel.macho.lzma` 共 24,118,920 字节，SHA-256
+  `c0071888044c3874981bd13354f6bf2d10f45ee265a6f733750b33a53d03855a`；未签名
+  `out/cdc-qr-prelink-45136237392-unsigned/vendor_boot.unsigned.img` 共 37,859,328 字节，
+  SHA-256 `a1ef72f7d5734da70ee025913e16d3663fd4aa76029848c2d7d1d1b5d3aa28ca`。
+- 已签名交付包 `out/tb710fu-cdc-pl7-qr-prelink-45136237392-signed.zip`（35,561,333 字节，
+  SHA-256 `0977669b27e6115c404c558398ba63fa8e9b835b718616fd5855d713e337928e`）：
+  - `vendor_boot.img`（100,663,296 B）：`248f34122615f1e46435901208eebd2a50c2fb22b5c07d0d56c67dcefd9cd73a`
+  - `vbmeta.img`（8,000 B）：`315cfa13ec5038a44f081366553b56a81cf7a382957bc7f277e2ad06685df6f6`
+  - `boot.img`（100,663,296 B）：`a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`
+  - `avbtool verify_image`、独立 `vbmeta` 描述符解析（22 条未改 descriptor 与公钥一致）、
+    签名镜像 FAT payload 回读及 ZIP CRC 全部 PASS。未执行设备刷写或重启，实机无 Code 43 枚举待验证。
+
+---
+
+## CDC `pl6` 预链接与签名候选：`pl5` 首次收到 DMA USB 事件，屏蔽单核抢占中断 · 2026-11-23
+
+`image pl5`（run `45127773192`，`1269059`）实机照片 SHA-256
+`3c29f5b8fb6a55bd70ea87f96945f7566aacdc52fb024c2aebdccebc5b649d60`（300,795 字节）首次出现
+真实 DMA USB 事件与 Windows 枚举尝试：
+
+- 屏幕末行：`TB710FU CDC: beat #1 r=50 dsts=000e0000 evtcnt=00000000 ev=1 conn=0 cfg=0 dtr=0 gfsr=00000000`
+  （底栏 `CDC cdcbeat`），表明通过 SMMU bank 62 收到第 1 个硬件事件（`USBRST`），USB 2.0
+  High-Speed 握手成功（`dsts` bit 2:0 = `0`），SMMU 无故障（`gfsr=0`）。
+- Windows 主机端首次检测到 USB 设备上线并发起 `GET_DESCRIPTOR(DEVICE)`，但随后报 Code 43
+  （请求 USB 设备描述符失败）。对照照片，`beat #2`（100 ms）与 `transport stopped` 均未打印，
+  说明 `smp=0` 单核上 `cdc_worker` 在 `r=50` ms 后时间片耗尽被定时器中断抢占切回卡死的
+  `BSD p0a_01/e` 线程，未及处理紧随其后的 `CONNECT_DONE` 与 `EP0 SETUP`。
+
+修复提交 `5b2ea09`（`5b2ea0948d27e330cac4e92dd25d037559b7f73d`，分支 `cdc-smmu-claim`，标签 `pl6`）：
+
+- `package/Tb710fuUsbCdc/CdcXnu.c`：在 `CNTVCT_EL0` 轮询循环期间调用
+  `ml_set_interrupts_enabled(FALSE)` 屏蔽抢占中断（退出循环时恢复），确保单核持续服务
+  USB 枚举与日志发送；将读缓存失效由 `dc ivac` 改为 `dc civac`；`beat` 与 `transport stopped`
+  增加 `last=%08x` 与 `req=%llu`。
+- `package/Tb710fuUsbCdc/CdcDwc3.{h,c}`：记录最近一次消费的原始事件字 `last_event`。
+- 三组 CDC 主机测试（ASan+UBSan）、`clang --target=aarch64-apple-darwin -Wall -Wextra -Werror -Wshadow -Wconversion`
+  交叉语法检查与 `check_boot_mark_names.py` 均通过。
+
+云端预链接构建与本地签名交付包：
+
+- macOS `macos-kernel.yml`（`stage=prelink`）run
+  [45132374742](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45132374742)
+  （`5b2ea09`）整体 `success`；产物 `out/tb710fu-prelink-45132374742.zip`（artifact
+  `14799037693`，39,351,907 字节），SHA-256
+  `cbf09d63dc7ec611823501b0c097f808266bd7f840e3cd9fa8c808bb0cdbe4da` 与 GitHub digest 一致。
+- `kernel.json` 为 `mapping_complete=true`、`missing={}`、`stubbed={}`、`allow_missing=false`；
+  `usb-cdc/build-report.json` 记录 `transport_sources_compiled=true`、
+  `archive_sha256=e4e63419…`，源码哈希与本地 `5b2ea09` 逐字节一致。
+- 预链接 `out/prelink-45132374742/kernel/kernel.macho` 共 142,835,712 字节，SHA-256
+  `c9206526a1155102505756e09ddcf0a90a7369b3359c94b6f6b61de4bdf4a249`，确认链接进 `pl6`、
+  `last=%08x`、`req=%llu`、`cdcbeat`、`guctl1=`。
+- LZMA1 压缩 `out/prelink-45132374742/kernel.macho.lzma` 共 24,108,707 字节，SHA-256
+  `956aa0c5856ee6c169dbe2d047024d17bac4f195289ba213b85cbd47cf740d3f`；未签名
+  `out/cdc-qr-prelink-45132374742-unsigned/vendor_boot.unsigned.img` 共 37,859,328 字节，
+  SHA-256 `1a0ec2a6c12b1d90b862d9a14329614d4f29fe8f9833d5b15fcabbae7d84c074`。
+- 已签名交付包 `out/tb710fu-cdc-pl6-qr-prelink-45132374742-signed.zip`（35,560,621 字节，
+  SHA-256 `3a52a17aa9ad6e6fbbdc2c53736b5791a391136ba60933a66e15fc13a6c77236`）：
+  - `vendor_boot.img`（100,663,296 B）：`1bd24a626e0b33d9b32f7c8184314bb5744fb0cd1b585b0cf9c1ec83098cd304`
+  - `vbmeta.img`（8,000 B）：`1b876d60d18d66015e2520cc8add3936f820fe9149d0f0007540cc4fc5153384`
+  - `boot.img`（100,663,296 B）：`a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`
+  - `avbtool verify_image`、独立 `vbmeta` 描述符解析（22 条未改 descriptor 与公钥一致）、
+    签名镜像 FAT payload 回读及 ZIP CRC 全部 PASS。未执行设备刷写或重启，实机无 Code 43 枚举待验证。
+
+---
+
+## CDC `pl5` 预链接与签名候选：`pl4` 实机通过 SMMU/复位/事件环，改为单核持续轮询 · 2026-11-23
+
+`image pl4`（run `45123231765`，`c94c6a1`）实机照片 SHA-256
+`d60168e94806eaa9f4791e3e2d9384ba65f0926f27731fea64cecd5d9b9258d2`（279,768 字节）证实
+上一轮三项修复全部在实机生效：
+
+1. **SMMU SID `0x40` 接管成功**：
+   `smmu claimed=1 slot=0 bank=62 masked=0 tries=1/1 open=0 smr=80000040 s2cr=0000003e cbar=00010000 cba2r=00000001 sctlr=00000000`
+   且 `gfsr=00000000`。
+2. **QSCRATCH PIPE→UTMI 切换与 `DCTL.CSFTRST` 硬件复位首次在 `stage=1` 完成**：
+   `qscratch gen=00000004->0000000d hs=10000000->10100000`，`pcfg` 从 `00102500` 清为
+   `00102400`，`dwc reset stage=1 adopt=0 dctl=00f00000/40f00000`、`forced=0`。
+3. **事件环基址写回保持且 DWC3 USB2 链路状态机已激活**：
+   `dwc evt want=cabec000 lo=cabec000 hi=00000008 sz=80001000 cnt=00000000`；`dctl=80f00000`
+   拉起 `RUN_STOP` 后，`dsts` 从 `00820001`（`USBLNKST=0`，`U0`）在约 10 ms 刷屏后转移到
+   `008e0001`（`USBLNKST=3`，`U3/Suspend`，符合 USB 2.0 主机 100 ms `T_ATTDB` 去抖期间无
+   SOF 满 3 ms 自动入 `U3` 等待主机 `USBRST` 的硬件行为）。
+
+照片最后一行停在 `platform up dma=8cabec000/4000, waiting for enumeration and host DTR`
+（底栏 `DLIL 05 SEEN 7FFF`、`BSD p0a_01/e`、`CDC cdcready`），未出现 `beat` 或
+`timer quiet`。根因：当前默认 `smp=0`（单核）且 BSD 停在 `p0a_01/e` 时定时器计数停在
+`timer=7019`；原轮询循环在第 1 轮（`quiet_rounds=1 <= 4`，距拉起 D+ 仅 ~12 ms，主机 100 ms
+去抖尚未结束）就调用 `assert_wait_deadline` + `thread_block(THREAD_CONTINUE_NULL)` 主动让出
+唯一 CPU，导致 `cdc_worker` 永久失去调度，未能等到后续主机 `USBRST`。
+
+修复提交 `1269059`（`126905995670281911583892351475c8369888fd`，分支 `cdc-smmu-claim`，标签 `pl5`）：
+
+- `package/Tb710fuUsbCdc/CdcXnu.c`：移除轮询循环中的 `thread_block()`，保持 GIC SPI 165
+  屏蔽，直接在当前核以 `cdc_delay(NULL, 100)`（100 µs）持续轮询 `tb710fu_dwc3_poll()`，并在
+  100 ms / 300 ms / 600 ms / 1000 ms 及链路/事件变化时输出 `beat #N` 与 `cdcbeat` 检查点。
+- `package/Tb710fuUsbCdc/CdcDwc3.c`：按本机 `sm8650.dtsi` / `twrp.dts` 置位
+  `GCTL.DSBLCLKGTNG`（bit 0）、`GUCTL1.DEV_FORCE_20_CLK_FOR_30_CLK`（`0xc11c` bit 26），
+  并在置 `RUN_STOP` 时清除 `DCTL` 的 HIRD/LPM 位（bits `28:19`）。
+- 三组 CDC 主机测试（ASan+UBSan）、`clang --target=aarch64-apple-darwin -Wall -Wextra -Werror -Wshadow -Wconversion`
+  交叉语法检查与 `check_boot_mark_names.py` 均通过。
+
+云端预链接构建与本地签名交付包：
+
+- macOS `macos-kernel.yml`（`stage=prelink`）run
+  [45127773192](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45127773192)
+  （`1269059`）整体 `success`；产物 `out/tb710fu-prelink-45127773192.zip`（artifact
+  `14796910905`，39,351,722 字节），SHA-256
+  `6f4fc7fae264b23373558489f6b6a57aa18473694acf3eaf04c761bae8d54bbc` 与 GitHub digest 一致。
+- `kernel.json` 为 `mapping_complete=true`、`missing={}`、`stubbed={}`、`allow_missing=false`；
+  `usb-cdc/build-report.json` 记录 `transport_sources_compiled=true`、
+  `archive_sha256=22c2bdfe…`，源码哈希与本地 `1269059` 逐字节一致。
+- 预链接 `out/prelink-45127773192/kernel/kernel.macho` 共 142,835,712 字节，SHA-256
+  `af6ced226913a77c22f8d228302e76a94b152b96bb52799392d2c23296439abb`，确认包含 `pl5`、
+  `guctl1=`、`cdcbeat`、`beat #%u`、`sidcbwk`、`cdcqutmi`。
+- LZMA1 压缩 `out/prelink-45127773192/kernel.macho.lzma` 共 24,106,133 字节，SHA-256
+  `0864293fd9ed5b3527e797ce3c93d043dfbaefa798d85fd5dd6a6ec863ae1a83`（两次回环校验通过）；
+  未签名 `out/cdc-qr-prelink-45127773192-unsigned/vendor_boot.unsigned.img` 共 37,859,328 字节，
+  SHA-256 `c1820165eb39262979177dba5dcacdd577e9fd0dc02603ec6d18d406c05f9d71`。
+- 已签名交付包 `out/tb710fu-cdc-pl5-qr-prelink-45127773192-signed.zip`（35,561,121 字节，
+  SHA-256 `79f4d896fa869a172e2e554c2b19cb5b5d2f6afd4cbcc899a1b6874df7e2910f`）：
+  - `vendor_boot.img`（100,663,296 B）：`c662fbae60394737926f7ceb5db2c79662389ec0978465116abece63f3befc26`
+  - `vbmeta.img`（8,000 B）：`1a7de8b85759de86a49ff9465f794d9dbaa675755738790a2e28f1ca6d640d33`
+  - `boot.img`（100,663,296 B）：`a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`
+  - `avbtool verify_image`、独立 `vbmeta` 描述符解析（22 条未改 descriptor 与公钥一致）、
+    签名镜像 FAT payload 回读及 ZIP CRC 全部 PASS。未执行设备刷写或重启，实机枚举待验证。
+
+---
+
+## CDC `pl4` 预链接候选：VA64 CB 旁路、QSCRATCH UTMI 时钟与复位前去挂起 · 2026-11-23
+
+本轮 `image pl3`（run `45117098129`，`6075182`）实机照片 SHA-256
+`eae8720e20bb6adb419fd16329664d5550ffb4176c2fa3147594e802a2076ce8` 显示
+`TB710FU CDC: dwc pre pectl=030c1002 dctl=00f00000 gctl=00102000 pcfg=00102500 gsts=7e800000 dsts=00420004`
+后停在 `TB710FU CDC: dwc3-start`，底栏为 `DLIL 05 SEEN 7FFF`、`BSD p0a_01/e`、
+`CDC dwcset`（页脚 `CKPT=TEXT LOG=1005498 QR=1003807 W=1 N=85 Q=82 B=0/6 R=11 ERR=0 cdcdwc`）。
+结合 `image pl2`（run `45113568952`，照片 `.work/shot3-r90.jpg` SHA-256
+`a639a72d0fc10e1fdaae4391e918e22b9a64d66b8f5f017bb561331bcd7213d8`）的完整回读，
+确认三处耦合根因：
+
+1. **SMMU SID `0x40` 未建立路由**：`sCR0=002a0406`（`CLIENTPD=0`、`USFCFG=1`），
+   高通 SM8650 QHEE 将 `S2CR.TYPE=BYPASS (1)` 全部强制回写为 `0x00020000`（`FAULT`），
+   导致 `claimed=0, open=1`，DWC3 发起 DMA 必然在 Apps SMMU fault；此外 `cdc_route()`
+   声明成功后原先未将新路由回写到 `*route`，会导致 `dma-alloc` 后的所有权复核误报 `ownership`。
+2. **USB2-only 模式缺少 PIPE→UTMI 时钟切换**：未启用 SuperSpeed QMP PHY，却未按
+   Linux `dwc3-qcom.c` 的 `dwc3_qcom_select_utmi_clk()` 操作 `QSCRATCH_GENERAL_CFG`
+   （`0x0a6f8808` 的 `PIPE_UTMI_CLK_DIS` / `PIPE_UTMI_CLK_SEL | PIPE3_PHYSTATUS_SW`）。
+3. **软复位前 `GUSB2PHYCFG.ENBLSLPM` 仍置位**：`pcfg=00102500`（bit 8 为 1），原代码在
+   `core_reset()` 之后才清除 `PHY_SUSPEND`，导致 `DCTL.CSFTRST` 在 `pl2` 上始终不清除
+   （`stage=0, forced=1, evtlo=00000000`），在 `pl3` 上直接停在 `dwcset`。
+
+修复提交 `c94c6a19410fb7194dfded0df4dfe87d1a6a1722`（分支 `cdc-smmu-claim`，镜像标签 `pl4`）：
+
+- `package/Tb710fuUsbCdc/CdcHardware.h`：新增 `tb710fu_cdc_stream_cb_bypass_attach()`，
+  采用本机 UFS `SmmuTakeover.h` 已在实机验证通过的 Stage-1 关闭翻译 + VA64 上下文 bank 方案
+  （`SCTLR=0`、`CBA2R=1`、`CBAR=0x10000`、`S2CR=bank`、`SMR=0x80000040`），逐字回读并
+  在失配时完整回滚；保留顶部 8 个 context bank 与最后一个 SMR 槽位给 UFS。
+- `package/Tb710fuUsbCdc/CdcXnu.c`：`cdc_route()` 优先走 VA64 context-bank 接管并在成功
+  后重扫回写 `*route`；在 `vbus` 前执行 `qscratch-utmi`（`0x08` 切换 PIPE 至 UTMI 时钟）并
+  打印 `qscratch gen/hs`；打印 `evthi`、SMMU `bank/cbar/cba2r/sctlr` 与心跳 `gfsr`；
+  移除运行态写 `0xdeadb000` 哨兵 DMA 地址。
+- `package/Tb710fuUsbCdc/CdcDwc3.c`：在写 `DCTL.CSFTRST` 前先清 `USB2PHYCFG.PHY_SUSPEND`
+  和 `GUSB3PIPECTL.SUSPHY` 并延时 100 µs，细分 `dwcset`/`dwcrd`/`dwcwt` 标记，清零
+  `DCFG.INTRNUM`，并记录 `EVENT_HI(0)` 回读。
+- `package/Tb710fuUsbCdc/Test/{cdc_hardware_test.c,cdc_dwc3_test.c}`：新增 SM8650 QHEE
+  拦截 `BYPASS`、跳过占用/活跃/锁定 bank、回滚及复位前去挂起的单元测试。三组 CDC 主机测试
+  （ASan+UBSan）、`clang --target=aarch64-apple-darwin -Wall -Wextra -Werror -Wshadow -Wconversion`
+  交叉语法检查（含 `CdcXnu.c`）与 `check_boot_mark_names.py` 均通过。
+
+云端预链接构建与未签名打包结果：
+
+- macOS `macos-kernel.yml`（`stage=prelink`）run
+  [45123231765](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45123231765)
+  （`c94c6a1`）整体 `success`，通过 CDC 主机测试、原生 `arm64e` 编译、严格预链接与
+  production DarwinBoot parser。
+- 产物 `out/tb710fu-prelink-45123231765.zip`（artifact `14794668719`，39,351,733 字节），
+  SHA-256 `604d4cf8a4716865858b1b3993c529e886cbf6e97b4b138a5ad7f6bcd04613e6` 与 GitHub
+  digest 一致，ZIP CRC 通过。
+- `kernel.json` 报告 `mapping_complete=true`、`missing={}`、`stubbed={}`、
+  `allow_missing=false`；`usb-cdc/build-report.json` 记录 `transport_sources_compiled=true`、
+  `archive_sha256=a0d66906…`，所有源码哈希与本地 `c94c6a1` 逐字节一致。
+- 预链接 `out/prelink-45123231765/kernel/kernel.macho` 共 142,835,712 字节，SHA-256
+  `836039c98cce8d80626196d6d9fd5f84b5ebb8a9dac1af180f66392ced72ae6d`，确认链接进
+  `pl4`（3 处）、`sidcbwk`、`sidcb`、`cdcqutmi`、`qscratch-utmi`、`dwcrd`、`dwcwt`、
+  `qscratch gen=`（各 1 处）。
+- LZMA1（dict 8 MiB、lc3 lp0 pb2、preset 6）压缩后 `out/prelink-45123231765/kernel.macho.lzma`
+  共 24,111,848 字节，SHA-256 `ee25d3fcdc8557cd89b191ee4c06a59c2403377ec1192e7d574e1246edc66b4b`
+  （ALONE 与 RAW 两次回环校验通过）。
+- 基于已验证 GIC 基线 `9cf7c321…` 打包的未签名镜像 `out/cdc-qr-prelink-45123231765-unsigned/vendor_boot.unsigned.img`
+  共 37,859,328 字节，SHA-256 `144d3697148f1cb2af87d9c594fcfb914fd95ace38815ffda9cc2d5eb4f62efa`；
+  ADT 身份检查（`f9b955ba…`、`Mac17,11`）、`unixnu.toml`（`1a1ca11a…`）与全部 5 个必需启动参数、
+  FAT payload 回读全部 PASS。
+- 经用户明确授权本地签名，交付包 `out/tb710fu-cdc-pl4-qr-prelink-45123231765-signed.zip`
+  （35,560,625 字节，SHA-256 `8f51bbdc0c733569b901fe34d19b680385ad1ba7c727746b6246593915380ef6`）：
+  - `vendor_boot.img`：100,663,296 字节，SHA-256 `29580a171995b3f6afe6e2326d0711e190c5a9c56d65148edd4b8f4ea409bcfb`；
+  - `vbmeta.img`：8,000 字节，SHA-256 `9b6b3c6ceb3f9ea2226a922cfba5ff4b92f93a9eba919ab6322374ca7714b43f`；
+  - `boot.img`：沿用基线 `a3236accbde1c3b12f09c8cee8c561bed12542f95fbff50526b3e4e7bd817a83`。
+  - 独立复核：`avbtool verify_image` 验证 `vendor_boot.img` 与 `boot.img` 均 PASS；
+    独立脚本解析 `vbmeta` 确认 `vendor_boot` sha256 描述符（37,859,328 B）逐字节吻合，
+    其余 22 条 raw descriptor、vbmeta header 与公钥不变；从签名后 `vendor_boot.img`
+    的 FAT payload 回读 `kernel.macho`（`ee25d3fc…`）、`unixnu.toml`（`1a1ca11a…`）与
+    GIC ADT（`f9b955ba…`）及 ZIP CRC 均 PASS。
+- 未执行任何设备刷写或重启；实机启动、`DCTL.CSFTRST` 清零、事件环写入与 Windows USB CDC 枚举待实机验证。
+
+---
 
 ## CDC 停在 SID 0x40 路由；判定已分类并接管 · 2026-11-22
 
