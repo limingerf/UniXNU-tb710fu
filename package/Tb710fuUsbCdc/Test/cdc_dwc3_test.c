@@ -214,8 +214,12 @@ static void test_device_role_and_event_irq(void)
     }
 
     prepare(&f);
+    f.regs[0xc704 / 4] = (1u << 31) | (0x1fu << 19); // Firmware HIRD/LPM bits set.
     assert(start(&f, "TB710FUCDC001"));
     assert(!(f.regs[0xc200 / 4] & ((1u << 6) | (1u << 8))));
+    assert(f.regs[0xc110 / 4] & 1u); // GCTL.DSBLCLKGTNG set.
+    assert(f.regs[0xc11c / 4] & (1u << 26)); // GUCTL1.DEV_FORCE_20_CLK_FOR_30_CLK set.
+    assert((f.regs[0xc704 / 4] & (0x3ffu << 19)) == 0); // DCTL LPM/HIRD cleared.
     assert(f.regs[0xc408 / 4] == ((1u << 31) | TB710FU_DWC3_EVENT_BYTES));
     tb710fu_dwc3_enable_event_irq(&f.core);
     assert(f.regs[0xc408 / 4] == TB710FU_DWC3_EVENT_BYTES);

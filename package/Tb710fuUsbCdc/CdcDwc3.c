@@ -8,6 +8,7 @@
 
 #define GCTL 0xc110u
 #define GSTS 0xc118u
+#define GUCTL1 0xc11cu
 #define GSNPSID 0xc120u
 #define GHWPARAMS1 0xc144u
 #define GHWPARAMS3 0xc14cu
@@ -38,6 +39,9 @@
 #define COMMAND_START_CONFIGURATION 9u
 #define PHY_SUSPEND ((1u << 6) | (1u << 8))
 #define PIPE_SUSPEND (1u << 17)
+#define GCTL_DISABLE_CLK_GATING 1u
+#define GUCTL1_FORCE_20_CLK_FOR_30_CLK (1u << 26)
+#define DCTL_LPM_MASK (0x3ffu << 19)
 // One microsecond per poll gave the core 10 ms to answer a reset and a command.
 // Linux allows 500 ms for the reset alone, and this core is adopted from
 // firmware with its clock still gated by whatever the boot chain left running;
@@ -710,8 +714,15 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     // and a write that changes nothing is one more bus access that can wedge -
     // which is exactly what the last precondition attempt did and cost a boot.
     const uint32_t gctl_now = read_reg(d, GCTL);
-    const uint32_t gctl_want = (gctl_now & ~((3u << 12) | (1u << 1))) | (2u << 12);
+    // twrp.dts declares snps,disable-clk-gating for dwc3@a600000.
+    const uint32_t gctl_want =
+        ((gctl_now & ~((3u << 12) | (1u << 1))) | (2u << 12) | GCTL_DISABLE_CLK_GATING);
     if (gctl_want != gctl_now) write_reg(d, GCTL, gctl_want);
+    // Linux drivers/usb/dwc3/core.c: in USB 2.0 peripheral mode without a
+    // SuperSpeed PIPE clock, route the internal 2.0 clock for the 3.0 domain.
+    const uint32_t guctl1_now = read_reg(d, GUCTL1);
+    if (!(guctl1_now & GUCTL1_FORCE_20_CLK_FOR_30_CLK))
+        write_reg(d, GUCTL1, guctl1_now | GUCTL1_FORCE_20_CLK_FOR_30_CLK);
     // sm8650.dtsi declares both USB2 and USB3 suspend quirks for the primary core.
     const uint32_t pcfg_now = read_reg(d, USB2PHYCFG);
     if ((pcfg_now & PHY_SUSPEND) != 0) write_reg(d, USB2PHYCFG, pcfg_now & ~PHY_SUSPEND);
@@ -746,10 +757,10 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     write_reg(d, DEVTEN, (1u << 11) | (1u << 9) | 7u);
     d->probe_trace[1] = read_reg(d, DEVTEN);
     reset_lane(d, "dwcrun");
-    // A core whose reset request was never answered hands over a DCTL that still
-    // carries CSFTRST. Run must not be written with that bit set: that re-asserts
-    // the reset the core already ignored once, so clear it in the same write.
-    write_reg(d, DCTL, (read_reg(d, DCTL) & ~SOFT_RESET) | RUN_STOP);
+    // sm8650.dtsi and twrp.dts declare snps,usb2-gadget-lpm-disable and
+    // snps,hird-threshold = <0>; clear HIRD/LPM bits (28:19) and CSFTRST when
+    // asserting RUN_STOP.
+    write_reg(d, DCTL, (read_reg(d, DCTL) & ~(SOFT_RESET | DCTL_LPM_MASK)) | RUN_STOP);
     d->probe_trace[3] = read_reg(d, DSTS);
     d->running = 1;
     return 1;

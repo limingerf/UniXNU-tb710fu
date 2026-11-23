@@ -92,7 +92,7 @@ static struct {
 /* Bump this literal on every build. Three boots were already spent
  * reverse-identifying a photographed frame by grepping kernel strings; a frame
  * that names its own image costs one line and ends that. */
-#define TB710FU_CDC_IMAGE "pl4"
+#define TB710FU_CDC_IMAGE "pl5"
 
 static void cdc_checkpoint(const char *label)
 {
@@ -1223,39 +1223,51 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
         kern_return_t spi = armcpu_spi_attach(TB710FU_USB_DWC3_INTID, false,
                                               cdc_irq, NULL, &spi_state, NULL);
         const int event_irq = spi == KERN_SUCCESS && (spi_state & 7u) == 3u;
-        if (event_irq) {
-            tb710fu_dwc3_enable_event_irq(&gCdc.controller);
-        } else if (spi == KERN_SUCCESS) {
+        if (spi == KERN_SUCCESS) {
+            // Keep the GIC line masked and poll every 100 us directly on this
+            // core: with smp=0, calling thread_block() on round 1 handed the
+            // single CPU to a BSD thread that never yielded back (observed on
+            // pl4, where neither "beat" nor "timer quiet" ever ran).
             (void)armcpu_spi_mask(TB710FU_USB_DWC3_INTID, true);
         }
-        cdc_log("TB710FU CDC: event irq=%u kr=%d gic=%08x\n",
-               (unsigned)event_irq, spi, spi_state);
+        cdc_log("TB710FU CDC: event irq=%u kr=%d gic=%08x guctl1=%08x\n",
+               (unsigned)event_irq, spi, spi_state, cdc_read(gCdc.dwc, 0xc11c));
         cdc_log("TB710FU CDC: platform up dma=%llx/%x, waiting for enumeration "
                "and host DTR\n",
                (unsigned long long)gReport.dma_physical, (unsigned)gReport.dma_bytes);
         cdc_checkpoint("cdcready");
         unsigned previous = 0;
         int bus_seen = 0, setup_seen = 0;
-        /* The checkpoint worker and every 1 ms sleep in this loop depend on a
-         * timer interrupt. This board has no mapped interrupt controller, so a
-         * blocked wait can park the CDC thread forever and take the transcript
-         * with it. Watch the counter and fall back to a busy wait instead. */
-        uint64_t observed_ticks = armcpu_timer_interrupts;
-        unsigned quiet_rounds = 0, timer_dead = 0, rounds = 0;
+        unsigned rounds = 0, beats = 0;
+        uint32_t last_dsts_link = cdc_read(gCdc.dwc, 0xc70c) & 0x007fffffu;
+        uint64_t last_events = 0;
         while (gCdc.controller.running && !gCdc.controller.failed) {
             tb710fu_dwc3_poll(&gCdc.controller);
-            /* One line a second, because a dead event ring and a silent host bus
-             * produce the same still frame otherwise: only a changing count
-             * separates "events are arriving" from "nothing ever arrives". */
-            if ((++rounds % 1000u) == 0u) {
-                cdc_log("TB710FU CDC: beat dsts=%08x evtcnt=%08x events=%llu "
-                       "connected=%u conf=%u dtr=%u gfsr=%08x\n",
-                       cdc_read(gCdc.dwc, 0xc70c), cdc_read(gCdc.dwc, 0xc40c),
+            ++rounds;
+            const uint32_t dsts_now = cdc_read(gCdc.dwc, 0xc70c);
+            const uint32_t dsts_link = dsts_now & 0x007fffffu;
+            const int early_beat = (rounds == 1000u || rounds == 3000u || rounds == 6000u);
+            const int periodic_beat = ((rounds % 10000u) == 0u && beats < 12u);
+            const int state_changed = (dsts_link != last_dsts_link ||
+                                       gCdc.controller.events != last_events);
+            if (early_beat || periodic_beat ||
+                (state_changed && (rounds % 500u) == 0u)) {
+                last_dsts_link = dsts_link;
+                last_events = gCdc.controller.events;
+                ++beats;
+                cdc_log("TB710FU CDC: beat #%u r=%u dsts=%08x evtcnt=%08x ev=%llu "
+                       "conn=%u cfg=%u dtr=%u gfsr=%08x\n",
+                       beats, rounds / 10u, dsts_now, cdc_read(gCdc.dwc, 0xc40c),
                        (unsigned long long)gCdc.controller.events,
                        (unsigned)gCdc.controller.connected,
                        (unsigned)gCdc.controller.configured,
                        (unsigned)gCdc.controller.dtr,
                        cdc_read(gCdc.smmu, 0x58));
+                if (!gCdc.controller.dtr) {
+                    cdc_checkpoint(gCdc.controller.configured ? "cdccfg" :
+                                   gCdc.controller.setup_requests ? "cdcsetup" :
+                                   gCdc.controller.connected ? "cdcbus" : "cdcbeat");
+                }
             }
             if (!bus_seen && gCdc.controller.connected) {
                 cdc_checkpoint("cdcbus");
@@ -1278,26 +1290,8 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                 previous = state;
             }
             if (!gCdc.controller.running) break;
-            if (armcpu_timer_interrupts != observed_ticks) {
-                observed_ticks = armcpu_timer_interrupts;
-                quiet_rounds = 0;
-            } else if (!timer_dead && ++quiet_rounds > 4u) {
-                timer_dead = 1;
-                cdc_log("TB710FU CDC: timer quiet, polling without sleep\n");
-            }
-            if (timer_dead) {
-                cdc_delay(NULL, 1000);
-                continue;
-            }
-            uint64_t deadline;
-            clock_interval_to_deadline(1, NSEC_PER_MSEC, &deadline);
-            (void)assert_wait_deadline((event_t)&gSleepChannel, THREAD_UNINT, deadline);
-            // Register the waiter first. A pending level interrupt can now
-            // wake it even if the architectural timer never fires.
-            if (event_irq) (void)armcpu_spi_mask(TB710FU_USB_DWC3_INTID, false);
-            thread_block(THREAD_CONTINUE_NULL);
+            cdc_delay(NULL, 100u);
         }
-        if (event_irq) (void)armcpu_spi_mask(TB710FU_USB_DWC3_INTID, true);
         cdc_checkpoint("cdcstop");
         cdc_log("TB710FU CDC: transport stopped: %s\n",
                gCdc.controller.failure ? gCdc.controller.failure : "stopped");
