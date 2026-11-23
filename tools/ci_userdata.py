@@ -13,11 +13,9 @@ Modes:
   collect   copy reports and small evidence into the artifact directory
 """
 import argparse
-import contextlib
 import hashlib
 import json
 import os
-import plistlib
 import shutil
 import subprocess
 import sys
@@ -237,25 +235,26 @@ def build_data_seed(args, source, work, output, env, common, driver):
             sys.stderr.write(log.read_text(errors="replace")[-4000:])
             raise SystemExit("data seed grow failed")
     else:
-        # make-data-seed.py builds the raw APFS OwnerData container, packs it
-        # (DBRDISK1, zero pages dropped) and grows it to the requested size. That
-        # packed form is what the payload carries; a raw multi-GiB seed would not
-        # fit in the payload FAT, whose spare space is only a few MiB.
+        # make-macos-data-seed.py is the tool the macOS profile names
+        # (payload.runtime.data_seed_tool). It takes the OS disk image directly,
+        # attaches it read-only itself, builds the APFS OwnerData container from
+        # /System/Library/Templates/Data and packs the result as DBRDISK1. Using it
+        # keeps one implementation of the volume layout and the packing format.
         #
-        # It takes a mounted volume, not an image: it reads private/var and
-        # checks /sbin/launchd directly under that path. Attach the image here and
-        # hand over the mount point.
-        make = source / "scripts" / "make-data-seed.py"
+        # It must run as root: the Data template keeps its owners, and it writes
+        # with them. The runner allows passwordless sudo.
+        make = source / "scripts" / "make-macos-data-seed.py"
         if not make.is_file():
             raise SystemExit(f"seed tool missing: {make}")
         build = os.environ.get("UNIXNU_BUILD") or PROFILE.rsplit("-", 1)[-1]
+        cmd = [sys.executable, str(make), str(os_image), str(seed),
+               "--gib", str(gib), "--skip-setup"]
+        if dh:
+            cmd += ["--user", args.data_user]
         log = output / "data-seed-build.log"
-        with mount_os_image(os_image, output / "data-seed-attach.log") as volume:
-            cmd = [sys.executable, str(make), str(volume), str(seed),
-                   "--gib", str(gib), "--build", build, "--skip-setup"]
-            with log.open("w") as s:
-                r = subprocess.run([str(c) for c in cmd], cwd=source, stdout=s,
-                                   stderr=subprocess.STDOUT, env=env)
+        with log.open("w") as s:
+            r = subprocess.run(["sudo", "-E", *[str(c) for c in cmd]], cwd=source,
+                               stdout=s, stderr=subprocess.STDOUT, env=env)
         if r.returncode:
             sys.stderr.write(log.read_text(errors="replace")[-6000:])
             raise SystemExit("data seed build failed")
@@ -324,43 +323,6 @@ def os_disk_image(args, source, work):
                          "Pass --os-image FILE to reuse an extracted OS image instead")
     require_os_volume(plain)
     return plain
-
-
-@contextlib.contextmanager
-def mount_os_image(image, log_path):
-    """Attach an OS disk image read-only and yield its system volume mount point.
-
-    make-data-seed.py reads private/var and checks /sbin/launchd under the path it
-    is given, so it needs the mounted volume, not the image.
-
-    The IPSW OS image is an APFS container holding several volumes, so no single
-    -mountpoint can be assumed: hdiutil mounts them under /Volumes and the system
-    volume is whichever entity carries sbin/launchd. Passing -mountpoint would
-    pin only the first volume and hide the system one.
-    """
-    image = Path(image).resolve()
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    cmd = ["hdiutil", "attach", "-readonly", "-nobrowse", "-noverify", "-plist", str(image)]
-    with log_path.open("w") as s:
-        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=s, text=True)
-    if r.returncode:
-        raise SystemExit(f"hdiutil attach failed for {image}: see {log_path}")
-    attached = plistlib.loads(r.stdout)
-    device = attached["system-entities"][0]["dev-entry"]
-    try:
-        volumes = [Path(item["mount-point"]) for item in attached["system-entities"]
-                   if item.get("mount-point")]
-        system = [p for p in volumes
-                  if (p / "sbin" / "launchd").is_file() and (p / "private" / "var").is_dir()]
-        if len(system) != 1:
-            listing = ", ".join(str(p) for p in volumes) or "none"
-            raise SystemExit(
-                f"the attached OS image has {len(system)} system volumes; expected exactly one "
-                f"with sbin/launchd and private/var. Mounted: {listing}")
-        yield system[0]
-    finally:
-        subprocess.run(["hdiutil", "detach", device], check=False,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def require_os_volume(image):
