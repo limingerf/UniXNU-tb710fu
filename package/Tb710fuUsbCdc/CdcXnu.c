@@ -50,6 +50,8 @@ extern void tb710fu_live_log_putc(char byte)
  * include the C library type. */
 extern void tb710fu_live_log_cdc_bytes(const char *bytes, unsigned long length)
     __attribute__((weak_import));
+extern void tb710fu_dump_procs(void)
+    __attribute__((weak_import));
 extern volatile uint32_t armcpu_gic_ready;
 extern volatile uint64_t armcpu_timer_interrupts;
 extern kern_return_t armcpu_spi_attach(uint32_t intid, bool edge,
@@ -95,7 +97,7 @@ static struct {
 /* Bump this literal on every build. Three boots were already spent
  * reverse-identifying a photographed frame by grepping kernel strings; a frame
  * that names its own image costs one line and ends that. */
-#define TB710FU_CDC_IMAGE "pl13"
+#define TB710FU_CDC_IMAGE "pl18"
 
 static void cdc_checkpoint(const char *label)
 {
@@ -632,18 +634,19 @@ static int cdc_consume(void *context, size_t bytes)
 }
 
 /* Host-to-device commands accepted on CDC Bulk OUT (line-terminated):
- *   edl        -> QCOM_SCM_IO_WRITE RMW(0x01fd9000, mask=0x30, val=0x10)
+ *   edl        -> QCOM_SCM_IO_WRITE RMW(0x01fd9000, mask=0x01, val=0x01)
  *                 + PSCI SYSTEM_RESET2(0, 1) -> (0, 0) -> SYSTEM_RESET
- *                 (0x01fd9000 & DloadCookieValue=0x10 verified from sm8650.dtsi
- *                 & Lenovo TB710FU ConfigurationMapLib.c)
+ *                 (Hardware verified on TB710FU: bit 0 is writable 0->1 while
+ *                 bit 4 0x10 is masked to 0 by TZ/Gunyah.)
  *   reboot     -> PSCI SYSTEM_RESET (0x84000009)
  *   bootloader -> PMK8550 SDAM2 (SPMI v7, PPID 0x071, off 0x48, bits <1 7> = 0x02)
  *                 + PSCI SYSTEM_RESET
  *   recovery   -> PMK8550 SDAM2 (SPMI v7, PPID 0x071, off 0x48, bits <1 7> = 0x01)
- *                 + PSCI SYSTEM_RESET */
+ *                 + PSCI SYSTEM_RESET
+ *   ps         -> dump active BSD processes (pid 1..256) to console/COM5 */
 #define TB710FU_TCSR_BOOT_MISC_DETECT 0x01fd9000u
-#define TB710FU_QCOM_DLOAD_MASK       0x30u
-#define TB710FU_QCOM_DLOAD_EDL        0x10u
+#define TB710FU_QCOM_DLOAD_MASK       0x01u
+#define TB710FU_QCOM_DLOAD_EDL        0x01u
 #define TB710FU_PMK8550_SDAM2_PPID    0x071u
 #define TB710FU_PMK8550_SDAM2_BASE    0x7100u
 #define TB710FU_PMK8550_REBOOT_OFF    0x48u
@@ -667,6 +670,8 @@ static void cdc_on_rx(void *context, const uint8_t *bytes, unsigned length)
                     gPendingCmd = 3u;
                 } else if (gRxLen == 8u && memcmp(gRxLine, "recovery", 8u) == 0) {
                     gPendingCmd = 4u;
+                } else if (gRxLen == 2u && memcmp(gRxLine, "ps", 2u) == 0) {
+                    gPendingCmd = 5u;
                 }
                 gRxLen = 0u;
             }
@@ -803,6 +808,11 @@ static void cdc_exec_pending_cmd(void)
     } else if (cmd == 4u) {
         cdc_log("TB710FU CDC: cmd=recovery\n");
         (void)cdc_set_reboot_mode_sdam(0x01u, "recovery");
+    } else if (cmd == 5u) {
+        cdc_log("TB710FU CDC: cmd=ps rx=%u\n", gRxBytes);
+        if (tb710fu_dump_procs) tb710fu_dump_procs();
+        else cdc_log("TB710FU CDC: ps unavailable\n");
+        return;
     } else {
         return;
     }

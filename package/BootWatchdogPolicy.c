@@ -196,3 +196,21 @@ done:
     printf("TB710FU boot-policy: disable-watchdogd=%u status=%d\n", enabled, error);
     return error;
 }
+
+void
+tb710fu_dump_procs(void)
+{
+    unsigned count = 0;
+    printf("TB710FU PS: begin watchdog_policy=%d\n", tb710fu_watchdog_policy_status);
+    for (int pid = 1; pid <= 256; ++pid) {
+        proc_t p = proc_find(pid);
+        if (p != PROC_NULL) {
+            char name[32] = { 0 };
+            proc_name(pid, name, (int)sizeof(name));
+            printf("TB710FU PS: pid=%d ppid=%d name=%s\n", pid, proc_ppid(p), name);
+            proc_rele(p);
+            ++count;
+        }
+    }
+    printf("TB710FU PS: end count=%u\n", count);
+}
