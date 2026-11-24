@@ -67,13 +67,88 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version
           xcrun --sdk macosx --show-sdk-version
           df -h .
+      # A cold cloud run compiles ~950 XNU objects twice: one bootstrap pass that only
+      # leaves the compile records and one real pass with the archive set (CURRENT_STATUS
+      # measured 335 s of the 510 s native step in the bootstrap pass alone).  The object
+      # files depend on the pinned UniXNU/XNU commits, the resolved arch/OS/device patch
+      # series, the kernel defconfig, the board and the compiler - never on package/ or
+      # scripts/build-tb710fu-*.py, which reach the kernel only through the archive link.
+      # tools/ci_cache.py computes that identity, proves a restored tree belongs to it,
+      # pins its mtimes and drops the kernel link output so every run links fresh.
+      - name: Record the runner compiler identity
+        run: |
+          set -euo pipefail
+          {
+            echo "CI_XCODE_VERSION=$(xcodebuild -version | tr '\n' ' ' | sed 's/  */ /g')"
+            echo "CI_MACOS_SDK=$(xcrun --sdk macosx --show-sdk-version)"
+            echo "CI_IPHONEOS_SDK=$(xcrun --sdk iphoneos --show-sdk-version)"
+            echo "CI_HOST=$(sw_vers -productVersion)-$(uname -m)"
+          } >> "$GITHUB_ENV"
+      - name: Compute the cloud-build cache identity
+        id: cache-key
+        run: python3 tools/ci_cache.py key --github-output "$GITHUB_OUTPUT"
       - name: Initialize the pinned UFS interface headers
         run: git -C .work/UniXNU submodule update --init --depth 1 -- kits/VerifiedRoot drivers/VirtioMmioBlock drivers/RamBlock drivers/AppleKeyStoreState drivers/SoftwareAES
+      # No restore-keys: an object tree produced by a different patch series must never
+      # be reused, and the key is the whole input manifest.  Each cache is independent so
+      # a patch edit only costs the XNU compile and keeps the pinned source checkouts.
+      - name: Restore the pinned source checkouts
+        id: restore-feeds
+        continue-on-error: true
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # actions/cache v4.3.0
+        with:
+          path: .work/UniXNU/out/feeds
+          key: ${{ steps.cache-key.outputs.feeds-key }}
+          fail-on-cache-miss: false
+      - name: Restore the XNU compile cache
+        id: restore-xnu
+        continue-on-error: true
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # actions/cache v4.3.0
+        with:
+          path: |
+            .work/UniXNU/out/tb710fu/*/tb710fu_macos/tree/build/xnu/ios-obj
+            .work/UniXNU/out/tb710fu/*/tb710fu_macos/tree/.cache/xnu-work
+            .work/UniXNU/out/tb710fu/*/tb710fu_macos/tree/.cache/fakeroot
+            .work/UniXNU/out/tb710fu/*/tb710fu_macos/tree/.cache/sources
+            .work/UniXNU/out/tb710fu/*/tb710fu_macos/xnu-inputs.json
+            .work/UniXNU/out/tb710fu/*/tb710fu_macos/.ci-cache
+          key: ${{ steps.cache-key.outputs.xnu-key }}
+          fail-on-cache-miss: false
+      - name: Validate the restored XNU state and pin its timestamps
+        id: adopt
+        run: python3 tools/ci_cache.py adopt --key "${{ steps.cache-key.outputs.xnu-key }}" --github-output "$GITHUB_OUTPUT"
       - name: Build and verify the native arm64e kernel
         env:
           GITHUB_TOKEN: ${{ github.token }}
           JOBS: '3'
         run: python3 tools/ci_kernel.py native
+      # Only a successful build may be cached, so the identity is recorded here and
+      # never from a post-job hook.  record refuses to write the state when any
+      # .tb710fu-*-link-input.json stamp no longer matches the archive bytes on disk,
+      # which keeps a stale tree out of the cache; CURRENT_STATUS.md keeps the stage
+      # wording, so a cache hit still only claims a native kernel, never a prelink.
+      - name: Record the compiled XNU objects for the cache
+        run: python3 tools/ci_cache.py record --key "${{ steps.cache-key.outputs.xnu-key }}"
+      - name: Save the XNU compile cache
+        if: success() && steps.restore-xnu.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # actions/cache v4.3.0
+        with:
+          path: |
+            .work/UniXNU/out/tb710fu/*/tb710fu_macos/tree/build/xnu/ios-obj
+            .work/UniXNU/out/tb710fu/*/tb710fu_macos/tree/.cache/xnu-work
+            .work/UniXNU/out/tb710fu/*/tb710fu_macos/tree/.cache/fakeroot
+            .work/UniXNU/out/tb710fu/*/tb710fu_macos/tree/.cache/sources
+            .work/UniXNU/out/tb710fu/*/tb710fu_macos/xnu-inputs.json
+            .work/UniXNU/out/tb710fu/*/tb710fu_macos/.ci-cache
+          key: ${{ steps.cache-key.outputs.xnu-key }}
+      - name: Save the pinned source checkouts
+        if: success() && steps.restore-feeds.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # actions/cache v4.3.0
+        with:
+          path: .work/UniXNU/out/feeds
+          key: ${{ steps.cache-key.outputs.feeds-key }}
       # A patch series is authored against the tree the series itself produces,
       # not against the pristine checkout: earlier patches shift line numbers and
       # rewrite surrounding context. ci_kernel native applies the series, so the
@@ -99,11 +174,30 @@ jobs:
           python3 scripts/check_live_log_qr.py --qr-source "$work/tree/build/tb710fu-live-log/upstream" --output-dir .work/artifacts/live-qr-check --xnu-debug 0
           python3 scripts/check_live_log_qr.py --qr-source "$work/tree/build/tb710fu-live-log/upstream" --output-dir .work/artifacts/live-qr-debug1-check --xnu-debug 1
           python3 scripts/check_live_console_capture.py --cc clang --xnu "$work/tree/.cache/xnu-work" --framework .work/UniXNU --output-dir .work/artifacts/live-console-check
+      # The prelink closure reads the Apple kernelcache, pinned by kernelcache_sha256 in
+      # upstream.lock.json.  unixnu re-verifies that digest before use and re-decodes on
+      # a mismatch, so a restored copy cannot smuggle in a different kernelcache.
+      - name: Restore the verified macOS kernelcache input
+        if: inputs.stage == 'prelink' || inputs.stage == 'ufs-integrated'
+        id: restore-kernelcache
+        continue-on-error: true
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # actions/cache v4.3.0
+        with:
+          path: .work/UniXNU/out/ipsw/*/kernelcache.decompressed
+          key: ${{ steps.cache-key.outputs.ipsw-key }}
+          fail-on-cache-miss: false
       - name: Prelink the macOS 27 kernelcache closure
         if: inputs.stage == 'prelink' || inputs.stage == 'ufs-integrated'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 tools/ci_kernel.py prelink
+      - name: Save the verified macOS kernelcache input
+        if: success() && (inputs.stage == 'prelink' || inputs.stage == 'ufs-integrated') && steps.restore-kernelcache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # actions/cache v4.3.0
+        with:
+          path: .work/UniXNU/out/ipsw/*/kernelcache.decompressed
+          key: ${{ steps.cache-key.outputs.ipsw-key }}
       - name: Compile the pinned TB710FU UFS source adapter
         if: inputs.stage == 'ufs-source'
         env:
