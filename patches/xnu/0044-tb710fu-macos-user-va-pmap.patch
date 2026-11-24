@@ -4,9 +4,10 @@ Hardware evidence (pl21-vctext-pure, vc-text=1):
   panic(cpu 3 caller 0xfffffff00bb7224c): pmap_enter_options_internal: attempt to map illegal VA 0x73e200040000 in pmap 0xfffffff006d5c34000 @pmap.c:6298
 
 Fix:
-- Keep T1SZ_BOOT = 26ULL so kernel TTBR1 (256 GiB) and DarwinBoot stay bit-for-bit unchanged.
-- Set T0SZ_BOOT = 25ULL on 4K XNU_TARGET_OS_OSX so user TTBR0 covers 39 bits (512 GiB, 0x8000000000)
-  with a standard 3-level L1->L2->L3 table (512 L1 entries = 4096 B).
+- Set T0SZ_BOOT = 25ULL on 4K XNU_TARGET_OS_OSX and keep T1SZ_BOOT == T0SZ_BOOT == 25ULL so
+  start.s, kernel_pmap, and pmap_pt_attr_4k all share the exact same 39-bit (512 GiB, 512 L1
+  entries = 4096 B) geometry (splitting T0SZ=25 vs T1SZ=26 broke pmap_bootstrap L1 indexing
+  for 0xfffffff0_0700_4000: index 448 vs 192).
 - Clamp 4K XNU_TARGET_OS_OSX MACH_VM_MAX_ADDRESS_RAW to 0x0000007FFFE00000ULL (512 GiB - 2 MiB,
   matching macOS-DroidVM virt-user-va-512g) so xzone malloc's 455..512 GiB range fits inside
   [0, MACH_VM_MAX_ADDRESS) < pmap->max (0x8000000000).
@@ -23,21 +24,9 @@ index 51fdc9d..f28af8a 100644
 +#else /* !XNU_TARGET_OS_OSX */
  #define T0SZ_BOOT 26ULL
 +#endif /* XNU_TARGET_OS_OSX */
- #else /* __ARM64_PMAP_SUBPAGE_L1__ */
+ #else /* !__ARM64_PMAP_SUBPAGE_L1__ */
  #define T0SZ_BOOT 25ULL
- #endif /* __ARM64_PMAP_SUBPAGE_L1__ */
-@@ -1122,7 +1126,11 @@
- #endif /*__ARM64_PMAP_KERN_SUBPAGE_L1__*/
- #endif /* __ARM_16K_PG__ */
- #else /* HAS_ARM_INDEPENDENT_TNSZ */
-+#if !defined(__ARM_16K_PG__) && __ARM64_PMAP_SUBPAGE_L1__ && XNU_TARGET_OS_OSX
-+#define T1SZ_BOOT 26ULL
-+#else
- #define T1SZ_BOOT T0SZ_BOOT
-+#endif
- #endif /* HAS_ARM_INDEPENDENT_TNSZ */
- 
- #if __ARM_42BIT_PA_SPACE__
+ #endif /* !__ARM64_PMAP_SUBPAGE_L1__ */
 diff --git a/osfmk/mach/arm/vm_param.h b/osfmk/mach/arm/vm_param.h
 index 2adbe8b..c5fcbfd 100644
 --- a/osfmk/mach/arm/vm_param.h
