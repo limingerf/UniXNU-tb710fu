@@ -722,7 +722,12 @@ static void cdc_dispatch_line(void)
         if (*verb >= 'A' && *verb <= 'Z') *verb = (char)(*verb + ('a' - 'A'));
     }
     const unsigned cmd = cdc_verb(gRxLine);
-    if (cmd == 0u) return;
+    if (cmd == 0u) {
+        /* A typo used to look like a dead console: answer it instead of dropping
+         * the line, and never let an unknown verb reach the reset path. */
+        cdc_log("TB710FU SHELL: unknown \"%s\" (try help)\n", gRxLine);
+        return;
+    }
     gPendingCmd = cmd;
 }
 
