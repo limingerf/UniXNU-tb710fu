@@ -1,0 +1,43 @@
+From: TB710FU clean board
+Subject: [PATCH] Hook macOS 27 OS services (AppleKeyStoreState) and BootWatchdogPolicy
+
+Source: TB710FU pl17 integration (D1/D3 audit against UniXNU-sheng@11080685).
+Reason:
+1. Start AppleKeyStoreState (aks=1 aks-sls=3) and probe IOAESAccelerator right
+   after native_source_storage_start() in bsd_init.c so IOKit services are
+   registered before root mount and launchd.
+2. Apply BootWatchdogPolicy (disable-watchdogd=1 -> disabled.plist + Preboot
+   stat64 diagnostic) right after native_owner_macos_boot_shims() in kern_exec.c
+   while Data and firmlinks are mounted and writable.
+---
+
+diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -837,6 +837,12 @@
+ 	TB710FU_BSD_TEXT("source-storage-start", "begin\n");
+ 	native_source_storage_start();
+ 	TB710FU_BSD_TEXT("source-storage-start", "done\n");
++#endif
++#if defined(XNU_TB710FU_MACOS27_SERVICES) && XNU_TB710FU_MACOS27_SERVICES
++	extern void native_tb710fu_services_start(void);
++	TB710FU_BSD_TEXT("macos27-services", "begin\n");
++	native_tb710fu_services_start();
++	TB710FU_BSD_TEXT("macos27-services", "done\n");
+ #endif
+ #if DEVELOPMENT || DEBUG
+ 	TB710FU_BSD_TEXT("apfs-probe", "begin\n");
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -9429,6 +9429,10 @@
+ 	if (!error) native_owner_macos_cryptex_view(p, scratch);
+ 	if (!error) native_owner_macos_gpu_addon(p, scratch);
+ 	if (!error) native_owner_macos_boot_shims(p, scratch);
++#if defined(XNU_TB710FU_MACOS27_SERVICES) && XNU_TB710FU_MACOS27_SERVICES
++	extern int native_boot_watchdog_policy_apply(proc_t, user_addr_t);
++	if (!error) (void)native_boot_watchdog_policy_apply(p, scratch);
++#endif
+ done:
+ 	if (data_root) vnode_put(data_root);
+ 	native_owner_data_status = error;

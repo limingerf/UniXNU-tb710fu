@@ -631,24 +631,29 @@ static int cdc_consume(void *context, size_t bytes)
     return tb710fu_cdc_log_tap_consume(bytes);
 }
 
-/* Host-to-device CDC serial commands (line-delimited ASCII):
- *   edl        -> QCOM_SCM_IO_WRITE(0x01fd9000, EDL=0x01) + PSCI SYSTEM_RESET2
- *                 (0x01fd9000 verified from live-fdt.dtb qcom,dload-mode <0x03 0x19000>)
+/* Host-to-device commands accepted on CDC Bulk OUT (line-terminated):
+ *   edl        -> QCOM_SCM_IO_WRITE RMW(0x01fd9000, mask=0x30, val=0x10)
+ *                 + PSCI SYSTEM_RESET2(0, 1) -> (0, 0) -> SYSTEM_RESET
+ *                 (0x01fd9000 & DloadCookieValue=0x10 verified from sm8650.dtsi
+ *                 & Lenovo TB710FU ConfigurationMapLib.c)
  *   reboot     -> PSCI SYSTEM_RESET (0x84000009)
- *   bootloader -> PMK8550 SDAM2 (SID 0, PPID 0x071, off 0x48, bits <1 7> = 0x02 -> 0x04)
- *                 + PSCI SYSTEM_RESET (verified from pmk8550.dtsi:12-18)
- *   recovery   -> PMK8550 SDAM2 (SID 0, PPID 0x071, off 0x48, bits <1 7> = 0x01 -> 0x02)
- *                 + PSCI SYSTEM_RESET (verified from pmk8550.dtsi:12-18) */
+ *   bootloader -> PMK8550 SDAM2 (SPMI v7, PPID 0x071, off 0x48, bits <1 7> = 0x02)
+ *                 + PSCI SYSTEM_RESET
+ *   recovery   -> PMK8550 SDAM2 (SPMI v7, PPID 0x071, off 0x48, bits <1 7> = 0x01)
+ *                 + PSCI SYSTEM_RESET */
 #define TB710FU_TCSR_BOOT_MISC_DETECT 0x01fd9000u
-#define TB710FU_QCOM_DLOAD_MASK       0x33u
-#define TB710FU_QCOM_DLOAD_EDL        0x01u
+#define TB710FU_QCOM_DLOAD_MASK       0x30u
+#define TB710FU_QCOM_DLOAD_EDL        0x10u
 #define TB710FU_PMK8550_SDAM2_PPID    0x071u
 #define TB710FU_PMK8550_SDAM2_BASE    0x7100u
 #define TB710FU_PMK8550_REBOOT_OFF    0x48u
 
+static unsigned gRxBytes;
+
 static void cdc_on_rx(void *context, const uint8_t *bytes, unsigned length)
 {
     (void)context;
+    gRxBytes += length;
     for (unsigned i = 0; i < length; ++i) {
         const char ch = (char)bytes[i];
         if (ch == '\r' || ch == '\n') {
@@ -679,7 +684,14 @@ static int64_t cdc_smc4(uint64_t fn, uint64_t a1, uint64_t a2, uint64_t a3, uint
     register uint64_t x1 __asm__("x1") = a1;
     register uint64_t x2 __asm__("x2") = a2;
     register uint64_t x3 __asm__("x3") = a3;
-    __asm__ volatile("smc #0" : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3) :: "memory");
+    register uint64_t x4 __asm__("x4") = 0;
+    register uint64_t x5 __asm__("x5") = 0;
+    register uint64_t x6 __asm__("x6") = 0;
+    register uint64_t x7 __asm__("x7") = 0;
+    __asm__ volatile("smc #0"
+                     : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3),
+                       "+r"(x4), "+r"(x5), "+r"(x6), "+r"(x7)
+                     :: "memory");
     if (r1) *r1 = x1;
     return (int64_t)x0;
 }
@@ -690,44 +702,50 @@ static void cdc_psci_system_reset(void)
     for (;;) __asm__ volatile("wfi");
 }
 
-/* SM8650 downstream msm-6.1 reboot-edl path (qcom-dload-mode.c + msm-poweroff.c):
- * Pulling PS_HOLD low via QCOM_SCM_SVC_PWR/DEASSERT_PS_HOLD (0xC2000902) or
- * QCOM_SCM_SVC_OEM_POWER/REBOOT (0xC3000922) triggers PMIC warm reset without
- * clearing AOSS/TCSR 0x01fd9000=0x01, so XBL enters 9008 (EDL) directly. */
-static void cdc_psci_warm_reset(void)
+/* SM8650 Gunyah EDL warm-reset ladder:
+ * 1) PSCI SYSTEM_RESET2(reset_type=0, cookie=1) (DT mode-edl = <0 0x1>)
+ * 2) PSCI SYSTEM_RESET2(0, 0) architectural warm reset (samples TCSR 0x01fd9000=0x10)
+ * 3) PSCI SYSTEM_RESET fallback. Never use DEASSERT_PS_HOLD (poweroff wipes TCSR). */
+static void cdc_edl_reset(void)
 {
-    (void)cdc_smc4(0xC2000902ull, 1ull, 0ull, 0ull, NULL);
-    (void)cdc_smc4(0x82000902ull, 1ull, 0ull, 0ull, NULL);
-    (void)cdc_smc4(0xC3000922ull, 0ull, 0ull, 0ull, NULL);
-    (void)cdc_smc4(0x83000922ull, 0ull, 0ull, 0ull, NULL);
-    for (;;) __asm__ volatile("wfi");
+    const int64_t ver = cdc_smc4(0x84000000ull, 0ull, 0ull, 0ull, NULL);
+    const int64_t feat = cdc_smc4(0x8400000Aull, 0xC4000012ull, 0ull, 0ull, NULL);
+    cdc_log("TB710FU CDC: psci ver=%llx reset2=%lld\n",
+            (unsigned long long)ver, (long long)feat);
+    cdc_log("TB710FU CDC: edl-reset try reset2(0,1)\n");
+    (void)cdc_smc4(0xC4000012ull, 0ull, 1ull, 0ull, NULL);
+    cdc_log("TB710FU CDC: edl-reset try reset2(0,0)\n");
+    (void)cdc_smc4(0xC4000012ull, 0ull, 0ull, 0ull, NULL);
+    cdc_log("TB710FU CDC: edl-reset fallback SYSTEM_RESET\n");
+    cdc_psci_system_reset();
 }
 
 static int cdc_set_edl_cookie(void)
 {
     uint64_t old_val = 0, new_val = 0;
     /* QCOM_SCM_SVC_IO (0x05): IO_READ=0x01, IO_WRITE=0x02 (SMC64 0xC20005xx, fallback SMC32 0x820005xx) */
-    int64_t rc = cdc_smc4(0xC2000501ull, 1ull, TB710FU_TCSR_BOOT_MISC_DETECT, 0ull, &old_val);
     uint64_t write_fn = 0xC2000502ull;
     uint64_t read_fn = 0xC2000501ull;
+    int64_t rc = cdc_smc4(read_fn, 1ull, TB710FU_TCSR_BOOT_MISC_DETECT, 0ull, &old_val);
     if (rc != 0) {
-        rc = cdc_smc4(0x82000501ull, 1ull, TB710FU_TCSR_BOOT_MISC_DETECT, 0ull, &old_val);
         write_fn = 0x82000502ull;
         read_fn = 0x82000501ull;
+        rc = cdc_smc4(read_fn, 1ull, TB710FU_TCSR_BOOT_MISC_DETECT, 0ull, &old_val);
     }
-    const uint32_t want = TB710FU_QCOM_DLOAD_EDL;
-    int64_t wrc = cdc_smc4(write_fn, 2ull, TB710FU_TCSR_BOOT_MISC_DETECT, (uint64_t)want, NULL);
-    int64_t rrc = cdc_smc4(read_fn, 1ull, TB710FU_TCSR_BOOT_MISC_DETECT, 0ull, &new_val);
-    int64_t brc = 0;
-    if (wrc != 0) {
-        /* Fallback: QCOM_SCM_SVC_BOOT (0x01) SET_DLOAD_MODE (0x10) */
-        brc = cdc_smc4(0xC2000110ull, 2ull, TB710FU_QCOM_DLOAD_EDL, 0ull, NULL);
-        if (brc != 0) brc = cdc_smc4(0x82000110ull, 2ull, TB710FU_QCOM_DLOAD_EDL, 0ull, NULL);
+    if (rc != 0) {
+        cdc_log("TB710FU CDC: edl-cookie read rc=%lld\n", (long long)rc);
+        return 0;
     }
-    cdc_log("TB710FU CDC: edl-cookie rc=%lld/%lld/%lld/%lld val=%08x->%08x\n",
-            (long long)rc, (long long)wrc, (long long)rrc, (long long)brc,
-            (unsigned)old_val, (unsigned)new_val);
-    return (wrc == 0 || brc == 0) ? 1 : 0;
+    const uint32_t want = (uint32_t)((old_val & ~(uint64_t)TB710FU_QCOM_DLOAD_MASK) |
+                                     TB710FU_QCOM_DLOAD_EDL);
+    const int64_t wrc = cdc_smc4(write_fn, 2ull, TB710FU_TCSR_BOOT_MISC_DETECT, (uint64_t)want, NULL);
+    const int64_t rrc = cdc_smc4(read_fn, 1ull, TB710FU_TCSR_BOOT_MISC_DETECT, 0ull, &new_val);
+    const int ok = (wrc == 0) && (rrc == 0) &&
+                   ((new_val & TB710FU_QCOM_DLOAD_MASK) == TB710FU_QCOM_DLOAD_EDL);
+    cdc_log("TB710FU CDC: edl-cookie rc=%lld/%lld/%lld val=%08x->%08x ok=%d\n",
+            (long long)rc, (long long)wrc, (long long)rrc,
+            (unsigned)old_val, (unsigned)new_val, ok);
+    return ok;
 }
 
 static int cdc_set_reboot_mode_sdam(uint8_t mode, const char *label)
@@ -735,10 +753,11 @@ static int cdc_set_reboot_mode_sdam(uint8_t mode, const char *label)
     const vm_offset_t core = ml_io_map(TB710FU_USB_SPMI_CORE_BASE, TB710FU_USB_SPMI_CORE_BYTES);
     const vm_offset_t config = ml_io_map(TB710FU_USB_SPMI_CONFIG_BASE, TB710FU_USB_SPMI_CONFIG_BYTES);
     if (!core || !config) return 0;
-    const uint32_t count = (cdc_read(core, 0x04) >> 16) & 0x3ffu;
+    /* SM8650 SPMI PMIC Arbiter v7: APID count in core[4] & 0x7ff, map at 0x2000 + 4*i */
+    const uint32_t count = cdc_read(core, 0x04) & 0x7ffu;
     int apid = -1;
     for (uint32_t i = 0; i < count && i < 1024u; ++i) {
-        const uint32_t mapping = cdc_read(core, 0x0900u + i * 4u);
+        const uint32_t mapping = cdc_read(core, 0x2000u + i * 4u);
         const uint32_t owner = cdc_read(config, i * 4u) & 7u;
         if (((mapping >> 8) & 0xfffu) == TB710FU_PMK8550_SDAM2_PPID &&
             owner == TB710FU_CDC_SPMI_EE) {
@@ -771,8 +790,11 @@ static void cdc_exec_pending_cmd(void)
     const unsigned cmd = gPendingCmd;
     gPendingCmd = 0u;
     if (cmd == 1u) {
-        cdc_log("TB710FU CDC: cmd=edl\n");
-        (void)cdc_set_edl_cookie();
+        cdc_log("TB710FU CDC: cmd=edl rx=%u\n", gRxBytes);
+        if (!cdc_set_edl_cookie()) {
+            cdc_log("TB710FU CDC: edl-cookie rejected, no reset\n");
+            return;
+        }
     } else if (cmd == 2u) {
         cdc_log("TB710FU CDC: cmd=reboot\n");
     } else if (cmd == 3u) {
@@ -784,13 +806,13 @@ static void cdc_exec_pending_cmd(void)
     } else {
         return;
     }
-    /* Flush reply over USB Bulk IN for 30 ms before issuing PSCI reset. */
-    for (unsigned i = 0; i < 300u && gCdc.controller.running && !gCdc.controller.failed; ++i) {
+    /* Flush reply over USB Bulk IN for 40 ms before issuing PSCI reset. */
+    for (unsigned i = 0; i < 400u && gCdc.controller.running && !gCdc.controller.failed; ++i) {
         tb710fu_dwc3_poll(&gCdc.controller);
         cdc_delay(NULL, 100u);
     }
     if (cmd == 1u) {
-        cdc_psci_warm_reset();
+        cdc_edl_reset();
     } else {
         cdc_psci_system_reset();
     }

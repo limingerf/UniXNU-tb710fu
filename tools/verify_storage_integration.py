@@ -78,7 +78,7 @@ def verify(tree, config, native_path):
     policies = output / 'root-policies.bin'
     require(digest(policies) == report['policies']['bundle_sha256'], 'RootPolicies bundle/report mismatch')
     members = dict(audit.ar_members(archive.read_bytes()))
-    require(len(report['objects_sha256']) == 9, 'Unexpected minimal storage source set')
+    require(len(report['objects_sha256']) == 10, 'Unexpected minimal storage source set')
     for name, expected in report['objects_sha256'].items():
         data = members[name]
         require(hashlib.sha256(data).hexdigest() == expected, f'Archive member hash mismatch: {name}')
@@ -111,6 +111,7 @@ def verify(tree, config, native_path):
                  '_native_ufs_block_authenticates', '_native_verified_block_root_authorized',
                  '_native_verified_block_manifest_sha384', '_native_verified_block_volume_device',
                  '_native_ram_block_volume_seed', '_native_ram_block_gpu_addon',
+                 '_native_boot_watchdog_policy_apply',
                  '_vr_open', '_vr_open_header', '_vr_xnu_crypto', '_verified_root_key'):
         require(any(s['name'] == name and s['kind'] & 14 == 14 and not s['kind'] & 0xe0 for s in symbols),
                 f'Real storage/crypto definition missing from native kernel: {name}')

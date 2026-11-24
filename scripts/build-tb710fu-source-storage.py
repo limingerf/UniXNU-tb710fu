@@ -211,7 +211,9 @@ OSDefineOperatorMethods(IOBlockStorageDevice)
 '''))
     records = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
     recipe_paths = {'cpp': records / 'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json',
-                    'c': records / 'osfmk/DEVELOPMENT/startup.o.json'}
+                    'c': records / 'osfmk/DEVELOPMENT/startup.o.json',
+                    'bsd': records / 'bsd/DEVELOPMENT/kern_exec.o.json'}
+    bsd_sources = {'BootWatchdogPolicy.c'}
     recipes = {name: json.loads(path.read_text().strip().rstrip(',')) for name, path in recipe_paths.items()}
     osx = output / 'macos-target.h'
     osx.write_text('#include <TargetConditionals.h>\n#undef TARGET_OS_OSX\n#define TARGET_OS_OSX 1\n')
@@ -229,9 +231,10 @@ OSDefineOperatorMethods(IOBlockStorageDevice)
         host_tests = adapter.run_host_tests(stage, output, patches=patches)
         sources = [base, stage / 'NativeUfs.cpp', ram_block_cpp, ROOT / 'package/SourceStorage.cpp',
                    ROOT / 'package/SourceRootPolicies.cpp', ROOT / 'package/SourceRootBinding.cpp',
+                   ROOT / 'package/BootWatchdogPolicy.c',
                    verified_root / 'src/verified_root.c', verified_root / 'adapters/xnu_crypto.c', anchor]
         for path in sources:
-            record = recipes['c' if path.suffix == '.c' else 'cpp']
+            record = recipes['bsd' if path.name in bsd_sources else ('c' if path.suffix == '.c' else 'cpp')]
             obj = output / (path.stem + '.o')
             command = adapter.compile_command(record, path, obj, includes, flags)
             # The XNU records carry the kernel's 17.0 triple (twice); this archive

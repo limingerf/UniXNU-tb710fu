@@ -39,3 +39,4 @@
 0039-tb710fu-raw-bsd-checkpoints.patch
 0040-tb710fu-autoconf-internals.patch
 0041-tb710fu-smp-secondary-reset-vector.patch
+0042-tb710fu-macos27-services.patch
