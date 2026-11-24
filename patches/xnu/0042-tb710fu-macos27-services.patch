@@ -30,10 +30,11 @@ diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
 --- a/bsd/kern/kern_exec.c
 +++ b/bsd/kern/kern_exec.c
-@@ -9429,6 +9429,10 @@
- 	if (!error) native_owner_macos_cryptex_view(p, scratch);
+@@ -9641,6 +9641,10 @@
  	if (!error) native_owner_macos_gpu_addon(p, scratch);
+ 	if (!error) native_owner_macos_addon_sbin(p, scratch);
  	if (!error) native_owner_macos_boot_shims(p, scratch);
+ 	if (!error) native_gpu_addon_release();
 +#if defined(XNU_TB710FU_MACOS27_SERVICES) && XNU_TB710FU_MACOS27_SERVICES
 +	extern int native_boot_watchdog_policy_apply(proc_t, user_addr_t);
 +	if (!error) (void)native_boot_watchdog_policy_apply(p, scratch);
