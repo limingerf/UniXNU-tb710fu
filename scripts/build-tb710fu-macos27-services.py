@@ -91,6 +91,13 @@ def main():
     if revision(aks_dir) != expected_aks:
         raise SystemExit('Initialize the pinned drivers/AppleKeyStoreState submodule before native build')
 
+    aes_dir = framework / 'drivers/SoftwareAES'
+    expected_aes = subprocess.check_output(
+        ['git', '-C', str(framework), 'rev-parse', lock['unixnu']['commit'] + ':drivers/SoftwareAES'],
+        text=True).strip()
+    if revision(aes_dir) != expected_aes:
+        raise SystemExit('Initialize the pinned drivers/SoftwareAES submodule before native build')
+
     records = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
     cpp_record_path = records / 'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json'
     if not cpp_record_path.is_file():
@@ -105,17 +112,82 @@ def main():
     archive = output / 'libTb710fuMacos27Services.a'
     archive.unlink(missing_ok=True)
 
-    includes = [output, aks_dir, tree / '.cache/xnu-work/osfmk', tree / '.cache/xnu-work/libkern']
-    flags = []
+    # Generate build-local OriginalAESABI.h & NativeAES.cpp bound dynamically to the
+    # live 26C5035r IOAESAccelerator metaclass (verified 0x120 on hardware) without
+    # modifying fetched source caches or emitting duplicate/undefined IOAESAccelerator symbols.
+    orig_abi = (aes_dir / 'OriginalAESABI.h').read_text()
+    abi_text = orig_abi.replace(
+        'OSDeclareDefaultStructors(IOCryptoAccelerator)',
+        'protected:\n  IOCryptoAccelerator(const OSMetaClass *meta) : IOService(meta) {}\n  ~IOCryptoAccelerator() override = default;',
+        1,
+    ).replace(
+        'OSDeclareDefaultStructors(IOAESAccelerator)',
+        'protected:\n  IOAESAccelerator(const OSMetaClass *meta) : IOCryptoAccelerator(meta) { memset(originalFields, 0, sizeof(originalFields)); }\n  ~IOAESAccelerator() override = default;',
+        1,
+    )
+    for decl in (
+        'virtual const char *getAlgorithmName();',
+        'const char *getAlgorithmName() override;',
+        'virtual IOReturn performAES(void *, void *, task_t, unsigned long long, IOAESIV *,\n                             IOAESOperation, IOAESKeyData *, IOAESCompletion, void *);',
+        'virtual IOReturn performAES(IOMemoryDescriptor *, IOMemoryDescriptor *, unsigned long long,\n                             IOAESIV *, IOAESOperation, IOAESKeyData *, unsigned long long,\n                             unsigned long long, IOAESCompletion, void *);',
+        'virtual bool isKeySupported(unsigned);',
+        'virtual unsigned getSupportedOptions();',
+        'virtual IOReturn performAESQuantum(IOAESAcceleratorCommand *);',
+        'virtual void completeAESQuantum(IOAESAcceleratorCommand *);',
+        'virtual IOReturn performImmediateAES(IOAESAcceleratorCommand *);',
+        'virtual void disableHardwareKey(unsigned);',
+        'virtual void createSpecialKeys();',
+        'virtual IOReturn _queueLocked(IOAESAcceleratorCommand *);',
+        'virtual void _startCommand();',
+        'virtual void _completeAES(IOAESAcceleratorCommand *);',
+    ):
+        if decl not in abi_text:
+            raise SystemExit(f'OriginalAESABI.h changed; missing: {decl}')
+        abi_text = abi_text.replace(decl, decl[:-1] + ' = 0;')
+    (output / 'OriginalAESABI.h').write_text(abi_text)
+
+    orig_aes = (aes_dir / 'NativeAES.cpp').read_text()
+    anchor_methods = '  IOReturn performAES(IOMemoryDescriptor *, IOMemoryDescriptor *, unsigned long long,\n                     IOAESIV *, IOAESOperation, IOAESKeyData *, unsigned long long,\n                     unsigned long long, IOAESCompletion, void *) override;'
+    if orig_aes.count(anchor_methods) != 1:
+        raise SystemExit('NativeAES.cpp class declaration changed')
+    hw_overrides = anchor_methods + '''
+  IOReturn performAESQuantum(IOAESAcceleratorCommand *) override { return kIOReturnUnsupported; }
+  void completeAESQuantum(IOAESAcceleratorCommand *) override {}
+  IOReturn performImmediateAES(IOAESAcceleratorCommand *) override { return kIOReturnUnsupported; }
+  void disableHardwareKey(unsigned) override {}
+  void createSpecialKeys() override {}
+  IOReturn _queueLocked(IOAESAcceleratorCommand *) override { return kIOReturnUnsupported; }
+  void _startCommand() override {}
+  void _completeAES(IOAESAcceleratorCommand *) override {}'''
+    macro_aes = 'OSDefineMetaClassAndStructors(NativeAES, IOAESAccelerator)'
+    if orig_aes.count(macro_aes) != 1:
+        raise SystemExit('NativeAES.cpp metaclass macro changed')
+    aes_binding = '''extern "C" const OSMetaClass *native_tb710fu_aes_parent(void);
+NativeAES::MetaClass NativeAES::gMetaClass;
+const OSMetaClass * const NativeAES::metaClass = &NativeAES::gMetaClass;
+const OSMetaClass * const NativeAES::superClass = &IOService::gMetaClass;
+NativeAES::NativeAES(const OSMetaClass *meta) : IOAESAccelerator(meta) {}
+NativeAES::~NativeAES() {}
+const OSMetaClass *NativeAES::getMetaClass() const { return &gMetaClass; }
+NativeAES::MetaClass::MetaClass()
+    : OSMetaClass("NativeAES", native_tb710fu_aes_parent(), sizeof(NativeAES)) {}
+OSDefineBasicStructors(NativeAES, IOAESAccelerator)
+OSDefineOperatorMethods(NativeAES)
+extern "C" IOService *native_aes_allocate(void) { return OSTypeAlloc(NativeAES); }'''
+    gen_aes = output / 'NativeAES.cpp'
+    gen_aes.write_text(orig_aes.replace(anchor_methods, hw_overrides, 1).replace(macro_aes, aes_binding, 1))
+
+    includes = [output, aks_dir, aes_dir, tree / '.cache/xnu-work/osfmk', tree / '.cache/xnu-work/libkern']
     sources = [
-        aks_dir / 'NativeKeyStoreEvents.cpp',
-        device / 'package/AppleKeyStoreHooks.cpp',
-        device / 'package/Macos27Services.cpp',
+        (aks_dir / 'NativeKeyStoreEvents.cpp', []),
+        (gen_aes, ['-DNATIVE_AES_DARWIN26=1']),
+        (device / 'package/AppleKeyStoreHooks.cpp', []),
+        (device / 'package/Macos27Services.cpp', []),
     ]
     objects = []
-    for path in sources:
+    for path, extra_flags in sources:
         obj = output / (path.stem + '.o')
-        command = adapter.compile_command(cpp_record, path, obj, includes, flags)
+        command = adapter.compile_command(cpp_record, path, obj, includes, extra_flags)
         command = ['--target=arm64e-apple-ios27.0' if v.startswith('--target=') else v for v in command]
         result = subprocess.run(command, cwd=cpp_record['directory'], text=True,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -123,11 +195,17 @@ def main():
         if result.returncode:
             raise SystemExit(f'{path.name}:\n{result.stdout[-6000:]}')
         target.check_object(obj.read_bytes(), path.name)
-        if path.name == 'NativeKeyStoreEvents.cpp':
+        if path.name in ('NativeKeyStoreEvents.cpp', 'NativeAES.cpp'):
             init = '__GLOBAL__sub_I_' + path.name
             late = obj.with_suffix('.late.o')
             defer_constructor(obj, late, init)
             target.check_object(late.read_bytes(), path.name + ' deferred')
+            if path.name == 'NativeAES.cpp':
+                undef = subprocess.check_output(['xcrun', 'nm', '-u', str(late)], text=True)
+                bad = [line for line in undef.splitlines()
+                       if 'IOAESAccelerator' in line or 'IOCryptoAccelerator' in line]
+                if bad:
+                    raise SystemExit('Unexpected undefined IOAESAccelerator symbols:\n' + '\n'.join(bad))
             obj = late
         objects.append(obj)
 
@@ -137,6 +215,7 @@ def main():
         'archive': str(archive),
         'archive_sha256': digest,
         'aks_revision': expected_aks,
+        'aes_revision': expected_aes,
         'objects_sha256': {o.name: sha(o) for o in objects},
     }, indent=2) + '\n')
 

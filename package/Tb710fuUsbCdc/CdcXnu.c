@@ -97,7 +97,7 @@ static struct {
 /* Bump this literal on every build. Three boots were already spent
  * reverse-identifying a photographed frame by grepping kernel strings; a frame
  * that names its own image costs one line and ends that. */
-#define TB710FU_CDC_IMAGE "pl18"
+#define TB710FU_CDC_IMAGE "pl19"
 
 static void cdc_checkpoint(const char *label)
 {
@@ -707,9 +707,11 @@ static void cdc_psci_system_reset(void)
     for (;;) __asm__ volatile("wfi");
 }
 
-/* SM8650 Gunyah EDL warm-reset ladder:
- * 1) PSCI SYSTEM_RESET2(reset_type=0, cookie=1) (DT mode-edl = <0 0x1>)
- * 2) PSCI SYSTEM_RESET2(0, 0) architectural warm reset (samples TCSR 0x01fd9000=0x10)
+/* SM8650 TWRP / Linux psci-reboot-mode EDL warm-reset ladder:
+ * 1) PSCI SYSTEM_RESET2(0x80000000, 1): ARM PSCI v1.1 vendor-specific reset
+ *    (BIT(31)=0x80000000 is PSCI_1_1_RESET_TYPE_VENDOR_START; DT mode-edl = <0x80000000 0x1>).
+ *    Passing 0x0 instead of 0x80000000 triggers architectural warm reset that ignores cookie=1.
+ * 2) PSCI SYSTEM_RESET2(0x80000001, 1) secondary vendor variant.
  * 3) PSCI SYSTEM_RESET fallback. Never use DEASSERT_PS_HOLD (poweroff wipes TCSR). */
 static void cdc_edl_reset(void)
 {
@@ -717,10 +719,10 @@ static void cdc_edl_reset(void)
     const int64_t feat = cdc_smc4(0x8400000Aull, 0xC4000012ull, 0ull, 0ull, NULL);
     cdc_log("TB710FU CDC: psci ver=%llx reset2=%lld\n",
             (unsigned long long)ver, (long long)feat);
-    cdc_log("TB710FU CDC: edl-reset try reset2(0,1)\n");
-    (void)cdc_smc4(0xC4000012ull, 0ull, 1ull, 0ull, NULL);
-    cdc_log("TB710FU CDC: edl-reset try reset2(0,0)\n");
-    (void)cdc_smc4(0xC4000012ull, 0ull, 0ull, 0ull, NULL);
+    cdc_log("TB710FU CDC: edl-reset try reset2(0x80000000,1)\n");
+    (void)cdc_smc4(0xC4000012ull, 0x80000000ull, 1ull, 0ull, NULL);
+    cdc_log("TB710FU CDC: edl-reset try reset2(0x80000001,1)\n");
+    (void)cdc_smc4(0xC4000012ull, 0x80000001ull, 1ull, 0ull, NULL);
     cdc_log("TB710FU CDC: edl-reset fallback SYSTEM_RESET\n");
     cdc_psci_system_reset();
 }
@@ -796,10 +798,7 @@ static void cdc_exec_pending_cmd(void)
     gPendingCmd = 0u;
     if (cmd == 1u) {
         cdc_log("TB710FU CDC: cmd=edl rx=%u\n", gRxBytes);
-        if (!cdc_set_edl_cookie()) {
-            cdc_log("TB710FU CDC: edl-cookie rejected, no reset\n");
-            return;
-        }
+        (void)cdc_set_edl_cookie();
     } else if (cmd == 2u) {
         cdc_log("TB710FU CDC: cmd=reboot\n");
     } else if (cmd == 3u) {

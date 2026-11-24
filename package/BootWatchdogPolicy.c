@@ -197,17 +197,37 @@ done:
     return error;
 }
 
+extern task_t proc_task(proc_t);
+extern int get_task_numacts(task_t);
+extern uint64_t get_task_resident_size(task_t);
+extern uint64_t get_task_phys_footprint(task_t);
+extern volatile uint32_t native_aes_kat_status __attribute__((weak_import));
+extern volatile uint32_t native_aes_registered __attribute__((weak_import));
+extern volatile uint32_t native_aes_completed __attribute__((weak_import));
+extern volatile uint32_t native_aes_nonce_key_uses __attribute__((weak_import));
+
 void
 tb710fu_dump_procs(void)
 {
     unsigned count = 0;
-    printf("TB710FU PS: begin watchdog_policy=%d\n", tb710fu_watchdog_policy_status);
+    printf("TB710FU PS: begin watchdog_policy=%d aes_kat=%u aes_reg=%u aes_done=%u aes_nonce=%u\n",
+           tb710fu_watchdog_policy_status,
+           &native_aes_kat_status ? native_aes_kat_status : 0u,
+           &native_aes_registered ? native_aes_registered : 0u,
+           &native_aes_completed ? native_aes_completed : 0u,
+           &native_aes_nonce_key_uses ? native_aes_nonce_key_uses : 0u);
     for (int pid = 1; pid <= 256; ++pid) {
         proc_t p = proc_find(pid);
         if (p != PROC_NULL) {
             char name[32] = { 0 };
             proc_name(pid, name, (int)sizeof(name));
-            printf("TB710FU PS: pid=%d ppid=%d name=%s\n", pid, proc_ppid(p), name);
+            task_t t = proc_task(p);
+            int threads = t ? get_task_numacts(t) : -1;
+            uint64_t rss = t ? get_task_resident_size(t) : 0;
+            uint64_t fp = t ? get_task_phys_footprint(t) : 0;
+            printf("TB710FU PS: pid=%d ppid=%d name=%s thr=%d rss=%llu fp=%llu\n",
+                   pid, proc_ppid(p), name, threads,
+                   (unsigned long long)rss, (unsigned long long)fp);
             proc_rele(p);
             ++count;
         }
