@@ -425,7 +425,7 @@ def main():
     data = objects[0].read_bytes()
     sections, symbols = object_layout(data)
     count = len(abi['slots'])
-    entries = object_vtable(data, sections, symbols, '__ZTV18NativeLegacyDisplay', count)
+    entries = object_vtable(data, sections, symbols, '__ZTV19NativeLegacyDisplay', count)
     if any(entry is None for entry in entries):
         raise SystemExit('Owned vtable is not an exact authenticated-pointer array of 483 entries')
     diversities = [int(diversity, 16) for _, diversity in abi['slots']]
@@ -473,7 +473,7 @@ def main():
         if original in undefined:
             raise SystemExit(f'Archive references an original family symbol: {original}')
     defined = subprocess.check_output(['xcrun', 'nm', '-g', '-U', '-n', *map(str, objects)], text=True)
-    for symbol in ('__ZTV18NativeLegacyDisplay', '__ZN18NativeLegacyDisplay10gMetaClassE',
+    for symbol in ('__ZTV19NativeLegacyDisplay', '__ZN19NativeLegacyDisplay10gMetaClassE',
                    'native_tb710fu_legacy_parent', 'native_tb710fu_gop_display_start'):
         if defined.count(symbol) != 1:
             raise SystemExit(f'{symbol} is not defined exactly once in the archive')
