@@ -209,10 +209,9 @@ def generate_abi_header(path, abi):
     renames = []
     for base in abi['names']:
         if base in abi['methods']:
-            # A classified method keeps its own declaration: clang derives the
-            # discriminator from _ZN25IOMobileFramebufferLegacy<len><label><sig>.
-            continue
-        renames.append((int(base[len('opaque'):]), base))
+            renames.append((abi['methods'][base], base))
+        else:
+            renames.append((int(base[len('opaque'):]), base))
     renames.sort()
     header = f'''// SPDX-License-Identifier: BSD-2-Clause-Patent
 // Opaque ABI storage for the original macOS 27 (26C5035r) IOMobileFramebufferLegacy,
@@ -431,6 +430,7 @@ def main():
         raise SystemExit('Owned vtable is not an exact authenticated-pointer array of 483 entries')
     diversities = [int(diversity, 16) for _, diversity in abi['slots']]
     owned, guards, ioservice, failures = [], [], {}, []
+    owned_labels = {abi['names'][name][0] if name in abi['names'] else name for name in abi['methods']}
     for index, (symbol, discriminator) in enumerate(entries):
         label = demangled_label(symbol)
         if index < abi['base_slots']:
@@ -439,7 +439,7 @@ def main():
             continue
         if discriminator != diversities[index] and index not in REBOUND_SLOTS:
             failures.append(f'slot {index}: diversity {discriminator:#x} != {diversities[index]:#x}')
-        if label is not None and not label.startswith('opaque'):
+        if label is not None and label in owned_labels:
             owned.append(index)
         else:
             guards.append(index)
