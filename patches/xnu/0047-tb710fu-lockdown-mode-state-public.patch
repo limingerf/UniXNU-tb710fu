@@ -1,0 +1,19 @@
+Subject: [PATCH] tb710fu: expose security.mac.lockdown_mode_state_public sysctl for macOS 27
+
+macOS 27.3 (26C5035r) launchd calls os_lockdown_mode_enabled() right after
+"Early boot complete. Continuing system boot.", which queries
+security.mac.lockdown_mode_state_public and aborts (SIGABRT) on ENOENT.
+Expose it alongside security.mac.lockdown_mode_state in bsd/kern/lockdown_mode.c.
+
+diff --git a/bsd/kern/lockdown_mode.c b/bsd/kern/lockdown_mode.c
+index 1c104b3..e8640c3 100644
+--- a/bsd/kern/lockdown_mode.c
++++ b/bsd/kern/lockdown_mode.c
+@@ -39,6 +39,7 @@ int lockdown_mode_state = 0;
+ 
+ SYSCTL_DECL(_security_mac);
+ SYSCTL_INT(_security_mac, OID_AUTO, lockdown_mode_state, CTLFLAG_RD | CTLFLAG_LOCKED, &lockdown_mode_state, 0, "Lockdown Mode state");
++SYSCTL_INT(_security_mac, OID_AUTO, lockdown_mode_state_public, CTLFLAG_RD | CTLFLAG_LOCKED | CTLFLAG_ANYBODY, &lockdown_mode_state, 0, "Lockdown Mode state (public)");
+ 
+ __startup_func
+ void
