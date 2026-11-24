@@ -1653,3 +1653,23 @@ void tb710fu_cdc_start(void)
            armcpu_gic_ready, (unsigned long long)armcpu_timer_interrupts,
            (unsigned)ml_get_interrupts_enabled());
 }
+
+// Called from halt_all_cpus() after any kernel panic: keeps polling DWC3 on the
+// panicking CPU with zero interrupts/locks so the full panic log drains over COM5
+// and hands-free "edl" / "reboot" commands stay live even after a fatal panic.
+void tb710fu_cdc_panic_loop(void)
+{
+    if (!gCdc.controller.running || gCdc.controller.failed) {
+        return;
+    }
+    for (;;) {
+        tb710fu_dwc3_poll(&gCdc.controller);
+        const unsigned cmd = gPendingCmd;
+        if (cmd >= 1u && cmd <= 4u) {
+            cdc_exec_pending_cmd();
+        } else if (cmd != 0u) {
+            gPendingCmd = 0u;
+        }
+        cdc_delay(NULL, 500u);
+    }
+}

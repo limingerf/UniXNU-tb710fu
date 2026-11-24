@@ -1,12 +1,36 @@
-Log exact faulting pc/lr/sp/far/esr/fsc/code0 when PID 1 (launchd) takes an unhandled user abort.
+Log PID 1 unhandled user abort registers and keep COM5 CDC polling alive inside panic halt_all_cpus().
 
-Hardware evidence (pl30-pmap39):
-  pid 1 exited -- exit reason namespace 2 subcode 0xb, description none (SIGSEGV)
+- In sleh.c (handle_user_abort): print pc/lr/sp/far/esr/fsc/code0/x0/x1 for PID 1 and wait 3s
+  so cdc_worker drains the line over COM5 before launchd exits.
+- In machine_routines.c (halt_all_cpus): enter tb710fu_cdc_panic_loop() so COM5 drains panic
+  logs and accepts hands-free "edl" / "reboot" even after any kernel panic.
+diff --git a/osfmk/arm64/machine_routines.c b/osfmk/arm64/machine_routines.c
+index b8856d2..556e7c5 100644
+--- a/osfmk/arm64/machine_routines.c
++++ b/osfmk/arm64/machine_routines.c
+@@ -922,9 +922,17 @@ halt_all_cpus(boolean_t reboot)
+ 		PEHaltRestart(kPERestartCPU);
+ 	} else {
+ 		printf("CPU halted\n");
++#if defined(XNU_TB710FU_CDC) && XNU_TB710FU_CDC
++		extern void tb710fu_cdc_panic_loop(void);
++		tb710fu_cdc_panic_loop();
++#endif
+ 		PEHaltRestart(kPEHaltCPU);
+ 	}
+ 	while (1) {
++#if defined(XNU_TB710FU_CDC) && XNU_TB710FU_CDC
++		extern void tb710fu_cdc_panic_loop(void);
++		tb710fu_cdc_panic_loop();
++#endif
+ 		;
+ 	}
+ }
 diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
-index 0554aa8..1e193d7 100644
+index 0554aa8..30725a6 100644
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
-@@ -2071,6 +2071,21 @@ handle_user_abort(arm_saved_state_t *state, uint64_t esr, vm_offset_t fault_addr
+@@ -2071,6 +2071,22 @@ handle_user_abort(arm_saved_state_t *state, uint64_t esr, vm_offset_t fault_addr
  	}
  #endif
  
@@ -23,6 +47,7 @@ index 0554aa8..1e193d7 100644
 +			    (long long)codes[0],
 +			    (unsigned long long)get_saved_state_reg(state, 0),
 +			    (unsigned long long)get_saved_state_reg(state, 1));
++			delay(3000000);
 +		}
 +	}
  	codes[1] = fault_addr;

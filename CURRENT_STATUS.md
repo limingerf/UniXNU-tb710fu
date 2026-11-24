@@ -1,5 +1,77 @@
 # Current status · 2026-11-24
 
+## 🎉 历史性突破：`pl30-pmap39` 彻底根除 `pmap.c:6298` 内核 `panic`，`launchd` 15 秒跨过 `dyld` 共享缓存映射；`pl31` 已就绪待读 `SIGSEGV` 精确坐标 · 2026-11-24
+
+- **关键根因定位与修复（`pl21` → `pl30`）**：
+  - `pl21-vctext-pure`（commit `340b84f`，run [45382838067](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45382838067)，`kernel.macho` `a0bf4d8c...`）关闭 `tb710fu-live-log=1` / `tb710fu-live-checkpoints=1`、纯 `vc-text=1` 后，82 个 `dyld_shared_cache` 分片映射耗时从 46 分钟提速 **180 倍至 12 秒**，并在屏幕上首次同步打出被 `LiveDisplay` 吞掉的真实内核 `panic`：`panic(cpu 3 caller 0xfffffff00bb7224c): pmap_enter_options_internal: attempt to map illegal VA 0x73e200040000 in pmap 0xfffffff006d5c34000 @pmap.c:6298`。
+  - 根因：`macos-user-address-space.patch` 将 `MACH_VM_MAX_ADDRESS_RAW` 放开至 `0x7FFFFE000000`（47-bit），但 4K `BCM2837` 因 `__ARM64_PMAP_SUBPAGE_L1__ = 1` 使 `T0SZ_BOOT = 26`（38-bit = 256 GiB，`pmap->max = 0x4000000000`），导致 `xzone malloc` 触发 `v >= pmap->max`。
+  - **`pl30-pmap39` 预链接内核**（分支 `cdc-smmu-claim`，commit `b81b7a7`，run [45419781196](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45419781196)，`kernel.macho` `142,917,632` B，SHA-256 `8fa55009694c1752e78c665f5eabea1a724ada5a79e8b31ce8531553eac7c8f2`，已保存 XNU 编译缓存）：通过 `patches/xnu/0044-tb710fu-macos-user-va-pmap.patch` 统一设置 `T0SZ_BOOT == T1SZ_BOOT == 25ULL`（39-bit = 512 GiB，512 项 L1 = 4096 B）并将 4K `MACH_VM_MAX_ADDRESS_RAW` 收敛至 `0x0000007FFFE00000ULL`（512 GiB - 2 MiB）。
+  - 实机 `COM5` 验证（`scratch/com5_pl30_pmap39.log`，`25,583` B，镜像 `out/pl16-45419781196-pl30-pmap39-signed/`，`vendor_boot.img` `77a818ba...`，`vbmeta.img` `f57e6cf9...`）：**`pmap.c:6298` 内核 `panic` 100% 消失**，`launchd` 在 15 秒内跨过 `dyld: simulator status (...; pthread: false`，并在用户态退出：`pid 1 exited -- exit reason namespace 2 subcode 0xb, description none`（`SIGSEGV`）。
+- **`pl31-pid1fault` 预链接内核**（commit `bce4ac0`，run [45426528761](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45426528761)，`kernel.macho` `142,917,632` B，SHA-256 `a5459c09ac179133288c6553bb0879a85fb0ffb5963e1e5dcdbf0dfe21287f7f`）：
+  - 新增 `patches/xnu/0045-tb710fu-pid1-fault-log.patch`（`osfmk/arm64/sleh.c` 打印 `TB710FU PID1 FAULT: pc/lr/sp/far/esr/fsc/code0/x0/x1`），已全自动打包签名（`out/pl16-45426528761-pl31-pid1fault-signed/`，`vendor_boot.img` `903b45bb...`，`vbmeta.img` `af29dfd3...`）并经 9008 自动刷入实机重启；因 `COM5` 抓取脚本在空闲 8 秒处提前断开（`dyld` 映射需 ~12 秒），`TB710FU PID1 FAULT` 行已打印在平板屏幕上或下次重启即可直接经 `COM5` 抓取。
+- **当前精确阶段**：已消除 `pmap.c:6298` 内核 `panic` 并跨过 `dyld` 共享缓存映射，进入 `launchd` 用户态 `SIGSEGV`（`subcode 0xb`）定位阶段，尚未拉起 `pid=2` 或 `WindowServer` 桌面；CI XNU 编译缓存已验证命中（单次预链接仅需 6 分钟）。下一步：读取 `pl31` 的 `TB710FU PID1 FAULT` 坐标并修复 `launchd` `SIGSEGV`，随后恢复 `GopFramebuffer` 与 `unixnu-absentd` 合入。
+
+---
+
+## 🎉 双重历史突破：`pl19-aes-edl` 实机跑通 `SoftwareAES`（`kat=1 reg=1 iface=1`）+ TWRP 同款 `COM5 -> edl` **3 秒免按键直进 9008（`COM3`）全自动闭环**！ · 2026-11-24
+
+- **`pl19-aes-edl` 预链接内核**（分支 `cdc-smmu-claim`，commit `0143eaa`，run [45360564624](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45360564624)，22/22 步全部通过，`kernel.macho` `142,901,248` B，SHA-256 `5c84afb9951d06f366a3ef468d720f73ebed59fd50d7e01926c49ec792b72642`）：
+  - 镜像：`out/pl16-45360564624-pl19-aes-edl-signed/`（`vendor_boot.img` `9b672844...`，`vbmeta.img` `bd5c2dc9...`，单菜单项，5 GiB DRAM 窗口，`tb710fu-live-checkpoints=1`，`debug=0x14e`）。
+  - 实机 `COM5` 验证（`scratch/com5_pl19_boot_ps.log`，`26,570` B）：
+    - **`TB710FU Services: IOAESAccelerator load=0 meta=0xfffffff00cc205c0 size=0x120`**；
+    - **`TB710FU Services: AppleKeyStore started`**；
+    - **`TB710FU Services: SoftwareAES started kat=1 reg=1 iface=1`**（NIST SP800-38A CBC 自检与接口测试全部实机通过，`aes_done=3`）；
+    - **`TB710FU boot-policy: disable-watchdogd=1 status=0`**；
+    - **`COM5 -> ps` 精确定位 `launchd` 卡点**：`pid=1 ppid=0 name=launchd thr=1 fp=178496`（仅 1 个线程、174 KiB 物理占用且不再增长），证实 `launchd` 停在 `ASP: AMFI pointer initialized` 后、尚未完成 `dyld_shared_cache` 映射；
+    - **🎉 `COM5 -> edl`（TWRP 同款 `PSCI SYSTEM_RESET2(0x80000000, 1)`）实机 3 秒直进 9008（`COM3`）**，至此达成 **完全免按键自动化闭环**（`COM5 -> edl` → `COM3` 9008 刷机 + LUN4 `slot_b` 重设 → 自动重启回 `COM5`）！
+- **当前精确阶段**：已实现免按键 9008 全自动闭环，并实机跑通 `AppleKeyStore` + `SoftwareAES (kat=1 reg=1 iface=1)` + `BootWatchdogPolicy` + 全 4 卷持久化；`launchd`（PID 1）当前以 `thr=1, fp=174 KiB` 停在 `dyld` 映射共享缓存之前，尚未拉起 `pid=2` 或 `WindowServer` 桌面。下一步：借助刚打通的免按键 9008，本地对照验证 `pl19` 解除 `dyld[1]` 阻塞（排查 `tb710fu-live-checkpoints=1` / `data-reset=1` 对共享缓存映射的影响），随后推进 `GopFramebuffer`（`pl20`）出桌面。
+
+---
+
+## 里程碑：`pl17-aks` 实机跑通 `AppleKeyStore` + `BootWatchdogPolicy` + `IOAESAccelerator` ABI 实测；`pl18` 已编出待刷机验证 · 2026-11-24
+
+- **`pl17-aks` 预链接内核**（分支 `cdc-smmu-claim`，commit `7fc8ff4`，run [45344665443](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45344665443)，`142,901,248` B，SHA-256 `3d8b3216f78e7878a253fac32ce522edab877ad532e9298a3418e74e82e4f743`）：
+  - 镜像：`out/pl16-45344665443-pl17-aks-signed/`（`vendor_boot.img` `b5a09168...`，`vbmeta.img` `c5e0ebee...`，单 `UniXNU macOS 27` 菜单项，5 GiB DRAM 窗口，`tb710fu-live-checkpoints=1`，`disable-watchdogd=1 aks=1 aks-sls=3`）。
+  - 实机 `COM5` 日志（`task-2551.log`、`task-2554.log`、`scratch/com5_pl17_full_boot.log`、`scratch/com5_pl17_drain.log`）证实：
+    - **`TB710FU Services: AppleKeyStore started`**；
+    - **`TB710FU Services: IOAESAccelerator load=0 meta=0xfffffff00cc205c0 size=0x120`**（实机确认 26C5035r 类大小与 `OriginalAESABI.h` 的 `0x120` 精确一致）；
+    - **`TB710FU boot-policy: disable-watchdogd=1 status=0`**（成功写入 `/private/var/db/com.apple.xpc.launchd/disabled.plist` 与 `disabled.migrated`），并探测到 `/System/Volumes/Preboot/Cryptexes/OS -> 0`、`/System/Volumes/Preboot/84581E99-85BE-4957-AC53-2947E887B3E4 -> 2`；
+    - 全 4 卷 + 18 条 firmlinks + `apfs_boot_util shim stage 5, status 0` 全部通过；实机持续存活 6 分钟以上未触发 60 秒重启，`COM5 -> reboot` 热重启实测可用；
+    - 在 `ASP: AMFI pointer initialized` / `exit: pid 1 init status 0` 后静默（未见 `exec: pid 2`），同时实测发现 `0x01FD9000` 写 `0x10` 被 TZ/Gunyah 屏蔽回读为 `0`，而此前 `pl16` 写 bit 0 (`0x01`) 可正常回读 `0->1`。
+- **`pl18` 预链接内核**（commit `b80eba8`，run [45349643927](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45349643927)，22/22 步全部通过，`kernel.macho` `142,901,248` B，SHA-256 `7a738b120a743f8512bfddf2e0ed1d3ac56fe501bb3178ce7f0b3845390c770a`）：
+  - 镜像：`out/pl16-45349643927-pl18-edl-ps-signed/`（`vendor_boot.img` `a2e409b0...`，`vbmeta.img` `ef3fe89a...`，`debug=0x14e`，单菜单项，滚屏日志 + 底栏标记 + 单二维码）。
+  - 实机 `COM5` 验证（`scratch/com5_pl18_boot_ps.log`、`scratch/com5_pl18_boot2_ps.log`、`scratch/com5_pl18_edl_and_ps.log`、`task-2726.log`、`task-2735.log`）：
+    - **`COM5 -> ps` 实机跑通**：从 `pid=1 name=init`（`watchdog_policy=-1`）一路推进到 **`pid=1 ppid=0 name=launchd`（`watchdog_policy=0`, `count=1`）**，确证 `launchd` **存活且未退出/未重启**，但停留在 `ASP: AMFI pointer initialized` 之后、尚未拉起 `pid=2`；
+    - **`COM5 -> edl`（`0x01` + `PSCI SYSTEM_RESET2(0, 1)`）**：触发正常热重启回到 `pl18`（未进 9008），证实 Lenovo TB710FU 在 XNU 下写 `0x01FD9000` 的 `0x10`（被 TZ 屏蔽）与 `0x01` 均不会触发 9008；
+    - 观察到开启 `tb710fu-live-checkpoints=1` 时完整挂载 4 卷到 `launchd` 约需 125 秒（频繁同步重绘 QR/文本）。
+- **当前精确阶段**：已进入 macOS 27 ARM64E 早期用户态，实机 `COM5 -> ps` 证实 `pid=1 (launchd)` 稳定存活、`AppleKeyStore` 与 `BootWatchdogPolicy` 正常生效，但 `launchd` 尚未跨过 `ASP: AMFI pointer initialized` 拉起子进程，尚未到达桌面/WindowServer。下一步（`pl19`）：接入 `SoftwareAES`（`IOAESAccelerator`，已实机确认 `0x120` ABI），并扩展 `COM5 -> ps` / 控制台日志以直接打印 `pid=1 (launchd)` 的阻塞点（线程等待事件/最近系统调用），定位并打通后续守护进程链。
+
+---
+
+## 🎉 历史性里程碑：`pl16-persist2` 首次在 TB710FU 实机完成 **macOS 27 全 4 卷拓扑挂载 + 120 GiB 持久化可写 Data 卷 + 18 条 Firmlinks + `apfs_boot_util` shim + 6 核 SMP + `COM5` 共存**！ · 2026-11-24
+
+- 镜像：`out/tb710fu-pl16-45280843242-persist2-signed.zip`（SHA-256 `4d48b6af04d542c6d5d8ff861fec6d6a979859139ed97cecd5898829f726c193`；`vendor_boot.img` `ead3da792b862b5d88a6e3b257c917c22dafa8762461c79649eac18b13e52baa`；`vbmeta.img` `ab3f6ad5602e1f6c2866aa011840c26e9080f0301229beb7ae6db7da43b7a765`）。
+- 完整产物溯源（分支 `cdc-smmu-claim`）：
+  - **`pl16` 预链接内核**（commit `209a541`，run [45280843242](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45280843242)，`142,884,864` B，SHA-256 `43e70f6097fa4f7afa97e200d9e23405913889065e06b6e294c18072bd96a982`）：开启完整上游依赖链 `CONFIG_XNU_NATIVE_RAM_BLOCK=y` → `OWNER_CACHE_MOUNT` → `OWNER_CACHE_STARTUP` → `OWNER_BOOT_MANIFEST` → `OWNER_DATA_MOUNT` → `OWNER_UNION_SYSTEMOS`，并在 `SourceStorage` 内编入 `NativeRamBlock.cpp`（将 `native_ufs_store_write_cached` 转发至 FUA `native_ufs_store_write`），固定 `OWNER_DATA_VOLUME_UUID="A7B710F0-8650-4D27-9A01-26C5035F0001"`；同时包含 `pl15` 的 1,500 ms `cdc_worker` SMMU 延迟避让（6 核 SMP + `COM5` 零竞态共存）与 SM8650 `PS_HOLD (0xC2000902)` EDL 热复位。
+  - **`data.dbr` 数据卷种子**（commit `5145413`，run [45265714238](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45265714238)，`21,807,248` B，SHA-256 `bb03d1de3343a59c3d392964500e235f584eb7cee763272277ffa49bf82db708`）：`DBRDISK1` packed，逻辑 120 GiB（安全适配 `unixnu` 实际 `144.71 GiB` 分区），卷 UUID `A7B710F0-8650-4D27-9A01-26C5035F0001`（APFS 元数据 6 处验证）。
+  - **`boot-shims.bin` (`apfs_boot_util`)**（commit `5e2ba8e`，run [45283570961](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45283570961)，`1,288` B，SHA-256 `4e38f04794fa5b44201651627e1cf608bd2a9992e0ac24a44d2ca7ef9aebe434`，CDHash `60f17d89f11e23963543d9ca10de23b802e314ad`）：打入 `Payloads/kernel.macho.gpuaddon`，并经 `trust-append-module.py` 追加为 4 模块 TrustCache（`out/macos-27.3-26C5035r-with-bootshim.trustcache`，`451,316` B，SHA-256 `8f09a18581d90fccbc4fc6521eed9a2259168f8887c4f2cb9693e2d347a06c78`）。
+  - 扩充 56 MiB FAT32 `payload.img` + 更新 `VNDRBOOT v4` `vendor_ramdisk_size` & `rtab[0]`，ADT 含 `kernel-ctrr-to-be-enabled=1`、`TrustCache`、`PackedRAMDisk`、`GpuAddon`，启动参数含 `smp=1 sheng-data-persist=2 data-persist=2 apfs-boot-shim=1 data-reset=1 exec-log=1 tb710fu-cdc=1 tb710fu-live-log=1`。
+- 实机 `COM5` 直播日志（`scratch/com5_pl16_persist2.log`，`24,205` B）证实：
+  - `TB710FU SourceStorage: ramdisk-start-done` → 6 核 `COM5` `smmu claimed=1 slot=0 bank=62` 共存无竞态；
+  - **`Macintosh HD`（OS，`disk7s1`）**、`FizzSeedUpdate26C5035r.arm64eSystemCryptex`（SystemOS，`disk1s1`）、**`Data`（`disk3s1`，120 GiB，`A7B710F0-8650-4D27-9A01-26C5035F0001`）**、**`AppCryptex`（`disk5s1`，`stage 5, status 0`）** 全部 4 卷挂载成功；
+  - `owner Data: 18 firmlinks set, 1 skipped, status 0` + `/System/Volumes/Hardware` + `/System/Volumes/VM` + `cryptex view stage 5, status 0`；
+  - **`owner Data: apfs_boot_util shim stage 5, status 0`**（`disk3s1` 持久化写入**零报错**！）；
+  - `exec: pid 1 launchd` → `ASP: AMFI pointer initialized` → `exit: pid 1 init status 0`，进度条约一半处仍触发自动重启；测试 `COM5 -> edl` 未能进入 9008。
+  - 追加验证 `pl16-mem5g`（`out/tb710fu-pl16-45280843242-mem5g-signed.zip`，`vendor_boot.img` `807f94f3...`，`vbmeta.img` `b1e71264...`）：
+    - 将 ADT `/chosen/darwinboot-memory-size` 从 `0x80000000`（2 GiB）扩至 **`0x140000000`（5 GiB）** 并新增 64 槽 `darwinboot-memory-excluded` 与 `darwinboot-memory-outside`；
+    - 实机 `COM5`（`scratch/com5_pl16_mem5g.log`，`24,684` B）证实 `pmap: excluded memory 0x980000000..0xa00004000` 自动避洞、`vm_page_bootstrap` 跃升至 `726,628 free + 59,800 wired pages`（3.0 GiB+），消除 `dyld[1] errno 12 (ENOMEM)`，并首次实机打出 **`dyld[1]: dyld cache mapped system-wide: development, auth GOTs: mapped`**！
+  - 追加验证 `pl16-userspace1`（`out/tb710fu-pl16-45280843242-userspace1-signed.zip`，`vendor_boot.img` `1628be53...`，`vbmeta.img` `4af1ba0f...`）：
+    - 9008 脚本新增 CRC32 校验的 **LUN 4 主/备 GPT `boot_b` 槽位激活重设**（`0x1087000000000000 -> 0x107F000000000000`），刷完直接跳过 `fastboot` 自动进内核；
+    - 加入 `debug=0x14e kt_fixed_zones=120 -no_slto_panic use_contiguous_hint=0 vc-text=1`，`COM5` 抓取 `scratch/com5_pl16_userspace1.log`（`24,207` B）结果一致，全 4 卷与 `apfs_boot_util shim stage 5, status 0` 通过，仍在 `ASP: AMFI pointer initialized` / `exit: pid 1 init status 0` 后约 55–60 秒重启、未见 `exec: pid 2`。
+- **当前精确阶段**：已突破全 4 卷挂载、120 GiB 可写 Data 持久化、`apfs_boot_util` shim（零存储报错）以及 9008 免卡 `fastboot` 的 LUN 4 GPT `slot_b` 自动重设；`launchd` 仍未跨过早期启动进入完整用户态守护进程链与桌面/WindowServer。下一步：将 `/dev/console` (`cnputc`) 接入 `COM5` 查看 `libignition`/`launchd` 精确退出行，并在 `pl17` 中补齐 macOS 27 所需的 `SoftwareAES`（`IOAESAccelerator`）与 `AppleKeyStoreState`（`aks=1 aks-sls=3`），再合入 W2/W3/W4/W5 二阶段驱动。
+
+---
+
 ## 🎉 历史性里程碑：`pl14-ctrr-tc` 首次在 TB710FU 实机跑通完整 XNU 内核并正式拉起 macOS 27 ARM64E 用户态 **`/sbin/launchd`（PID 1）与 `Darwin Ignition Sequence 1.0.0`**！ · 2026-11-24
 
 - 镜像：`out/tb710fu-cdc-pl14-ctrr-tc-qr-prelink-45214948832-signed.zip`（SHA-256 `6bb1ad222bc8ca5cc2149634da1658b6b2f627002130d87afc477bf4c6431d3d`；`vendor_boot.img` `01a3e15d4b8da6e14fee51a9f2089497c6f4f8adb24d10d3ba9bebac02e42fbc`；`vbmeta.img` `6c41460cfece59cadfaa44c7197db6f19c9bad9e49b587f8e28e40f6bcd4f03f`）。
