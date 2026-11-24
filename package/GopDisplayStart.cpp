@@ -1,0 +1,263 @@
+// SPDX-License-Identifier: BSD-2-Clause-Patent
+// TB710FU macOS 27 GopFramebuffer runtime binding (pl21).
+//
+// `IOMobileFramebufferLegacy` of 26C5035r is a prelinked kext class. XnuPrelink
+// re-lays Apple kext text in this fileset, so no original vtable target or method
+// address from the reviewed ABI fixture survives at its fixture address (verified:
+// 0/483 entries). This file therefore resolves the class at boot and adopts its
+// *live* vtable instead of linking any original symbol:
+//
+//   1. look the metaclass up by name and check the 0x23a0 instance extent;
+//   2. derive the collection slide from the metaclass itself and validate the
+//      vtable at the fixture offset by its 483 authenticated-pointer diversities;
+//   3. on the first allocated display build a runtime table that is the live
+//      original table with this backend's 25 owned overrides copied in, and point
+//      the instance at it. Every guard slot then runs original family code.
+//
+// Nothing here is reachable unless the kernel is booted with tb710fu-gop=1.
+#include <IOKit/IOLib.h>
+#include <IOKit/IOService.h>
+#include <IOKit/IOUserClient.h>
+#include <libkern/OSKextLib.h>
+#include <libkern/libkern.h>
+#include <mach/kmod.h>
+#include <pexpert/pexpert.h>
+#include <ptrauth.h>
+#include <kern/debug.h>
+#include "GopDisplayTraits.h"
+#include "OriginalLegacyFramebufferABI.h"
+
+extern kmod_info_t g_kernel_kmod_info;
+extern "C" void tb710fu_gop_meta_init(void) __asm__("__GLOBAL__sub_I_NativeLegacyDisplay.cpp");
+extern "C" IOService *native_legacy_display_allocate(void);
+
+namespace {
+volatile uint32_t gGopStarted = 0;
+const OSMetaClass *gLegacyParent = nullptr;
+uintptr_t gLegacyVtable = 0;
+uint64_t *gLegacyTable = nullptr;
+
+// An authenticated vtable entry is stripped of its signature and re-signed for
+// this call site's own function type, so the original body is entered correctly.
+template <typename Fn>
+Fn legacyEntry(unsigned slot)
+{
+    uintptr_t raw = (uintptr_t)gLegacyTable[slot];
+    return (Fn)(uintptr_t)ptrauth_strip((void *)raw, ptrauth_key_function_pointer);
+}
+
+// The fixture records four macOS-gated slots that XnuPrelink rebinds to one native
+// function; their live entry legitimately carries that function's discriminator.
+bool legacyReboundSlot(unsigned slot)
+{
+    return slot == 318 || slot == 320 || slot == 361 || slot == 362;
+}
+
+bool legacyVtableLooksReviewed(uintptr_t vtable)
+{
+    const volatile uint64_t *words = (const volatile uint64_t *)vtable;
+    unsigned matched = 0;
+    unsigned rebound = 0;
+    for (unsigned slot = 0; slot < TB710FU_GOP_SLOT_COUNT; slot++) {
+        uint64_t word = words[slot];
+        if ((word >> 63) == 0) {
+            return false;
+        }
+        unsigned short diversity = (unsigned short)((word >> 32) & 0xffffu);
+        if (diversity == tb710fu_gop_slot_diversity[slot]) {
+            matched++;
+        } else if (legacyReboundSlot(slot)) {
+            rebound++;
+        } else {
+            return false;
+        }
+    }
+    return matched + rebound == TB710FU_GOP_SLOT_COUNT;
+}
+}  // namespace
+
+extern "C" const OSMetaClass *native_tb710fu_legacy_parent(void)
+{
+    if (!gLegacyParent) {
+        panic("TB710FU GopDisplay: IOMobileFramebufferLegacy parent not resolved before NativeLegacyDisplay metaclass init");
+    }
+    return gLegacyParent;
+}
+
+extern "C" void native_tb710fu_gop_adopt(void *object)
+{
+    if (!object || !gLegacyVtable) {
+        return;
+    }
+    uintptr_t staticTable = *(uintptr_t *)object;
+    if (!staticTable) {
+        return;
+    }
+    if (!gLegacyTable) {
+        uint64_t *table = (uint64_t *)IOMallocZero(sizeof(uint64_t) * TB710FU_GOP_SLOT_COUNT);
+        if (!table) {
+            printf("TB710FU GopDisplay: no memory for the adopted vtable, display left inert\n");
+            return;
+        }
+        memcpy(table, (const void *)gLegacyVtable, sizeof(uint64_t) * TB710FU_GOP_SLOT_COUNT);
+        for (unsigned index = 0; index < TB710FU_GOP_OWNED_COUNT; index++) {
+            unsigned slot = tb710fu_gop_owned_slots[index];
+            table[slot] = ((const uint64_t *)staticTable)[slot];
+        }
+        gLegacyTable = table;
+        printf("TB710FU GopDisplay: adopted %u live slots, %u owned overrides\n",
+               TB710FU_GOP_SLOT_COUNT - TB710FU_GOP_OWNED_COUNT, TB710FU_GOP_OWNED_COUNT);
+    }
+    *(uintptr_t *)object = (uintptr_t)gLegacyTable;
+}
+
+// Qualified base calls in NativeLegacyDisplay.cpp are routed here: the live
+// original slot, never a linked symbol.
+extern "C" void native_legacy_parent_free(void *display)
+{
+    typedef void (*Fn)(void *);
+    legacyEntry<Fn>(TB710FU_GOP_SLOT_FREE)(display);
+}
+
+extern "C" bool native_legacy_parent_start(void *display, IOService *provider)
+{
+    typedef bool (*Fn)(void *, IOService *);
+    return legacyEntry<Fn>(TB710FU_GOP_SLOT_START)(display, provider);
+}
+
+extern "C" void native_legacy_parent_stop(void *display, IOService *provider)
+{
+    typedef void (*Fn)(void *, IOService *);
+    legacyEntry<Fn>(TB710FU_GOP_SLOT_STOP)(display, provider);
+}
+
+extern "C" IOReturn native_legacy_parent_set_power_state(void *display, unsigned long ordinal, IOService *device)
+{
+    typedef IOReturn (*Fn)(void *, unsigned long, IOService *);
+    return legacyEntry<Fn>(TB710FU_GOP_SLOT_SETPOWERSTATE)(display, ordinal, device);
+}
+
+extern "C" IOReturn native_legacy_parent_new_user_client(void *display, task_t task, void *security,
+                                                         UInt32 type, IOUserClient **client)
+{
+    typedef IOReturn (*Fn)(void *, task_t, void *, UInt32, IOUserClient **);
+    return legacyEntry<Fn>(TB710FU_GOP_SLOT_NEWUSERCLIENT)(display, task, security, type, client);
+}
+
+extern "C" bool native_legacy_parent_refresh_attributes(void *display, uint64_t *words, bool fixed)
+{
+    typedef bool (*Fn)(void *, uint64_t *, bool);
+    return legacyEntry<Fn>(423)(display, words, fixed);
+}
+
+extern "C" void native_legacy_parent_complete_current_swap(void *display)
+{
+    typedef void (*Fn)(void *);
+    legacyEntry<Fn>(416)(display);
+}
+
+extern "C" void native_legacy_parent_display_dimensions(void *display, uint32_t *width, uint32_t *height)
+{
+    typedef void (*Fn)(void *, uint32_t *, uint32_t *);
+    legacyEntry<Fn>(365)(display, width, height);
+}
+
+extern "C" int native_legacy_parent_apply_state_request(void *display, OriginalLegacyStateRequest *request, bool powered)
+{
+    typedef int (*Fn)(void *, OriginalLegacyStateRequest *, bool);
+    return legacyEntry<Fn>(479)(display, request, powered);
+}
+
+extern "C" void native_legacy_parent_create_default_surface(void *display)
+{
+    typedef void (*Fn)(void *);
+    legacyEntry<Fn>(420)(display);
+}
+
+extern "C" void native_tb710fu_gop_display_start(void)
+{
+    if (__atomic_exchange_n(&gGopStarted, 1u, __ATOMIC_ACQ_REL)) {
+        return;
+    }
+    uint32_t enabled = 0;
+    PE_parse_boot_argn("tb710fu-gop", &enabled, sizeof(enabled));
+    if (enabled != 1) {
+        printf("TB710FU GopDisplay: disabled (boot with tb710fu-gop=1 to register the display)\n");
+        return;
+    }
+
+    OSReturn loaded = OSKextLoadKextWithIdentifier("com.apple.iokit.IOMobileGraphicsFamily");
+    const OSSymbol *name = OSSymbol::withCString("IOMobileFramebufferLegacy");
+    const OSMetaClass *meta = name ? OSMetaClass::getMetaClassWithName(name) : nullptr;
+    if (name) {
+        name->release();
+    }
+    uint32_t size = meta ? meta->getClassSize() : 0u;
+    printf("TB710FU GopDisplay: IOMobileFramebufferLegacy load=%x meta=%p size=0x%x\n",
+           loaded, (void *)meta, size);
+    if (!meta || size != TB710FU_GOP_INSTANCE_SIZE) {
+        printf("TB710FU GopDisplay: original class extent differs, display not registered\n");
+        return;
+    }
+    const OSMetaClass *parent = meta->getSuperClass();
+    if (!parent || strcmp(parent->getClassName(), "IOService") != 0) {
+        printf("TB710FU GopDisplay: original class is not an IOService subclass, display not registered\n");
+        return;
+    }
+
+    // The metaclass object and the class vtable live in one prelinked image, so the
+    // live address of the metaclass gives the collection slide: only the fixture's
+    // relative layout is used, never an absolute code address.
+    uintptr_t metaclass = (uintptr_t)meta;
+    uintptr_t slide = metaclass - (uintptr_t)TB710FU_GOP_METACLASS_VA;
+    uintptr_t vtable = (uintptr_t)TB710FU_GOP_VTABLE_VA + slide;
+    if (!legacyVtableLooksReviewed(vtable)) {
+        printf("TB710FU GopDisplay: vtable at %p does not carry the reviewed 483 diversities, display not registered\n",
+               (void *)vtable);
+        return;
+    }
+    gLegacyParent = meta;
+    gLegacyVtable = vtable;
+    printf("TB710FU GopDisplay: vtable=%p slide=%p (%u authenticated slots reviewed)\n",
+           (void *)vtable, (void *)slide, TB710FU_GOP_SLOT_COUNT);
+
+    void *handle = OSMetaClass::preModLoad(g_kernel_kmod_info.name);
+    if (!handle) {
+        printf("TB710FU GopDisplay: preModLoad failed\n");
+        return;
+    }
+    tb710fu_gop_meta_init();
+    OSReturn status = OSMetaClass::postModLoad(handle);
+    if (status != kOSReturnSuccess) {
+        printf("TB710FU GopDisplay: postModLoad failed %x\n", status);
+        return;
+    }
+
+    OSDictionary *matching = IOService::serviceMatching("IOResources");
+    IOService *resources = matching ? IOService::waitForMatchingService(matching, 5000000000ULL) : nullptr;
+    if (matching) {
+        matching->release();
+    }
+    if (!resources) {
+        printf("TB710FU GopDisplay: IOResources unavailable\n");
+        return;
+    }
+
+    IOService *display = native_legacy_display_allocate();
+    if (!display) {
+        printf("TB710FU GopDisplay: allocation failed\n");
+        resources->release();
+        return;
+    }
+    display->setProperty("IOClass", "NativeLegacyDisplay");
+    display->setProperty("IOMatchCategory", "IOMobileFramebuffer");
+    display->setProperty("IOProviderClass", "IOResources");
+    const char *step = !display->init() ? "init" : !display->attach(resources) ? "attach" :
+                       !display->start(resources) ? "start" : nullptr;
+    printf("TB710FU GopDisplay: NativeLegacyDisplay %s\n", step ? step : "started");
+    if (!step) {
+        display->registerService();
+    }
+    display->release();
+    resources->release();
+}

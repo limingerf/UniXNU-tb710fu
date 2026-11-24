@@ -30,6 +30,9 @@ archives = [
   "build-tb710fu-cdc-log.py",
   "build-tb710fu-live-log.py",
   "build-tb710fu-macos27-services.py",
+  # pl22 macOS 27 GopFramebuffer display: NativeLegacyDisplay bound to the live
+  # 26C5035r IOMobileFramebufferLegacy metaclass. Inert unless tb710fu-gop=1.
+  "build-tb710fu-gop-display.py",
   "build-tb710fu-source-storage-archive.py",
 ]
 

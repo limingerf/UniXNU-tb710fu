@@ -88,7 +88,7 @@ jobs:
         id: cache-key
         run: python3 tools/ci_cache.py key --github-output "$GITHUB_OUTPUT"
       - name: Initialize the pinned UFS interface headers
-        run: git -C .work/UniXNU submodule update --init --depth 1 -- kits/VerifiedRoot drivers/VirtioMmioBlock drivers/RamBlock drivers/AppleKeyStoreState drivers/SoftwareAES
+        run: git -C .work/UniXNU submodule update --init --depth 1 -- kits/VerifiedRoot drivers/VirtioMmioBlock drivers/RamBlock drivers/AppleKeyStoreState drivers/SoftwareAES drivers/GopFramebuffer
       # No restore-keys: an object tree produced by a different patch series must never
       # be reused, and the key is the whole input manifest.  Each cache is independent so
       # a patch edit only costs the XNU compile and keeps the pinned source checkouts.
