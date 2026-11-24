@@ -105,11 +105,8 @@ def main():
     archive = output / 'libTb710fuMacos27Services.a'
     archive.unlink(missing_ok=True)
 
-    osx = output / 'macos-target.h'
-    osx.write_text('#include <TargetConditionals.h>\n#undef TARGET_OS_OSX\n#define TARGET_OS_OSX 1\n')
-
     includes = [output, aks_dir, tree / '.cache/xnu-work/osfmk', tree / '.cache/xnu-work/libkern']
-    flags = ['-include', str(osx)]
+    flags = ['-DTARGET_OS_OSX=1']
     sources = [
         aks_dir / 'NativeKeyStoreEvents.cpp',
         device / 'package/AppleKeyStoreHooks.cpp',
