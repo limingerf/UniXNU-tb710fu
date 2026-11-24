@@ -14,9 +14,9 @@
 #include <IOKit/IOMemoryDescriptor.h>
 #include <IOKit/IOUserClient.h>
 #include <libkern/libkern.h>
-#include <libkern/OSArray.h>
-#include <libkern/OSDictionary.h>
-#include <libkern/OSSet.h>
+#include <libkern/c++/OSArray.h>
+#include <libkern/c++/OSDictionary.h>
+#include <libkern/c++/OSSet.h>
 #include <pexpert/pexpert.h>
 #include "GopDisplayTraits.h"
 
