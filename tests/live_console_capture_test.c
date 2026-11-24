@@ -85,7 +85,7 @@ int main(void)
         verify("A\nB", "A\nB", "A\r\nB", "");
         reset(1, 0, buffered);
         console_write("A\r\nB", 4);
-        verify("A\nB", "", "", "");
+        verify("A\nB", "", "A\r\nB", "");
         reset(0, 1, buffered);
         console_write("A\nB", 3);
         verify("A\nB", "A\nB", "A\r\nB", "A\r\nB");
@@ -112,7 +112,7 @@ int main(void)
     reset(1, 0, 0);
     console_write_unbuffered('X');
     _cnputs("raw\n", 4, true);
-    verify("Xraw\n", "", "", "");
+    verify("Xraw\n", "", "Xraw\n", "");
     reset(0, 0, 0);
     serial_putc('P'); serial_putc('\r'); serial_putc('\n');
     verify("P\n", "P\n", "P\r\n", "P\r\n");
