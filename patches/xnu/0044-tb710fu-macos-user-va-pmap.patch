@@ -6,13 +6,12 @@ Hardware evidence (pl21-vctext-pure, vc-text=1):
 Fix:
 - Set T0SZ_BOOT = 25ULL on 4K XNU_TARGET_OS_OSX and keep T1SZ_BOOT == T0SZ_BOOT == 25ULL so
   start.s, kernel_pmap, and pmap_pt_attr_4k all share the exact same 39-bit (512 GiB, 512 L1
-  entries = 4096 B) geometry (splitting T0SZ=25 vs T1SZ=26 broke pmap_bootstrap L1 indexing
-  for 0xfffffff0_0700_4000: index 448 vs 192).
+  entries = 4096 B) geometry.
 - Clamp 4K XNU_TARGET_OS_OSX MACH_VM_MAX_ADDRESS_RAW to 0x0000007FFFE00000ULL (512 GiB - 2 MiB,
   matching macOS-DroidVM virt-user-va-512g) so xzone malloc's 455..512 GiB range fits inside
   [0, MACH_VM_MAX_ADDRESS) < pmap->max (0x8000000000).
 diff --git a/osfmk/arm64/proc_reg.h b/osfmk/arm64/proc_reg.h
-index 51fdc9d..f28af8a 100644
+index 51fdc9d..61eab86 100644
 --- a/osfmk/arm64/proc_reg.h
 +++ b/osfmk/arm64/proc_reg.h
 @@ -1097,7 +1097,11 @@
@@ -24,9 +23,9 @@ index 51fdc9d..f28af8a 100644
 +#else /* !XNU_TARGET_OS_OSX */
  #define T0SZ_BOOT 26ULL
 +#endif /* XNU_TARGET_OS_OSX */
- #else /* !__ARM64_PMAP_SUBPAGE_L1__ */
+ #else /* __ARM64_PMAP_SUBPAGE_L1__ */
  #define T0SZ_BOOT 25ULL
- #endif /* !__ARM64_PMAP_SUBPAGE_L1__ */
+ #endif /* __ARM64_PMAP_SUBPAGE_L1__ */
 diff --git a/osfmk/mach/arm/vm_param.h b/osfmk/mach/arm/vm_param.h
 index 2adbe8b..c5fcbfd 100644
 --- a/osfmk/mach/arm/vm_param.h
