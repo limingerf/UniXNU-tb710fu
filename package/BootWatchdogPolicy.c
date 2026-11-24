@@ -199,7 +199,6 @@ done:
 
 extern task_t proc_task(proc_t);
 extern int get_task_numacts(task_t);
-extern uint64_t get_task_resident_size(task_t);
 extern uint64_t get_task_phys_footprint(task_t);
 extern volatile uint32_t native_aes_kat_status __attribute__((weak_import));
 extern volatile uint32_t native_aes_registered __attribute__((weak_import));
@@ -223,11 +222,10 @@ tb710fu_dump_procs(void)
             proc_name(pid, name, (int)sizeof(name));
             task_t t = proc_task(p);
             int threads = t ? get_task_numacts(t) : -1;
-            uint64_t rss = t ? get_task_resident_size(t) : 0;
             uint64_t fp = t ? get_task_phys_footprint(t) : 0;
-            printf("TB710FU PS: pid=%d ppid=%d name=%s thr=%d rss=%llu fp=%llu\n",
+            printf("TB710FU PS: pid=%d ppid=%d name=%s thr=%d fp=%llu\n",
                    pid, proc_ppid(p), name, threads,
-                   (unsigned long long)rss, (unsigned long long)fp);
+                   (unsigned long long)fp);
             proc_rele(p);
             ++count;
         }
