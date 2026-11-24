@@ -62,9 +62,13 @@ probe_path(proc_t p, user_addr_t scratch, const char *path)
     if (copyout(path, scratch, strlen(path) + 1) != 0) {
         return;
     }
-    struct stat64_args sa = { .path = scratch, .ub = scratch + 0x800 };
-    int err = sys_stat64(p, &sa, &result);
-    printf("TB710FU boot-policy: stat %s -> %d\n", path, err);
+    struct open_args op = { .path = scratch, .flags = O_RDONLY, .mode = 0 };
+    int err = open(p, &op, &result);
+    if (err == 0 && result >= 0) {
+        struct close_args cl = { .fd = result };
+        (void)sys_close(p, &cl, &result);
+    }
+    printf("TB710FU boot-policy: open %s -> %d\n", path, err);
 }
 
 int
@@ -124,8 +128,8 @@ native_boot_watchdog_policy_apply(proc_t p, user_addr_t scratch)
         goto done;
     }
     fd = result;
-    for (size_t sent = 0, total = strlen(policy); sent < total;) {
-        size_t piece = total - sent < 0x1f0 ? total - sent : 0x1f0;
+    for (size_t sent = 0, policy_len = strlen(policy); sent < policy_len;) {
+        size_t piece = policy_len - sent < 0x1f0 ? policy_len - sent : 0x1f0;
         if ((error = copyout(policy + sent, scratch + 0x200, piece)) != 0) {
             goto done;
         }
