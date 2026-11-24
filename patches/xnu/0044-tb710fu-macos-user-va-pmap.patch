@@ -1,46 +1,165 @@
-Match 4K BCM2837 user pmap TTBR0 geometry (39-bit / 512 GiB) to macOS 27 user VA space.
+Enable 47-bit TTBR0 (T0SZ=17, 4-level L0->L1->L2->L3) with 38-bit TTBR1 (T1SZ=26) on 4K arm64e macOS.
 
-Hardware evidence (pl21-vctext-pure, vc-text=1):
-  panic(cpu 3 caller 0xfffffff00bb7224c): pmap_enter_options_internal: attempt to map illegal VA 0x73e200040000 in pmap 0xfffffff006d5c34000 @pmap.c:6298
+Hardware evidence:
+- pl21 (T0SZ=26): panic pmap_enter_options_internal: attempt to map illegal VA 0x73e200040000
+- pl32 (T0SZ=25): TB710FU PID1 FAULT: pc=0x18f4f53ec lr=0x17344c818f4f5608 far=0x4d81fc9e4bd8
+  (macOS 27 arm64e userspace masks pointers with 0x00007fffffffffff; with T0SZ=25/26, hardware
+  PAC bits in bits 46..39 survive the 47-bit mask and fault as non-canonical VAs).
 
-Fix:
-- Set T0SZ_BOOT = 25ULL on 4K XNU_TARGET_OS_OSX and keep T1SZ_BOOT == T0SZ_BOOT == 25ULL so
-  start.s, kernel_pmap, and pmap_pt_attr_4k all share the exact same 39-bit (512 GiB, 512 L1
-  entries = 4096 B) geometry.
-- Clamp 4K XNU_TARGET_OS_OSX MACH_VM_MAX_ADDRESS_RAW to 0x0000007FFFE00000ULL (512 GiB - 2 MiB,
-  matching macOS-DroidVM virt-user-va-512g) so xzone malloc's 455..512 GiB range fits inside
-  [0, MACH_VM_MAX_ADDRESS) < pmap->max (0x8000000000).
+Source/Design: adapted from TAY0123/UNIXNU_elden elden-macos26-47bit-user-va.patch for TB710FU
+(SM8650Q-AB, xnu-12377 BCM2837 4K arm64e):
+- T0SZ_BOOT = 17ULL (47-bit user VA, PAC strictly in bits 54..47, L0 root = 256 entries = 2048 B).
+- T1SZ_BOOT = 26ULL (unchanged 38-bit kernel L1 = 256 entries = 2048 B = PMAP_ROOT_ALLOC_SIZE).
+- Separate tb710fu_kernel_pt_attr (L1 root) vs native_pt_attr (L0 root) in pmap_pt_geometry.h.
+- start.s wraps V=P L1 (x25) in tb710fu_bootstrap_user_l0[0] for early MMU-on TTBR0 handoff.
+diff --git a/osfmk/arm/pmap/pmap.c b/osfmk/arm/pmap/pmap.c
+index d3af096..1b1cacc 100644
+--- a/osfmk/arm/pmap/pmap.c
++++ b/osfmk/arm/pmap/pmap.c
+@@ -115,6 +115,10 @@
+ 
+ #define PMAP_L1_MAX_ENTRY (ARM_PTE_T1_REGION_MASK(TCR_EL1_BOOT) >> ARM_TT_L1_SHIFT)
+ #define PMAP_ROOT_ALLOC_SIZE ((PMAP_L1_MAX_ENTRY + 1) * sizeof(tt_entry_t))
++#if TB710FU_ARM64E_4K_USER_VA
++_Static_assert(((ARM_PTE_T0_REGION_MASK(TCR_EL1_4KB) >> ARM_4K_TT_L0_SHIFT) + 1) *
++    sizeof(tt_entry_t) == PMAP_ROOT_ALLOC_SIZE, "TTBR0 and TTBR1 root allocation units must agree");
++#endif
+ 
+ #ifndef __ARM64_PMAP_SUBPAGE_L1__
+ _Static_assert(ARM_PGBYTES == PMAP_ROOT_ALLOC_SIZE, "Unexpected L1 Size");
+@@ -296,6 +300,27 @@ const struct page_table_attr pmap_pt_attr_4k = {
+ 	.pta_va_valid_mask = ARM_PTE_T0_REGION_MASK(TCR_EL1_4KB),
+ };
+ 
++#if TB710FU_ARM64E_4K_USER_VA
++/* TTBR1 keeps the 38-bit L1 geometry built by start.s and arm_vm_init.c. */
++const struct page_table_attr tb710fu_kernel_pt_attr = {
++	.pta_level_info = pmap_table_level_info_4k,
++	.pta_root_level = PMAP_TT_L1_LEVEL,
++	.pta_commpage_level = PMAP_TT_L1_LEVEL,
++	.pta_max_level = PMAP_TT_L3_LEVEL,
++	.pta_ops = &native_pt_ops,
++	.ap_ro = ARM_PTE_AP(AP_RORO),
++	.ap_rw = ARM_PTE_AP(AP_RWRW),
++	.ap_rona = ARM_PTE_AP(AP_RONA),
++	.ap_rwna = ARM_PTE_AP(AP_RWNA),
++	.ap_xn = ARM_PTE_PNX | ARM_PTE_NX,
++	.ap_x = ARM_PTE_PNX,
++	.pta_page_size = 4096,
++	.pta_pagezero_size = 4096,
++	.pta_page_shift = 12,
++	.pta_va_valid_mask = ARM_PTE_T1_REGION_MASK(TCR_EL1_4KB),
++};
++#endif
++
+ const struct page_table_attr pmap_pt_attr_16k = {
+ 	.pta_level_info = pmap_table_level_info_16k,
+ 	.pta_root_level = PMAP_TT_L1_LEVEL,
+diff --git a/osfmk/arm/pmap/pmap_pt_geometry.h b/osfmk/arm/pmap/pmap_pt_geometry.h
+index fc64830..7f25b62 100644
+--- a/osfmk/arm/pmap/pmap_pt_geometry.h
++++ b/osfmk/arm/pmap/pmap_pt_geometry.h
+@@ -166,6 +166,13 @@ extern const struct page_table_ops native_pt_ops;
+ #define pmap_get_pt_attr(pmap) ((pmap)->pmap_pt_attr)
+ #define pmap_get_pt_ops(pmap) ((pmap)->pmap_pt_attr->pta_ops)
+ 
++#elif TB710FU_ARM64E_4K_USER_VA
++
++extern const struct page_table_attr tb710fu_kernel_pt_attr;
++extern pmap_t const kernel_pmap;
++#define pmap_get_pt_attr(pmap) ((pmap) == kernel_pmap ? &tb710fu_kernel_pt_attr : native_pt_attr)
++#define pmap_get_pt_ops(pmap) (&native_pt_ops)
++
+ #else /* ARM_PARAMETERIZED_PMAP */
+ 
+ /* The page table attributes are fixed (to allow for const propagation) */
+diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
+index 756af52..f334491 100644
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -84,6 +84,10 @@ extern vm_offset_t physmap_vtop;
+  * the bootstrap page tables.
+  */
+ SECURITY_READ_ONLY_LATE(uint8_t) bootstrap_pagetables[BOOTSTRAP_TABLE_SIZE] __attribute__((aligned(ARM_PGBYTES)));
++#if TB710FU_ARM64E_4K_USER_VA
++/* L0 root table for 47-bit 4 KiB TTBR0 bootstrap identity mapping (L0[0] -> V=P L1). */
++SECURITY_READ_ONLY_LATE(tt_entry_t) tb710fu_bootstrap_user_l0[TTE_PGENTRIES] __attribute__((aligned(ARM_PGBYTES)));
++#endif
+ 
+ /*
+  * Denotes the end of xnu.
 diff --git a/osfmk/arm64/proc_reg.h b/osfmk/arm64/proc_reg.h
-index 51fdc9d..61eab86 100644
+index 51fdc9d..6d340b7 100644
 --- a/osfmk/arm64/proc_reg.h
 +++ b/osfmk/arm64/proc_reg.h
-@@ -1097,7 +1097,11 @@
- #endif /* !__ARM64_PMAP_SUBPAGE_L1__ */
- #else /* __ARM_16K_PG__ */
- #if __ARM64_PMAP_SUBPAGE_L1__
-+#if XNU_TARGET_OS_OSX
-+#define T0SZ_BOOT 25ULL
-+#else /* !XNU_TARGET_OS_OSX */
- #define T0SZ_BOOT 26ULL
-+#endif /* XNU_TARGET_OS_OSX */
- #else /* __ARM64_PMAP_SUBPAGE_L1__ */
- #define T0SZ_BOOT 25ULL
- #endif /* __ARM64_PMAP_SUBPAGE_L1__ */
-diff --git a/osfmk/mach/arm/vm_param.h b/osfmk/mach/arm/vm_param.h
-index 2adbe8b..c5fcbfd 100644
---- a/osfmk/mach/arm/vm_param.h
-+++ b/osfmk/mach/arm/vm_param.h
-@@ -155,8 +155,13 @@ extern int PAGE_SHIFT_CONST;
-  * the commpage nesting region and the GPU carveout stay reserved in every map (vm_reserved_regions).
+@@ -1089,7 +1089,13 @@
+  * the kernel.
   */
- #undef MACH_VM_MAX_ADDRESS_RAW
-+#if !defined(__ARM_16K_PG__)
-+/* 4K 3-level user pmaps (T0SZ_BOOT=25) cover 39 bits (512 GiB); keep user VA within pmap->max. */
-+#define MACH_VM_MAX_ADDRESS_RAW 0x0000007FFFE00000ULL
-+#else
- #define MACH_VM_MAX_ADDRESS_RAW 0x00007FFFFE000000ULL
- #endif
+ #endif /* __ARM_KERNEL_PROTECT__ */
+-#ifdef __ARM_16K_PG__
++#if defined(__arm64e__) && !defined(__ARM_16K_PG__) && XNU_TARGET_OS_OSX
++/* Keep ARMv8.3 PAC bits (54..47) outside macOS 47-bit user pointers (0x00007FFFFE000000). */
++#define TB710FU_ARM64E_4K_USER_VA 1
 +#endif
- /* threshold for allocations to be placed in the large file range */
- #define VM_LARGE_FILE_THRESHOLD (1ULL << 30)
- #define MACH_VM_JUMBO_ADDRESS ((mach_vm_offset_t) 0x0000000FC0000000ULL)
++#if TB710FU_ARM64E_4K_USER_VA
++#define T0SZ_BOOT 17ULL
++#elif defined(__ARM_16K_PG__)
+ #if __ARM64_PMAP_SUBPAGE_L1__
+ #define T0SZ_BOOT 25ULL
+ #else /* !__ARM64_PMAP_SUBPAGE_L1__ */
+@@ -1107,7 +1113,7 @@
+ #define T0SZ_EARLY_BOOT 17ULL
+ #endif /*__ARM64_PMAP_SUBPAGE_L1__ && CONFIG_SPTM */
+ 
+-#if HAS_ARM_INDEPENDENT_TNSZ
++#if HAS_ARM_INDEPENDENT_TNSZ || TB710FU_ARM64E_4K_USER_VA
+ #ifdef __ARM_16K_PG__
+ #if __ARM64_PMAP_KERN_SUBPAGE_L1__
+ #define T1SZ_BOOT 25ULL
+@@ -1115,7 +1121,7 @@
+ #define T1SZ_BOOT 17ULL
+ #endif /* !__ARM64_PMAP_KERN_SUBPAGE_L1__ */
+ #else /* __ARM_16K_PG__ */
+-#if __ARM64_PMAP_KERN_SUBPAGE_L1__
++#if __ARM64_PMAP_KERN_SUBPAGE_L1__ || (TB710FU_ARM64E_4K_USER_VA && __ARM64_PMAP_SUBPAGE_L1__)
+ #define T1SZ_BOOT 26ULL
+ #else /* __ARM64_PMAP_KERN_SUBPAGE_L1__ */
+ #define T1SZ_BOOT 25ULL
+diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+index f17668a..a5fa111 100644
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -620,6 +620,19 @@ Lkernelcache_base_found:
+ 	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
+ 	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
+ 
++#if TB710FU_ARM64E_4K_USER_VA
++	/* Populate 47-bit 4 KiB L0 root: L0[0] points to V=P L1 table in x25 (MMU is off, adrp yields PA). */
++	adrp	x0, EXT(tb710fu_bootstrap_user_l0)@page
++	add		x0, x0, EXT(tb710fu_bootstrap_user_l0)@pageoff
++	mov		x1, x0
++	mov		x2, #(PGBYTES / 16)
++1:
++	stp		xzr, xzr, [x1], #16
++	subs	x2, x2, #1
++	b.ne	1b
++	orr		x1, x25, #(ARM_TTE_BOOT_TABLE)
++	str		x1, [x0]
++#endif
+ 	/* Ensure TTEs are visible */
+ 	dsb		ish
+ 
+@@ -664,7 +677,13 @@ common_start:
+ 	 * arm_vm_init.c.
+ 	 */
+ #endif
++#if TB710FU_ARM64E_4K_USER_VA
++	adrp	x0, EXT(tb710fu_bootstrap_user_l0)@page
++	add		x0, x0, EXT(tb710fu_bootstrap_user_l0)@pageoff
++	and		x0, x0, #(TTBR_BADDR_MASK)
++#else
+ 	and		x0, x25, #(TTBR_BADDR_MASK)
++#endif
+ 	mov		x19, lr
+ 	bl		EXT(set_mmu_ttb)
+ 	mov		lr, x19
