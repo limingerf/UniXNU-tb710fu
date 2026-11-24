@@ -315,16 +315,6 @@ extern "C" bool native_adreno_fences_detail(uint32_t *a, uint32_t *b, uint32_t *
     return false;
 }
 
-extern "C" uint32_t native_ufs_dpu_map(unsigned slot, const uint64_t *pages, unsigned count)
-{
-    (void)slot;
-    (void)pages;
-    (void)count;
-    return 0;
-}
-
-extern "C" volatile uint32_t native_ufs_dpu_state = 0;
-
 extern "C" int native_gpu_trace_enabled(void)
 {
     return 0;
