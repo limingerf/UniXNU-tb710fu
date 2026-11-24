@@ -30,7 +30,7 @@ diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
 --- a/bsd/kern/kern_exec.c
 +++ b/bsd/kern/kern_exec.c
-@@ -9641,6 +9641,10 @@
+@@ -9641,7 +9641,11 @@
  	if (!error) native_owner_macos_gpu_addon(p, scratch);
  	if (!error) native_owner_macos_addon_sbin(p, scratch);
  	if (!error) native_owner_macos_boot_shims(p, scratch);
