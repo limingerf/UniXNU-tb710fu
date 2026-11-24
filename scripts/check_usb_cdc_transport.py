@@ -22,7 +22,7 @@ def main():
         if os.environ.get('CDC_NO_SANITIZERS') != '1':
             command += ['-fsanitize=address,undefined']
         command += [str(SOURCE / 'Test/cdc_dwc3_test.c'), str(SOURCE / 'CdcDwc3.c'),
-                    str(SOURCE / 'CdcAcmProtocol.c'), '-o', str(output)]
+                    str(SOURCE / 'CdcAcmProtocol.c'), str(SOURCE / 'CdcLogRing.c'), '-o', str(output)]
         subprocess.run(command, check=True)
         subprocess.run([str(output)], check=True)
 
