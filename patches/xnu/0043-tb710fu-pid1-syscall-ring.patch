@@ -1,21 +1,13 @@
-Subject: [PATCH] tb710fu: record PID 1 BSD syscall ring for COM5 ps diagnostics
-
-Records a lockless 16-entry ring buffer and in-flight state for PID 1
-BSD syscalls in bsd/dev/arm/systemcalls.c (DEVELOPMENT || DEBUG only)
-so COM5 `ps` can inspect the exact syscall sequence and blocking point
-of /sbin/launchd without console spam during boot.
----
- bsd/dev/arm/systemcalls.c | 42 +++++++++++++++++++++++++++++++++++++++
- 1 file changed, 42 insertions(+)
+Subject: [PATCH] tb710fu: record PID 1 BSD syscall ring + last failed sysctl/open
 
 diff --git a/bsd/dev/arm/systemcalls.c b/bsd/dev/arm/systemcalls.c
+index 0906700..1fb7821 100644
 --- a/bsd/dev/arm/systemcalls.c
 +++ b/bsd/dev/arm/systemcalls.c
-@@ -78,6 +78,34 @@
- #if CONFIG_DEBUG_SYSCALL_REJECTION
+@@ -79,6 +79,62 @@ __XNU_PRIVATE_EXTERN    int             syscalls_log[SYS_MAXSYSCALL];
  extern int mach_trap_count;
  #endif
-+
+ 
 +#if DEVELOPMENT || DEBUG
 +volatile uint32_t tb710fu_pid1_sc_count = 0;
 +volatile uint32_t tb710fu_pid1_sc_in = 0;
@@ -24,6 +16,10 @@ diff --git a/bsd/dev/arm/systemcalls.c b/bsd/dev/arm/systemcalls.c
 +volatile uint64_t tb710fu_pid1_sc_arg1 = 0;
 +volatile uint32_t tb710fu_pid1_sc_ring[16] = { 0 };
 +volatile uint32_t tb710fu_pid1_sc_idx = 0;
++char tb710fu_pid1_last_sysctl[96] = { 0 };
++int tb710fu_pid1_last_mib[4] = { 0 };
++int tb710fu_pid1_last_sysctl_err = 0;
++char tb710fu_pid1_last_open[96] = { 0 };
 +
 +static inline void
 +tb710fu_pid1_sc_enter(unsigned short code, uint64_t arg0, uint64_t arg1)
@@ -33,20 +29,45 @@ diff --git a/bsd/dev/arm/systemcalls.c b/bsd/dev/arm/systemcalls.c
 +	tb710fu_pid1_sc_arg1 = arg1;
 +	tb710fu_pid1_sc_in = 1;
 +	__atomic_fetch_add(&tb710fu_pid1_sc_count, 1u, __ATOMIC_RELAXED);
++	if (code == 441 || code == 5 || code == 398) {
++		size_t done = 0;
++		char tmp[96];
++		if (copyinstr((user_addr_t)arg0, tmp, sizeof(tmp), &done) == 0) {
++			tmp[sizeof(tmp) - 1] = '\0';
++			memcpy(tb710fu_pid1_last_open, tmp, sizeof(tmp));
++		}
++	}
 +}
 +
 +static inline void
-+tb710fu_pid1_sc_exit(unsigned short code, int error)
++tb710fu_pid1_sc_exit(unsigned short code, int error, uint64_t arg0, uint64_t arg1, uint64_t arg4)
 +{
 +	uint32_t slot = __atomic_fetch_add(&tb710fu_pid1_sc_idx, 1u, __ATOMIC_RELAXED) & 15u;
 +	tb710fu_pid1_sc_ring[slot] = ((uint32_t)code << 16) | ((uint32_t)error & 0xffffu);
 +	tb710fu_pid1_sc_in = 0;
++	if (code == 202 && error != 0) {
++		int mib[4] = { 0, 0, 0, 0 };
++		uint32_t n = (arg1 > 4) ? 4u : (uint32_t)arg1;
++		if (n > 0 && copyin((user_addr_t)arg0, mib, n * sizeof(int)) == 0) {
++			memcpy(tb710fu_pid1_last_mib, mib, sizeof(mib));
++			tb710fu_pid1_last_sysctl_err = error;
++			if (mib[0] == 0 && mib[1] == 3 && arg4 != 0) {
++				size_t done = 0;
++				char tmp[96];
++				if (copyinstr((user_addr_t)arg4, tmp, sizeof(tmp), &done) == 0) {
++					tmp[sizeof(tmp) - 1] = '\0';
++					memcpy(tb710fu_pid1_last_sysctl, tmp, sizeof(tmp));
++				}
++			}
++		}
++	}
 +}
 +#endif /* DEVELOPMENT || DEBUG */
- 
++
  /*
   * Function:	unix_syscall
-@@ -178,7 +206,17 @@
+  *
+@@ -178,7 +234,17 @@ unix_syscall(
  #endif /* CONFIG_DEBUG_SYSCALL_REJECTION */
  
  	AUDIT_SYSCALL_ENTER(code, proc, uthread);
@@ -58,7 +79,7 @@ diff --git a/bsd/dev/arm/systemcalls.c b/bsd/dev/arm/systemcalls.c
  	error = (*(callp->sy_call))(proc, &uthread->uu_arg[0], &(uthread->uu_rval[0]));
 +#if DEVELOPMENT || DEBUG
 +	if (pid == 1) {
-+		tb710fu_pid1_sc_exit(code, error);
++		tb710fu_pid1_sc_exit(code, error, (uint64_t)uthread->uu_arg[0], (uint64_t)uthread->uu_arg[1], (uint64_t)uthread->uu_arg[4]);
 +	}
 +#endif
  	AUDIT_SYSCALL_EXIT(code, proc, uthread, error);

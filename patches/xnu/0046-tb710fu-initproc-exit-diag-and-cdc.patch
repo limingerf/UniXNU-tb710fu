@@ -1,7 +1,6 @@
-Dump PID 1 syscall ring, user registers, and 10-frame user backtrace before initproc exit panic,
-and hold 120s so COM5 CDC drains everything and accepts hands-free edl/ls/cat/ps commands.
+Dump PID 1 syscall ring, last failed sysctl/open, x19-28/stack ASCII strings, and 10-frame user BT + 120s COM5 hold.
 diff --git a/bsd/kern/kern_exit.c b/bsd/kern/kern_exit.c
-index 8741626..ae6b6db 100644
+index 8741626..8d6ae9c 100644
 --- a/bsd/kern/kern_exit.c
 +++ b/bsd/kern/kern_exit.c
 @@ -81,6 +81,9 @@
@@ -14,7 +13,7 @@ index 8741626..ae6b6db 100644
  #include <sys/proc.h>
  #include <sys/kauth.h>
  #include <sys/tty.h>
-@@ -1996,6 +1999,55 @@ proc_handle_critical_exit(proc_t p, int rv)
+@@ -1996,6 +1999,111 @@ proc_handle_critical_exit(proc_t p, int rv)
  		    exit_reason_desc : "none");
  	}
  
@@ -23,9 +22,18 @@ index 8741626..ae6b6db 100644
 +		extern volatile uint32_t tb710fu_pid1_sc_count, tb710fu_pid1_sc_in, tb710fu_pid1_sc_cur, tb710fu_pid1_sc_idx;
 +		extern volatile uint64_t tb710fu_pid1_sc_arg0, tb710fu_pid1_sc_arg1;
 +		extern volatile uint32_t tb710fu_pid1_sc_ring[16];
++		extern char tb710fu_pid1_last_sysctl[96];
++		extern int tb710fu_pid1_last_mib[4];
++		extern int tb710fu_pid1_last_sysctl_err;
++		extern char tb710fu_pid1_last_open[96];
 +		printf("TB710FU INITEXIT: sc=%u in=%u cur=%u arg0=0x%llx arg1=0x%llx\n",
 +		    tb710fu_pid1_sc_count, tb710fu_pid1_sc_in, tb710fu_pid1_sc_cur,
 +		    (unsigned long long)tb710fu_pid1_sc_arg0, (unsigned long long)tb710fu_pid1_sc_arg1);
++		printf("TB710FU INITEXIT SYSCTL: err=%d mib=[%d,%d,%d,%d] name='%s' open='%s'\n",
++		    tb710fu_pid1_last_sysctl_err,
++		    tb710fu_pid1_last_mib[0], tb710fu_pid1_last_mib[1],
++		    tb710fu_pid1_last_mib[2], tb710fu_pid1_last_mib[3],
++		    tb710fu_pid1_last_sysctl, tb710fu_pid1_last_open);
 +		uint32_t idx = tb710fu_pid1_sc_idx;
 +		printf("TB710FU INITEXIT RING:");
 +		for (uint32_t i = 0; i < 16; i++) {
@@ -47,6 +55,53 @@ index 8741626..ae6b6db 100644
 +				    (unsigned long long)pc, (unsigned long long)lr,
 +				    (unsigned long long)fp, (unsigned long long)sp,
 +				    (unsigned long long)ts.x[0], (unsigned long long)ts.x[1]);
++				printf("TB710FU INITEXIT X19-28: 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx\n",
++				    (unsigned long long)ts.x[19], (unsigned long long)ts.x[20],
++				    (unsigned long long)ts.x[21], (unsigned long long)ts.x[22],
++				    (unsigned long long)ts.x[23], (unsigned long long)ts.x[24],
++				    (unsigned long long)ts.x[25], (unsigned long long)ts.x[26],
++				    (unsigned long long)ts.x[27], (unsigned long long)ts.x[28]);
++				for (int r = 19; r <= 28; r++) {
++					uint64_t va = ts.x[r] & 0x00007fffffffffffULL;
++					if (va >= 0x100000000ULL) {
++						char sbuf[96];
++						size_t done = 0;
++						if (copyinstr((user_addr_t)va, sbuf, sizeof(sbuf), &done) == 0 && done >= 6) {
++							int ok = 1;
++							for (size_t k = 0; k + 1 < done && k < 16; k++) {
++								unsigned char ch = (unsigned char)sbuf[k];
++								if (ch < 0x20 || ch > 0x7e) { ok = 0; break; }
++							}
++							if (ok) {
++								sbuf[sizeof(sbuf) - 1] = '\0';
++								printf("TB710FU INITEXIT X[%d] STR: %s\n", r, sbuf);
++							}
++						}
++					}
++				}
++				uint64_t stk[80];
++				if (sp >= 0x100000000ULL && (sp & 7ULL) == 0 && copyin((user_addr_t)sp, stk, sizeof(stk)) == 0) {
++					int printed = 0;
++					for (int i = 0; i < 80 && printed < 16; i++) {
++						uint64_t va = stk[i] & 0x00007fffffffffffULL;
++						if (va >= 0x100000000ULL && (va < sp || va >= sp + 0x4000ULL)) {
++							char sbuf[96];
++							size_t done = 0;
++							if (copyinstr((user_addr_t)va, sbuf, sizeof(sbuf), &done) == 0 && done >= 8) {
++								int ok = 1;
++								for (size_t k = 0; k + 1 < done && k < 16; k++) {
++									unsigned char ch = (unsigned char)sbuf[k];
++									if (ch < 0x20 || ch > 0x7e) { ok = 0; break; }
++								}
++								if (ok) {
++									sbuf[sizeof(sbuf) - 1] = '\0';
++									printf("TB710FU INITEXIT STK[+%d] STR: %s\n", i * 8, sbuf);
++									printed++;
++								}
++							}
++						}
++					}
++				}
 +				for (int f = 0; f < 10 && fp >= 0x100000000ULL && (fp & 7ULL) == 0; f++) {
 +					uint64_t pair[2] = { 0, 0 };
 +					if (copyin((user_addr_t)fp, pair, sizeof(pair)) != 0) {
