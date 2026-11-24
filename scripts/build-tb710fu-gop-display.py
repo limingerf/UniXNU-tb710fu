@@ -397,8 +397,7 @@ def main():
 
     includes = [output, gop_dir, tree / '.cache/xnu-work/osfmk', tree / '.cache/xnu-work/libkern']
     objects = []
-    for path, extra_flags in ((gen_display, ['-DNATIVE_LEGACY_MACOS=1']),
-                              (device / 'package/GopDisplaySupport.cpp', [])):
+    for path, extra_flags in ((gen_display, ['-DNATIVE_LEGACY_MACOS=1']),):
         obj = output / (path.stem + '.o')
         command = adapter.compile_command(cpp_record, path, obj, includes, extra_flags)
         command = ['--target=arm64e-apple-ios27.0' if v.startswith('--target=') else v for v in command]
@@ -455,7 +454,7 @@ def main():
             raise SystemExit(f'IOService::{name} slot was not located in the owned vtable')
 
     generate_traits(output / 'GopDisplayTraits.h', abi, sorted(owned), ioservice)
-    for source in (device / 'package/GopDisplayStart.cpp', output / 'GopDisplayTraits.cpp'):
+    for source in (device / 'package/GopDisplayStart.cpp', device / 'package/GopDisplaySupport.cpp', output / 'GopDisplayTraits.cpp'):
         obj = output / (source.stem + '.o')
         command = adapter.compile_command(cpp_record, source, obj, includes, [])
         command = ['--target=arm64e-apple-ios27.0' if v.startswith('--target=') else v for v in command]

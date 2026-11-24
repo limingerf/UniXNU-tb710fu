@@ -41,3 +41,4 @@
 0041-tb710fu-smp-secondary-reset-vector.patch
 0042-tb710fu-macos27-services.patch
 0043-tb710fu-pid1-syscall-ring.patch
+0044-tb710fu-macos-user-va-pmap.patch

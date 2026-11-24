@@ -279,7 +279,7 @@ diff --git a/osfmk/console/serial_console.c b/osfmk/console/serial_console.c
 +			tb710fu_live_log_putc(text[i]);
 +			if (active) { tb710fu_ramoops_putc(text[i]); }
 +		}
-+		if (active) { tb710fu_cdc_log_tap_putc(text[i]); }
++		tb710fu_cdc_log_tap_putc(text[i]);
 +	}
 +}
 +#endif
