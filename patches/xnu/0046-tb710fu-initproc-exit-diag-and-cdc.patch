@@ -1,10 +1,20 @@
 Dump PID 1 syscall ring, user registers, and 10-frame user backtrace before initproc exit panic,
 and hold 120s so COM5 CDC drains everything and accepts hands-free edl/ls/cat/ps commands.
 diff --git a/bsd/kern/kern_exit.c b/bsd/kern/kern_exit.c
-index 514abb7..14d9c6a 100644
+index 8741626..b00ca4d 100644
 --- a/bsd/kern/kern_exit.c
 +++ b/bsd/kern/kern_exit.c
-@@ -1995,6 +1995,55 @@ proc_handle_critical_exit(proc_t p, int rv)
+@@ -81,6 +81,9 @@
+ #include <sys/systm.h>
+ #include <sys/ioctl.h>
+ #include <sys/proc_internal.h>
++#if defined(__arm64__)
++#include <mach/arm/thread_status.h>
++#endif
+ #include <sys/proc.h>
+ #include <sys/kauth.h>
+ #include <sys/tty.h>
+@@ -1996,6 +1999,55 @@ proc_handle_critical_exit(proc_t p, int rv)
  		    exit_reason_desc : "none");
  	}
  
@@ -58,5 +68,5 @@ index 514abb7..14d9c6a 100644
 +#endif /* DEVELOPMENT || DEBUG */
 +
  	const char *prefix_str;
- 	char prefix_str_buf[128];
- 
+ #if defined(XNU_BOOT_PROGRESS) && XNU_BOOT_PROGRESS
+ 	char prefix_str_buf[1024];
