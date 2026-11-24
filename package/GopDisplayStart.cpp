@@ -199,8 +199,17 @@ extern "C" void native_tb710fu_gop_display_start(void)
         printf("TB710FU GopDisplay: original class extent differs, display not registered\n");
         return;
     }
+    bool isIOService = false;
     const OSMetaClass *parent = meta->getSuperClass();
-    if (!parent || strcmp(parent->getClassName(), "IOService") != 0) {
+    for (const OSMetaClass *cur = parent; cur; cur = cur->getSuperClass()) {
+        if (strcmp(cur->getClassName(), "IOService") == 0) {
+            isIOService = true;
+            break;
+        }
+    }
+    printf("TB710FU GopDisplay: super=%s isIOService=%d\n",
+           parent ? parent->getClassName() : "(null)", isIOService ? 1 : 0);
+    if (!isIOService) {
         printf("TB710FU GopDisplay: original class is not an IOService subclass, display not registered\n");
         return;
     }

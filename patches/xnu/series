@@ -45,3 +45,4 @@
 0045-tb710fu-pid1-fault-log.patch
 0046-tb710fu-initproc-exit-diag-and-cdc.patch
 0047-tb710fu-lockdown-mode-state-public.patch
+0048-tb710fu-macos-desiredvnodes.patch

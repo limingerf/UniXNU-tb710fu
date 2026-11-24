@@ -1,0 +1,25 @@
+Subject: [PATCH] tb710fu: raise desiredvnodes floor to 65536 on >=2 GiB macOS 27 boots
+
+BCM2837/iOS CONFIG_VNODES caps desiredvnodes at 1024, causing vnode: table is full
+and memorystatus (vnode-limit) kills once macOS 27 launchd starts 100+ daemons.
+Honors kern.maxvnodes boot-arg and raises the floor to 65536 on >=2 GiB RAM.
+
+diff --git a/bsd/dev/unix_startup.c b/bsd/dev/unix_startup.c
+index ec19ee7..af34ee0 100644
+--- a/bsd/dev/unix_startup.c
++++ b/bsd/dev/unix_startup.c
+@@ -186,6 +186,14 @@ bsd_startupearly(void)
+ 			}
+ #endif
+ 		}
++		{
++			int boot_vnodes = 0;
++			if (PE_parse_boot_argn("kern.maxvnodes", &boot_vnodes, sizeof(boot_vnodes)) && boot_vnodes > desiredvnodes) {
++				desiredvnodes = boot_vnodes;
++			} else if (desiredvnodes < 65536 && sane_size >= (2ULL << 30)) {
++				desiredvnodes = 65536;
++			}
++		}
+ 		vnodes_sized = 1;
+ 	}
+ }
