@@ -8,7 +8,17 @@
 #include <sys/sysproto.h>
 #include <sys/fcntl.h>
 #include <sys/stat.h>
+#include <sys/vnode.h>
+#include <sys/vnode_if.h>
+#include <sys/uio.h>
+#include <sys/dirent.h>
 #include <pexpert/pexpert.h>
+
+/* vnode_if.h keeps this behind XNU_KERNEL_PRIVATE, which MakeInc.def defines
+ * for the kernel build. A second identical prototype costs nothing and keeps
+ * this file compiling if the record ever drops the define. */
+extern errno_t VNOP_READDIR(vnode_t, struct uio *, int, int *, int *,
+                            vfs_context_t);
 
 static const char policy_head[] =
     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
@@ -253,4 +263,242 @@ tb710fu_dump_procs(void)
         }
     }
     printf("TB710FU PS: end count=%u\n", count);
+}
+
+/* ---------------------------------------------------------------------------
+ * COM5 debug shell: read-only VFS verbs.
+ *
+ * These run inside cdc_worker, a kernel thread created by
+ * kernel_thread_start_priority whose current_proc() is kernproc. There is no
+ * uthread behind it, so vfs_context_current() can resolve to a NULL BSD thread
+ * info; every call here therefore passes vfs_context_kernel() explicitly, which
+ * is the same context bsd_init.c uses for its own kernel-thread vnode lookup.
+ *
+ * Only one worker calls these, so the transfer buffers are plain file static
+ * arrays instead of kalloc_data: fewer symbols to depend on, and no failure path
+ * that could leave a page behind.
+ * ------------------------------------------------------------------------- */
+#define TB710FU_SHELL_PATH_MAX 256
+#define TB710FU_SHELL_LS_BYTES 5120
+#define TB710FU_SHELL_LS_ENTRIES 96
+#define TB710FU_SHELL_CAT_BYTES 4096
+
+static uint8_t gShellLsBuf[TB710FU_SHELL_LS_BYTES];
+static char gShellCatBuf[TB710FU_SHELL_CAT_BYTES];
+
+static const char
+*shell_type(enum vtype type)
+{
+    switch (type) {
+    case VREG: return "reg";
+    case VDIR: return "dir";
+    case VLNK: return "lnk";
+    case VBLK: return "blk";
+    case VCHR: return "chr";
+    case VSOCK: return "sock";
+    case VFIFO: return "fifo";
+    case VSTR: return "str";
+    case VCPLX: return "cplx";
+    case VBAD: return "bad";
+    default: return "non";
+    }
+}
+
+/* Resolves an absolute path to a vnode with an iocount held. The caller owns
+ * vnode_put() on success and nothing on failure. */
+static int
+shell_lookup(const char *path, vnode_t *vpp, vfs_context_t *ctxp)
+{
+    *vpp = NULL;
+    if (path == NULL || path[0] != '/') {
+        printf("TB710FU SHELL: an absolute path is required\n");
+        return EINVAL;
+    }
+    if (strlen(path) >= TB710FU_SHELL_PATH_MAX) {
+        printf("TB710FU SHELL: path too long (max %d)\n", TB710FU_SHELL_PATH_MAX - 1);
+        return ENAMETOOLONG;
+    }
+    *ctxp = vfs_context_kernel();
+    errno_t error = vnode_lookup(path, 0, vpp, *ctxp);
+    if (error != 0 || *vpp == NULL) {
+        *vpp = NULL;
+        printf("TB710FU SHELL: lookup %s -> %d\n", path, (int)error);
+        return error != 0 ? (int)error : ENOENT;
+    }
+    return 0;
+}
+
+/* VNOP_READDIR into one bounded transfer buffer. A directory with more entries
+ * than fit (or than the display cap) reports itself truncated instead of
+ * looping: the shell is a diagnostic, not a filesystem browser. */
+int
+tb710fu_shell_ls(const char *path)
+{
+    vnode_t vp = NULL;
+    vfs_context_t ctx = NULL;
+    int error = shell_lookup(path, &vp, &ctx);
+    if (error) {
+        return error;
+    }
+    if (!vnode_isdir(vp)) {
+        printf("TB710FU LS: %s is not a directory (%s)\n", path, shell_type(vnode_vtype(vp)));
+        vnode_put(vp);
+        return ENOTDIR;
+    }
+    uio_t uio = uio_create(1, 0, UIO_SYSSPACE, UIO_READ);
+    if (uio == NULL) {
+        vnode_put(vp);
+        printf("TB710FU LS: %s uio_create failed\n", path);
+        return ENOMEM;
+    }
+    (void)uio_addiov(uio, (user_addr_t)(uintptr_t)gShellLsBuf, sizeof(gShellLsBuf));
+    int eofflag = 0, numdirent = 0;
+    error = (int)VNOP_READDIR(vp, uio, 0, &eofflag, &numdirent, ctx);
+    user_ssize_t resid = uio_resid(uio);
+    uio_free(uio);
+    vnode_put(vp);
+    if (error != 0 || resid < 0) {
+        printf("TB710FU LS: %s readdir -> %d\n", path, error);
+        return error != 0 ? error : EIO;
+    }
+    /* d_reclen/d_namlen are the only authority here: the FS packs records of
+     * whatever size it likes into the buffer, and a zero-length record would
+     * otherwise spin forever. */
+    const unsigned header = (unsigned)(sizeof(struct dirent) -
+                                       sizeof(((struct dirent *)0)->d_name));
+    const unsigned used = (unsigned)(sizeof(gShellLsBuf) - (size_t)resid);
+    unsigned offset = 0, count = 0;
+    while (offset + header + 1u <= used) {
+        struct dirent *entry = (struct dirent *)(void *)(gShellLsBuf + offset);
+        if (entry->d_reclen < header + 1u || entry->d_reclen > used - offset ||
+            entry->d_namlen + 1u > entry->d_reclen - header) {
+            printf("TB710FU LS: %s malformed entry at %u (reclen=%u namlen=%u)\n",
+                   path, offset, (unsigned)entry->d_reclen, (unsigned)entry->d_namlen);
+            break;
+        }
+        if (count >= TB710FU_SHELL_LS_ENTRIES) {
+            printf("TB710FU LS: %s truncated after %u entries\n", path,
+                   (unsigned)TB710FU_SHELL_LS_ENTRIES);
+            break;
+        }
+        char name[sizeof(((struct dirent *)0)->d_name)];
+        memcpy(name, entry->d_name, entry->d_namlen);
+        name[entry->d_namlen] = '\0';
+        printf("TB710FU LS: %c %s\n",
+               entry->d_type == DT_DIR ? 'd' :
+               entry->d_type == DT_REG ? '-' :
+               entry->d_type == DT_LNK ? 'l' : '?', name);
+        ++count;
+        offset += entry->d_reclen;
+    }
+    if (!eofflag && count < TB710FU_SHELL_LS_ENTRIES) {
+        printf("TB710FU LS: %s more entries not shown\n", path);
+    }
+    printf("TB710FU LS: %s entries=%u eof=%d\n", path, count, eofflag);
+    return 0;
+}
+
+/* First 4096 bytes of a regular file. Printable bytes are passed through,
+ * newlines/tabs are literal, everything else becomes \xNN so a binary or a
+ * lossy console encoding cannot swallow the transcript. */
+int
+tb710fu_shell_cat(const char *path)
+{
+    static const char hex[] = "0123456789abcdef";
+    vnode_t vp = NULL;
+    vfs_context_t ctx = NULL;
+    int error = shell_lookup(path, &vp, &ctx);
+    if (error) {
+        return error;
+    }
+    if (!vnode_isreg(vp)) {
+        printf("TB710FU CAT: %s is not a regular file (%s)\n", path,
+               shell_type(vnode_vtype(vp)));
+        vnode_put(vp);
+        return EINVAL;
+    }
+    int resid = 0;
+    error = vn_rdwr(UIO_READ, vp, (caddr_t)gShellCatBuf, TB710FU_SHELL_CAT_BYTES, 0,
+                    UIO_SYSSPACE, IO_NODELOCKED, vfs_context_ucred(ctx), &resid,
+                    kernproc);
+    vnode_put(vp);
+    if (error != 0 || resid < 0) {
+        printf("TB710FU CAT: %s read -> %d\n", path, error);
+        return error != 0 ? error : EIO;
+    }
+    const int bytes = (int)TB710FU_SHELL_CAT_BYTES - resid;
+    char text[128];
+    unsigned used = 0;
+    printf("TB710FU CAT: begin %s\n", path);
+    for (int i = 0; i < bytes; ++i) {
+        char piece[4];
+        unsigned count = 0;
+        const char ch = gShellCatBuf[i];
+        if (ch == '\n' || ch == '\t') {
+            piece[count++] = ch;
+        } else if (ch == '\\') {
+            piece[count++] = '\\';
+            piece[count++] = '\\';
+        } else if (ch >= 0x20 && ch < 0x7f) {
+            piece[count++] = ch;
+        } else {
+            piece[count++] = '\\';
+            piece[count++] = 'x';
+            piece[count++] = hex[((unsigned)ch >> 4) & 0xfu];
+            piece[count++] = hex[(unsigned)ch & 0xfu];
+        }
+        if (used + count >= sizeof(text)) {
+            text[used] = '\0';
+            printf("%s", text);
+            used = 0;
+        }
+        memcpy(text + used, piece, count);
+        used += count;
+    }
+    if (used) {
+        text[used] = '\0';
+        printf("%s", text);
+    }
+    if (bytes > 0 && gShellCatBuf[bytes - 1] == '\n') {
+        printf("\n");
+    }
+    printf("TB710FU CAT: %s bytes=%d resid=%d\n", path, bytes, (int)resid);
+    return bytes;
+}
+
+/* size/mode/uid/gid/type without opening the file: VNOP_GETATTR is allowed to
+ * come without a preceding open, which keeps this usable on directories and on
+ * paths the caller may not write. */
+int
+tb710fu_shell_stat(const char *path)
+{
+    vnode_t vp = NULL;
+    vfs_context_t ctx = NULL;
+    int error = shell_lookup(path, &vp, &ctx);
+    if (error) {
+        return error;
+    }
+    struct vnode_attr va;
+    VATTR_INIT(&va);
+    VATTR_WANTED(&va, va_type);
+    VATTR_WANTED(&va, va_mode);
+    VATTR_WANTED(&va, va_uid);
+    VATTR_WANTED(&va, va_gid);
+    VATTR_WANTED(&va, va_data_size);
+    VATTR_WANTED(&va, va_nlink);
+    VATTR_WANTED(&va, va_fsid);
+    VATTR_WANTED(&va, va_fileid);
+    error = vnode_getattr(vp, &va, ctx);
+    vnode_put(vp);
+    if (error != 0) {
+        printf("TB710FU STAT: %s getattr -> %d\n", path, (int)error);
+        return error;
+    }
+    printf("TB710FU STAT: %s type=%s mode=%04o uid=%u gid=%u size=%llu "
+           "nlink=%llu fsid=%08x fileid=%llu\n",
+           path, shell_type(va.va_type), (unsigned)(va.va_mode & 07777u),
+           (unsigned)va.va_uid, (unsigned)va.va_gid,
+           (unsigned long long)va.va_data_size, (unsigned long long)va.va_nlink,
+           (unsigned)va.va_fsid, (unsigned long long)va.va_fileid);
+    return 0;
 }

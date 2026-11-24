@@ -52,6 +52,19 @@ extern void tb710fu_live_log_cdc_bytes(const char *bytes, unsigned long length)
     __attribute__((weak_import));
 extern void tb710fu_dump_procs(void)
     __attribute__((weak_import));
+/* Interactive shell verbs. They live in BootWatchdogPolicy.c, which is built
+ * from a kern_exec.o.json record (BSD KPI, no IOKit). Keeping them weak means
+ * CDC still links and enumerates if that archive is absent; the shell then
+ * answers "unavailable" instead of dropping the port. */
+extern int tb710fu_shell_ls(const char *path)
+    __attribute__((weak_import));
+extern int tb710fu_shell_cat(const char *path)
+    __attribute__((weak_import));
+extern int tb710fu_shell_stat(const char *path)
+    __attribute__((weak_import));
+/* IOKit side: Macos27Services.cpp owns the registry plane. */
+extern void tb710fu_ioreg_dump(const char *filter)
+    __attribute__((weak_import));
 extern volatile uint32_t armcpu_gic_ready;
 extern volatile uint64_t armcpu_timer_interrupts;
 extern kern_return_t armcpu_spi_attach(uint32_t intid, bool edge,
@@ -70,9 +83,12 @@ static struct tb710fu_cdc_xnu gCdc;
 static unsigned gAttempted;
 static unsigned gSleepChannel;
 static IOLock *gCdcTcsLock;
-static char gRxLine[32];
+static char gRxLine[192];
+static char gRxArg[160];
 static unsigned gRxLen;
-static unsigned gPendingCmd; /* 1=edl, 2=reboot, 3=bootloader, 4=recovery */
+/* Pending verb: 1=edl, 2=reboot, 3=bootloader, 4=recovery, 5=ps,
+ * 6=help, 7=ls, 8=cat, 9=stat, 10=ioreg. */
+static unsigned gPendingCmd;
 
 static const char *gStage;
 // Only the worker reads or writes the platform samples.
@@ -621,16 +637,20 @@ static void cdc_sync_device(void *context, unsigned offset, unsigned bytes)
     cdc_cache_sync(context, offset, bytes, 1);
 }
 
-static size_t cdc_copy(void *context, uint8_t *out, size_t bytes)
+/* Bulk IN source. The ring is drop-oldest, so the transport retires a span by
+ * ring position, not by byte count: a producer may evict the head of the span
+ * while it is still on the wire, and counting bytes would then retire bytes that
+ * were never sent (and stall on the ones that were). */
+static size_t cdc_read_log(void *context, uint8_t *out, size_t bytes, uint64_t *end)
 {
     (void)context;
-    return tb710fu_cdc_log_tap_copy(out, bytes);
+    return tb710fu_cdc_log_tap_read(out, bytes, end);
 }
 
-static int cdc_consume(void *context, size_t bytes)
+static void cdc_commit_log(void *context, uint64_t end)
 {
     (void)context;
-    return tb710fu_cdc_log_tap_consume(bytes);
+    tb710fu_cdc_log_tap_commit(end);
 }
 
 /* Host-to-device commands accepted on CDC Bulk OUT (line-terminated):
@@ -643,7 +663,16 @@ static int cdc_consume(void *context, size_t bytes)
  *                 + PSCI SYSTEM_RESET
  *   recovery   -> PMK8550 SDAM2 (SPMI v7, PPID 0x071, off 0x48, bits <1 7> = 0x01)
  *                 + PSCI SYSTEM_RESET
- *   ps         -> dump active BSD processes (pid 1..256) to console/COM5 */
+ *   ps         -> dump active BSD processes (pid 1..256) to console/COM5
+ *   help       -> list the verbs below
+ *   ls <path>  -> VFS readdir of a mounted APFS/devfs volume
+ *   cat <path> -> up to 4096 bytes of a regular file
+ *   stat <path>-> size, mode, uid, gid, type of a path
+ *   ioreg <s>  -> IORegistry services whose name or class contains <s>
+ * The read-only verbs never touch the reset path: they answer on COM5 and fall
+ * back to the poll loop exactly like ps, so a typo cannot reboot the board.
+ * Only the first token is case-folded; everything after it keeps its case,
+ * because APFS and Preboot paths are case sensitive. */
 #define TB710FU_TCSR_BOOT_MISC_DETECT 0x01fd9000u
 #define TB710FU_QCOM_DLOAD_MASK       0x01u
 #define TB710FU_QCOM_DLOAD_EDL        0x01u
@@ -652,6 +681,50 @@ static int cdc_consume(void *context, size_t bytes)
 #define TB710FU_PMK8550_REBOOT_OFF    0x48u
 
 static unsigned gRxBytes;
+
+/* One verb per line. Returns 0 for an unknown verb. The comparison is
+ * case-insensitive because the caller folds the verb before calling this. */
+static unsigned cdc_verb(const char *verb)
+{
+    static const char *const names[] = {
+        NULL, "edl", "reboot", "bootloader", "recovery", "ps",
+        "help", "ls", "cat", "stat", "ioreg"
+    };
+    for (unsigned id = 1u; id < sizeof(names) / sizeof(names[0]); ++id) {
+        const char *name = names[id];
+        unsigned i = 0;
+        for (; name[i] != '\0'; ++i) {
+            if (verb[i] != name[i]) break;
+        }
+        if (name[i] == '\0' && verb[i] == '\0') return id;
+    }
+    return 0u;
+}
+
+/* Splits the received line into a folded verb and a case-preserved argument.
+ * The line buffer is edited in place: the verb ends at the first space, and the
+ * argument keeps every byte after it, including interior spaces. */
+static void cdc_dispatch_line(void)
+{
+    char *arg = gRxLine;
+    while (*arg != '\0' && *arg != ' ') ++arg;
+    const int has_arg = (*arg == ' ');
+    if (has_arg) *arg++ = '\0';
+    while (*arg == ' ') ++arg;
+    unsigned length = 0u;
+    while (arg[length] != '\0' && length + 1u < sizeof(gRxArg)) {
+        gRxArg[length] = arg[length];
+        ++length;
+    }
+    while (length > 0u && gRxArg[length - 1u] == ' ') --length;
+    gRxArg[length] = '\0';
+    for (char *verb = gRxLine; *verb != '\0'; ++verb) {
+        if (*verb >= 'A' && *verb <= 'Z') *verb = (char)(*verb + ('a' - 'A'));
+    }
+    const unsigned cmd = cdc_verb(gRxLine);
+    if (cmd == 0u) return;
+    gPendingCmd = cmd;
+}
 
 static void cdc_on_rx(void *context, const uint8_t *bytes, unsigned length)
 {
@@ -662,22 +735,11 @@ static void cdc_on_rx(void *context, const uint8_t *bytes, unsigned length)
         if (ch == '\r' || ch == '\n') {
             if (gRxLen > 0u) {
                 gRxLine[gRxLen] = '\0';
-                if (gRxLen == 3u && memcmp(gRxLine, "edl", 3u) == 0) {
-                    gPendingCmd = 1u;
-                } else if (gRxLen == 6u && memcmp(gRxLine, "reboot", 6u) == 0) {
-                    gPendingCmd = 2u;
-                } else if (gRxLen == 10u && memcmp(gRxLine, "bootloader", 10u) == 0) {
-                    gPendingCmd = 3u;
-                } else if (gRxLen == 8u && memcmp(gRxLine, "recovery", 8u) == 0) {
-                    gPendingCmd = 4u;
-                } else if (gRxLen == 2u && memcmp(gRxLine, "ps", 2u) == 0) {
-                    gPendingCmd = 5u;
-                }
+                cdc_dispatch_line();
                 gRxLen = 0u;
             }
-        } else if (ch >= 'A' && ch <= 'Z') {
-            if (gRxLen + 1u < sizeof(gRxLine)) gRxLine[gRxLen++] = (char)(ch + ('a' - 'A'));
         } else if (ch >= 0x20 && ch < 0x7f) {
+            /* Case is preserved here; only the verb is folded later. */
             if (gRxLen + 1u < sizeof(gRxLine)) gRxLine[gRxLen++] = ch;
         }
     }
@@ -792,6 +854,23 @@ static int cdc_set_reboot_mode_sdam(uint8_t mode, const char *label)
     return w1;
 }
 
+static void cdc_shell_help(void)
+{
+    cdc_log("TB710FU SHELL: commands\n");
+    cdc_log("TB710FU SHELL:   help            this text\n");
+    cdc_log("TB710FU SHELL:   ls <path>       list a directory (VFS readdir)\n");
+    cdc_log("TB710FU SHELL:   cat <path>      first 4096 bytes of a file\n");
+    cdc_log("TB710FU SHELL:   stat <path>     size/mode/uid/gid/type\n");
+    cdc_log("TB710FU SHELL:   ioreg <text>    IORegistry services matching text\n");
+    cdc_log("TB710FU SHELL:   ps              dump BSD processes\n");
+    cdc_log("TB710FU SHELL:   edl             3 s hands-free EDL reset\n");
+    cdc_log("TB710FU SHELL:   reboot          PSCI SYSTEM_RESET\n");
+    cdc_log("TB710FU SHELL:   bootloader      reboot into the bootloader\n");
+    cdc_log("TB710FU SHELL:   recovery        reboot into recovery\n");
+    cdc_log("TB710FU SHELL: vfs=%u ioreg=%u\n",
+            tb710fu_shell_ls ? 1u : 0u, tb710fu_ioreg_dump ? 1u : 0u);
+}
+
 static void cdc_exec_pending_cmd(void)
 {
     const unsigned cmd = gPendingCmd;
@@ -811,6 +890,32 @@ static void cdc_exec_pending_cmd(void)
         cdc_log("TB710FU CDC: cmd=ps rx=%u\n", gRxBytes);
         if (tb710fu_dump_procs) tb710fu_dump_procs();
         else cdc_log("TB710FU CDC: ps unavailable\n");
+        return;
+    } else if (cmd == 6u) {
+        cdc_shell_help();
+        return;
+    } else if (cmd >= 7u && cmd <= 10u) {
+        const char *arg = gRxArg[0] != '\0' ? gRxArg : NULL;
+        if (cmd == 7u) {
+            if (!tb710fu_shell_ls) { cdc_log("TB710FU SHELL: ls unavailable\n"); return; }
+            if (!arg) { cdc_log("TB710FU SHELL: ls needs a path\n"); return; }
+            cdc_log("TB710FU SHELL: ls begin %s\n", arg);
+            (void)tb710fu_shell_ls(arg);
+            cdc_log("TB710FU SHELL: ls end\n");
+        } else if (cmd == 8u) {
+            if (!tb710fu_shell_cat) { cdc_log("TB710FU SHELL: cat unavailable\n"); return; }
+            if (!arg) { cdc_log("TB710FU SHELL: cat needs a path\n"); return; }
+            cdc_log("TB710FU SHELL: cat begin %s\n", arg);
+            (void)tb710fu_shell_cat(arg);
+            cdc_log("TB710FU SHELL: cat end\n");
+        } else if (cmd == 9u) {
+            if (!tb710fu_shell_stat) { cdc_log("TB710FU SHELL: stat unavailable\n"); return; }
+            if (!arg) { cdc_log("TB710FU SHELL: stat needs a path\n"); return; }
+            (void)tb710fu_shell_stat(arg);
+        } else {
+            if (!tb710fu_ioreg_dump) { cdc_log("TB710FU SHELL: ioreg unavailable\n"); return; }
+            tb710fu_ioreg_dump(arg);
+        }
         return;
     } else {
         return;
@@ -1274,8 +1379,8 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
     struct tb710fu_dwc3_ops ops = {
         .context = x, .read32 = cdc_dwc_read, .write32 = cdc_dwc_write,
         .delay_us = cdc_delay, .sync_for_cpu = cdc_sync_cpu,
-        .sync_for_device = cdc_sync_device, .log_copy = cdc_copy,
-        .log_consume = cdc_consume, .lane = cdc_lane_op,
+        .sync_for_device = cdc_sync_device, .log_read = cdc_read_log,
+        .log_commit = cdc_commit_log, .lane = cdc_lane_op,
         .on_rx = cdc_on_rx
     };
     // Development identity, deliberately synthetic and not a vendor serial.

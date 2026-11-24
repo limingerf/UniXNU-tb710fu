@@ -3,6 +3,7 @@
 // Hardware keeps an independent DMA view: missing clean/invalidate operations
 // cannot accidentally pass by reading the CPU's original buffer.
 #include "../CdcDwc3.h"
+#include "../CdcLogRing.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -19,8 +20,11 @@ struct fixture {
     uint8_t device[TB710FU_DWC3_DMA_SIZE];
     uint8_t log[4096];
     size_t log_length, log_position;
-    unsigned copy_calls, consume_calls, consume_block;
-    unsigned sync_cpu, sync_device, address_writes, waits, stall_commands;
+    // When set, the log callbacks go through the production drop-oldest ring so
+    // a producer can evict the head of a span while it is on the wire.
+    struct tb710fu_cdc_log_ring *ring;
+    unsigned copy_calls, retire_calls, sync_cpu, sync_device;
+    unsigned address_writes, waits, stall_commands;
     unsigned starts[6], active[6], buffer[6], length[6], kind[6];
     unsigned producer, halted, reset_complete;
     unsigned block_halt, block_reset, block_command, bad_command_status;
@@ -151,33 +155,36 @@ static void sync_device(void *context, unsigned off, unsigned size)
     ++f->sync_device;
 }
 
-static size_t log_copy(void *context, uint8_t *out, size_t capacity)
+static size_t log_read(void *context, uint8_t *out, size_t capacity, uint64_t *end)
 {
     struct fixture *f = context;
     ++f->copy_calls;
+    if (f->ring != NULL) {
+        return tb710fu_cdc_log_ring_copy_span(f->ring, out, capacity, end);
+    }
     size_t n = f->log_length - f->log_position;
     if (n > capacity) n = capacity;
     memcpy(out, f->log + f->log_position, n);
+    if (end != NULL) *end = (uint64_t)f->log_position + n;
     return n;
 }
 
-static int log_consume(void *context, size_t count)
+static void log_commit(void *context, uint64_t end)
 {
     struct fixture *f = context;
-    ++f->consume_calls;
-    if (f->consume_block) {
-        --f->consume_block;
-        return 0;
+    ++f->retire_calls;
+    if (f->ring != NULL) {
+        tb710fu_cdc_log_ring_commit(f->ring, end);
+        return;
     }
-    assert(count <= f->log_length - f->log_position);
-    f->log_position += count;
-    return 1;
+    assert(end <= f->log_length);
+    f->log_position = (size_t)end;
 }
 
 static struct tb710fu_dwc3_ops operations(struct fixture *f)
 {
     const struct tb710fu_dwc3_ops ops = {
-        f, read32, write32, delay, sync_cpu, sync_device, log_copy, log_consume,
+        f, read32, write32, delay, sync_cpu, sync_device, log_read, log_commit,
         lane, NULL
     };
     return ops;
@@ -400,7 +407,7 @@ static void test_line_coding_and_setup_abort(void)
     assert(f.stall_commands == stalled + 3 && !f.core.failed);
 }
 
-static void test_real_dma_log_delivery_and_commit_contention(void)
+static void test_real_dma_log_delivery_and_span_retirement(void)
 {
     struct fixture f;
     prepare(&f);
@@ -419,13 +426,7 @@ static void test_real_dma_log_delivery_and_commit_contention(void)
     assert(f.device[f.buffer[5]] == 0xa1 && f.device[f.buffer[5] + 1] == 0x20);
     assert(f.device[f.buffer[5] + 8] == 3);
     assert(memcmp(f.device + f.buffer[3], f.log, 2048) == 0);
-    const unsigned starts = f.starts[3];
-    f.consume_block = 2;
     complete(&f, 3, 2048, 0);
-    tb710fu_dwc3_poll(&f.core);
-    assert(f.log_position == 0 && !f.active[3]);
-    tb710fu_dwc3_poll(&f.core);
-    assert(f.log_position == 0 && f.starts[3] == starts);
     tb710fu_dwc3_poll(&f.core);
     assert(f.log_position == 2048 && f.core.transmitted == 2048);
     assert(f.active[3] && f.length[3] == 0); // Exact multiple ends with ZLP.
@@ -434,7 +435,7 @@ static void test_real_dma_log_delivery_and_commit_contention(void)
     complete(&f, 2, 11, 0);
     tb710fu_dwc3_poll(&f.core);
     assert(!f.core.failed && !f.active[3] && f.active[2]);
-    assert(f.core.discarded_input == 11 && f.consume_calls == 3);
+    assert(f.core.discarded_input == 11);
     memcpy(f.log + 2048, "x\ny", 3);
     f.log_length += 3;
     tb710fu_dwc3_poll(&f.core);
@@ -442,6 +443,93 @@ static void test_real_dma_log_delivery_and_commit_contention(void)
     complete(&f, 3, 3, 0);
     tb710fu_dwc3_poll(&f.core);
     assert(!f.active[3] && f.core.transmitted == 2051 && f.log_position == 2051);
+}
+
+// Bug 1a: the trailing ZLP of an exactly aligned transfer is only a framing
+// terminator. A host that already satisfied its read URB never sends an IN token
+// for it, and every later byte then waits behind that unclaimed transfer. The
+// retired-after-a-bounded-window rule keeps the channel moving.
+static void test_unclaimed_zlp_retires_instead_of_blocking(void)
+{
+    struct fixture f;
+    prepare(&f);
+    assert(start(&f, "diagnostic-test-1"));
+    connect(&f, 0);
+    configure(&f);
+    for (unsigned i = 0; i < 2048; ++i) f.log[i] = (uint8_t)i;
+    f.log_length = 2048;
+    setup(&f, 0x21, 0x22, 3, 0, 0);
+    status(&f, 1);
+    assert(f.core.dtr && f.active[3] && f.length[3] == 2048);
+    complete(&f, 3, 2048, 0);
+    tb710fu_dwc3_poll(&f.core);
+    assert(f.log_position == 2048 && f.active[3] && f.length[3] == 0);
+    // New console text arrives, but the host never claims the ZLP.
+    memcpy(f.log + 2048, "after\n", 6);
+    f.log_length += 6;
+    for (unsigned i = 0; i < 6; ++i) {
+        tb710fu_dwc3_poll(&f.core);
+        assert(!f.core.failed);
+    }
+    assert(f.core.abandoned_transfers == 1 && !f.core.busy[3]);
+    assert(f.core.tx_state == 0);
+    // The core retires the abandoned ZLP late; that completion is dropped for
+    // the quarantine instead of being credited to the next transfer.
+    complete(&f, 3, 0, 0);
+    tb710fu_dwc3_poll(&f.core);
+    assert(!f.core.failed && f.core.stale_completions == 1);
+    tb710fu_dwc3_poll(&f.core);
+    assert(f.active[3] && f.length[3] == 6);
+    assert(memcmp(f.device + f.buffer[3], "after\n", 6) == 0);
+    complete(&f, 3, 6, 0);
+    tb710fu_dwc3_poll(&f.core);
+    assert(!f.core.failed && f.core.transmitted == 2054);
+}
+
+// Bug 1b: the RAM tap is drop-oldest, so a console flood can evict the head of a
+// span while it is on the wire. Retiring is a ring position, not a length: the
+// transport must keep sending instead of stalling at TX_COMMIT.
+static void test_evicted_span_still_retires_and_keeps_sending(void)
+{
+    struct fixture f;
+    uint8_t storage[4096];
+    struct tb710fu_cdc_log_ring ring;
+    prepare(&f);
+    tb710fu_cdc_log_ring_init(&ring, storage, sizeof(storage));
+    f.ring = &ring;
+    assert(start(&f, "diagnostic-test-1"));
+    connect(&f, 0);
+    configure(&f);
+    setup(&f, 0x21, 0x22, 3, 0, 0);
+    status(&f, 1);
+    assert(f.core.dtr);
+    uint8_t text[2048];
+    for (unsigned i = 0; i < sizeof(text); ++i) text[i] = (uint8_t)('a' + (i % 26u));
+    assert(tb710fu_cdc_log_ring_append_overwrite(&ring, text, sizeof(text)) == sizeof(text));
+    tb710fu_dwc3_poll(&f.core);
+    assert(f.active[3] && f.length[3] == 2048);
+    assert(memcmp(f.device + f.buffer[3], text, 2048) == 0);
+    // The flood evicts the head of the span that is currently on the wire.
+    uint8_t flood[3000];
+    memset(flood, 'Z', sizeof(flood));
+    assert(tb710fu_cdc_log_ring_append_overwrite(&ring, flood, sizeof(flood)) == sizeof(flood));
+    assert(ring.read_index == 952 && tb710fu_cdc_log_ring_pending(&ring) == ring.capacity);
+    complete(&f, 3, 2048, 0);
+    tb710fu_dwc3_poll(&f.core);
+    assert(!f.core.failed && f.core.transmitted == 2048);
+    assert(ring.read_index == 2048); // Exact position, not a byte count.
+    assert(tb710fu_cdc_log_ring_pending(&ring) == 3000);
+    // The aligned transfer still ends with a ZLP; the host claims it here.
+    assert(f.active[3] && f.length[3] == 0);
+    complete(&f, 3, 0, 0);
+    tb710fu_dwc3_poll(&f.core);
+    // Everything the flood left behind goes out next: no bytes are skipped and
+    // the channel is still alive after an eviction under the in-flight span.
+    assert(!f.core.failed && f.active[3]);
+    assert(f.length[3] == 2048 && f.device[f.buffer[3]] == 'Z');
+    complete(&f, 3, 2048, 0);
+    tb710fu_dwc3_poll(&f.core);
+    assert(!f.core.failed && f.core.transmitted == 4096);
 }
 
 static void test_failures_retain_dma_and_do_not_restart(void)
@@ -509,9 +597,53 @@ static void test_failures_retain_dma_and_do_not_restart(void)
     assert(start(&f, "diagnostic-test-1"));
     connect(&f, 0);
     configure(&f);
-    device_event(&f, 1); // RX owns DMA: no unsafe cancel/reuse is attempted.
+    // RX owns DMA when the host resets the bus around a COM5 close/open cycle.
+    // That is recoverable now: the endpoint is abandoned and quarantined, the
+    // transport keeps running, and EP0 still answers the host.
+    device_event(&f, 1);
     tb710fu_dwc3_poll(&f.core);
-    assert(f.core.failed && f.core.busy[2] && f.core.dma == f.cpu);
+    assert(!f.core.failed && f.core.running && f.core.dma == f.cpu);
+    // The connect/configure sequence may already have seen a bus reset, so the
+    // counter is only checked for movement, not for an exact value.
+    assert(!f.core.busy[2] && f.core.resets >= 1 && f.core.abandoned_transfers >= 1);
+}
+
+// Bug 2: a Windows close issues CLEAR_FEATURE(ENDPOINT_HALT) on the bulk pipes
+// right after it aborted their URBs, so the transfer it abandoned is still the
+// owner here. Latching failure on that request stopped the transport, zeroed
+// DEVTEN/DCTL and killed EP0, which is what the next SerialPort.Open() reported
+// as "A device attached to the system is not functioning".
+static void test_host_pipe_reset_aborts_bulk_in_and_keeps_ep0(void)
+{
+    struct fixture f;
+    prepare(&f);
+    assert(start(&f, "diagnostic-test-1"));
+    connect(&f, 0);
+    configure(&f);
+    setup(&f, 0x21, 0x22, 3, 0, 0);
+    status(&f, 1);
+    for (unsigned i = 0; i < 2048; ++i) f.log[i] = (uint8_t)i;
+    f.log_length = 2048;
+    tb710fu_dwc3_poll(&f.core);
+    assert(f.core.dtr && f.active[3] && f.length[3] == 2048);
+    // Close: the host aborts that read and clears the halt of bulk IN 0x81.
+    const unsigned stalled = f.stall_commands;
+    setup(&f, 0x02, 1, 0, 0x0081, 0);
+    assert(!f.core.failed && f.stall_commands == stalled);
+    assert(!f.core.busy[3] && f.core.tx_state == 0);
+    status(&f, 1);
+    assert(f.active[0] && f.kind[0] == 2); // EP0 SETUP is armed again.
+    // The retired transfer shows up late and is dropped for the quarantine.
+    complete(&f, 3, 0, 0);
+    tb710fu_dwc3_poll(&f.core);
+    assert(!f.core.failed && f.core.stale_completions == 1);
+    // Reopen: the same log bytes go out again instead of being lost.
+    tb710fu_dwc3_poll(&f.core);
+    assert(f.active[3] && f.length[3] == 2048);
+    assert(memcmp(f.device + f.buffer[3], f.log, 2048) == 0);
+    complete(&f, 3, 2048, 0);
+    tb710fu_dwc3_poll(&f.core);
+    assert(!f.core.failed && f.core.transmitted == 2048);
 }
 
 static void test_event_budget_and_wrap(void)
@@ -537,10 +669,14 @@ int main(void)
     test_full_speed_and_bounded_control_strings();
     test_firmware_pending_events_before_halt();
     test_line_coding_and_setup_abort();
-    test_real_dma_log_delivery_and_commit_contention();
+    test_real_dma_log_delivery_and_span_retirement();
+    test_unclaimed_zlp_retires_instead_of_blocking();
+    test_evicted_span_still_retires_and_keeps_sending();
+    test_host_pipe_reset_aborts_bulk_in_and_keeps_ep0();
     test_failures_retain_dma_and_do_not_restart();
     test_device_role_and_event_irq();
     test_event_budget_and_wrap();
-    puts("DWC3 production core: enumeration/reset, EP0, cache/DMA, CDC log delivery and fault tests PASS");
+    puts("DWC3 production core: enumeration, host reset/pipe reset recovery, EP0, "
+         "cache/DMA, CDC log delivery, span retirement and fault tests PASS");
     return 0;
 }

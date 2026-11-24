@@ -37,6 +37,16 @@ int tb710fu_cdc_log_tap_consume(size_t length)
     return tb710fu_cdc_log_ring_consume(&gKernelLog, length);
 }
 
+size_t tb710fu_cdc_log_tap_read(uint8_t *out, size_t capacity, uint64_t *end_index)
+{
+    return tb710fu_cdc_log_ring_copy_span(&gKernelLog, out, capacity, end_index);
+}
+
+void tb710fu_cdc_log_tap_commit(uint64_t end_index)
+{
+    tb710fu_cdc_log_ring_commit(&gKernelLog, end_index);
+}
+
 size_t tb710fu_cdc_log_tap_pending(void)
 {
     return tb710fu_cdc_log_ring_pending(&gKernelLog);

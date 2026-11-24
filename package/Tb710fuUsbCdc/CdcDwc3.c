@@ -156,6 +156,45 @@ static int fail(struct tb710fu_dwc3 *d, const char *reason)
     return 0;
 }
 
+// Polls an abandoned endpoint stays out of service. Long enough for the core to
+// queue the cancellation completion it owes for the terminated transfer, short
+// enough that a host that reopens the port still finds a live channel.
+#define STALE_POLLS 4u
+
+// Polls a bare Bulk IN ZLP may stay unclaimed before it is retired. The worker
+// polls every 2 ms once configured, so four polls are ~8 ms: any host that
+// wanted that terminator issues its IN token well inside this window.
+#define ZLP_POLLS 4u
+
+static void abandon_endpoint(struct tb710fu_dwc3 *d, unsigned ep);
+
+// A host reset, a disconnect, or a host pipe reset ends that endpoint's DMA on
+// the device side. Software cannot prove the TRB free (DWC3 has no synchronous
+// cancel verdict here), so the endpoint is quarantined: the next completion for
+// it is dropped instead of being credited to a new transfer, and it is not
+// re-armed until the quarantine expires. None of this fails the transport -
+// latching failure on a normal Windows close/open cycle is what took COM5 down
+// for good.
+static void abandon_endpoint(struct tb710fu_dwc3 *d, unsigned ep)
+{
+    if (ep >= 6u || ep == 4u || !d->busy[ep]) return;
+    d->busy[ep] = 0;
+    d->requested[ep] = 0;
+    d->resource[ep] = 0;
+    d->stale[ep] = 1;
+    d->stale_until[ep] = d->polls + STALE_POLLS;
+    ++d->abandoned_transfers;
+}
+
+static int endpoint_usable(struct tb710fu_dwc3 *d, unsigned ep)
+{
+    if (ep >= 6u || ep == 4u) return 0;
+    if (!d->stale[ep]) return 1;
+    if (d->polls < d->stale_until[ep]) return 0;
+    d->stale[ep] = 0;
+    return 1;
+}
+
 static int command(struct tb710fu_dwc3 *d, unsigned ep, unsigned cmd,
                    uint32_t p0, uint32_t p1, uint32_t p2)
 {
@@ -215,6 +254,9 @@ static int transfer(struct tb710fu_dwc3 *d, unsigned ep, unsigned type,
     d->ops.sync_for_device(d->ops.context, off, TB710FU_DWC3_TRB_STRIDE);
     d->requested[ep] = bytes;
     d->busy[ep] = 1; // A timed-out command may still have started device DMA.
+    // A new transfer owns this endpoint from here on: any cancellation evidence
+    // owed for the abandoned predecessor is no longer attributable to it.
+    d->stale[ep] = 0;
     return command(d, ep, COMMAND_START, (uint32_t)(descriptor >> 32),
                    (uint32_t)descriptor, 0);
 }
@@ -348,7 +390,22 @@ static int setup_request(struct tb710fu_dwc3 *d)
     case TB710FU_CDC_REQ_CLEAR_ENDPOINT_HALT: {
         if (!d->configured) return stall_setup(d);
         const unsigned ep = ((index & 15u) << 1) | ((index >> 7) & 1u);
-        if (d->busy[ep]) return fail(d, "clear halt needs DMA cancellation");
+        if (ep >= 6u || ep == 4u) return stall_setup(d);
+        // Windows clears the halt of a bulk pipe right after it aborted that
+        // pipe's pending URB, which is exactly the COM5 close path. The
+        // transfer it abandoned still owns this endpoint here, and latching
+        // failure on this request stopped the transport and left EP0 dead for
+        // the next open. Abandon it, clear the halt, and keep serving.
+        if (d->busy[ep]) {
+            if (ep == EP_TX) {
+                // The host stopped reading this span mid-flight; nothing was
+                // retired, so the ring keeps the bytes for the next transfer.
+                d->tx_state = TX_IDLE;
+                d->tx_commit = 0;
+                d->tx_end = 0;
+            }
+            abandon_endpoint(d, ep);
+        }
         if (!command(d, ep, COMMAND_CLEAR_STALL, 0, 0, 0)) return 0;
         break;
     }
@@ -430,6 +487,13 @@ static int endpoint_event(struct tb710fu_dwc3 *d, uint32_t event)
     if (type == 3) return ep < 2 ? control_not_ready(d, ep, status) : 1;
     if (type == 7) return 1; // No asynchronous cancel/recovery is issued here.
     if (type != 1) return fail(d, "unexpected endpoint event");
+    if (d->stale[ep]) {
+        // Cancellation completion for the transfer a reset or pipe reset
+        // abandoned: its residual describes the dead transfer, not the next one.
+        d->stale[ep] = 0;
+        ++d->stale_completions;
+        return 1;
+    }
     if (!d->busy[ep]) return fail(d, "duplicate/unowned transfer completion");
     const unsigned off = trb_offset(ep);
     d->ops.sync_for_cpu(d->ops.context, off, TB710FU_DWC3_TRB_STRIDE);
@@ -469,19 +533,35 @@ static int device_event(struct tb710fu_dwc3 *d, uint32_t event)
     if (((event >> 1) & 127u) != 0) return fail(d, "non-device global event");
     switch ((event >> 8) & 15u) {
     case 0:
-        return fail(d, "USB disconnected; retain DMA for this session");
-    case 1:
-        // Linux v6.1 gadget.c reset path preserves an armed EP0 SETUP TRB.
-        // This includes the normal Windows reset after its first 8-byte read.
-        // Active DATA/STATUS/non-control DMA needs explicit cancel completion.
-        if (d->busy[1] || d->busy[EP_RX] || d->busy[EP_TX] || d->busy[EP_NOTIFY] ||
-            (d->busy[0] && d->phase != TB710FU_DWC3_SETUP_PHASE))
-            return fail(d, "USB reset needs endpoint cancellation; retain DMA");
+    case 1: {
+        // A USB reset is the host restarting the session, and Windows issues
+        // one around a COM5 close/open cycle. Linux v6.1 gadget.c treats it as
+        // recoverable: it stops the active transfers, then re-arms EP0 OUT.
+        // This core preserves an already armed EP0 SETUP TRB, abandons every
+        // other in-flight transfer, and keeps serving EP0, so the host can
+        // re-enumerate and COM5 comes back without a reboot.
+        ++d->resets;
+        if (d->busy[0] && d->phase != TB710FU_DWC3_SETUP_PHASE) abandon_endpoint(d, 0);
+        abandon_endpoint(d, 1);
+        abandon_endpoint(d, EP_RX);
+        abandon_endpoint(d, EP_TX);
+        abandon_endpoint(d, EP_NOTIFY);
+        d->phase = TB710FU_DWC3_SETUP_PHASE;
+        d->data_in = d->control_bytes = d->setup_pending = d->set_line = 0;
+        d->pending_address_valid = d->pending_configuration_valid = 0;
+        d->pending_dtr_valid = d->pending_dtr = 0;
         d->connected = d->configured = d->dtr = 0;
-        d->pending_address_valid = d->pending_configuration_valid = d->pending_dtr_valid = 0;
+        d->notification_pending = 0;
+        // The in-flight Bulk IN span never completed, so it is not retired: the
+        // ring keeps those bytes and the next session sends them again from the
+        // start. Repeating one fragment beats dropping it.
+        d->tx_state = TX_IDLE;
+        d->tx_commit = 0;
+        d->tx_end = 0;
         write_reg(d, DCFG, read_reg(d, DCFG) & ~(127u << 3));
         write_reg(d, DALEPENA, 3);
         return 1;
+    }
     case 2: {
         if (d->connected) return fail(d, "duplicate CONNECT_DONE");
         const unsigned speed = read_reg(d, DSTS) & 7u;
@@ -489,7 +569,9 @@ static int device_event(struct tb710fu_dwc3 *d, uint32_t event)
         d->packet_size = speed == 0 ? 512u : 64u;
         d->connected = 1;
         if (!configure_ep(d, 0, 0, 64, 1) || !configure_ep(d, 1, 0, 64, 1)) return 0;
-        return d->busy[0] ? 1 : setup_phase(d);
+        // A quarantined EP0 is re-armed by pump once its cancellation window
+        // closed; arming it here would credit the old completion to the new TRB.
+        return (d->busy[0] || !endpoint_usable(d, 0)) ? 1 : setup_phase(d);
     }
     case 3: case 4: case 6:
         return 1; // Link-state, wake and suspend do not grant DMA ownership.
@@ -500,11 +582,36 @@ static int device_event(struct tb710fu_dwc3 *d, uint32_t event)
     }
 }
 
+// Retire the span that just left on Bulk IN. The RAM ring is drop-oldest, so the
+// producer may have evicted the head of this span while it was on the wire: the
+// commit below retires a ring *position*, not a length. A length-based consume
+// refused forever once eviction shrank the pending window below the span, and
+// that permanent TX_COMMIT is what stopped Bulk IN until the port was reopened.
+static void tx_retire(struct tb710fu_dwc3 *d)
+{
+    if (d->tx_commit == 0u) return;
+    d->ops.log_commit(d->ops.context, d->tx_end);
+    d->transmitted += d->tx_commit;
+    d->tx_state = (d->packet_size != 0u && (d->tx_commit % d->packet_size) == 0u) ?
+        TX_ZLP_PENDING : TX_IDLE;
+    d->tx_commit = 0;
+    d->tx_end = 0;
+}
+
 static int pump(struct tb710fu_dwc3 *d)
 {
+    // EP0 must never be left without an armed SETUP TRB. A host SETUP that
+    // finds none is answered by nobody, and Windows reports that as
+    // "A device attached to the system is not functioning" on the next open.
+    // This also re-arms EP0 after a reset abandoned a DATA/STATUS phase.
+    if (!d->busy[0] && d->phase == TB710FU_DWC3_SETUP_PHASE && endpoint_usable(d, 0)) {
+        ++d->ep0_rearms;
+        if (!setup_phase(d)) return 0;
+    }
     if (!d->configured) return 1;
-    if (!d->busy[EP_RX] && !transfer(d, EP_RX, TRB_NORMAL, TB710FU_DWC3_RX, d->packet_size)) return 0;
-    if (d->notification_pending && !d->busy[EP_NOTIFY]) {
+    if (!d->busy[EP_RX] && endpoint_usable(d, EP_RX) &&
+        !transfer(d, EP_RX, TRB_NORMAL, TB710FU_DWC3_RX, d->packet_size)) return 0;
+    if (d->notification_pending && !d->busy[EP_NOTIFY] && endpoint_usable(d, EP_NOTIFY)) {
         uint8_t *p = d->dma + TB710FU_DWC3_NOTIFY;
         const uint8_t notification[10] = {0xa1, 0x20, 0, 0, 0, 0, 2, 0, 0, 0};
         for (unsigned i = 0; i < 10; ++i) p[i] = notification[i];
@@ -512,22 +619,35 @@ static int pump(struct tb710fu_dwc3 *d)
         if (!transfer(d, EP_NOTIFY, TRB_NORMAL, TB710FU_DWC3_NOTIFY, 10)) return 0;
         d->notification_pending = 0;
     }
-    // A successful USB transfer is committed once. Contention in the RAM ring
-    // only retries consume; it never sends the already-delivered bytes again.
-    if (d->tx_state == TX_COMMIT) {
-        if (!d->ops.log_consume(d->ops.context, d->tx_commit)) return 1;
-        d->transmitted += d->tx_commit;
-        d->tx_state = (d->tx_commit % d->packet_size) == 0 ? TX_ZLP_PENDING : TX_IDLE;
-        d->tx_commit = 0;
+    // A successful USB transfer is retired once, from the position it started
+    // at. Retiring can never fail, so a stalled consume can no longer hold Bulk
+    // IN at TX_COMMIT while the ring still has bytes.
+    if (d->tx_state == TX_COMMIT) tx_retire(d);
+    if (!d->dtr) return 1;
+    if (d->busy[EP_TX]) {
+        // A bare ZLP is only a framing terminator: it carries no data of its
+        // own. When the host's read URB was satisfied by the exact multiple it
+        // asked for, no IN token arrives for it, and every later byte waits
+        // behind it forever - the COM5 session that stopped after ~15 KiB and
+        // only recovered when the port was reopened. Retire it after a bounded
+        // window so the data path always makes progress; the next data transfer
+        // supplies the host whatever short packet it still needs.
+        if (d->tx_state == TX_ZLP_ACTIVE && d->polls - d->zlp_armed >= ZLP_POLLS) {
+            abandon_endpoint(d, EP_TX);
+            d->tx_state = TX_IDLE;
+        }
+        return 1;
     }
-    if (!d->dtr || d->busy[EP_TX]) return 1;
+    if (!endpoint_usable(d, EP_TX)) return 1;
     if (d->tx_state == TX_ZLP_PENDING) {
         d->tx_state = TX_ZLP_ACTIVE;
+        d->zlp_armed = d->polls;
         return transfer(d, EP_TX, TRB_NORMAL, TB710FU_DWC3_TX, 0);
     }
     if (d->tx_state != TX_IDLE) return 1;
-    const size_t bytes = d->ops.log_copy(d->ops.context, d->dma + TB710FU_DWC3_TX,
-                                        TB710FU_DWC3_TX_BYTES);
+    d->tx_end = 0;
+    const size_t bytes = d->ops.log_read(d->ops.context, d->dma + TB710FU_DWC3_TX,
+                                        TB710FU_DWC3_TX_BYTES, &d->tx_end);
     if (bytes > TB710FU_DWC3_TX_BYTES) return fail(d, "log producer returned oversized copy");
     if (!bytes) return 1;
     d->tx_state = TX_ACTIVE;
@@ -537,6 +657,7 @@ static int pump(struct tb710fu_dwc3 *d)
 void tb710fu_dwc3_poll(struct tb710fu_dwc3 *d)
 {
     if (d == NULL || !d->running || d->failed) return;
+    ++d->polls;
     const uint32_t count = read_reg(d, EVENT_COUNT(0));
     if ((count & 3u) || (count & EVENT_COUNT_MASK) > TB710FU_DWC3_EVENT_BYTES) {
         (void)fail(d, "corrupt event ring count; retain DMA");
@@ -620,7 +741,7 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     if (d == NULL || d->dma != NULL || d->failed || d->running) return 0;
     if (ops == NULL || ops->read32 == NULL || ops->write32 == NULL ||
         ops->delay_us == NULL || ops->sync_for_cpu == NULL || ops->sync_for_device == NULL ||
-        ops->log_copy == NULL || ops->log_consume == NULL || dma == NULL ||
+        ops->log_read == NULL || ops->log_commit == NULL || dma == NULL ||
         ((uintptr_t)dma & (TB710FU_DWC3_DMA_SIZE - 1u)) ||
         (dma_physical & (TB710FU_DWC3_DMA_SIZE - 1u)) ||
         dma_physical > UINT64_MAX - TB710FU_DWC3_DMA_SIZE ||

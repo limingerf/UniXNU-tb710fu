@@ -27,8 +27,12 @@ struct tb710fu_dwc3_ops {
     void (*delay_us)(void *, unsigned);
     void (*sync_for_cpu)(void *, unsigned, unsigned);
     void (*sync_for_device)(void *, unsigned, unsigned);
-    size_t (*log_copy)(void *, uint8_t *, size_t);
-    int (*log_consume)(void *, size_t);
+    // Bulk IN log source. read copies up to capacity bytes and reports the ring
+    // position just past the span in *end; commit retires that exact position
+    // once the transfer completed. commit must not fail: the RAM ring is
+    // drop-oldest, so a producer may retire the span while it is on the wire.
+    size_t (*log_read)(void *, uint8_t *, size_t, uint64_t *);
+    void (*log_commit)(void *, uint64_t);
     // Optional: paints the eight-character lane tag without rebuilding a frame,
     // so a bus access that never returns still leaves its step on screen.
     void (*lane)(void *, const char *);
@@ -54,6 +58,14 @@ struct tb710fu_dwc3 {
     uint32_t event_position, packet_size;
     uint32_t requested[6], resource[6];
     uint8_t busy[6];
+    // Set when a USB reset, a disconnect or a host pipe reset abandoned this
+    // endpoint's in-flight transfer. Hardware ended that DMA with the reset,
+    // so exactly one late completion per abandoned endpoint is dropped instead
+    // of being attributed to the next transfer; the endpoint stays
+    // quarantined (stale_until) across that window. Cleared when a new transfer
+    // is armed or when the quarantine expires.
+    uint8_t stale[6];
+    uint64_t stale_until[6];
     enum tb710fu_dwc3_control_phase phase;
     uint8_t running, failed, configured, dtr, notification_pending;
     uint8_t data_in, set_line, pending_address_valid;
@@ -64,8 +76,14 @@ struct tb710fu_dwc3 {
     char serial_copy[32];
     uint16_t control_bytes;
     size_t tx_commit;
+    uint64_t tx_end;
+    uint64_t zlp_armed;
     uint64_t events, setup_requests, transmitted, discarded_input;
     uint32_t last_event;
+    // Recovery evidence: how many endpoints a host reset/disconnect/pipe reset
+    // had to abandon, how many late completions were dropped for them, how many
+    // bus resets were survived, and how often EP0 lost and regained its SETUP.
+    uint64_t polls, abandoned_transfers, stale_completions, resets, ep0_rearms;
     // Core reset evidence: DCTL before the halt, right after the assert, and
     // GCTL/phycfg after the preconditions, plus the state registers read at the
     // end. reset_stage is how the bit finally cleared, 0 when it never did.
@@ -86,9 +104,9 @@ struct tb710fu_dwc3 {
 // Context must initially be zeroed. Restarting an initialized context is refused.
 // Serial must contain 1..30 printable ASCII characters, keeping every selected
 // control reply below an aligned short response that would require DATA/ZLP chaining.
-// A bus reset with only EP0 SETUP armed preserves that transfer (normal host
-// enumeration). Other active transfers require proven cancellation; this core
-// latches failure instead of an event-ring rewind/unproven DMA-buffer reuse.
+// A bus reset or disconnect abandons every in-flight endpoint instead of latching
+// failure: the host re-enumerates, EP0 SETUP is preserved when it was already
+// armed, and a late completion for an abandoned transfer is dropped once.
 int tb710fu_dwc3_start(struct tb710fu_dwc3 *, const struct tb710fu_dwc3_ops *,
                        uint8_t *dma, uint64_t dma_physical,
                        uint16_t vendor_id, uint16_t product_id, const char *serial);

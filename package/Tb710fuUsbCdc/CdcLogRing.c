@@ -101,6 +101,13 @@ size_t tb710fu_cdc_log_ring_append_overwrite(struct tb710fu_cdc_log_ring *ring,
 size_t tb710fu_cdc_log_ring_copy(struct tb710fu_cdc_log_ring *ring,
                                  uint8_t *out, size_t capacity)
 {
+    return tb710fu_cdc_log_ring_copy_span(ring, out, capacity, NULL);
+}
+
+size_t tb710fu_cdc_log_ring_copy_span(struct tb710fu_cdc_log_ring *ring,
+                                      uint8_t *out, size_t capacity,
+                                      uint64_t *end_index)
+{
     if (ring == NULL || out == NULL || capacity == 0 ||
         ring->storage == NULL || ring->capacity == 0 || !try_lock(ring)) {
         return 0;
@@ -108,6 +115,9 @@ size_t tb710fu_cdc_log_ring_copy(struct tb710fu_cdc_log_ring *ring,
     const uint64_t pending = ring->write_index - ring->read_index;
     const size_t length = capacity < pending ? capacity : (size_t)pending;
     ring_copy_out(ring, ring->read_index, out, length);
+    if (end_index != NULL) {
+        *end_index = ring->read_index + length;
+    }
     unlock(ring);
     return length;
 }
@@ -127,6 +137,26 @@ int tb710fu_cdc_log_ring_consume(struct tb710fu_cdc_log_ring *ring,
     ring->read_index += length;
     unlock(ring);
     return 1;
+}
+
+void tb710fu_cdc_log_ring_commit(struct tb710fu_cdc_log_ring *ring,
+                                 uint64_t end_index)
+{
+    if (ring == NULL || ring->storage == NULL || ring->capacity == 0 ||
+        !try_lock(ring)) {
+        // A contended commit is retried by the transport on its next poll; the
+        // span stays unread, exactly like a copy that never happened.
+        return;
+    }
+    // Never move backwards: an overwrite producer that already evicted this
+    // span owns the read end, and the evicted bytes are gone by design. Never
+    // pass the write end either, or bytes appended since the copy would be
+    // dropped without being sent.
+    if (end_index > ring->read_index) {
+        ring->read_index = end_index > ring->write_index ?
+            ring->write_index : end_index;
+    }
+    unlock(ring);
 }
 
 size_t tb710fu_cdc_log_ring_pending(struct tb710fu_cdc_log_ring *ring)

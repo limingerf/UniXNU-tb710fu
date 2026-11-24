@@ -2,6 +2,7 @@
 // TB710FU macOS 27 OS services bootstrap: AppleKeyStoreState (aks=1 aks-sls=3)
 // plus IOCryptoAcceleratorFamily/IOAESAccelerator ABI probe for pl18 SoftwareAES.
 #include <IOKit/IOLib.h>
+#include <IOKit/IORegistryEntry.h>
 #include <IOKit/IOService.h>
 #include <libkern/OSKextLib.h>
 #include <mach/kmod.h>
@@ -96,4 +97,81 @@ extern "C" void native_tb710fu_services_start(void)
     }
 
     resources->release();
+}
+
+/* ---------------------------------------------------------------------------
+ * COM5 debug shell: ioreg <text>.
+ *
+ * Lives here because the registry plane is an IOKit symbol and this file is the
+ * one C++ translation unit in the boot set that already links IOKit. CdcXnu.c
+ * declares it weak, so a build without this archive answers "unavailable"
+ * instead of failing to link.
+ *
+ * Recursive iteration over gIOServicePlane, one line per matching service, in
+ * the same shape ioreg(8) prints: name, class, busy count, registration state.
+ * The output is deliberately capped: the ring that carries it to COM5 holds
+ * 64 KiB, and an unbounded dump would evict the transcripts around it.
+ * ------------------------------------------------------------------------- */
+namespace {
+
+bool ioreg_contains(const char *text, const char *needle)
+{
+    if (!text || !needle || !needle[0]) {
+        return false;
+    }
+    for (const char *start = text; *start; ++start) {
+        const char *t = start;
+        const char *n = needle;
+        while (*t && *n && *t == *n) {
+            ++t;
+            ++n;
+        }
+        if (!*n) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}
+
+extern "C" void tb710fu_ioreg_dump(const char *filter)
+{
+    const unsigned limit = 64u;
+    unsigned visited = 0u, shown = 0u, skipped = 0u;
+    auto iterator = IORegistryIterator::iterateOver(gIOServicePlane,
+                                                   kIORegistryIterateRecursively);
+    if (!iterator) {
+        printf("TB710FU IOREG: iterator unavailable\n");
+        return;
+    }
+    printf("TB710FU IOREG: begin plane=IOService filter=%s\n",
+           filter && filter[0] ? filter : "*");
+    while (IORegistryEntry *entry = iterator->getNextObject()) {
+        ++visited;
+        const char *name = entry->getName();
+        const OSMetaClass *meta = entry->getMetaClass();
+        const char *className = meta ? meta->getClassName() : "?";
+        if (filter && filter[0] && !ioreg_contains(name, filter) &&
+            !ioreg_contains(className, filter)) {
+            continue;
+        }
+        if (shown >= limit) {
+            ++skipped;
+            continue;
+        }
+        IOService *service = OSDynamicCast(IOService, entry);
+        const IOOptionBits state = service ? service->getState() : 0u;
+        printf("TB710FU IOREG: %s class=%s busy=%u registered=%u state=%x\n",
+               name ? name : "?", className,
+               service ? (unsigned)service->getBusyState() : 0u,
+               (unsigned)((state & kIOServiceRegisteredState) != 0), (unsigned)state);
+        ++shown;
+    }
+    printf("TB710FU IOREG: end visited=%u shown=%u skipped=%u\n", visited, shown, skipped);
+#if !defined(IOKIT_ENABLE_SHARED_PTR)
+    /* Without shared pointers OSPtr is a raw pointer and the created iterator is
+     * owned by the caller; with them the local wrapper releases it. */
+    iterator->release();
+#endif
 }
