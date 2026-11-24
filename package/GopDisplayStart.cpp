@@ -47,13 +47,6 @@ Fn legacyEntry(unsigned slot)
     return (Fn)(uintptr_t)ptrauth_sign_unauthenticated(stripped, ptrauth_key_function_pointer, 0);
 }
 
-// The fixture records four macOS-gated slots that XnuPrelink rebinds to one native
-// function; their live entry legitimately carries that function's discriminator.
-bool legacyReboundSlot(unsigned slot)
-{
-    return slot == 318 || slot == 320 || slot == 361 || slot == 362;
-}
-
 bool legacySlotIsOwned(unsigned slot)
 {
     for (unsigned i = 0; i < TB710FU_GOP_OWNED_COUNT; i++) {
