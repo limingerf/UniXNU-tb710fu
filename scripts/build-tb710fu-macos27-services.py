@@ -106,7 +106,7 @@ def main():
     archive.unlink(missing_ok=True)
 
     includes = [output, aks_dir, tree / '.cache/xnu-work/osfmk', tree / '.cache/xnu-work/libkern']
-    flags = ['-DTARGET_OS_OSX=1']
+    flags = []
     sources = [
         aks_dir / 'NativeKeyStoreEvents.cpp',
         device / 'package/AppleKeyStoreHooks.cpp',
