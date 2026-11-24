@@ -237,6 +237,21 @@ OSDefineOperatorMethods(IOBlockStorageDevice)
             record = recipes['bsd' if path.name in bsd_sources else ('c' if path.suffix == '.c' else 'cpp')]
             obj = output / (path.stem + '.o')
             command = adapter.compile_command(record, path, obj, includes, flags)
+            # On an XNU compile-cache hit, build/xnu/owner-data-volume.h is not
+            # regenerated; BootWatchdogPolicy.c inherits -include from kern_exec.o.json
+            # only for BSD headers and does not use owner-data-volume.h.
+            if path.name in bsd_sources:
+                filtered = []
+                skip_next = False
+                for idx, token in enumerate(command):
+                    if skip_next:
+                        skip_next = False
+                        continue
+                    if token == '-include' and idx + 1 < len(command) and command[idx + 1].endswith('owner-data-volume.h'):
+                        skip_next = True
+                        continue
+                    filtered.append(token)
+                command = filtered
             # The XNU records carry the kernel's 17.0 triple (twice); this archive
             # is pinned to the macOS 27 profile, and the last --target wins, so
             # rewrite every target flag or the deployment check below rejects it.
