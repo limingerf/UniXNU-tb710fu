@@ -1,0 +1,66 @@
+Subject: [PATCH] tb710fu: record PID 1 BSD syscall ring for COM5 ps diagnostics
+
+Records a lockless 16-entry ring buffer and in-flight state for PID 1
+BSD syscalls in bsd/dev/arm/systemcalls.c (DEVELOPMENT || DEBUG only)
+so COM5 `ps` can inspect the exact syscall sequence and blocking point
+of /sbin/launchd without console spam during boot.
+---
+ bsd/dev/arm/systemcalls.c | 42 +++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 42 insertions(+)
+
+diff --git a/bsd/dev/arm/systemcalls.c b/bsd/dev/arm/systemcalls.c
+--- a/bsd/dev/arm/systemcalls.c
++++ b/bsd/dev/arm/systemcalls.c
+@@ -78,6 +78,34 @@
+ #if CONFIG_DEBUG_SYSCALL_REJECTION
+ extern int mach_trap_count;
+ #endif
++
++#if DEVELOPMENT || DEBUG
++volatile uint32_t tb710fu_pid1_sc_count = 0;
++volatile uint32_t tb710fu_pid1_sc_in = 0;
++volatile uint32_t tb710fu_pid1_sc_cur = 0;
++volatile uint64_t tb710fu_pid1_sc_arg0 = 0;
++volatile uint64_t tb710fu_pid1_sc_arg1 = 0;
++volatile uint32_t tb710fu_pid1_sc_ring[16] = { 0 };
++volatile uint32_t tb710fu_pid1_sc_idx = 0;
++
++static inline void
++tb710fu_pid1_sc_enter(unsigned short code, uint64_t arg0, uint64_t arg1)
++{
++	tb710fu_pid1_sc_cur = (uint32_t)code;
++	tb710fu_pid1_sc_arg0 = arg0;
++	tb710fu_pid1_sc_arg1 = arg1;
++	tb710fu_pid1_sc_in = 1;
++	__atomic_fetch_add(&tb710fu_pid1_sc_count, 1u, __ATOMIC_RELAXED);
++}
++
++static inline void
++tb710fu_pid1_sc_exit(unsigned short code, int error)
++{
++	uint32_t slot = __atomic_fetch_add(&tb710fu_pid1_sc_idx, 1u, __ATOMIC_RELAXED) & 15u;
++	tb710fu_pid1_sc_ring[slot] = ((uint32_t)code << 16) | ((uint32_t)error & 0xffffu);
++	tb710fu_pid1_sc_in = 0;
++}
++#endif /* DEVELOPMENT || DEBUG */
+ 
+ /*
+  * Function:	unix_syscall
+@@ -178,7 +206,17 @@
+ #endif /* CONFIG_DEBUG_SYSCALL_REJECTION */
+ 
+ 	AUDIT_SYSCALL_ENTER(code, proc, uthread);
++#if DEVELOPMENT || DEBUG
++	if (pid == 1) {
++		tb710fu_pid1_sc_enter(code, (uint64_t)uthread->uu_arg[0], (uint64_t)uthread->uu_arg[1]);
++	}
++#endif
+ 	error = (*(callp->sy_call))(proc, &uthread->uu_arg[0], &(uthread->uu_rval[0]));
++#if DEVELOPMENT || DEBUG
++	if (pid == 1) {
++		tb710fu_pid1_sc_exit(code, error);
++	}
++#endif
+ 	AUDIT_SYSCALL_EXIT(code, proc, uthread, error);
+ 
+ #if CONFIG_MACF

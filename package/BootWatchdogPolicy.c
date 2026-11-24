@@ -204,6 +204,13 @@ extern volatile uint32_t native_aes_kat_status __attribute__((weak_import));
 extern volatile uint32_t native_aes_registered __attribute__((weak_import));
 extern volatile uint32_t native_aes_completed __attribute__((weak_import));
 extern volatile uint32_t native_aes_nonce_key_uses __attribute__((weak_import));
+extern volatile uint32_t tb710fu_pid1_sc_count __attribute__((weak_import));
+extern volatile uint32_t tb710fu_pid1_sc_in __attribute__((weak_import));
+extern volatile uint32_t tb710fu_pid1_sc_cur __attribute__((weak_import));
+extern volatile uint64_t tb710fu_pid1_sc_arg0 __attribute__((weak_import));
+extern volatile uint64_t tb710fu_pid1_sc_arg1 __attribute__((weak_import));
+extern volatile uint32_t tb710fu_pid1_sc_ring[16] __attribute__((weak_import));
+extern volatile uint32_t tb710fu_pid1_sc_idx __attribute__((weak_import));
 
 void
 tb710fu_dump_procs(void)
@@ -215,6 +222,21 @@ tb710fu_dump_procs(void)
            &native_aes_registered ? native_aes_registered : 0u,
            &native_aes_completed ? native_aes_completed : 0u,
            &native_aes_nonce_key_uses ? native_aes_nonce_key_uses : 0u);
+    if (&tb710fu_pid1_sc_count) {
+        printf("TB710FU PID1: sc=%u in=%u cur=%u arg0=0x%llx arg1=0x%llx\n",
+               tb710fu_pid1_sc_count, tb710fu_pid1_sc_in, tb710fu_pid1_sc_cur,
+               (unsigned long long)tb710fu_pid1_sc_arg0,
+               (unsigned long long)tb710fu_pid1_sc_arg1);
+        uint32_t idx = tb710fu_pid1_sc_idx;
+        printf("TB710FU PID1 RING:");
+        for (uint32_t i = 0; i < 16u; ++i) {
+            uint32_t v = tb710fu_pid1_sc_ring[(idx + i) & 15u];
+            if (v) {
+                printf(" %u:%u", v >> 16, v & 0xffffu);
+            }
+        }
+        printf("\n");
+    }
     for (int pid = 1; pid <= 256; ++pid) {
         proc_t p = proc_find(pid);
         if (p != PROC_NULL) {

@@ -97,7 +97,7 @@ static struct {
 /* Bump this literal on every build. Three boots were already spent
  * reverse-identifying a photographed frame by grepping kernel strings; a frame
  * that names its own image costs one line and ends that. */
-#define TB710FU_CDC_IMAGE "pl19"
+#define TB710FU_CDC_IMAGE "pl20"
 
 static void cdc_checkpoint(const char *label)
 {
