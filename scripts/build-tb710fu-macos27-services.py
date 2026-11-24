@@ -117,6 +117,14 @@ def main():
     # modifying fetched source caches or emitting duplicate/undefined IOAESAccelerator symbols.
     orig_abi = (aes_dir / 'OriginalAESABI.h').read_text()
     abi_text = orig_abi.replace(
+        'class IOCryptoAccelerator : public IOService {',
+        'class __attribute__((visibility("hidden"))) IOCryptoAccelerator : public IOService {',
+        1,
+    ).replace(
+        'class IOAESAccelerator : public IOCryptoAccelerator {',
+        'class __attribute__((visibility("hidden"))) IOAESAccelerator : public IOCryptoAccelerator {',
+        1,
+    ).replace(
         'OSDeclareDefaultStructors(IOCryptoAccelerator)',
         'protected:\n  IOCryptoAccelerator(const OSMetaClass *meta) : IOService(meta) {}\n  ~IOCryptoAccelerator() override = default;',
         1,
@@ -126,6 +134,9 @@ def main():
         1,
     )
     for decl in (
+        'bool start(IOService *) override;',
+        'IOWorkLoop *getWorkLoop() const override;',
+        'IOReturn callPlatformFunction(const OSSymbol *, bool, void *, void *, void *, void *) override;',
         'virtual const char *getAlgorithmName();',
         'const char *getAlgorithmName() override;',
         'virtual IOReturn performAES(void *, void *, task_t, unsigned long long, IOAESIV *,\n                             IOAESOperation, IOAESKeyData *, IOAESCompletion, void *);',
