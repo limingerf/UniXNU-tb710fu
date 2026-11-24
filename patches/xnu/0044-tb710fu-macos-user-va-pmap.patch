@@ -3,17 +3,8 @@ Enable 47-bit TTBR0 (T0SZ=17, 4-level L0->L1->L2->L3) with 38-bit TTBR1 (T1SZ=26
 Hardware evidence:
 - pl21 (T0SZ=26): panic pmap_enter_options_internal: attempt to map illegal VA 0x73e200040000
 - pl32 (T0SZ=25): TB710FU PID1 FAULT: pc=0x18f4f53ec lr=0x17344c818f4f5608 far=0x4d81fc9e4bd8
-  (macOS 27 arm64e userspace masks pointers with 0x00007fffffffffff; with T0SZ=25/26, hardware
-  PAC bits in bits 46..39 survive the 47-bit mask and fault as non-canonical VAs).
-
-Source/Design: adapted from TAY0123/UNIXNU_elden elden-macos26-47bit-user-va.patch for TB710FU
-(SM8650Q-AB, xnu-12377 BCM2837 4K arm64e):
-- T0SZ_BOOT = 17ULL (47-bit user VA, PAC strictly in bits 54..47, L0 root = 256 entries = 2048 B).
-- T1SZ_BOOT = 26ULL (unchanged 38-bit kernel L1 = 256 entries = 2048 B = PMAP_ROOT_ALLOC_SIZE).
-- Separate tb710fu_kernel_pt_attr (L1 root) vs native_pt_attr (L0 root) in pmap_pt_geometry.h.
-- start.s wraps V=P L1 (x25) in tb710fu_bootstrap_user_l0[0] for early MMU-on TTBR0 handoff.
 diff --git a/osfmk/arm/pmap/pmap.c b/osfmk/arm/pmap/pmap.c
-index d3af096..1b1cacc 100644
+index 4f525d7..827cdc9 100644
 --- a/osfmk/arm/pmap/pmap.c
 +++ b/osfmk/arm/pmap/pmap.c
 @@ -115,6 +115,10 @@
@@ -74,12 +65,12 @@ index fc64830..7f25b62 100644
  
  /* The page table attributes are fixed (to allow for const propagation) */
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
-index 756af52..f334491 100644
+index 55a870a..0bfda09 100644
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
-@@ -84,6 +84,10 @@ extern vm_offset_t physmap_vtop;
-  * the bootstrap page tables.
-  */
+@@ -115,6 +115,10 @@ set_mmu_ttb_alternate_probed(uint64_t ttbr1)
+ }
+ 
  SECURITY_READ_ONLY_LATE(uint8_t) bootstrap_pagetables[BOOTSTRAP_TABLE_SIZE] __attribute__((aligned(ARM_PGBYTES)));
 +#if TB710FU_ARM64E_4K_USER_VA
 +/* L0 root table for 47-bit 4 KiB TTBR0 bootstrap identity mapping (L0[0] -> V=P L1). */
@@ -126,13 +117,13 @@ index 51fdc9d..6d340b7 100644
  #else /* __ARM64_PMAP_KERN_SUBPAGE_L1__ */
  #define T1SZ_BOOT 25ULL
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-index f17668a..a5fa111 100644
+index fbb176a..ecf4e19 100644
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -620,6 +620,19 @@ Lkernelcache_base_found:
- 	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
- 	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
- 
+@@ -630,6 +630,19 @@ Lbootstrap_tables_exhausted:
+ 	// the early debugger rather than corrupting memory or forging a map.
+ 	b Lbootstrap_tables_exhausted
+ Lbootstrap_tables_ready:
 +#if TB710FU_ARM64E_4K_USER_VA
 +	/* Populate 47-bit 4 KiB L0 root: L0[0] points to V=P L1 table in x25 (MMU is off, adrp yields PA). */
 +	adrp	x0, EXT(tb710fu_bootstrap_user_l0)@page
@@ -149,7 +140,7 @@ index f17668a..a5fa111 100644
  	/* Ensure TTEs are visible */
  	dsb		ish
  
-@@ -664,7 +677,13 @@ common_start:
+@@ -674,7 +687,13 @@ common_start:
  	 * arm_vm_init.c.
  	 */
  #endif
