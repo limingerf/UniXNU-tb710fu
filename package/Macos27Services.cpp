@@ -13,9 +13,7 @@ extern "C" void tb710fu_aks_meta_init(void) __asm__("__GLOBAL__sub_I_NativeKeySt
 extern "C" void tb710fu_aes_meta_init(void) __asm__("__GLOBAL__sub_I_NativeAES.cpp");
 extern "C" IOService *native_keyevents_allocate(void);
 extern "C" IOService *native_aes_allocate(void);
-#if defined(XNU_TB710FU_GOP_DISPLAY) && XNU_TB710FU_GOP_DISPLAY
 extern "C" void native_tb710fu_gop_display_start(void);
-#endif
 extern "C" volatile uint32_t native_aes_kat_status;
 extern "C" volatile uint32_t native_aes_registered;
 extern "C" volatile uint32_t native_aes_interface_status;
@@ -99,11 +97,7 @@ extern "C" void native_tb710fu_services_start(void)
         }
     }
 
-#if defined(XNU_TB710FU_GOP_DISPLAY) && XNU_TB710FU_GOP_DISPLAY
     native_tb710fu_gop_display_start();
-#else
-    printf("TB710FU Services: GopDisplay archive not linked\n");
-#endif
 
     resources->release();
 }

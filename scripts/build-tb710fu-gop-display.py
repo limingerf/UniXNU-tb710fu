@@ -121,6 +121,7 @@ def object_layout(data):
                 string, ntype, nsect, _desc, value = struct.unpack_from('<IBBHQ', data, entry)
                 name = data[stroff + string:data.index(b'\0', stroff + string)].decode()
                 symbols.append({'name': name, 'type': ntype, 'section': nsect, 'value': value})
+        offset += size
     return sections, symbols
 
 
