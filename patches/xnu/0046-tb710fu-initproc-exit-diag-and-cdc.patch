@@ -1,0 +1,62 @@
+Dump PID 1 syscall ring, user registers, and 10-frame user backtrace before initproc exit panic,
+and hold 120s so COM5 CDC drains everything and accepts hands-free edl/ls/cat/ps commands.
+diff --git a/bsd/kern/kern_exit.c b/bsd/kern/kern_exit.c
+index 514abb7..14d9c6a 100644
+--- a/bsd/kern/kern_exit.c
++++ b/bsd/kern/kern_exit.c
+@@ -1995,6 +1995,55 @@ proc_handle_critical_exit(proc_t p, int rv)
+ 		    exit_reason_desc : "none");
+ 	}
+ 
++#if DEVELOPMENT || DEBUG
++	if (p == initproc) {
++		extern volatile uint32_t tb710fu_pid1_sc_count, tb710fu_pid1_sc_in, tb710fu_pid1_sc_cur, tb710fu_pid1_sc_idx;
++		extern volatile uint64_t tb710fu_pid1_sc_arg0, tb710fu_pid1_sc_arg1;
++		extern volatile uint32_t tb710fu_pid1_sc_ring[16];
++		printf("TB710FU INITEXIT: sc=%u in=%u cur=%u arg0=0x%llx arg1=0x%llx\n",
++		    tb710fu_pid1_sc_count, tb710fu_pid1_sc_in, tb710fu_pid1_sc_cur,
++		    (unsigned long long)tb710fu_pid1_sc_arg0, (unsigned long long)tb710fu_pid1_sc_arg1);
++		uint32_t idx = tb710fu_pid1_sc_idx;
++		printf("TB710FU INITEXIT RING:");
++		for (uint32_t i = 0; i < 16; i++) {
++			uint32_t e = tb710fu_pid1_sc_ring[(idx + i) & 15u];
++			printf(" %u:%u", e >> 16, e & 0xffffu);
++		}
++		printf("\n");
++#if defined(__arm64__)
++		{
++			arm_thread_state64_t ts;
++			mach_msg_type_number_t cnt = ARM_THREAD_STATE64_COUNT;
++			extern kern_return_t thread_getstatus(thread_t, int, thread_state_t, mach_msg_type_number_t *);
++			if (thread_getstatus(current_thread(), ARM_THREAD_STATE64, (thread_state_t)&ts, &cnt) == KERN_SUCCESS) {
++				uint64_t pc = (uint64_t)arm_thread_state64_get_pc(ts);
++				uint64_t lr = (uint64_t)arm_thread_state64_get_lr(ts);
++				uint64_t fp = (uint64_t)arm_thread_state64_get_fp(ts);
++				uint64_t sp = (uint64_t)arm_thread_state64_get_sp(ts);
++				printf("TB710FU INITEXIT REGS: pc=0x%llx lr=0x%llx fp=0x%llx sp=0x%llx x0=0x%llx x1=0x%llx\n",
++				    (unsigned long long)pc, (unsigned long long)lr,
++				    (unsigned long long)fp, (unsigned long long)sp,
++				    (unsigned long long)ts.__x[0], (unsigned long long)ts.__x[1]);
++				for (int f = 0; f < 10 && fp >= 0x100000000ULL && (fp & 7ULL) == 0; f++) {
++					uint64_t pair[2] = { 0, 0 };
++					if (copyin((user_addr_t)fp, pair, sizeof(pair)) != 0) {
++						break;
++					}
++					printf("TB710FU INITEXIT BT[%d]: fp=0x%llx lr=0x%llx\n",
++					    f, (unsigned long long)pair[0], (unsigned long long)pair[1]);
++					if (pair[0] <= fp) {
++						break;
++					}
++					fp = pair[0];
++				}
++			}
++		}
++#endif /* __arm64__ */
++		printf("TB710FU INITEXIT: holding 120s for COM5 edl/debug...\n");
++		delay(120000000);
++	}
++#endif /* DEVELOPMENT || DEBUG */
++
+ 	const char *prefix_str;
+ 	char prefix_str_buf[128];
+ 

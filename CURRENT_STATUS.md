@@ -1,4 +1,25 @@
-# Current status · 2026-11-24
+# Current status · 2026-11-25
+
+## 🚀 里程碑大爆发：`pl34-va47`（47-bit TTBR0 `T0SZ=17` + 38-bit TTBR1 `T1SZ=26`）在 TB710FU 实机首次跑通 **macOS 27 完整 `launchd` 早期引导链（`pid 1` 至 `pid 30` 全部拉起，含 `cc_fips_test` 23 项密码学自检全过）**！ · 2026-11-25
+
+- **`pl32` 精准定位 PAC 根因**（commit `a8366cf`，run [45440435940](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45440435940)，`kernel.macho` `c5c297a8...`，`scratch/com5_pl32_paniccdc.log`）：
+  - 实机 `COM5` 首次抓出 `launchd` `SIGSEGV` 精确寄存器：`TB710FU PID1 FAULT: pc=0x18f4f53ec lr=0x17344c818f4f5608 sp=0x16f6e9fc0 far=0x4d81fc9e4bd8 esr=0x92000004 fsc=0x4 code0=1`。
+  - 证实 macOS 27 `arm64e` 用户态按 47-bit 掩码（`0x00007fffffffffff`）剥离 PAC，而 38/39-bit TTBR0（`T0SZ=26/25`）把硬件 PAC 写进 bit 46..39，导致剥离后残留 `0x4d80...` 触发段错误。
+- **`pl34-va47` 预链接内核**（分支 `cdc-smmu-claim`，commit `1dd55d0`，run [45447794024](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45447794024)，`kernel.macho` `142,917,632` B，SHA-256 `a680dfc9fe3108a5dc7a12bc330252c0dd2702da2a12d3fb8292b48178a51df8`，已保存 XNU 编译缓存）：
+  - 镜像：`out/pl16-45447794024-pl34-va47-signed/`（`vendor_boot.img` `34350e8e...`，`vbmeta.img` `aab8a0ea...`，单菜单项，5 GiB 窗口，`vc-text=1`）。
+  - `patches/xnu/0044-tb710fu-macos-user-va-pmap.patch` 启用 **47-bit 4 级用户态 TTBR0（`T0SZ_BOOT = 17ULL`，L0→L1→L2→L3，PAC 严格位于 bit 54..47）** + **38-bit 3 级内核态 TTBR1（`T1SZ_BOOT = 26ULL`，独立 `tb710fu_kernel_pt_attr`）**。
+  - 实机 `COM5` 验证（`scratch/com5_pl34_va47.log`，625 行）：
+    - `pmap.c:6298` 与 `SIGSEGV` **100% 根除**，`launchd`（`Darwin Bootstrapper Version 7.0.0 ... RELEASE_ARM64E`）顺利启动并完成全部早期引导任务（**`pid 1` → `pid 30`**）：
+      - `pid 2/3 fsck` & `fsck_apfs`（`QUICKCHECK ONLY; FILESYSTEM CLEAN`，status 0）；
+      - `pid 4/7 apfs_boot_util (owner)` phase 1 & phase 2（status 0）；
+      - `pid 5 seputil`、`swap enabled`、`sandbox-enable-root-translation`、`init-with-data-volume`；
+      - `pid 9 MobileAssetEarlyBootTask`（status 0）；
+      - **`pid 10 cc_fips_test`**：`Apple corecrypto Module v27.0` 全 23 项 FIPS 自检（含 AES/RSA/ECDSA/HKDF/ML-KEM/ML-DSA）**全部 PASSED（1050 ms，status 0）**；
+      - `pid 11 applekeystored`、`pid 12 BootCacheControl`、`pid 13 usermanagerd`（status 0）、`pid 14 dirs_cleaner`（status 0）、`pid 15 xpcroleaccountd`（status 0）、`pid 16 init_featureflags`（status 0）、`pid 17 auearlyboot`（status 0）、`pid 18 aidearlyboot`（status 0）、`pid 19 endpointsecurityd`（status 0）、`pid 21 tzinit`（status 0）、`pid 22..24 dirhelper`（status 0）、`pid 25 rootless-init`（status 0）、`pid 27 systemstats_boot`（status 0）、`pid 28 sysstatuscheck`、`pid 29 prng_seedctl`、`pid 30 init_exclavekit`（status 0）。
+    - 在 `pid 30 init_exclavekit` 退出后，`launchd` 触发 `pid 1 exited -- exit reason namespace 2 subcode 0x6, description none`（`SIGABRT`），尚未进入完整多守护进程与 `WindowServer` 桌面。
+- **当前精确阶段**：已完整跑通 macOS 27 ARM64E `launchd` 早期用户态引导链（`pid 1..30` + `corecrypto` FIPS 全过，尚未到达 `WindowServer` 桌面）。下一步：在启动参数补齐上游 macOS 27 必选参数（如 `no-lc=1`、`timebase-hz=24000000`）并排查 `init_exclavekit` 之后 `launchd` `SIGABRT`（`0x6`）的精确原因，随后恢复 `GopFramebuffer` 与 `unixnu-absentd` 冲刺桌面。
+
+---
 
 ## 🎉 历史性突破：`pl30-pmap39` 彻底根除 `pmap.c:6298` 内核 `panic`，`launchd` 15 秒跨过 `dyld` 共享缓存映射；`pl31` 已就绪待读 `SIGSEGV` 精确坐标 · 2026-11-24
 

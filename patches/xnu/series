@@ -43,3 +43,4 @@
 0043-tb710fu-pid1-syscall-ring.patch
 0044-tb710fu-macos-user-va-pmap.patch
 0045-tb710fu-pid1-fault-log.patch
+0046-tb710fu-initproc-exit-diag-and-cdc.patch
