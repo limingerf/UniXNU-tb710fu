@@ -296,3 +296,44 @@ extern "C" OSObject *native_legacy_ioav_color(uint32_t standardType, uint32_t de
     gIoavRequests = gIoavRequests + 1;
     return nullptr;
 }
+
+// Optional GPU/DPU weak_import hooks from NativeLegacyDisplay.cpp.
+// XNU static link requires definitions when Adreno/DPU providers are not linked;
+// returning false/0 cleanly keeps GopFramebuffer in GOP CPU-present scanout mode.
+extern "C" bool native_adreno_fences(uint32_t *submitted, uint32_t *retired)
+{
+    (void)submitted;
+    (void)retired;
+    return false;
+}
+
+extern "C" bool native_adreno_fences_detail(uint32_t *a, uint32_t *b, uint32_t *c)
+{
+    (void)a;
+    (void)b;
+    (void)c;
+    return false;
+}
+
+extern "C" uint32_t native_ufs_dpu_map(unsigned slot, const uint64_t *pages, unsigned count)
+{
+    (void)slot;
+    (void)pages;
+    (void)count;
+    return 0;
+}
+
+extern "C" volatile uint32_t native_ufs_dpu_state = 0;
+
+extern "C" int native_gpu_trace_enabled(void)
+{
+    return 0;
+}
+
+extern "C" void native_gpu_trace_record(uint32_t event, uint32_t pid, const uint64_t *values, uint32_t count)
+{
+    (void)event;
+    (void)pid;
+    (void)values;
+    (void)count;
+}
