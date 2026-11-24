@@ -42,8 +42,9 @@ uint64_t *gLegacyTable = nullptr;
 template <typename Fn>
 Fn legacyEntry(unsigned slot)
 {
-    uintptr_t raw = (uintptr_t)gLegacyTable[slot];
-    return (Fn)(uintptr_t)ptrauth_strip((void *)raw, ptrauth_key_function_pointer);
+    uint64_t raw = ((const volatile uint64_t *)gLegacyVtable)[slot];
+    void *stripped = ptrauth_strip((void *)(uintptr_t)raw, ptrauth_key_function_pointer);
+    return (Fn)(uintptr_t)ptrauth_sign_unauthenticated(stripped, ptrauth_key_function_pointer, 0);
 }
 
 // The fixture records four macOS-gated slots that XnuPrelink rebinds to one native
@@ -53,26 +54,32 @@ bool legacyReboundSlot(unsigned slot)
     return slot == 318 || slot == 320 || slot == 361 || slot == 362;
 }
 
+bool legacySlotIsOwned(unsigned slot)
+{
+    for (unsigned i = 0; i < TB710FU_GOP_OWNED_COUNT; i++) {
+        if (tb710fu_gop_owned_slots[i] == slot) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool legacyVtableLooksReviewed(uintptr_t vtable)
 {
+    if (!vtable || (vtable & 7u) != 0) {
+        return false;
+    }
     const volatile uint64_t *words = (const volatile uint64_t *)vtable;
-    unsigned matched = 0;
-    unsigned rebound = 0;
     for (unsigned slot = 0; slot < TB710FU_GOP_SLOT_COUNT; slot++) {
         uint64_t word = words[slot];
-        if ((word >> 63) == 0) {
-            return false;
-        }
-        unsigned short diversity = (unsigned short)((word >> 32) & 0xffffu);
-        if (diversity == tb710fu_gop_slot_diversity[slot]) {
-            matched++;
-        } else if (legacyReboundSlot(slot)) {
-            rebound++;
-        } else {
+        uintptr_t addr = (uintptr_t)ptrauth_strip((void *)(uintptr_t)word, ptrauth_key_function_pointer);
+        if ((addr >> 48) != 0xffffu || (addr & 3u) != 0) {
+            printf("TB710FU GopDisplay: bad vtable slot %u word=%llx addr=%llx\n",
+                   slot, (unsigned long long)word, (unsigned long long)addr);
             return false;
         }
     }
-    return matched + rebound == TB710FU_GOP_SLOT_COUNT;
+    return true;
 }
 }  // namespace
 
@@ -89,7 +96,8 @@ extern "C" void native_tb710fu_gop_adopt(void *object)
     if (!object || !gLegacyVtable) {
         return;
     }
-    uintptr_t staticTable = *(uintptr_t *)object;
+    uintptr_t rawStatic = *(uintptr_t *)object;
+    uintptr_t staticTable = (uintptr_t)ptrauth_strip((void *)rawStatic, ptrauth_key_cxx_vtable_pointer);
     if (!staticTable) {
         return;
     }
@@ -99,16 +107,24 @@ extern "C" void native_tb710fu_gop_adopt(void *object)
             printf("TB710FU GopDisplay: no memory for the adopted vtable, display left inert\n");
             return;
         }
-        memcpy(table, (const void *)gLegacyVtable, sizeof(uint64_t) * TB710FU_GOP_SLOT_COUNT);
-        for (unsigned index = 0; index < TB710FU_GOP_OWNED_COUNT; index++) {
-            unsigned slot = tb710fu_gop_owned_slots[index];
-            table[slot] = ((const uint64_t *)staticTable)[slot];
+        const uint64_t *origWords = (const uint64_t *)gLegacyVtable;
+        const uint64_t *ownedWords = (const uint64_t *)staticTable;
+        for (unsigned slot = 0; slot < TB710FU_GOP_SLOT_COUNT; slot++) {
+            uint64_t src = legacySlotIsOwned(slot) ? ownedWords[slot] : origWords[slot];
+            void *stripped = ptrauth_strip((void *)(uintptr_t)src, ptrauth_key_function_pointer);
+            uint64_t disc = ptrauth_blend_discriminator(&table[slot], tb710fu_gop_slot_diversity[slot]);
+            table[slot] = (uint64_t)(uintptr_t)ptrauth_sign_unauthenticated(stripped, ptrauth_key_function_pointer, disc);
         }
         gLegacyTable = table;
-        printf("TB710FU GopDisplay: adopted %u live slots, %u owned overrides\n",
-               TB710FU_GOP_SLOT_COUNT - TB710FU_GOP_OWNED_COUNT, TB710FU_GOP_OWNED_COUNT);
+        printf("TB710FU GopDisplay: adopted %u live slots, %u owned overrides (resigned at %p)\n",
+               TB710FU_GOP_SLOT_COUNT - TB710FU_GOP_OWNED_COUNT, TB710FU_GOP_OWNED_COUNT, (void *)table);
     }
-    *(uintptr_t *)object = (uintptr_t)gLegacyTable;
+    if (rawStatic != staticTable) {
+        uint64_t vdisc = ptrauth_blend_discriminator(object, 0);
+        *(uintptr_t *)object = (uintptr_t)ptrauth_sign_unauthenticated(gLegacyTable, ptrauth_key_cxx_vtable_pointer, vdisc);
+    } else {
+        *(uintptr_t *)object = (uintptr_t)gLegacyTable;
+    }
 }
 
 // Qualified base calls in NativeLegacyDisplay.cpp are routed here: the live
@@ -214,21 +230,26 @@ extern "C" void native_tb710fu_gop_display_start(void)
         return;
     }
 
-    // The metaclass object and the class vtable live in one prelinked image, so the
-    // live address of the metaclass gives the collection slide: only the fixture's
-    // relative layout is used, never an absolute code address.
-    uintptr_t metaclass = (uintptr_t)meta;
-    uintptr_t slide = metaclass - (uintptr_t)TB710FU_GOP_METACLASS_VA;
-    uintptr_t vtable = (uintptr_t)TB710FU_GOP_VTABLE_VA + slide;
+    // Resolve the live IOMobileFramebufferLegacy vtable directly from a probe
+    // instance: XnuPrelink slides __DATA (metaclass) and __DATA_CONST (vtable)
+    // independently, so fixture offset arithmetic does not locate the live table.
+    OSObject *probe = meta->alloc();
+    if (!probe) {
+        printf("TB710FU GopDisplay: meta->alloc() failed, display not registered\n");
+        return;
+    }
+    uintptr_t rawVtable = *(uintptr_t *)probe;
+    uintptr_t vtable = (uintptr_t)ptrauth_strip((void *)rawVtable, ptrauth_key_cxx_vtable_pointer);
+    probe->release();
     if (!legacyVtableLooksReviewed(vtable)) {
-        printf("TB710FU GopDisplay: vtable at %p does not carry the reviewed 483 diversities, display not registered\n",
-               (void *)vtable);
+        printf("TB710FU GopDisplay: live vtable at %p (raw %p) failed validation, display not registered\n",
+               (void *)vtable, (void *)rawVtable);
         return;
     }
     gLegacyParent = meta;
     gLegacyVtable = vtable;
-    printf("TB710FU GopDisplay: vtable=%p slide=%p (%u authenticated slots reviewed)\n",
-           (void *)vtable, (void *)slide, TB710FU_GOP_SLOT_COUNT);
+    printf("TB710FU GopDisplay: live vtable=%p (raw=%p, %u slots validated)\n",
+           (void *)vtable, (void *)rawVtable, TB710FU_GOP_SLOT_COUNT);
 
     void *handle = OSMetaClass::preModLoad(g_kernel_kmod_info.name);
     if (!handle) {

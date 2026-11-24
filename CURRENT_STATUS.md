@@ -1,5 +1,25 @@
 # Current status · 2026-11-25
 
+## 🏆 重大里程碑：`pl37` / `pl38f` 在 TB710FU 实机跑通 **macOS 27.3 完整多守护进程用户态（PID 523+，含 `WindowServer` / `loginwindow` / `opendirectoryd` / DriverKit）**；`pl39`（`GopFramebuffer` + `desiredvnodes=65536`）已编绿打包签名就绪待刷 · 2026-11-25
+
+- **`pl35c` & `pl36` 无人值守定位 `launchd` `SIGABRT` 根因**：
+  - `pl35c`（commit `a205f23`，run [45458720560](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45458720560)，`kernel.macho` `2f537815...`，`scratch/com5_pl35c_initexit.log`）：`patches/xnu/0046-tb710fu-initproc-exit-diag-and-cdc.patch` 在 `initproc exited` panic 前驻留 120 秒，**实机验证全自动 `COM5 -> edl` 免按键切回 `COM3`（9008）**，并捕获 `Early boot complete` 后 `sysctl(202) -> ENOENT(2)` 触发 `abort()`。
+  - `pl36`（commit `eb5dd55`，run [45464123064](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45464123064)，`kernel.macho` `cc92228b...`，`scratch/com5_pl36_initexit.log`）：一枪捕获确切断言 `lockdown_mode.c:os_lockdown_mode_enabled_block_invoke:47: No such file or directory`，缺失 Darwin 26 新增 sysctl `security.mac.lockdown_mode_state_public`。
+- **`pl37` 实机拉起完整 macOS 27.3 用户态**（commit `d159ea3`，run [45468120807](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45468120807)，`kernel.macho` `6565fbce...`，`scratch/com5_pl37_lockdown.log`）：
+  - 新增 `patches/xnu/0047-tb710fu-lockdown-mode-state-public.patch` 在 `bsd/kern/lockdown_mode.c` 暴露 `security.mac.lockdown_mode_state_public`。
+  - 实机验证：`launchd`（PID 1）稳定存活，拉起 211+ 进程，包含 **`logd`（PID 34）、`syslogd`（PID 68）、`opendirectoryd`（PID 73）、`Installer Progress`（PID 65）、`WindowServer`（PID 104）、`loginwindow`（PID 110）** 以及 DriverKit `IOUserDockChannelSerial::start ok`。
+- **`pl38f` 恢复 `GopFramebuffer` 并跑至 PID 523+**（commit `9155f61`，run [45486285958](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45486285958)，`kernel.macho` `80390cdd...`，`scratch/com5_pl38f_gop.log`）：
+  - 修复 `scripts/build-tb710fu-gop-display.py`（补齐 `object_layout` 的 `offset += size` 及 5 个分类方法的 `abi['names']` PAC 宏重命名，483/483 vtable PAC 审计全过）、`configs/tb710fu_macos_defconfig` 链接 `libTb710fuGopDisplay.a`、`package/GopDisplaySupport.cpp` 补齐 4 个可选 Adreno/GPU `weak_import` 钩子。
+  - 实机跑至 PID 523+（`WindowServer`、`loginwindow`、`kernelmanagerd`、`iconservicesd`、`revisiond`、`trustd`、`amfid`、`sandboxd`），并定位最后两处瓶颈：
+    1. `GopDisplay` 已加载 `IOMobileFramebufferLegacy`（`meta=0xfffffff00cc2cdf0 size=0x23a0`），因 `GopDisplayStart.cpp` 仅检查一层父类（`IOMobileFramebuffer`）而未注册；
+    2. `desiredvnodes` 仍被 `CONFIG_VNODES=1024` 限制触发 `vnode: table is full`（`memorystatus` vnode-limit 杀进程）。
+- **`pl39` 预链接内核与签名镜像已就绪（尚未实机刷入）**（commit `eb5b3fa`，run [45489499663](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45489499663)，`kernel.macho` `142,966,784` B，SHA-256 `dd8ccbb9ac8f471f7becbc1b9062bc9e002e35ca7ec2d96ae84b5611370e0434`）：
+  - 修复 `package/GopDisplayStart.cpp` 沿继承链遍历 `IOService`；新增 `patches/xnu/0048-tb710fu-macos-desiredvnodes.patch` 支持 `kern.maxvnodes` 启动参数并将 >= 2 GiB 内存默认下限提至 `65536`。
+  - 签名镜像：`out/pl16-45489499663-pl39-gop-vnodes64k-signed/`（`vendor_boot.img` `0d5f6c09...`，`vbmeta.img` `a109961d...`，含 `kern.maxvnodes=65536 tb710fu-gop=1`）。
+- **当前精确阶段**：已在 TB710FU 实机跑通 macOS 27.3 完整多守护进程用户态（PID 523+，含 `WindowServer` / `loginwindow` / DriverKit），尚未完成 `GopFramebuffer` 亮屏桌面实机验证（`pl39` 已编绿签名就绪，待进入 9008 刷入）。
+
+---
+
 ## 🚀 里程碑大爆发：`pl34-va47`（47-bit TTBR0 `T0SZ=17` + 38-bit TTBR1 `T1SZ=26`）在 TB710FU 实机首次跑通 **macOS 27 完整 `launchd` 早期引导链（`pid 1` 至 `pid 30` 全部拉起，含 `cc_fips_test` 23 项密码学自检全过）**！ · 2026-11-25
 
 - **`pl32` 精准定位 PAC 根因**（commit `a8366cf`，run [45440435940](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45440435940)，`kernel.macho` `c5c297a8...`，`scratch/com5_pl32_paniccdc.log`）：
