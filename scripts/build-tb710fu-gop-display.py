@@ -307,6 +307,7 @@ const OSMetaClass * const NativeLegacyDisplay::superClass = &IOService::gMetaCla
 NativeLegacyDisplay::NativeLegacyDisplay(const OSMetaClass *meta) : IOMobileFramebufferLegacy(meta) {}
 NativeLegacyDisplay::~NativeLegacyDisplay() {}
 const OSMetaClass *NativeLegacyDisplay::getMetaClass() const { return &gMetaClass; }
+extern "C" const OSMetaClass *native_tb710fu_legacy_parent(void);
 NativeLegacyDisplay::MetaClass::MetaClass()
     : OSMetaClass("NativeLegacyDisplay", native_tb710fu_legacy_parent(), sizeof(NativeLegacyDisplay)) {}
 OSDefineBasicStructors(NativeLegacyDisplay, IOMobileFramebufferLegacy)
