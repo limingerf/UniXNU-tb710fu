@@ -1,0 +1,30 @@
+Log exact faulting pc/lr/sp/far/esr/fsc/code0 when PID 1 (launchd) takes an unhandled user abort.
+
+Hardware evidence (pl30-pmap39):
+  pid 1 exited -- exit reason namespace 2 subcode 0xb, description none (SIGSEGV)
+diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
+index 0554aa8..1e193d7 100644
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -2071,6 +2071,21 @@ handle_user_abort(arm_saved_state_t *state, uint64_t esr, vm_offset_t fault_addr
+ 	}
+ #endif
+ 
++	{
++		extern int proc_pid(struct proc *);
++		if (__improbable(proc_pid(current_proc()) == 1)) {
++			printf("TB710FU PID1 FAULT: pc=0x%llx lr=0x%llx sp=0x%llx far=0x%llx esr=0x%llx fsc=0x%x code0=%lld x0=0x%llx x1=0x%llx\n",
++			    (unsigned long long)get_saved_state_pc(state),
++			    (unsigned long long)get_saved_state_lr(state),
++			    (unsigned long long)get_saved_state_sp(state),
++			    (unsigned long long)fault_addr,
++			    (unsigned long long)esr,
++			    (unsigned int)fault_code,
++			    (long long)codes[0],
++			    (unsigned long long)get_saved_state_reg(state, 0),
++			    (unsigned long long)get_saved_state_reg(state, 1));
++		}
++	}
+ 	codes[1] = fault_addr;
+ #if __has_feature(ptrauth_calls)
+ 	bool is_data_abort = (ESR_EC(esr) == ESR_EC_DABORT_EL0);
