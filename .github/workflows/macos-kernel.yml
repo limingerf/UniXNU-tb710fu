@@ -127,7 +127,7 @@ jobs:
             [ -d "$tree/scripts" ] || continue
             cp -R scripts/. "$tree/scripts/"
             find "$tree/scripts" -type d -name __pycache__ -prune -exec rm -rf {} +
-            sha256sum "$tree/scripts/build-tb710fu-adsp.py"
+            shasum -a 256 "$tree/scripts/build-tb710fu-adsp.py"
           done
       - name: Build and verify the native arm64e kernel
         env:
