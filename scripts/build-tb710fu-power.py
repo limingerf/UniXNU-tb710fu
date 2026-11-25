@@ -69,7 +69,8 @@ def compile_command(record, source, output, includes, extra):
         raise SystemExit(f'{record["file"]}: compile record does not name its source')
     command = ['--target=' + TARGET if value.startswith('--target=') else value for value in command]
     command += ['-Wall', '-Wextra', '-Werror', '-Wno-overriding-option']
-    command += ['-I', *map(str, includes)]
+    for include in includes:
+        command += ['-I', str(include)]
     command += extra
     return command
 
@@ -163,7 +164,7 @@ def main():
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         (OUT / (source.stem + '.log')).write_text(result.stdout)
         if result.returncode:
-            raise SystemExit(f'{source.name}:\n{result.stdout[-6000:]}')
+            raise SystemExit(f'{source.name}:\nCMD: {" ".join(command)}\n{result.stdout[-6000:]}')
         target.check_object(output.read_bytes(), source.name)
         objects.append(output)
 
