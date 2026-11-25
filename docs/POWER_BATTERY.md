@@ -121,15 +121,22 @@ Result: all checks pass; `build/tb710fu-power-host/report.json` records compiler
 
 ## What device acceptance still needs
 
-Publishing an `IOPMPowerSource` needs the transport. The facts for it are in this board's DT:
+Publishing an `IOPMPowerSource` needs the transport. The facts for it are in this board's vendor SoC DTB
+(decompiled from `vendor_boot_a.img`):
 
 - PAS node `/soc/remoteproc-adsp@03000000`, `compatible = "qcom,pineapple-adsp-pas"`, reg `0x03000000 0x10000`,
-  `clocks = xo`, `memory-region = <adsp_dtb, adsp_mem>` (resolve the phandles in `/reserved-memory`),
-  interrupts `wdog/fatal/handover/ready/stop-ack`, `qcom,smem-states = <master-kernel 0>` (`stop`).
-- SMP2P `/soc/qcom,smp2p-adsp`: `qcom,smem = <0x1bb 0x1ad>`, local-pid 0, remote-pid 2, `mboxes = <ipcc 3>`,
-  entries `master-kernel`, `slave-kernel`.
-- IPCC `/soc/qcom,ipcc@406000`; ADSP `glink-edge` uses mbox channel 3 (`adsp_smem`), label `adsp`/`lpass`.
+  `clocks = xo`, `memory-region = <adspslpi 0x9df00000 + 0x4080000, q6_adsp_dtb 0x9de80000 + 0x80000>`,
+  `interrupts-extended` `wdog/fatal/handover/ready/stop-ack`, `qcom,smem-states = <master-kernel 0>` (`stop`).
+  PAS ids follow the SM8550 family (1 for `adsp.mbn`, 36 for `adsp_dtb.mbn`); confirm them against
+  `qcom_q6v5_pas.c` for `pineapple-adsp-pas` before the first load.
+- SMEM `0x81d00000 + 0x200000`, TCSR mutex hwlock index 3; SMP2P `/soc/qcom,smp2p-adsp`: `qcom,smem = <443 429>`,
+  local-pid 0, remote-pid 2, `mboxes = <ipcc 3>`, entries `master-kernel`, `slave-kernel`.
+- IPCC `/soc/qcom,ipcc@406000` (GIC SPI 229 = 0xe5), LPASS client 3; AOSS QMP `0xc300000 + 0x400`, client 0;
+  apps RSC `0x17a00000` drv 2 with its TCS block at +0xd00; command DB `0x81c60000`.
+- ADSP `glink-edge` uses mbox channel 3 (`adsp_smem`), label `adsp`/`lpass`, `qcom,glink-label = "lpass"`.
 - GLINK channel `PMIC_RTR_ADSP_APPS`; the intents listed on `qcom,adsp_qrtr` belong to QRTR, not this channel.
+- These are almost sheng's SM8550 constants (SMEM identical; RSC 0x17a00000 vs 0x17a20000; IPCC 0x406000 vs
+  0x408000; ADSP memory 0x9df00000 vs 0x9ea00000), so its probe can be parameterised rather than rewritten.
 - Firmware: `adsp.mbn` (34.8 MB) and `adsp_dtb.mbn` (5.9 MB) from this device's own vendor image, the same two files
   the Linux port loads as `qcom/sm8650/xiaoxin/gt/adsp.mbn` / `adsp_dtb.mbn`; `battmgr.jsn` is their metadata.
 
