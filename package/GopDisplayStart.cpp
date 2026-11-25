@@ -38,6 +38,58 @@
 #include "OriginalLegacyFramebufferABI.h"
 
 extern kmod_info_t g_kernel_kmod_info;
+
+/* pl50: macOS WindowServer reaches the panel through an IODisplay object that
+ * NativeLegacyDisplay attaches to the framebuffer. Its attach routine allocates
+ * IODisplay only when this node publishes "NativeDisplayEDID"; the board had no
+ * EDID at all, so every pl47/pl48/pl49 boot logged "display object not attached
+ * (kext 0)" and no display ever appeared. Build a 128-byte EDID 1.4 block for
+ * the 3200x2000 internal panel (398.32 MHz, CVT reduced blanking) instead of
+ * depending on a firmware-provided block that this UEFI handoff does not carry. */
+static OSData *tb710fu_display_edid(void)
+{
+    uint8_t e[128] = {0};
+    uint32_t sum = 0;
+
+    e[0] = 0x00; e[1] = 0xFF; e[2] = 0xFF; e[3] = 0xFF;
+    e[4] = 0xFF; e[5] = 0xFF; e[6] = 0xFF; e[7] = 0x00;
+    e[8] = 0x30; e[9] = 0xAE;              /* "LEN" */
+    e[10] = 0x00; e[11] = 0x01;
+    e[12] = 0x00; e[13] = 0x00; e[14] = 0x00; e[15] = 0x00;
+    e[16] = 0x01; e[17] = 0x1E;            /* week 1, 2026 */
+    e[18] = 0x01; e[19] = 0x04;            /* EDID 1.4 */
+    e[20] = 0xA5;                          /* digital, 8 bpc, DisplayPort */
+    e[21] = 30; e[22] = 19;                /* 30 x 19 cm */
+    e[23] = 120;                           /* gamma 2.2 */
+    e[24] = 0x0A;                          /* sRGB default, RGB, preferred timing */
+    e[25] = 0xEE; e[26] = 0x91; e[27] = 0xA3; e[28] = 0x54; e[29] = 0x4C;
+    e[30] = 0x99; e[31] = 0x26; e[32] = 0x0F; e[33] = 0x50; e[34] = 0x54;
+    /* no established or standard timings */
+    for (int i = 38; i < 54; i += 2) { e[i] = 0x01; e[i + 1] = 0x01; }
+    /* detailed timing: 3200x2000@60, 3280x2024 total, 398.32 MHz */
+    e[54] = 0x98; e[55] = 0x9B;
+    e[56] = 0x80; e[57] = 0x50; e[58] = 0xC0;
+    e[59] = 0xD0; e[60] = 0x18; e[61] = 0x71;
+    e[62] = 0x20; e[63] = 0x08; e[64] = 0x22; e[65] = 0x00;
+    e[66] = 0x2C; e[67] = 0xBE; e[68] = 0x10;
+    e[69] = 0x00; e[70] = 0x00; e[71] = 0x1E;
+    /* monitor name descriptor */
+    e[72] = 0x00; e[73] = 0x00; e[74] = 0x00; e[75] = 0xFC; e[76] = 0x00;
+    const char *name = "TB710FU";
+    for (int i = 0; i < 13; i++) { e[77 + i] = (i < 7) ? (uint8_t)name[i] : ' '; }
+    e[89] = 0x0A;
+    /* range limits: 50-61 Hz, 30-90 kHz, 400 MHz */
+    e[90] = 0x00; e[91] = 0x00; e[92] = 0x00; e[93] = 0xFD; e[94] = 0x00;
+    e[95] = 50; e[96] = 61; e[97] = 30; e[98] = 90; e[99] = 40;
+    e[100] = 0x00; e[101] = 0x0A;
+    for (int i = 102; i < 108; i++) { e[i] = 0x20; }
+    /* dummy descriptor */
+    e[108] = 0x00; e[109] = 0x00; e[110] = 0x00; e[111] = 0x10; e[112] = 0x00;
+    e[126] = 0x00;                         /* no extensions */
+    for (int i = 0; i < 127; i++) { sum += e[i]; }
+    e[127] = (uint8_t)(256 - (sum & 0xFF));
+    return OSData::withBytes(e, sizeof(e));
+}
 extern "C" void tb710fu_gop_meta_init(void) __asm__("__GLOBAL__sub_I_NativeLegacyDisplay.cpp");
 extern "C" IOService *native_legacy_display_allocate(void);
 
@@ -592,6 +644,17 @@ extern "C" void native_tb710fu_gop_display_start(void)
     display->setProperty("IOMatchCategory", "IOMobileFramebuffer");
     display->setProperty("IOProviderClass", provider->getMetaClass()->getClassName());
     display->setName("IOMobileFramebuffer");
+    /* pl50: NativeLegacyDisplay's IODisplay attach reads this before it builds
+     * the panel object; without it the post-start attach thread bails out. */
+    OSData *edid = tb710fu_display_edid();
+    if (edid) {
+        bool published = display->setProperty("NativeDisplayEDID", edid);
+        printf("TB710FU GopDisplay: NativeDisplayEDID %u bytes -> %d\n",
+               (unsigned)edid->getLength(), published ? 1 : 0);
+        edid->release();
+    } else {
+        printf("TB710FU GopDisplay: NativeDisplayEDID allocation failed\n");
+    }
     printf("TB710FU GopDisplay: publishing name=%s class=%s\n",
            display->getName(), "IOMobileFramebuffer");
 
