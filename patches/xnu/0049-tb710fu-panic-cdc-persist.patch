@@ -1,9 +1,71 @@
 Subject: [PATCH] tb710fu: persist COM5 CDC across all kernel panics and halts
 
-Remove the nested assert(panic_info) in PE_update_panicheader_nested() when
-gPanicBase == 0 (which previously hit nested panic limit 5 and bypassed
-halt_all_cpus()), and enter tb710fu_cdc_panic_loop() before kPEPanicRestartCPU
-so COM5 stays live for log drain and hands-free edl/reboot on every panic.
+Every panic on this board terminates on the panicking CPU inside
+panic_spin_forever() or panic_spin_shmcon(), never in halt_all_cpus():
+
+  * boot-args debug=0x14e contains DB_NMI (0x4), and on arm64 debug.c:449
+    turns DB_NMI into panicDebugging = TRUE, so debugger_collect_diagnostics()
+    takes the `PE_i_can_has_debugger(NULL) && panicDebugging` branch (line
+    1678), skips `if (!panicDebugging) kdp_machine_reboot_type(...)` (line
+    1705) and ends in panic_spin_forever() (line 1710);
+  * panic_spin_shmcon() is the branch before that, and this device has no
+    astris/hardware shared-memory debugger, so its `for (;;) { wfe }` has
+    nobody to talk to.
+
+Two independent failures followed from that, both seen in pl44 (run
+45553701071, COM5 log com5_pl44_gop.log):
+
+  1. patch 0045's tb710fu_cdc_panic_loop() hook lives in halt_all_cpus(), so
+     it is unreachable in this configuration and the panic loop never ran.
+     The commit claim "enter tb710fu_cdc_panic_loop() before kPEPanicRestartCPU"
+     was not implemented by this patch; only the nested-panic assert was.
+  2. patch 0004 puts tb710fu_ramoops_panic_reset() first in
+     panic_spin_forever() and in kdp_machine_reboot_type(); that flushes, waits
+     ramoops_panic_delay (default 15 s) and issues PSCI SYSTEM_RESET. The
+     console bytes of the panic were already tapped into the 64 KiB CDC ring
+     (patch 0010 _cnputc/PE_kputc tap) but the ring is only transmitted by the
+     DWC3 poll loop, so the reset ended the boot first: COM5 saw no panic
+     byte at all and the port was gone afterwards (reopen returned 31).
+
+This patch makes the panicking CPU hand the controller to the CDC shell
+before any reset can fire, on both terminal paths and on the
+kdp_machine_reboot_type() path used when panicDebugging is off:
+
+  * panic_spin_forever(): drain the ring for 6 s, flush the ramoops zone (the
+    panic still survives to Android whenever the operator resets later) and
+    enter tb710fu_cdc_panic_loop(), which keeps polling DWC3 with interrupts
+    off and executes the hands-free 'reboot' / 'edl' commands. The existing
+    tb710fu_ramoops_panic_reset() stays as the no-CDC fallback.
+  * panic_spin_shmcon(): same hand-over, after the existing
+    PE_i_can_has_debugger()/handshake checks, so the astris spin can no longer
+    park the CPU on a board without astris.
+  * kdp_machine_reboot_type(): drain 4 s before tb710fu_ramoops_panic_reset(),
+    so a reset that is going to happen cannot preempt the log either.
+  * Remove the nested assert(panic_info) in PE_update_panicheader_nestedpanic()
+    when gPanicBase == 0: there is no iBoot panic VRAM region on TB710FU, and
+    the assert turned a nested panic into limit 5 and bypassed every hook.
+
+Source: pristine XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f with patches
+0001..0048 applied in series order; the pre-change source SHA-256 of each
+edited file is in that patch's own header (0004 owns the debug.c
+panic_spin_forever()/kdp_machine_reboot_type() hunk, 0010 owns the CDC tap,
+0045 owns the halt_all_cpus() hook). pe_init.c and out_shmem.c are otherwise
+untouched by this series, debug.c is touched by 0004 only.
+
+Reason: a debug boot must deliver its own panic text over the channel that is
+already open (COM5, dtr=1) and must keep the shell that can reset the device
+hands-free. A reset before the drain destroys both.
+
+Verification: git apply -v --check and a real apply pass for all four hunks on
+the applied 0001..0048 fixture tree (.work/xnu-patch-lf-clean, XNU
+ac9718f); the tree is then byte-identical to the reviewed new sources. The
+drain provider is package/Tb710fuUsbCdc/CdcXnu.c tb710fu_cdc_panic_drain(),
+which uses the same ownership proof (dma != NULL && probe_trace[1] != 0) and
+the same DWC3 poll / rearm / pending-command step as the existing
+tb710fu_cdc_panic_loop(), so a boot without an adopted controller falls back
+to the previous reset behaviour instead of touching dead hardware. This is a
+source and patch-application check; hardware panic drain, COM5 reopen and
+hands-free 'reboot' still require a native run.
 
 diff --git a/pexpert/arm/pe_init.c b/pexpert/arm/pe_init.c
 index fd449f7..20377d9 100644
@@ -15,7 +77,91 @@ index fd449f7..20377d9 100644
  	if (!panic_info) {
 -		/* if this happens in development then blow up bigly */
 -		assert(panic_info);
-+		/* No iBoot panic VRAM region on TB710FU; avoid nested panic so CDC panic loop stays reachable. */
++		/* No iBoot panic VRAM region on TB710FU; avoid nested panic so the CDC panic loop stays reachable. */
  		return;
  	}
  
+diff --git a/osfmk/kern/debug.c b/osfmk/kern/debug.c
+index 6f2d4c1..b1e3a77 100644
+--- a/osfmk/kern/debug.c
++++ b/osfmk/kern/debug.c
+@@ -1371,6 +1371,27 @@ panic_spin_forever(void)
+ void __attribute__((noinline, optnone))
+ panic_spin_forever(void)
+ {
++#if defined(XNU_TB710FU_CDC) && XNU_TB710FU_CDC
++	/*
++	 * debug=0x14e sets DB_NMI, which sets panicDebugging, so this function
++	 * (and panic_spin_shmcon()) is where every panic terminates and the
++	 * halt_all_cpus() hook of patch 0045 is never reached. Drain the console
++	 * bytes this CPU already tapped before anything can reset the SoC, then
++	 * stay in the shell: COM5 keeps the completion log and the hands-free
++	 * 'reboot' / 'edl' commands still work. Without an adopted controller
++	 * this returns 0 and the ramoops reset below is unchanged.
++	 */
++	{
++		extern int  tb710fu_cdc_panic_drain(unsigned milliseconds);
++		extern void tb710fu_ramoops_flush(void);
++		extern void tb710fu_cdc_panic_loop(void);
++
++		if (tb710fu_cdc_panic_drain(6000u)) {
++			tb710fu_ramoops_flush();
++			tb710fu_cdc_panic_loop();
++		}
++	}
++#endif
+ 	/* TB710FU: flush the zone and reset, so the panic survives to Android. */
+ 	tb710fu_ramoops_panic_reset();
+ 	for (;;) {
+@@ -1393,7 +1414,18 @@ kdp_machine_reboot_type(unsigned int type, uint64_t debugger_flags)
+ static void
+ kdp_machine_reboot_type(unsigned int type, uint64_t debugger_flags)
+ {
+ 	if (type == kPEPanicRestartCPU) {
++#if defined(XNU_TB710FU_CDC) && XNU_TB710FU_CDC
++		/*
++		 * The reset below is what makes COM5 disappear. Give the bytes
++		 * already sitting in the CDC ring to the host first.
++		 */
++		{
++			extern int tb710fu_cdc_panic_drain(unsigned milliseconds);
++
++			(void)tb710fu_cdc_panic_drain(4000u);
++		}
++#endif
+ 		tb710fu_ramoops_panic_reset();
+ 	}
+ 	if ((type == kPEPanicRestartCPU) && (debugger_flags & DEBUGGER_OPTION_SKIP_PANICEND_CALLOUTS)) {
+diff --git a/osfmk/kdp/output_stages/out_shmem.c b/osfmk/kdp/output_stages/out_shmem.c
+index 9c2a5b0..e0d9f12 100644
+--- a/osfmk/kdp/output_stages/out_shmem.c
++++ b/osfmk/kdp/output_stages/out_shmem.c
+@@ -657,8 +657,28 @@ panic_spin_shmcon(void)
+ 	if (hwsd_info == NULL) {
+ 		kern_coredump_log(NULL, "handshake structure not initialized\n");
+ 		return;
+ 	}
+ 
++#if defined(XNU_TB710FU_CDC) && XNU_TB710FU_CDC
++	/*
++	 * This device has no astris and no hardware shared-memory debugger, so
++	 * the for (;;) below would park the panicking CPU with no peer and COM5
++	 * would never receive the panic text. Drain, persist and hand the CPU to
++	 * the CDC shell instead; the astris handshake is left untouched for any
++	 * boot that does have one.
++	 */
++	{
++		extern int  tb710fu_cdc_panic_drain(unsigned milliseconds);
++		extern void tb710fu_ramoops_flush(void);
++		extern void tb710fu_cdc_panic_loop(void);
++
++		if (tb710fu_cdc_panic_drain(6000u)) {
++			tb710fu_ramoops_flush();
++			tb710fu_cdc_panic_loop();
++		}
++	}
++#endif
++
+ 	kern_coredump_log(NULL, "\nPlease go to https://panic.apple.com to report this panic\n");
+ 	kern_coredump_log(NULL, "Waiting for hardware shared memory debugger, handshake structure is at virt: %p, phys %p\n",
+ 	    hwsd_info, (void *)kvtophys((vm_offset_t)hwsd_info));

@@ -41,20 +41,33 @@ const OSMetaClass *gLegacyParent = nullptr;
 uintptr_t gLegacyVtable = 0;
 uint64_t *gLegacyTable = nullptr;
 
-// An authenticated vtable entry is stripped of its signature and re-signed for
-// this call site's own function type (arm64e kernel uses function-pointer type
-// discrimination, not 0).
+// Resolve one live family vtable entry for this call site.
+//
+// The entry is signed with the *slot* modifier the family signed it with:
+// modifier = slot_address blended with the fixture's per-slot discriminator
+// (see native_tb710fu_gop_adopt(), which re-signs every copied entry exactly
+// this way). It is then re-signed with modifier 0 for this call.
+//
+// pl44 stripped the entry and re-signed it for the C++ function type
+// `Fn`. clang folds that pair into an authenticated resign for type
+// discrimination: "autiza" with modifier 0, xpaci+cmp, "brk #0xc470" on
+// mismatch, then pacia with ptrauth_type_discriminator(Fn). Modifier 0 can
+// never match a slot-signed entry, so native_legacy_parent_start() trapped on
+// its first instruction (pl44: the boot stopped right after
+// "TB710FU GopDisplay: start" with no further COM5 byte).
+// ptrauth_auth_and_resign() authenticates with the real slot modifier and
+// resigns with 0, which clang emits as autia (succeeds) + paciza, and inlines
+// into a plain authenticated tail call with the original entry.
 template <typename Fn>
 Fn legacyEntry(unsigned slot)
 {
-    uint64_t raw = ((const volatile uint64_t *)gLegacyVtable)[slot];
-    void *stripped = ptrauth_strip((void *)(uintptr_t)raw, ptrauth_key_function_pointer);
-#if __has_feature(ptrauth_function_pointer_type_discrimination)
-    return ptrauth_sign_unauthenticated((Fn)(uintptr_t)stripped, ptrauth_key_function_pointer,
-                                        ptrauth_type_discriminator(Fn));
-#else
-    return ptrauth_sign_unauthenticated((Fn)(uintptr_t)stripped, ptrauth_key_function_pointer, 0);
-#endif
+    const volatile uint64_t *entries = (const volatile uint64_t *)gLegacyVtable;
+    uintptr_t slotModifier = ptrauth_blend_discriminator((void *)&entries[slot],
+                                                        tb710fu_gop_slot_diversity[slot]);
+    void *entry = ptrauth_auth_and_resign((void *)(uintptr_t)entries[slot],
+                                          ptrauth_key_function_pointer, slotModifier,
+                                          ptrauth_key_function_pointer, 0);
+    return (Fn)(uintptr_t)entry;
 }
 
 /* Slots copied from this backend's own compiled table. The 25 legacy methods

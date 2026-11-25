@@ -1824,6 +1824,49 @@ int tb710fu_cdc_owns_display(void)
     return enabled == 1 ? 1 : 0;
 }
 
+/*
+ * Bounded panic-context drain.
+ *
+ * Every panic terminates on the panicking CPU inside panic_spin_forever() or
+ * panic_spin_shmcon(); halt_all_cpus() - and with it tb710fu_cdc_panic_loop() -
+ * is only reached on the !panicDebugging path. debug=0x14e sets DB_NMI, which
+ * sets panicDebugging, so pl44's panic never got to the loop: the console
+ * bytes were tapped into the 64 KiB CDC ring (CdcKernelTap), the panicking CPU
+ * then sat in its terminal spin, and the only thing that ever ran again was
+ * patch 0004's ramoops PSCI reset. That reset ends the boot before a single
+ * byte of the ring reaches the host, and once it fires COM5 is gone.
+ *
+ * This drains the ring on the panicking CPU for a bounded time and keeps the
+ * hands-free shell answering ('reboot'/'edl' still execute). It returns 1 when
+ * this boot owns a live controller, i.e. when the caller may hand the CPU to
+ * tb710fu_cdc_panic_loop(); it returns 0 when there is no channel at all and
+ * the caller must fall through to its own reset path.
+ */
+int tb710fu_cdc_panic_drain(unsigned milliseconds)
+{
+    /* Same ownership proof as tb710fu_cdc_panic_loop(): without an adopted
+     * controller there is no event ring and no pull-up, and touching the core
+     * from a panic context is the only risk left. */
+    if (gCdc.controller.dma == NULL || gCdc.controller.probe_trace[1] == 0u) return 0;
+    if (!gCdc.controller.running || gCdc.controller.failed)
+        tb710fu_dwc3_panic_rearm(&gCdc.controller);
+    uint64_t deadline = 0;
+    clock_interval_to_deadline(milliseconds ? milliseconds : 1u, NSEC_PER_MSEC, &deadline);
+    for (;;) {
+        tb710fu_dwc3_poll(&gCdc.controller);
+        if (gCdc.controller.failed) tb710fu_dwc3_panic_rearm(&gCdc.controller);
+        const unsigned cmd = gPendingCmd;
+        if (cmd >= 1u && cmd <= 4u) {
+            cdc_exec_pending_cmd();
+        } else if (cmd != 0u) {
+            gPendingCmd = 0u;
+        }
+        cdc_delay(NULL, 500u);
+        if (mach_absolute_time() >= deadline) break;
+    }
+    return 1;
+}
+
 // Called from halt_all_cpus() after any kernel panic: keeps polling DWC3 on the
 // panicking CPU with zero interrupts/locks so the full panic log drains over COM5
 // and hands-free "edl" / "reboot" commands stay live even after a fatal panic.

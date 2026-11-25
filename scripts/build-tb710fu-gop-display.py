@@ -361,17 +361,29 @@ OSDefineOperatorMethods(NativeLegacyDisplay)'''
     # unset and the offline PM gate rejected every start. Call it explicitly, and
     # make every silent early exit of the backend visible on the CDC log.
     patches = (
+        # pl45: pl44 proved the crash is inside this function - the log stops
+        # after native_tb710fu_gop_display_start() announced "start" and shows no
+        # byte from startDisplay() itself. Each of the four sub-steps now
+        # announces itself, so the next hardware run names the exact step
+        # instead of ending at the caller. IOLog is used because this generated
+        # translation unit already calls it (IOKit/IOLib.h); it reaches COM5
+        # through the same kprintf -> _cnputc -> CDC tap path as the existing
+        # GopDisplay lines.
         ('    bool startDisplay(IOService *provider) {\n'
          '        if(!native_legacy_parent_start(this,provider))return false;\n',
          '    bool startDisplay(IOService *provider) {\n'
-         '        if(!native_legacy_parent_start(this,provider)){IOLog("TB710FU GopDisplay: base start failed\\n");return false;}\n'
+         '        IOLog("TB710FU GopDisplay: startDisplay 1/4 before base start\\n");\n'
+         '        if(!native_legacy_parent_start(this,provider)){IOLog("TB710FU GopDisplay: startDisplay 1/4 base start failed\\n");IOLog("TB710FU GopDisplay: base start failed\\n");return false;}\n'
+         '        IOLog("TB710FU GopDisplay: startDisplay 2/4 after base start\\n");\n'
          '        // No caller in this port reached startHardware(): the platform subclass that\n'
          '        // owns the panel does that in Apple\'s stack and is absent here. Without it\n'
          '        // bootMapping and primary stay unset and the gate below rejects the start.\n'
          '        // Guard on bootMapping: now that NativeLegacyDisplay owns the start slot,\n'
          '        // the base start runs our overrides, and a second call here would map the\n'
          '        // same range twice and reset a display the base had already brought up.\n'
+         '        IOLog("TB710FU GopDisplay: startDisplay 3/4 before startHardware\\n");\n'
          '        if(!bootMapping && !startHardware()){IOLog("TB710FU GopDisplay: startHardware failed\\n");return false;}\n'
+         '        IOLog("TB710FU GopDisplay: startDisplay 4/4 after startHardware\\n");\n'
          '        IOLog("TB710FU GopDisplay: startHardware ok boot=%p primary=%u\\n",(void*)bootMapping,primary?1u:0u);\n'),
         ('        PE_Video video={};IOService *provider=getProvider();\n'
          '        if(!provider || PE_current_console(&video) || !video.v_baseAddr ||\n'
