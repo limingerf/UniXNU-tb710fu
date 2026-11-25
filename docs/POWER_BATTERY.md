@@ -173,19 +173,23 @@ Result: all checks pass; `build/tb710fu-power-host/report.json` records compiler
 
 ## Device acceptance
 
-The transport is in the tree; nothing about it has been run on the device yet. Two steps remain before battery
-readings can exist:
+The transport is in the tree and both archives compile on the macOS runner. The flashable set is built; only
+device acceptance remains:
 
-1. **Rebuild the payload and vendor_boot.** The boot-shims job builds `boot-shims.bin` with
+1. **Payload and vendor_boot are built.** The boot-shims job builds `boot-shims.bin` with
    `EFI/UniXNU/firmware/Adsp/adsp.mbn` and `adsp_dtb.mbn` (verified build: 22,348,456 B, SHA-256
    `c44c532b56e359562a3a71782945fdacf091072ab4c6726eab37632e82b845e4`, run 45649974291); `board.toml [payload] size_mib` is 78 MiB, so the
-   payload carries the firmware addon next to the kernel and seed. Flash the resulting `vendor_boot_b`. A fresh
-   install then needs no copy. The verified local copies stay in
+   payload carries the firmware addon next to the kernel and seed. Flash `out/charge-battery-45670705406/vendor_boot.img`
+   and `vbmeta.img`; the boot arguments already carry `adsp=2 battery=1`. A fresh install then needs no copy.
+   The verified local copies stay in
    `.local/input-sources/firmware/lib/firmware/qcom/sm8650/xiaoxin/gt/` for a manual fallback on the Data volume
    (`/private/var/firmware/qcom/sm8650/xiaoxin/gt/`, or a directory named by `adsp-fw=DIR`); they are never
    committed.
-2. **Build with the new archives.** `build-tb710fu-adsp.py` needs the macOS runner (XNU compile records), like
-   `build-tb710fu-power.py`; neither has been target-compiled since the transport was added.
+2. **Both archives compile on the macOS runner.** Native run 45670705406 ended with
+   `TB710FU ADSP archive passed` (`libTb710fuAdsp.a` 51ac07df3bc6) and prelink run 45672961043 produced
+   `kernel.macho` 142,999,552 B, SHA-256 `63239c4e1ba02cfb87bde6094f334c363d7727151d548b344304572f2a06a227`.
+   The shipped payload uses that kernel after `seal-source-crypto-kernel.py`, LZMA_ALONE 24,163,570 B
+   (SHA-256 `9af880122b4c3e841a18febe43a2114554ff97002a193af395903a86d89c7bbe`).
 
 Acceptance order on hardware, each step separately observable:
 
