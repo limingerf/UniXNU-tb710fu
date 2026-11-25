@@ -65,9 +65,11 @@ extern int tb710fu_shell_stat(const char *path)
 /* IOKit side: Macos27Services.cpp owns the registry plane. */
 extern void tb710fu_ioreg_dump(const char *filter)
     __attribute__((weak_import));
-/* Display bring-up lives in the GopDisplay archive. The CDC worker owns this call:
- * a panic inside display bring-up is the panic that must still reach COM5, and the
- * panic loop can only drive a controller that is already running. */
+/* Display bring-up lives in the GopDisplay archive. It never runs on the poll
+ * thread: the worker spawns a separate thread for it once the host has
+ * configured the CDC function (or after three seconds without a host), so COM5
+ * is always enumerated and tb710fu_cdc_panic_loop() always has a controller
+ * that the host can see before any display code executes. */
 extern void native_tb710fu_gop_display_start(void)
     __attribute__((weak_import));
 extern volatile uint32_t armcpu_gic_ready;
@@ -1443,6 +1445,58 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
     return 1;
 }
 
+/*
+ * Display bring-up thread. pl42 called native_tb710fu_gop_display_start()
+ * synchronously on this worker before the poll loop: whatever stopped inside
+ * GopDisplay also stopped the DWC3 poll, so EP0 was never answered and COM5
+ * never enumerated - the panic (if any) had no channel at all. This thread is
+ * only queued after the poll loop is running, and only after the host has
+ * configured the function or three seconds have passed, so the port is open
+ * and enumerated first.
+ */
+static unsigned gDisplayThreadStarted;
+
+static void cdc_display_thread(void *argument, wait_result_t wait_result)
+{
+    (void)argument;
+    (void)wait_result;
+    cdc_lane_op(NULL, "cdcgop");
+    cdc_log("TB710FU CDC: display thread running (cfg=%u dtr=%u req=%llu)\n",
+           (unsigned)gCdc.controller.configured, (unsigned)gCdc.controller.dtr,
+           (unsigned long long)gCdc.controller.setup_requests);
+    cdc_checkpoint("cdcgop");
+    if (!native_tb710fu_gop_display_start) {
+        cdc_log("TB710FU CDC: GopDisplay start is not linked\n");
+    } else {
+        native_tb710fu_gop_display_start();
+        cdc_log("TB710FU CDC: GopDisplay start returned\n");
+        cdc_checkpoint("cdcgop");
+    }
+    (void)thread_terminate(current_thread());
+    thread_block(THREAD_CONTINUE_NULL);
+}
+
+static int cdc_queue_display_thread(const char *reason)
+{
+    if (gDisplayThreadStarted) return 0;
+    if (!native_tb710fu_gop_display_start) {
+        gDisplayThreadStarted = 1;
+        cdc_log("TB710FU CDC: GopDisplay start unavailable\n");
+        return 0;
+    }
+    thread_t worker = THREAD_NULL;
+    kern_return_t kr = kernel_thread_start(cdc_display_thread, NULL, &worker);
+    if (kr != KERN_SUCCESS) {
+        cdc_log("TB710FU CDC: display thread creation failed kr=%d\n", kr);
+        return 0;
+    }
+    gDisplayThreadStarted = 1;
+    thread_deallocate(worker);
+    cdc_log("TB710FU CDC: display thread queued (%s)\n", reason);
+    cdc_checkpoint("cdcgopq");
+    return 1;
+}
+
 static void cdc_worker(void *argument, wait_result_t wait_result)
 {
     (void)argument;
@@ -1544,17 +1598,15 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                "and host DTR\n",
                (unsigned long long)gReport.dma_physical, (unsigned)gReport.dma_bytes);
         cdc_checkpoint("cdcready");
-        /* Display bring-up starts here and not in bsd_init's services hook. A
-         * panic inside it is the one panic that must still reach COM5, and
-         * tb710fu_cdc_panic_loop() can only drive a controller that is already
-         * running. This point is ~1.5 s after bsd_init on this board and far
-         * ahead of WindowServer, so the ordering costs the desktop nothing. */
-        if (native_tb710fu_gop_display_start) {
-            cdc_lane_op(NULL, "cdcgop");
-            native_tb710fu_gop_display_start();
-            cdc_log("TB710FU CDC: GopDisplay start returned\n");
-            cdc_checkpoint("cdcgop");
-        }
+        /* Never start the display on this thread. The poll loop below starts
+         * first and answers EP0, so COM5 enumerates on the host; the display is
+         * handed to cdc_display_thread once configured==1 (the host completed
+         * SET_CONFIGURATION, i.e. the COM port exists) or after three seconds
+         * when no host is attached. Anything that stops inside GopDisplay after
+         * that point is visible on an already enumerated COM5 and through
+         * tb710fu_cdc_panic_loop(). */
+        uint64_t display_deadline;
+        clock_interval_to_deadline(3000u, NSEC_PER_MSEC, &display_deadline);
         unsigned previous = 0;
         int bus_seen = 0, setup_seen = 0, yield_marked = 0;
         unsigned rounds = 0, beats = 0;
@@ -1565,6 +1617,15 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
         while (gCdc.controller.running && !gCdc.controller.failed) {
             tb710fu_dwc3_poll(&gCdc.controller);
             if (gPendingCmd) cdc_exec_pending_cmd();
+            /* The poll loop owns EP0 from the first round; the display thread is
+             * only queued once the host has configured this function (COM5 now
+             * exists on the host) or the three second grace expired. */
+            if (!gDisplayThreadStarted &&
+                (gCdc.controller.configured ||
+                 mach_absolute_time() >= display_deadline)) {
+                cdc_queue_display_thread(gCdc.controller.configured ? "configured"
+                                                                   : "3s-timeout");
+            }
             ++rounds;
             if (!gCdc.controller.configured && beats < 6u) {
                 const uint32_t dsts_now = cdc_read(gCdc.dwc, 0xc70c);
@@ -1645,11 +1706,11 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                (unsigned long long)gCdc.controller.events,
                gCdc.controller.last_event,
                (unsigned long long)gCdc.controller.setup_requests);
-    } else if (native_tb710fu_gop_display_start) {
+    } else {
         /* The platform never came up, so nothing here could report a panic
-         * anyway; the display must not be lost with the CDC transport. */
-        cdc_lane_op(NULL, "cdcgop");
-        native_tb710fu_gop_display_start();
+         * anyway; the display must not be lost with the CDC transport. It still
+         * runs on its own thread so this worker keeps its own state coherent. */
+        (void)cdc_queue_display_thread("platform-failed");
     }
     // One last text checkpoint after the report: the QR frame is rebuilt on a
     // one second dwell, so a failure that ends the worker right after printing
@@ -1685,13 +1746,21 @@ void tb710fu_cdc_start(void)
            (unsigned)ml_get_interrupts_enabled());
 }
 
-// Answered to the services hook in Macos27Services.cpp: 1 when a worker was
-// queued for this boot, so the display is started by that worker once its
-// platform is live instead of ~1.5 s earlier. 0 keeps the old unconditional
-// start there, which is what a boot with tb710fu-cdc=0 still needs.
+// Answered to the services hook in Macos27Services.cpp: 1 when this boot has a
+// CDC worker, so the display is started by that worker's own thread once its
+// platform is live (and COM5 already enumerates) instead of on a boot thread
+// ~1.5 s earlier. 0 keeps the old unconditional start there, which is what a
+// boot with tb710fu-cdc=0 still needs.
+//
+// Answer from the boot argument, not from gAttempted: on some boots the
+// services hook runs before bsd_init reaches this file's hook, and a
+// "no worker yet" answer there made the display run un-threaded on a boot
+// thread - the one ordering this port must never allow again.
 int tb710fu_cdc_owns_display(void)
 {
-    return __atomic_load_n(&gAttempted, __ATOMIC_ACQUIRE) ? 1 : 0;
+    int enabled = 0;
+    if (!PE_parse_boot_argn("tb710fu-cdc", &enabled, sizeof(enabled)) || !enabled) return 0;
+    return enabled == 1 ? 1 : 0;
 }
 
 // Called from halt_all_cpus() after any kernel panic: keeps polling DWC3 on the

@@ -36,7 +36,12 @@ DISPLAY_SOURCE = 'NativeLegacyDisplay.cpp'
 # factoryPortal 361, executeFactoryConfigurations 362) are rebound by XnuPrelink to a
 # single native function, so their live entry carries that function's discriminator.
 REBOUND_SLOTS = (318, 320, 361, 362)
-IOSERVICE_SLOTS = ('start', 'stop', 'free', 'setPowerState', 'newUserClient')
+# Base-slot methods this backend overrides. They are located in the compiled
+# NativeLegacyDisplay vtable (a missing one fails the audit below) and exported
+# as TB710FU_GOP_SLOT_<NAME>, because the runtime overlay must install them too:
+# with only the 25 legacy methods copied, the live family entries stayed at
+# these slots and nothing ever reached NativeLegacyDisplay::start().
+IOSERVICE_SLOTS = ('start', 'stop', 'free', 'setPowerState', 'newUserClient', 'registerService')
 
 
 def sha(path):
@@ -349,6 +354,78 @@ OSDefineOperatorMethods(NativeLegacyDisplay)'''
                   '    int applyStateRequest(OriginalLegacyStateRequest *request,bool powered) override {return native_legacy_parent_apply_state_request(this,request,powered);}\n'
                   '    void create_default_fb_surface() override {native_legacy_parent_create_default_surface(this);}\n')
     text = text.replace(anchor, forwarders + anchor, 1)
+
+    # pl43: IOMobileFramebufferLegacy::start() only runs IOService::start(); the
+    # platform subclass that normally supplies the panel is the sole caller of
+    # startHardware(). Nothing called it here, so bootMapping and primary stayed
+    # unset and the offline PM gate rejected every start. Call it explicitly, and
+    # make every silent early exit of the backend visible on the CDC log.
+    patches = (
+        ('    bool startDisplay(IOService *provider) {\n'
+         '        if(!native_legacy_parent_start(this,provider))return false;\n',
+         '    bool startDisplay(IOService *provider) {\n'
+         '        if(!native_legacy_parent_start(this,provider)){IOLog("TB710FU GopDisplay: base start failed\\n");return false;}\n'
+         '        // No caller in this port reached startHardware(): the platform subclass that\n'
+         '        // owns the panel does that in Apple\'s stack and is absent here. Without it\n'
+         '        // bootMapping and primary stay unset and the gate below rejects the start.\n'
+         '        if(!startHardware()){IOLog("TB710FU GopDisplay: startHardware failed\\n");return false;}\n'
+         '        IOLog("TB710FU GopDisplay: startHardware ok primary=%u\\n",primary?1u:0u);\n'),
+        ('        PE_Video video={};IOService *provider=getProvider();\n'
+         '        if(!provider || PE_current_console(&video) || !video.v_baseAddr ||\n'
+         '           !video.v_width || !video.v_height || video.v_depth!=32 || video.v_rotate ||\n'
+         '           video.v_width>16384 || video.v_height>16384 || video.v_rowBytes<video.v_width*4 ||\n'
+         '           video.v_rowBytes>UINT64_MAX/video.v_height)return false;\n'
+         '        IOMemoryMap *mapping=provider->mapDeviceMemoryWithIndex(0,kIOMapInhibitCache);\n'
+         '        if(!mapping)return false;\n',
+         '        PE_Video video={};IOService *provider=getProvider();\n'
+         '        if(!provider){IOLog("TB710FU GopDisplay: startHardware without provider\\n");return false;}\n'
+         '        const int consoleErr=PE_current_console(&video);\n'
+         '        if(consoleErr || !video.v_baseAddr || !video.v_width || !video.v_height ||\n'
+         '           video.v_depth!=32 || video.v_rotate || video.v_width>16384 || video.v_height>16384 ||\n'
+         '           video.v_rowBytes<video.v_width*4 || video.v_rowBytes>UINT64_MAX/video.v_height) {\n'
+         '            IOLog("TB710FU GopDisplay: startHardware no usable console err=%d phys=%llx %ux%u depth=%u stride=%u rotate=%u\\n",\n'
+         '                consoleErr,(unsigned long long)video.v_baseAddr,(unsigned)video.v_width,(unsigned)video.v_height,\n'
+         '                (unsigned)video.v_depth,(unsigned)video.v_rowBytes,(unsigned)video.v_rotate);\n'
+         '            return false;\n'
+         '        }\n'
+         '        IOMemoryMap *mapping=provider->mapDeviceMemoryWithIndex(0,kIOMapInhibitCache);\n'
+         '        if(!mapping) {\n'
+         '            IOLog("TB710FU GopDisplay: startHardware %s has no device memory at index 0\\n",\n'
+         '                provider->getMetaClass()?provider->getMetaClass()->getClassName():"?");\n'
+         '            return false;\n'
+         '        }\n'),
+        ('                OSSafeReleaseNULL(bootMapping);bootMapping=mapping;mapping=nullptr;primary=video.v_display==1;\n',
+         '                IOLog("TB710FU GopDisplay: framebuffer mapped %ux%u stride=%u phys=%llx primary=%u\\n",\n'
+         '                    width,height,(unsigned)video.v_rowBytes,(unsigned long long)mapping->getPhysicalAddress(),video.v_display==1?1u:0u);\n'
+         '                OSSafeReleaseNULL(bootMapping);bootMapping=mapping;mapping=nullptr;primary=video.v_display==1;\n'),
+        ('        if(enabled!=1 || phase!=4 || !provider || !bootMapping || !primary) {\n'
+         '            native_legacy_pm_observed(1,kIOReturnNotReady,0);native_legacy_parent_stop(this,provider);return false;\n',
+         '        if(enabled!=1 || phase!=4 || !provider || !bootMapping || !primary) {\n'
+         '            IOLog("TB710FU GopDisplay: pm gate enabled=%u phase=%u provider=%p boot=%p primary=%u\\n",\n'
+         '                enabled,phase,(void*)provider,(void*)bootMapping,primary?1u:0u);\n'
+         '            native_legacy_pm_observed(1,kIOReturnNotReady,0);native_legacy_parent_stop(this,provider);return false;\n'),
+        ('        PE_parse_boot_argn("offline-legacy-gop",&enabled,sizeof(enabled));\n'
+         '        if(enabled!=1)return false;\n',
+         '        PE_parse_boot_argn("offline-legacy-gop",&enabled,sizeof(enabled));\n'
+         '        if(enabled!=1){IOLog("TB710FU GopDisplay: startHardware offline-legacy-gop=%u\\n",enabled);return false;}\n'),
+        ('        bool valid=mapping->getVirtualAddress() && mapping->getPhysicalAddress()==video.v_baseAddr &&\n'
+         '                   mapping->getLength()==video.v_rowBytes*video.v_height;\n',
+         '        const IOPhysicalAddress mappedPhys=mapping->getPhysicalAddress();\n'
+         '        const IOByteCount mappedBytes=mapping->getLength();\n'
+         '        bool valid=mapping->getVirtualAddress() && mappedPhys==video.v_baseAddr &&\n'
+         '                   mappedBytes==video.v_rowBytes*video.v_height;\n'
+         '        if(!valid)IOLog("TB710FU GopDisplay: mapping does not match console va=%p phys=%llx/%llx bytes=%llu/%llu\\n",\n'
+         '            (void*)mapping->getVirtualAddress(),(unsigned long long)mappedPhys,(unsigned long long)video.v_baseAddr,\n'
+         '            (unsigned long long)mappedBytes,(unsigned long long)((uint64_t)video.v_rowBytes*video.v_height));\n'),
+        ('            valid=width==video.v_width && height==video.v_height;\n',
+         '            valid=width==video.v_width && height==video.v_height;\n'
+         '            if(!valid)IOLog("TB710FU GopDisplay: dimensions %ux%u do not match console %ux%u\\n",\n'
+         '                (unsigned)width,(unsigned)height,(unsigned)video.v_width,(unsigned)video.v_height);\n'),
+    )
+    for before, after in patches:
+        if text.count(before) != 1:
+            raise SystemExit('NativeLegacyDisplay.cpp start patch anchor changed: ' + before.split('\n')[0])
+        text = text.replace(before, after, 1)
     return text
 
 

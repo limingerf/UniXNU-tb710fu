@@ -106,8 +106,9 @@ extern "C" void native_tb710fu_services_start(void)
      * 1500 ms, and this function runs right after bsd_init's storage hook. A panic
      * inside display bring-up then had no COM5 to report to - the panic loop
      * returns immediately when the controller was never started - so the boot
-     * looked like a silent hang. The CDC worker now owns the call and makes it
-     * once its platform is up, which is still far ahead of WindowServer. */
+     * looked like a silent hang. The CDC worker now owns the call and runs it on
+     * its own display thread only after the DWC3 poll loop answers EP0, which is
+     * still far ahead of WindowServer. Nothing on a boot thread may start it. */
     if (tb710fu_cdc_owns_display == NULL || tb710fu_cdc_owns_display() == 0) {
         native_tb710fu_gop_display_start();
     } else {
