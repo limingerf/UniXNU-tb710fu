@@ -212,7 +212,13 @@ extern "C" IOReturn native_legacy_parent_new_user_client(void *display, task_t t
                                                          UInt32 type, IOUserClient **client)
 {
     typedef IOReturn (*Fn)(void *, task_t, void *, UInt32, IOUserClient **);
-    return legacyEntry<Fn>(TB710FU_GOP_SLOT_NEWUSERCLIENT)(display, task, security, type, client);
+    IOReturn status = legacyEntry<Fn>(TB710FU_GOP_SLOT_NEWUSERCLIENT)(display, task, security, type, client);
+    /* pl48: the only way to tell a client that cannot match from a client that
+     * matches and is then refused. On pl46/pl47 this was silent and the frame
+     * buffer stayed at busy=0 for the whole boot. */
+    printf("TB710FU GopDisplay: newUserClient task=%p type=%u -> 0x%x\n",
+           (void *)task, (unsigned)type, (unsigned)status);
+    return status;
 }
 
 extern "C" bool native_legacy_parent_refresh_attributes(void *display, uint64_t *words, bool fixed)
@@ -364,6 +370,14 @@ static IOService *publish_gop_memory(IOService *resources)
         provider->release();
         return nullptr;
     }
+    /* pl48: publish_gop_memory() used to attach the nub and stop there. The
+     * reference path (LegacyDisplayProbe.cpp) runs attach -> start on its nub
+     * before any display attaches to it, and that shape is the one whose display
+     * WindowServer actually consumed (its macOS run40 note about a 0x0 inch
+     * panel). Start is reported and never fatal: a provider that refuses must
+     * still leave the mapped console and the registered display intact. */
+    const bool providerStarted = provider->start(resources);
+    printf("TB710FU GopDisplay: provider start -> %d\n", providerStarted ? 1 : 0);
     gGopProvider = provider;
     printf("TB710FU GopDisplay: GOP framebuffer phys=%llx %ux%u stride=%u bytes=%llu on %s\n",
            (unsigned long long)video.v_baseAddr, (unsigned)video.v_width,
@@ -565,9 +579,21 @@ extern "C" void native_tb710fu_gop_display_start(void)
      * takes reserved->fLock, and `reserved` is allocated by init(). pl42 set
      * IOClass before init, which dereferenced NULL inside that lock and died
      * with no output at all - the actual stop after adoption. */
-    display->setProperty("IOClass", "NativeLegacyDisplay");
+    /* pl48: the identity WindowServer can match. pl47 published IOClass
+     * "NativeLegacyDisplay" and left the registry name at the metaclass
+     * "IOMobileFramebufferLegacy", so every boot ended with busy=0: not one
+     * IOMobileFramebufferUserClient was ever requested (the only denial on
+     * record is a sandboxed managedappdistri probe). Clients ask IOKit for
+     * "IOMobileFramebuffer" by name and by class, and IOMatchCategory alone only
+     * arbitrates exclusive opens; it never widens a match. Both are therefore
+     * published as the plain family name, while the object keeps its adopted
+     * live vtable and its real metaclass. */
+    display->setProperty("IOClass", "IOMobileFramebuffer");
     display->setProperty("IOMatchCategory", "IOMobileFramebuffer");
     display->setProperty("IOProviderClass", provider->getMetaClass()->getClassName());
+    display->setName("IOMobileFramebuffer");
+    printf("TB710FU GopDisplay: publishing name=%s class=%s\n",
+           display->getName(), "IOMobileFramebuffer");
 
     printf("TB710FU GopDisplay: attach\n");
     bool attached = display->attach(provider);
