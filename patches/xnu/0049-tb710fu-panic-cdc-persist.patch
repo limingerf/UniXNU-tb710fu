@@ -44,22 +44,47 @@ kdp_machine_reboot_type() path used when panicDebugging is off:
   * Remove the nested assert(panic_info) in PE_update_panicheader_nestedpanic()
     when gPanicBase == 0: there is no iBoot panic VRAM region on TB710FU, and
     the assert turned a nested panic into limit 5 and bypassed every hook.
+  * model_dep.c SavePanicInfo(): return before the embedded-panic-header
+    bookkeeping when panic_info is NULL. pl45b (run 45563220726) showed the
+    nested panic this replaces: the watchdogd[262] critical-exit panic was
+    followed by "Kernel data abort ... pc 0xfffffff00bba2124, lr
+    0xfffffff00b976694, far 0x000000000000000c". Note that the "kernel text
+    exec slide/base" pair printed by the nested-panic helper does not reconcile
+    with the shipped image (0x1b00000 of the quoted 0x4920000 is the
+    KC-header-to-__TEXT_EXEC delta, not a relocation), so the pc/lr are used
+    exactly as printed: disassembling out/artifacts/tb710fu-pl45b-45563220726/
+    kernel/kernel.macho (__TEXT_EXEC, file offset 0x4b9e124) resolves
+    SavePanicInfo()'s panic-option arms:
+      0xfffffff00bba2100  ldr   x8, [x8, #0x5a8]  ; panic_info, __DATA
+      0xfffffff00bba2114  tbnz  w19, #0         ; PANICLOGANDREBOOT   -> 0x1
+      0xfffffff00bba2118  tbnz  w19, #6         ; COMPANION_PROC      -> 0x40
+      0xfffffff00bba211c  tbnz  w19, #0xe       ; INTEGRATED_COPROC   -> 0x4000
+      0xfffffff00bba2120  tbz   w19, #0xd, ...  ; USERSPACE_INITIATED (0x2000)
+      0xfffffff00bba2124  ldur  x9, [x8, #0xc]  ; <-- fault, far = 0xc
+      0xfffffff00bba2128  orr   x9, x9, #0x20000
+      0xfffffff00bba212c  stur  x9, [x8, #0xc]  ; eph_panic_flags |= 0x20000
+    i.e. panic_info->eph_panic_flags at NULL + 0xc, with panic_info NULL because
+    gPanicBase is 0 on this board ("debug_log_init: Error!! gPanicBase is still
+    not initialized"). The abort replaced the real panic string with the nested
+    one and never returned to panic_spin_forever(), so the drain/loop added
+    here could not run.
 
 Source: pristine XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f with patches
 0001..0048 applied in series order; the pre-change source SHA-256 of each
 edited file is in that patch's own header (0004 owns the debug.c
 panic_spin_forever()/kdp_machine_reboot_type() hunk, 0010 owns the CDC tap,
-0045 owns the halt_all_cpus() hook). pe_init.c and out_shmem.c are otherwise
-untouched by this series, debug.c is touched by 0004 only.
+0045 owns the halt_all_cpus() hook). pe_init.c, model_dep.c and out_shmem.c
+are otherwise untouched by this series, debug.c is touched by 0004 only.
 
 Reason: a debug boot must deliver its own panic text over the channel that is
 already open (COM5, dtr=1) and must keep the shell that can reset the device
-hands-free. A reset before the drain destroys both.
+hands-free. A reset before the drain destroys both, and so does a data abort
+inside the panic path: it must not be possible to nest a panic on this board.
 
-Verification: git apply -v --check and a real apply pass for all four hunks on
-the applied 0001..0048 fixture tree (.work/xnu-patch-lf-clean, XNU
-ac9718f); the tree is then byte-identical to the reviewed new sources. The
-drain provider is package/Tb710fuUsbCdc/CdcXnu.c tb710fu_cdc_panic_drain(),
+Verification: git apply -v --check and a real apply pass for all hunks on the
+applied 0001..0048 fixture tree (.work/xnu-patch-lf-clean, XNU ac9718f); the
+tree is then byte-identical to the reviewed new sources. The drain provider is
+package/Tb710fuUsbCdc/CdcXnu.c tb710fu_cdc_panic_drain(),
 which uses the same ownership proof (dma != NULL && probe_trace[1] != 0) and
 the same DWC3 poll / rearm / pending-command step as the existing
 tb710fu_cdc_panic_loop(), so a boot without an adopted controller falls back
@@ -165,6 +190,36 @@ index 9c2a5b0..e0d9f12 100644
  	kern_coredump_log(NULL, "\nPlease go to https://panic.apple.com to report this panic\n");
  	kern_coredump_log(NULL, "Waiting for hardware shared memory debugger, handshake structure is at virt: %p, phys %p\n",
  	    hwsd_info, (void *)kvtophys((vm_offset_t)hwsd_info));
+diff --git a/osfmk/arm/model_dep.c b/osfmk/arm/model_dep.c
+index be2252c..ae3a147 100644
+--- a/osfmk/arm/model_dep.c
++++ b/osfmk/arm/model_dep.c
+@@ -947,7 +947,25 @@ SavePanicInfo(
+ 	 * thus makes them easier to debug. If you attached to a device
+ 	 * and see your PC here, look down a few frames to see your
+ 	 * early-boot panic there.
++	 *
++	 * TB710FU: this board has no iBoot macOS panic region, so gPanicBase and
++	 * gPanicSize are 0 and PE_init_panic_log() leaves panic_info NULL ("debug_log_init:
++	 * Error!! gPanicBase is still not initialized"). The loop below can then never be
++	 * satisfied: on pl44 it spun the panicking CPU forever, and when the header update
++	 * below is reached with panic_info NULL it data-aborts on
++	 * panic_info->eph_panic_flags at NULL + 0xc (pl45b: pc 0xfffffff00bba2124,
++	 * far 0x000000000000000c), which replaces the real panic string with a nested panic
++	 * and never reaches panic_spin_forever() - and with it tb710fu_cdc_panic_drain().
++	 * There is no header to persist here, so skip the save and keep the panic path
++	 * alive on the console, in ramoops and over COM5.
+ 	 */
++#if defined(XNU_TB710FU_MACOS27_SERVICES) && XNU_TB710FU_MACOS27_SERVICES
++	if (!panic_info) {
++		printf("TB710FU boot-policy: no embedded panic header; panic info save skipped\n");
++		return;
++	}
++#endif
++
+ 	while (!panic_info || panic_info->eph_panic_log_offset == 0) {
+ 		// rdar://87170225 (PanicHardening: audit panic code for naked spinloops)
+ 		// rdar://88094367 (Add test hooks for panic at different stages in XNU)
 diff --git a/osfmk/kern/tb710fu_ramoops.c b/osfmk/kern/tb710fu_ramoops.c
 index 31048a5..de7e950 100644
 --- a/osfmk/kern/tb710fu_ramoops.c
@@ -189,11 +244,9 @@ diff --git a/osfmk/kern/tb710fu_ramoops.h b/osfmk/kern/tb710fu_ramoops.h
 index 3a33840..bd544fa 100644
 --- a/osfmk/kern/tb710fu_ramoops.h
 +++ b/osfmk/kern/tb710fu_ramoops.h
-@@ -6,6 +6,7 @@
+@@ -4,4 +4,5 @@
  /* Console mirror into the Linux ramoops console zone (boot-arg ramoops=<PA>). */
  void tb710fu_ramoops_init(void);          /* after arm_vm_init */
  void tb710fu_ramoops_putc(char c);        /* every console character */
 +void tb710fu_ramoops_flush(void);         /* sync ECC now, no reset */
  void tb710fu_ramoops_panic_reset(void);   /* flush, wait, PSCI SYSTEM_RESET */
- /* Snapshot states are part of the device-owned LiveLog ABI. */
- enum {

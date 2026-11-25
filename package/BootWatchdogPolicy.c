@@ -204,6 +204,13 @@ done:
     }
     tb710fu_watchdog_policy_status = error;
     printf("TB710FU boot-policy: disable-watchdogd=%u status=%d\n", enabled, error);
+    if (!error && enabled == 1u) {
+        /* The plist only gates launchd's job import; pl45b showed the job still ran
+         * (exec pid 84/239 watchdogd) and its brk #1 exit panicked the kernel. The
+         * kernel side of the same boot argument (patch 0050) is what keeps that exit
+         * from becoming a panic, so report both halves in one place. */
+        printf("TB710FU boot-policy: launchd override written; kernel watchdogd exit guard armed\n");
+    }
     return error;
 }
 

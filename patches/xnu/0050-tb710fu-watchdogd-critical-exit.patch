@@ -1,0 +1,133 @@
+Subject: [PATCH] tb710fu: do not arm a kernel panic for watchdogd's backend-less exit
+
+pl45b (run 45563220726) reached a full WindowServer + loginwindow userspace
+and then panicked at pid 262:
+
+  panic(cpu 2 caller 0xfffffff00c30407c): watchdogd[262] exited -- exit reason
+  namespace 2 subcode 0x5 description: none
+
+namespace 2 is OS_REASON_SIGNAL and subcode 0x5 is SIGTRAP, i.e. watchdogd did
+not exit normally: it trapped. The reason is the board's hardware, not the
+daemon:
+
+  * this port has no AppleARMWatchdogTimer/AppleARMWatchdog backend matched by
+    the profile, so IOWatchDogTimer lookup fails;
+  * watchdogd's own failure paths differ by kern.hv_vmm_present
+    (.work/UniXNU/scripts/check-watchdogd-branches.py emulates both):
+      physical_missing (service=0, vmm=0) -> brk #1 at 0x10000ab0c  [SIGTRAP]
+      virtual_missing  (service=0, vmm=1) -> exit(0)
+    TB710FU is not a VMM guest from watchdogd's point of view, so it takes the
+    brk #1 arm on every launch;
+  * launchd spawns com.apple.watchdogd as a critical job
+    (POSIX_SPAWN_PANIC_ON_CRASH), so proc_should_trigger_panic() returns true
+    and proc_handle_critical_exit() panics the kernel.
+
+package/BootWatchdogPolicy.c already writes launchd's
+/private/var/db/com.apple.xpc.launchd/disabled.plist override (plus the empty
+.migrated marker) for disable-watchdogd=1, and it reported status=0 on that
+boot. That override only gates job import, and the job still ran: COM5 shows
+"exec: pid 84 watchdogd" in launchd's startup wave and later
+"exec: pid 239 xpcproxy" -> "exec: pid 239 watchdogd". A launchd-side override
+therefore cannot be the only line of defence for a daemon whose hardware
+backend does not exist.
+
+This patch makes the kernel honour the board's own statement instead:
+disable-watchdogd=1 means "no watchdog backend", so a watchdogd critical exit
+is reported and suppressed rather than turned into a kernel panic. launchd
+(initproc) keeps its always-panic rule, panic_on_crash_disabled keeps working,
+and every other critical job keeps the upstream behaviour; a boot without
+disable-watchdogd=1 is unchanged.
+
+Once the panic no longer fires, panic_spin_forever() is reached and patch 0049's
+tb710fu_cdc_panic_drain()/tb710fu_cdc_panic_loop() hand-over runs, so the next
+failure still delivers its log over COM5 instead of resetting the SoC.
+
+Source: pristine XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f with patches
+0001..0049 applied in series order; kern_exit.c is otherwise touched by 0002
+(exit trace), 0004 (exec-log) and the boot-progress hunks only.
+
+Reason: a daemon that cannot work on this board must not be able to panic the
+kernel; the boot argument that documents the missing backend is the correct,
+narrow switch.
+
+Verification: git apply -v --check on the applied series fixture
+(.work/xnu-patch-lf-clean, XNU ac9718f). The address evidence for the pl45b
+panic path is in patch 0049's header (SavePanicInfo data abort at NULL + 0xc).
+Hardware behaviour (watchdogd no longer panics the boot, WindowServer keeps the
+GOP display) still requires a native run.
+
+diff --git a/bsd/kern/kern_exit.c b/bsd/kern/kern_exit.c
+index b5633e4..3e1f4a2 100644
+--- a/bsd/kern/kern_exit.c
++++ b/bsd/kern/kern_exit.c
+@@ -97,6 +97,7 @@
+ #include <sys/proc_info.h>
+ #include <sys/reason.h>
+ #include <sys/_types/_timeval64.h>
++#include <pexpert/pexpert.h> /* PE_parse_boot_argn() for disable-watchdogd */
+ #include <sys/user.h>
+ #include <sys/aio_kern.h>
+ #include <sys/sysproto.h>
+@@ -1838,6 +1839,49 @@ _proc_is_fatal_reason(os_reason_t reason)
+ 
+ static TUNABLE(bool, panic_on_crash_disabled, "panic_on_crash_disabled", false);
+ 
++#if defined(XNU_TB710FU_MACOS27_SERVICES) && XNU_TB710FU_MACOS27_SERVICES
++/*
++ * TB710FU has no AppleARMWatchdogTimer backend behind IOWatchDogTimer.
++ * com.apple.watchdogd probes that service on start; when the lookup fails on a
++ * bare-metal boot (kern.hv_vmm_present == 0) it deliberately executes brk #1
++ * and is reaped as OS_REASON_SIGNAL / SIGTRAP (exit reason namespace 2 subcode
++ * 0x5 - see .work/UniXNU/scripts/check-watchdogd-branches.py, which shows the
++ * physical_missing arm trapping while the virtual_missing arm only exits 0).
++ * launchd spawns the job critical (POSIX_SPAWN_PANIC_ON_CRASH), so every
++ * watchdogd exit lands here and panics the kernel: pl45b (run 45563220726)
++ * panicked at watchdogd[262] right after WindowServer came up.
++ *
++ * package/BootWatchdogPolicy.c already writes launchd's disabled.plist override
++ * for disable-watchdogd=1, but that override only gates plist import and the job
++ * still ran (COM5: exec pid 84 watchdogd, then xpcproxy -> pid 239 watchdogd).
++ * The boot argument is this board's statement that no watchdog backend exists,
++ * so its daemon's crash must not be armed as a kernel panic. launchd itself and
++ * every other critical job keep the upstream behaviour.
++ */
++static bool
++tb710fu_watchdogd_exit_is_suppressed(proc_t p, int rv)
++{
++	static int disable_watchdogd = -1;
++
++	if (disable_watchdogd < 0) {
++		unsigned int enabled = 0;
++
++		disable_watchdogd =
++		    (PE_parse_boot_argn("disable-watchdogd", &enabled, sizeof(enabled)) &&
++		    (enabled == 1u)) ? 1 : 0;
++	}
++	if (disable_watchdogd != 1) {
++		return false;
++	}
++	if (strncmp(p->p_name, "watchdogd", sizeof("watchdogd") - 1) != 0 ||
++	    p->p_name[sizeof("watchdogd") - 1] != '\0') {
++		return false;
++	}
++	printf("TB710FU boot-policy: watchdogd critical exit suppressed (rv=0x%x)\n", rv);
++	return true;
++}
++#endif /* XNU_TB710FU_MACOS27_SERVICES */
++
+ static bool
+ proc_should_trigger_panic(proc_t p, int rv)
+ {
+@@ -1846,6 +1896,12 @@ proc_should_trigger_panic(proc_t p, int rv)
+ 		return true;
+ 	}
+ 
++#if defined(XNU_TB710FU_MACOS27_SERVICES) && XNU_TB710FU_MACOS27_SERVICES
++	if (tb710fu_watchdogd_exit_is_suppressed(p, rv)) {
++		return false;
++	}
++#endif
++
+ 	if (panic_on_crash_disabled) {
+ 		printf("panic-on-crash disabled via boot-arg\n");
+ 		return false;

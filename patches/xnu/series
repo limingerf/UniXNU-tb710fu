@@ -47,3 +47,4 @@
 0047-tb710fu-lockdown-mode-state-public.patch
 0048-tb710fu-macos-desiredvnodes.patch
 0049-tb710fu-panic-cdc-persist.patch
+0050-tb710fu-watchdogd-critical-exit.patch
