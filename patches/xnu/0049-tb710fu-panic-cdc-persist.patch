@@ -165,3 +165,35 @@ index 9c2a5b0..e0d9f12 100644
  	kern_coredump_log(NULL, "\nPlease go to https://panic.apple.com to report this panic\n");
  	kern_coredump_log(NULL, "Waiting for hardware shared memory debugger, handshake structure is at virt: %p, phys %p\n",
  	    hwsd_info, (void *)kvtophys((vm_offset_t)hwsd_info));
+diff --git a/osfmk/kern/tb710fu_ramoops.c b/osfmk/kern/tb710fu_ramoops.c
+index 31048a5..de7e950 100644
+--- a/osfmk/kern/tb710fu_ramoops.c
++++ b/osfmk/kern/tb710fu_ramoops.c
+@@ -452,6 +452,15 @@ tb710fu_ramoops_init(void)
+ 	}
+ }
+ 
++void
++tb710fu_ramoops_flush(void)
++{
++	if (zone == NULL) {
++		return;
++	}
++	ramoops_zone_flush();
++}
++
+ void
+ tb710fu_ramoops_panic_reset(void)
+ {
+diff --git a/osfmk/kern/tb710fu_ramoops.h b/osfmk/kern/tb710fu_ramoops.h
+index 3a33840..bd544fa 100644
+--- a/osfmk/kern/tb710fu_ramoops.h
++++ b/osfmk/kern/tb710fu_ramoops.h
+@@ -6,6 +6,7 @@
+ /* Console mirror into the Linux ramoops console zone (boot-arg ramoops=<PA>). */
+ void tb710fu_ramoops_init(void);          /* after arm_vm_init */
+ void tb710fu_ramoops_putc(char c);        /* every console character */
++void tb710fu_ramoops_flush(void);         /* sync ECC now, no reset */
+ void tb710fu_ramoops_panic_reset(void);   /* flush, wait, PSCI SYSTEM_RESET */
+ /* Snapshot states are part of the device-owned LiveLog ABI. */
+ enum {

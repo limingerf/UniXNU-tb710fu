@@ -88,7 +88,7 @@ diff --git a/osfmk/kern/tb710fu_ramoops.c b/osfmk/kern/tb710fu_ramoops.c
 new file mode 100644
 --- /dev/null
 +++ b/osfmk/kern/tb710fu_ramoops.c
-@@ -0,0 +1,366 @@
+@@ -0,0 +1,357 @@
 +// SPDX-License-Identifier: MIT
 +/*
 + * TB710FU: mirror the kernel console into the Linux ramoops "console" zone, so the
@@ -404,15 +404,6 @@ new file mode 100644
 +}
 +
 +void
-+tb710fu_ramoops_flush(void)
-+{
-+	if (zone == NULL) {
-+		return;
-+	}
-+	ramoops_zone_flush();
-+}
-+
-+void
 +tb710fu_ramoops_panic_reset(void)
 +{
 +	uint64_t deadline;
@@ -459,13 +450,12 @@ diff --git a/osfmk/kern/tb710fu_ramoops.h b/osfmk/kern/tb710fu_ramoops.h
 new file mode 100644
 --- /dev/null
 +++ b/osfmk/kern/tb710fu_ramoops.h
-@@ -0,0 +1,9 @@
+@@ -0,0 +1,8 @@
 +// SPDX-License-Identifier: MIT
 +#ifndef KERN_TB710FU_RAMOOPS_H
 +#define KERN_TB710FU_RAMOOPS_H
 +/* Console mirror into the Linux ramoops console zone (boot-arg ramoops=<PA>). */
 +void tb710fu_ramoops_init(void);          /* after arm_vm_init */
 +void tb710fu_ramoops_putc(char c);        /* every console character */
-+void tb710fu_ramoops_flush(void);         /* sync ECC now, no reset */
 +void tb710fu_ramoops_panic_reset(void);   /* flush, wait, PSCI SYSTEM_RESET */
 +#endif
