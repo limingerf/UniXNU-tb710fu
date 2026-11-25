@@ -177,7 +177,8 @@ The transport is in the tree; nothing about it has been run on the device yet. T
 readings can exist:
 
 1. **Rebuild the payload and vendor_boot.** The boot-shims job builds `boot-shims.bin` with
-   `EFI/UniXNU/firmware/Adsp/adsp.mbn` and `adsp_dtb.mbn`; `board.toml [payload] size_mib` is 78 MiB, so the
+   `EFI/UniXNU/firmware/Adsp/adsp.mbn` and `adsp_dtb.mbn` (verified build: 22,348,456 B, SHA-256
+   `c44c532b56e359562a3a71782945fdacf091072ab4c6726eab37632e82b845e4`, run 45649974291); `board.toml [payload] size_mib` is 78 MiB, so the
    payload carries the firmware addon next to the kernel and seed. Flash the resulting `vendor_boot_b`. A fresh
    install then needs no copy. The verified local copies stay in
    `.local/input-sources/firmware/lib/firmware/qcom/sm8650/xiaoxin/gt/` for a manual fallback on the Data volume
