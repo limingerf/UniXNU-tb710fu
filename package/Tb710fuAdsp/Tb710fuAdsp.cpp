@@ -96,7 +96,6 @@ Window gSmemW, gMutex, gIpcc, gAoss, gRsc;
 QcomSmem gSmem;
 QcomSmemPartition gPart;
 QcomSmp2p gP2p;
-int gStopEntry = -1;
 QcomQmp gQmp;
 QcomGlink gGlink;
 bool gGlinkStarted;
@@ -550,7 +549,7 @@ bool start() {
     // Our SMP2P item, before the DSP starts (it looks for it at boot).
     if ((rc = allocItem(kItemOut, QCOM_SMP2P_ITEM_BYTES))) {fail(StSmp2p, rc); release(dtb); release(adsp); return false;}
     qcom_smp2p_init_out(&gP2p, reinterpret_cast<volatile uint32_t *>(item(kItemOut, nullptr)), 0, kRemotePid);
-    gStopEntry = qcom_smp2p_add_entry(&gP2p, "master-kernel");
+    qcom_smp2p_add_entry(&gP2p, "master-kernel");
     stage(StSmp2p);
     if (!attachIrqs()) {release(dtb); release(adsp); return false;}
     kickSmp2p();

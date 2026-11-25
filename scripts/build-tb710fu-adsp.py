@@ -18,6 +18,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 DEVICE = Path(os.environ['UNIXNU_DEVICE']).resolve() if os.environ.get('UNIXNU_DEVICE') else ROOT
 PACKAGE = DEVICE / 'package/Tb710fuAdsp'
+POWER = DEVICE / 'package/Tb710fuPower'
 OUT = ROOT / 'build/tb710fu-adsp'
 
 
@@ -33,6 +34,8 @@ def reported(path):
 
 RECORD_C = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/osfmk/DEVELOPMENT/startup.o.json'
 RECORD_CPP = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/iokit/DEVELOPMENT/IOPlatformExpert.cpo.json'
+# The firmware reader uses VFS and BSD types; a BSD record (no MACH_KERNEL_PRIVATE) is the schema those headers expect.
+RECORD_BSD = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/bsd/DEVELOPMENT/crc32.o.json'
 C_SOURCES = [PACKAGE / name for name in (
     'QcomSmem.c', 'QcomSmp2p.c', 'QcomGlink.c', 'QcomQmp.c', 'QcomRpmh.c', 'QcomMdt.c', 'Tb710fuAddon.c',
     'Tb710fuAdspFirmware.c')]
@@ -77,6 +80,8 @@ def compile_command(record, source, output, includes, extra):
             pass
         elif value == '-Xclang' and index + 1 < len(arguments) and arguments[index + 1].startswith('-W'):
             index += 1
+        elif value.startswith('-Wno-'):
+            command.append(value)
         elif not value.startswith('-W'):
             command.append(value)
         index += 1
@@ -120,11 +125,12 @@ def main():
     if revision != lock['unixnu']['commit']:
         raise SystemExit('Framework revision differs from upstream.lock.json')
 
-    for record in (RECORD_C, RECORD_CPP):
+    for record in (RECORD_C, RECORD_CPP, RECORD_BSD):
         if not record.is_file():
             raise SystemExit(f'{record} missing; build the minimal XNU kernel first')
     c_record = json.loads(RECORD_C.read_text().strip().rstrip(','))
     cpp_record = json.loads(RECORD_CPP.read_text().strip().rstrip(','))
+    bsd_record = json.loads(RECORD_BSD.read_text().strip().rstrip(','))
 
     adapter = helper('tb710fu_ufs_adapter', device / 'scripts/build-tb710fu-ufs-adapter.py')
     target = helper('tb710fu_source_target', framework / 'scripts/kernel_target.py')
@@ -133,16 +139,13 @@ def main():
     archive = OUT / 'libTb710fuAdsp.a'
     archive.unlink(missing_ok=True)
     objects, commands = [], {}
-    includes = [PACKAGE, tree / '.cache/xnu-work/osfmk', tree / '.cache/xnu-work/libkern']
+    includes = [PACKAGE, POWER, tree / '.cache/xnu-work/osfmk', tree / '.cache/xnu-work/libkern']
 
     for source in C_SOURCES:
         output = OUT / (source.stem + '.o')
-        extra = ['-mgeneral-regs-only', '-Wno-implicit-fallthrough']
-        if source.name == 'Tb710fuAdspFirmware.c':
-            # This one pulls in IOKit and BSD headers; the kernel's exported
-            # headers trip -Weverything warnings that are not ours to fix.
-            extra.append('-Wno-error')
-        command = compile_command(c_record, source, output, includes, extra)
+        record = bsd_record if source.name == 'Tb710fuAdspFirmware.c' else c_record
+        command = compile_command(record, source, output, includes,
+                                  ['-mgeneral-regs-only', '-Wno-implicit-fallthrough'])
         commands[source.name] = command
         result = subprocess.run(command, cwd=c_record['directory'], text=True,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -156,7 +159,8 @@ def main():
         output = OUT / (source.stem + '.o')
         command = adapter.compile_command(cpp_record, source, output, includes, [])
         command = ['--target=' + TARGET if value.startswith('--target=') else value for value in command]
-        command += ['-Wno-unused-parameter', '-Wno-implicit-fallthrough']
+        command += ['-Wno-unused-parameter', '-Wno-implicit-fallthrough',
+                    '-Wno-missing-designated-field-initializers']
         commands[source.name] = command
         result = subprocess.run(command, cwd=cpp_record['directory'], text=True,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
