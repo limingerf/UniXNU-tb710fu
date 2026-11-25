@@ -223,26 +223,21 @@ extern "C" void native_tb710fu_gop_display_start(void)
         return;
     }
 
-    // Resolve the live IOMobileFramebufferLegacy vtable directly from a probe
-    // instance: XnuPrelink slides __DATA (metaclass) and __DATA_CONST (vtable)
-    // independently, so fixture offset arithmetic does not locate the live table.
-    OSObject *probe = meta->alloc();
-    if (!probe) {
-        printf("TB710FU GopDisplay: meta->alloc() failed, display not registered\n");
-        return;
-    }
-    uintptr_t rawVtable = *(uintptr_t *)probe;
-    uintptr_t vtable = (uintptr_t)ptrauth_strip((void *)rawVtable, ptrauth_key_cxx_vtable_pointer);
-    probe->release();
+    // Derive the live IOMobileFramebufferLegacy vtable (slot 0) from the live
+    // metaclass address using the fixture's relative offset (verified on pl39/pl40b:
+    // meta=0xfffffff00cc2cdf0 -> vtable=0xfffffff0086232c8 == __ZTV + 16).
+    uintptr_t metaclass = (uintptr_t)meta;
+    uintptr_t slide = metaclass - (uintptr_t)TB710FU_GOP_METACLASS_VA;
+    uintptr_t vtable = (uintptr_t)TB710FU_GOP_VTABLE_VA + slide;
     if (!legacyVtableLooksReviewed(vtable)) {
-        printf("TB710FU GopDisplay: live vtable at %p (raw %p) failed validation, display not registered\n",
-               (void *)vtable, (void *)rawVtable);
+        printf("TB710FU GopDisplay: live vtable at %p (slide %p) failed validation, display not registered\n",
+               (void *)vtable, (void *)slide);
         return;
     }
     gLegacyParent = meta;
     gLegacyVtable = vtable;
-    printf("TB710FU GopDisplay: live vtable=%p (raw=%p, %u slots validated)\n",
-           (void *)vtable, (void *)rawVtable, TB710FU_GOP_SLOT_COUNT);
+    printf("TB710FU GopDisplay: live vtable=%p (slide=%p, %u slots validated)\n",
+           (void *)vtable, (void *)slide, TB710FU_GOP_SLOT_COUNT);
 
     void *handle = OSMetaClass::preModLoad(g_kernel_kmod_info.name);
     if (!handle) {
