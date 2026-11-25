@@ -304,7 +304,7 @@ public:
         const Tb710fuPowerLinkClient client = {&Tb710fuBattery::linkState, &Tb710fuBattery::linkReceive};
         link = tb710fu_power_link_acquire(kChannel, kMessage, 4, &client, this);
         if (!link) {
-            printf("TB710FU battery: transport present but channel %s not open\n", kChannel);
+            printf("TB710FU battery: the ADSP transport is not running (add adsp=2); channel %s unread\n", kChannel);
             native_battery_stats[0] = -2;
             return false;
         }

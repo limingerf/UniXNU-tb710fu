@@ -96,12 +96,50 @@ cell is absent the snapshot falls back to `BATT_CAPACITY`, so a single-cell boar
   tenth), a 16-slot message ring, `battery=1` opt-in, an ADT survey line, and publication only after a charge
   reading exists.
 
-Wiring: `board.toml` archive list, `configs/tb710fu_macos_defconfig` (`-force_load` of `libTb710fuPower.a`,
-`-DXNU_TB710FU_POWER=1`), and `package/Macos27Services.cpp` (metaclass init before `postModLoad`, weak start call).
+Wiring: `board.toml` archive list, `configs/tb710fu_macos_defconfig` (`-force_load` of `libTb710fuPower.a` and
+`libTb710fuAdsp.a`, `-DXNU_TB710FU_POWER=1`, `-DXNU_TB710FU_ADSP=1`), and `package/Macos27Services.cpp` (metaclass
+init before `postModLoad`, the ADSP probe ahead of the weak battery start).
+
+## The ADSP transport (`package/Tb710fuAdsp`)
+
+The battery manager only runs inside the audio DSP, so the PMIC GLINK client needs the DSP awake. That is this
+package, adapted from UniXNU-sheng's probe (BSD-2-Clause-Patent, hardware-verified on SM8550) with this board's
+addresses:
+
+- `QcomSmem.c`, `QcomSmp2p.c`, `QcomGlink.c`, `QcomQmp.c`, `QcomRpmh.c`, `QcomMdt.c`, `QcomScm.h` — copied
+  unchanged (SMEM partitions/alloc under the TCSR mutex, SMP2P items, GLINK native protocol on a pair of SMEM
+  FIFOs, the AOSS mailbox handshake, RPMh proxy votes, `.mbn` parsing and SCM/PAS calls).
+- `Tb710fuAdspFirmware.c` — VFS reads of the two firmware files (no FAT/modem partition path: nothing is
+  unpacked from the vendor image).
+- `Tb710fuAdsp.cpp` — the probe/thread: maps SMEM/TCSR/IPCC/AOSS/RSC, surveys (`adsp=1`), then for `adsp=2`
+  allocates the SMP2P out item, attaches the two GIC SPIs, runs QMP `load_state adsp`, votes lcx/lmx through
+  RPMh, authenticates and loads `adsp_dtb.mbn` (PAS 36) then `adsp.mbn` (PAS 1), waits for the DSP's ready bit,
+  allocates the GLINK descriptor and TX FIFO items and registers channels.
+- `tb710fu_power_link_acquire/send` — the client API from `Tb710fuPowerLink.h`; registration succeeds whether or
+  not the DSP has opened `PMIC_RTR_ADSP_APPS` yet, and the state callback reports the open/close.
+
+Constants were checked against mainline, not guessed: `sm8650-adsp-pas` uses `sm8550_adsp_resource` in
+`qcom_q6v5_pas.c` (PAS 1, DTB PAS 0x24, crash-reason item 423, `smem_host_id` 2, rails lcx/lmx, load state
+`adsp`); `sm8650.dtsi` gives SMEM `0x81d00000 + 0x200000` with TCSR hwlock 3, SMP2P `443/429`, IPCC `0x406000`
+(SPI 229, LPASS client 3), AOSS QMP `0xc300000 + 0x400`, apps RSC `0x17a20000` drv 2 with TCS `+0xd00` (SPI 5),
+cmd-db `0x81c60000`, `adspslpi` `0x9df00000 + 0x4080000`, `q6-adsp-dtb` `0x9de80000 + 0x80000`; GLINK items
+478/479/480 are the ids `qcom_glink_smem.c` itself allocates. `armcpu_spi_attach` resolves in this kernel
+(`_armcpu_spi_attach` is in the built symbol table).
+
+Firmware: `adsp.mbn` (34.8 MB) and `adsp_dtb.mbn` (5.9 MB) come from the Linux port's archive
+(`firmware/tb710fu-firmware-20261005.tar.gz`, revision `16e800d4`), verified against its `MD5SUMS`:
+`a0686c2b0ed4b6a8a0250c31aa2bc46c` and `4b2480da1dbff4932c6d9f4eb40222e4`. They are **not** built into the
+image: the payload FAT leaves only 5.49 MiB free, so 40.7 MB cannot travel in `vendor_boot`. Install them once on
+the Data volume at `/private/var/firmware/qcom/sm8650/xiaoxin/gt/` (the same paths the Linux port uses), or
+point `adsp-fw=DIR` at another mounted directory. The probe retries for about five minutes, so it can start
+before the Data volume is mounted.
 
 Boot arguments:
 
 - `battery=1` — required; without it the provider only prints that it was not requested.
+- `adsp=1` — read-only survey into `native_tb710fu_adsp_stats`; writes nothing and starts no DSP.
+- `adsp=2` — start the DSP and bring up GLINK. Needed before `battery=1` can publish anything.
+- `adsp-fw=DIR` — firmware directory, default `/private/var/firmware/qcom/sm8650/xiaoxin/gt`.
 - `usb-sdp-ma=N` — input current limit for a standard host port, 0..3000 mA. Default 0: the firmware's limit is
   left alone, which is also what the DSP does when no host asks for more.
 - `battery` sets no other charger state; charging stays autonomous in the PMIC/DSP firmware.
@@ -119,43 +157,52 @@ notification enable frame, a foreign owner and malformed frames being ignored, a
 known external state, and the input-limit policy (no write at 0; one set at `usb-sdp-ma`, three tries per port).
 Result: all checks pass; `build/tb710fu-power-host/report.json` records compiler, command and hashes.
 
-## What device acceptance still needs
+## Device acceptance
 
-Publishing an `IOPMPowerSource` needs the transport. The facts for it are in this board's vendor SoC DTB
-(decompiled from `vendor_boot_a.img`):
+The transport is in the tree; nothing about it has been run on the device yet. Two steps remain before battery
+readings can exist:
 
-- PAS node `/soc/remoteproc-adsp@03000000`, `compatible = "qcom,pineapple-adsp-pas"`, reg `0x03000000 0x10000`,
-  `clocks = xo`, `memory-region = <adspslpi 0x9df00000 + 0x4080000, q6_adsp_dtb 0x9de80000 + 0x80000>`,
-  `interrupts-extended` `wdog/fatal/handover/ready/stop-ack`, `qcom,smem-states = <master-kernel 0>` (`stop`).
-  PAS ids follow the SM8550 family (1 for `adsp.mbn`, 36 for `adsp_dtb.mbn`); confirm them against
-  `qcom_q6v5_pas.c` for `pineapple-adsp-pas` before the first load.
-- SMEM `0x81d00000 + 0x200000`, TCSR mutex hwlock index 3; SMP2P `/soc/qcom,smp2p-adsp`: `qcom,smem = <443 429>`,
-  local-pid 0, remote-pid 2, `mboxes = <ipcc 3>`, entries `master-kernel`, `slave-kernel`.
-- IPCC `/soc/qcom,ipcc@406000` (GIC SPI 229 = 0xe5), LPASS client 3; AOSS QMP `0xc300000 + 0x400`, client 0;
-  apps RSC `0x17a00000` drv 2 with its TCS block at +0xd00; command DB `0x81c60000`.
-- ADSP `glink-edge` uses mbox channel 3 (`adsp_smem`), label `adsp`/`lpass`, `qcom,glink-label = "lpass"`.
-- GLINK channel `PMIC_RTR_ADSP_APPS`; the intents listed on `qcom,adsp_qrtr` belong to QRTR, not this channel.
-- These are almost sheng's SM8550 constants (SMEM identical; RSC 0x17a00000 vs 0x17a20000; IPCC 0x406000 vs
-  0x408000; ADSP memory 0x9df00000 vs 0x9ea00000), so its probe can be parameterised rather than rewritten.
-- Firmware: `adsp.mbn` (34.8 MB) and `adsp_dtb.mbn` (5.9 MB) from this device's own vendor image, the same two files
-  the Linux port loads as `qcom/sm8650/xiaoxin/gt/adsp.mbn` / `adsp_dtb.mbn`; `battmgr.jsn` is their metadata.
+1. **Install the firmware once.** Copy `adsp.mbn` and `adsp_dtb.mbn` (verified copies are in
+   `.local/input-sources/firmware/lib/firmware/qcom/sm8650/xiaoxin/gt/`, from the Linux port's archive) to the
+   device's Data volume at `/private/var/firmware/qcom/sm8650/xiaoxin/gt/`. They are not committed and not part
+   of any image; the payload FAT has only 5.49 MiB free. A different directory works with `adsp-fw=DIR`.
+2. **Build with the new archives.** `build-tb710fu-adsp.py` needs the macOS runner (XNU compile records), like
+   `build-tb710fu-power.py`; neither has been target-compiled since the transport was added.
 
-Reference implementation to port: sheng's ADSP stack first (`.work/UniXNU-sheng/package`, BSD-2-Clause-Patent,
-same PMIC GLINK battery protocol already hardware-verified on SM8550), with the SM8650/ITB710FU DT facts above
-replacing its SM8550 addresses, then `UniXNU-xiaomipad8pro` → `package/PianoPower` (`PianoAdsp.cpp`, `QcomGlink.c`,
-`QcomQrtr.c`, `QcomSmem.c`, `QcomSmp2p.c`, `QcomQmp.c`, `FatVolume.c`, `PianoAdspFirmware.c`) for anything newer.
-Note that PianoPower's battery protocol is Xiaomi's MCA, not the Qualcomm battery manager this board speaks; only
-its transport is reusable.
+Acceptance order on hardware, each step separately observable:
 
-Acceptance for the transport, in order: (1) `battery=1` prints the ADT survey; (2) channel opens and the enable
-request answers (`native_battery_stats[9]` grows); (3) one full cycle yields plausible voltage/current/temperature
-and a percentage that matches Android on the same charge; (4) unplug/replug changes `ExternalConnected`/`IsCharging`
-within one refresh; (5) the menu bar shows the same percentage after a reboot.
+1. `adsp=1` — the survey writes nothing. `native_tb710fu_adsp_stats[4]` shows which of the five SMEM items
+   (443, 429, 478, 479, 480) exist and bits 8/9 the APPS/global partitions; `[3]` is the DSP's `slave-kernel`
+   value (`-1` when the item is absent, `>0` when the DSP is already up); `[5]` carries the QMP state and AOSS
+   link bits; `[6]` the RSC DRV id. A failure here is a fact about boot state, not a driver bug.
+2. `adsp=2` — `native_tb710fu_adsp_stats[0]` walks stages 1..13 (`-N` means step N failed, `[1]` its error):
+   mapped, surveyed, firmware, SMP2P, doorbells, load-state, rails, dtb, loaded, started, ready, glink, channel.
+   `[8]` is the milliseconds from `auth_and_reset` to ready; `[9]/[10]` GLINK messages in/out; `[11]` channels up
+   (bit 0 is `PMIC_RTR_ADSP_APPS`), version agreed and broken link; `[12]` opens nobody serves; `[13]/[14]` the
+   last SCM return; `[15]` the lcx/lmx vote and RSC completion.
+3. `adsp=2 battery=1` — the battery prints its ADT survey, registers at `native_battery_stats[0]=2`, goes to 3 on
+   channel up and 4 when it publishes. A published `IOPMPowerSource` should carry a percentage close to Android's
+   on the same charge, a plausible voltage/current/temperature, and `[9]` (notifications) should grow.
+4. Unplug and replug within one 60 s refresh: `ExternalConnected`/`IsCharging` (seen in `native_battery_stats[5]`
+   bits 1 and 2) must follow, and the DSP's occasional `-110` timeout must not lose the charger state
+   (`native_battery_raw[8]` records the skipped field).
+5. Reboot and compare the menu-bar percentage with the previous boot.
+
+The property table and the transport's addresses are both independently confirmed (this device's
+`qti_battery_charger.ko` string table and mainline `qcom_battmgr.c` for the former; `sm8650.dtsi` and
+`qcom_q6v5_pas.c` for the latter), so a mismatch at step 1-3 points at boot state (firmware not installed, DSP
+already running, a wrong carveout) rather than at the codec.
 
 ## Limits
 
 - No battery percentage is invented when the transport is absent: the provider registers nothing and prints one
-  line. `native_battery_stats[0]` records the stage (`-1` no transport, `-2` channel not open, `4` published).
+  line. `native_battery_stats[0]` records the stage (`-1` no transport archive, `-2` the ADSP was not started
+  with `adsp=2`, `2` channel registered, `3` channel up, `4` published).
+- The ADSP code is sheng's SM8550 sequence with this board's addresses. Every address and PAS/item id above is
+  cross-checked against mainline sources, but none of it has been executed on this device; the first `adsp=1`
+  survey is what turns those constants into evidence.
+- The firmware is a vendor blob from the Linux port and is not committed. The Data-seed path keeps it off the
+  boot image deliberately; the cost is that the battery cannot appear before the Data volume is mounted.
 - `ShengPlatformPower` (the previous reference's iPadOS ABI fixture) is still not imported; only the battery
   manager design and the transport shape are taken from sheng, with its own device's property order corrected.
 - Chromium/AppleSmartBattery keys this package does not publish (serial, manufacture date, SOH) are not faked.

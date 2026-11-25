@@ -13,6 +13,9 @@ extern "C" void tb710fu_aks_meta_init(void) __asm__("__GLOBAL__sub_I_NativeKeySt
 extern "C" void tb710fu_aes_meta_init(void) __asm__("__GLOBAL__sub_I_NativeAES.cpp");
 extern "C" void tb710fu_battery_meta_init(void) __asm__("__GLOBAL__sub_I_Tb710fuBattery.cpp") __attribute__((weak_import));
 extern "C" void tb710fu_battery_start(void) __attribute__((weak_import));
+#if defined(XNU_TB710FU_ADSP) && XNU_TB710FU_ADSP
+extern "C" void tb710fu_adsp_probe(void) __attribute__((weak_import));
+#endif
 extern "C" IOService *native_keyevents_allocate(void);
 extern "C" IOService *native_aes_allocate(void);
 extern "C" void native_tb710fu_gop_display_start(void);
@@ -109,8 +112,16 @@ extern "C" void native_tb710fu_services_start(void)
         }
     }
 
+#if defined(XNU_TB710FU_ADSP) && XNU_TB710FU_ADSP
+    /* ADSP: the thread reads the adsp=1/2 boot argument itself, surveys (1) or starts the DSP and brings up GLINK (2).
+     * It runs ahead of the battery so the battery's channel can be registered before the DSP opens it. */
+    if (tb710fu_adsp_probe) {
+        tb710fu_adsp_probe();
+    }
+#endif
+
     /* Battery: the service checks the battery=1 boot argument itself, prints its ADT survey, and stays unregistered
-     * when the PMIC GLINK transport is not part of this kernel. */
+     * when the PMIC GLINK transport (the ADSP archive) is not part of this kernel. */
     if (tb710fu_battery_start) {
         tb710fu_battery_start();
     }
