@@ -37,6 +37,14 @@
 #define COMMAND_CLEAR_STALL 5u
 #define COMMAND_START 6u
 #define COMMAND_START_CONFIGURATION 9u
+// Linux v6.1 gadget.c:1690-1730 (__dwc3_stop_active_transfer) and ep0.c:1096-1112
+// (dwc3_ep0_end_control_data): a transfer the host abandoned stays owned by the
+// core until an End Transfer command retires it. DWC_usb31 completes that command
+// asynchronously and has no GUCTL2[14] CMDACT-polling mode, so CMDIOC is set and
+// the completion is read from the endpoint event ring instead of from CMDACT.
+#define COMMAND_ENDTRANSFER 8u
+#define COMMAND_CMDIOC (1u << 12)
+#define CANCEL_POLLS 20u
 #define PHY_SUSPEND ((1u << 6) | (1u << 8))
 #define PIPE_SUSPEND (1u << 17)
 #define GCTL_DISABLE_CLK_GATING 1u
@@ -166,18 +174,55 @@ static int fail(struct tb710fu_dwc3 *d, const char *reason)
 // wanted that terminator issues its IN token well inside this window.
 #define ZLP_POLLS 4u
 
+// A control stage the host abandoned leaves no trace at all: this core reports
+// nothing when the host stops driving a stage. Silence for a full control window
+// is the only evidence, and recycling EP0 after it is what keeps the next open
+// answerable (2 s at the 2 ms configured cadence, 100 ms during the 100 us early
+// loop). Windows itself gives a control request several seconds, so this window
+// never races a slow but live host.
+#define EP0_CONTROL_POLLS 1000u
+
 static void abandon_endpoint(struct tb710fu_dwc3 *d, unsigned ep);
 
 // A host reset, a disconnect, or a host pipe reset ends that endpoint's DMA on
-// the device side. Software cannot prove the TRB free (DWC3 has no synchronous
-// cancel verdict here), so the endpoint is quarantined: the next completion for
-// it is dropped instead of being credited to a new transfer, and it is not
-// re-armed until the quarantine expires. None of this fails the transport -
-// latching failure on a normal Windows close/open cycle is what took COM5 down
-// for good.
+// the device side. Software cannot prove the TRB free from a completion, so the
+// endpoint is quarantined: the next completion for it is dropped instead of
+// being credited to a new transfer, and it is not re-armed until the quarantine
+// expires. None of this fails the transport - latching failure on a normal
+// Windows close/open cycle is what took COM5 down for good.
+static void cancel_endpoint(struct tb710fu_dwc3 *d, unsigned ep)
+{
+    if (ep >= 6u || ep == 4u || d->cancel_pending[ep]) return;
+    // A SETUP packet that has not been DMA'd out yet blocks End Transfer on every
+    // endpoint (Linux v6.1 gadget.c:3717-3722), so an armed SETUP is left alone.
+    if (ep <= 1u && d->phase == TB710FU_DWC3_SETUP_PHASE && !d->busy[ep]) return;
+    // Resource index zero is valid for EP0 OUT only (Linux v6.1 ep0.c:1096-1106).
+    if (ep != 0u && d->resource[ep] == 0u) return;
+    write_reg(d, EP_PAR0(ep), 0);
+    write_reg(d, EP_PAR1(ep), 0);
+    write_reg(d, EP_PAR2(ep), 0);
+    write_reg(d, EP_CMD(ep), COMMAND_ENDTRANSFER | COMMAND_CMDIOC |
+                             COMMAND_ACTIVE | ((uint32_t)d->resource[ep] << 16));
+    for (unsigned i = 0; i < CANCEL_POLLS; ++i) {
+        if (!(read_reg(d, EP_CMD(ep)) & COMMAND_ACTIVE)) break;
+        d->ops.delay_us(d->ops.context, 10u);
+    }
+    if (!(read_reg(d, EP_CMD(ep)) & COMMAND_ACTIVE) &&
+        !((read_reg(d, EP_CMD(ep)) >> 12) & 15u)) {
+        // Completed and the core retired the transfer: the endpoint is free now.
+        d->resource[ep] = 0;
+        ++d->cancel_completions;
+        return;
+    }
+    // Still terminating. Nothing may be armed here until the command-complete
+    // event for this endpoint arrives; that event is what releases it.
+    d->cancel_pending[ep] = 1;
+}
+
 static void abandon_endpoint(struct tb710fu_dwc3 *d, unsigned ep)
 {
     if (ep >= 6u || ep == 4u || !d->busy[ep]) return;
+    cancel_endpoint(d, ep);
     d->busy[ep] = 0;
     d->requested[ep] = 0;
     d->resource[ep] = 0;
@@ -189,6 +234,9 @@ static void abandon_endpoint(struct tb710fu_dwc3 *d, unsigned ep)
 static int endpoint_usable(struct tb710fu_dwc3 *d, unsigned ep)
 {
     if (ep >= 6u || ep == 4u) return 0;
+    // The core still owns this endpoint's cancellation. Arming it now is the
+    // collision that a reopen used to hit.
+    if (d->cancel_pending[ep]) return 0;
     if (!d->stale[ep]) return 1;
     if (d->polls < d->stale_until[ep]) return 0;
     d->stale[ep] = 0;
@@ -236,6 +284,30 @@ static unsigned trb_offset(unsigned ep)
     return TB710FU_DWC3_TRB_BASE + ep * TB710FU_DWC3_TRB_STRIDE;
 }
 
+// Start Transfer. A command the core refuses says one thing only: this endpoint
+// still owns the transfer that the host abandoned, so there is nothing to start
+// on it yet. Treating that as a transport failure stopped every other endpoint
+// with it - EP0 included - and the next COM5 open answered with "A device
+// attached to the system is not functioning".
+static int start_ep(struct tb710fu_dwc3 *d, unsigned ep, uint32_t p0, uint32_t p1)
+{
+    const uint32_t phy = read_reg(d, USB2PHYCFG);
+    if (phy & PHY_SUSPEND) write_reg(d, USB2PHYCFG, phy & ~PHY_SUSPEND);
+    write_reg(d, EP_PAR0(ep), p0);
+    write_reg(d, EP_PAR1(ep), p1);
+    write_reg(d, EP_PAR2(ep), 0);
+    write_reg(d, EP_CMD(ep), COMMAND_START | COMMAND_ACTIVE);
+    const int complete = wait_reg(d, EP_CMD(ep), COMMAND_ACTIVE, 0);
+    const uint32_t result = read_reg(d, EP_CMD(ep));
+    if (phy & PHY_SUSPEND) write_reg(d, USB2PHYCFG, phy);
+    if (!complete || ((result >> 12) & 15u)) {
+        ++d->deferred_starts;
+        return 0;
+    }
+    d->resource[ep] = (result >> 16) & 127u;
+    return 1;
+}
+
 static int transfer(struct tb710fu_dwc3 *d, unsigned ep, unsigned type,
                     unsigned buffer, unsigned bytes)
 {
@@ -257,13 +329,21 @@ static int transfer(struct tb710fu_dwc3 *d, unsigned ep, unsigned type,
     // A new transfer owns this endpoint from here on: any cancellation evidence
     // owed for the abandoned predecessor is no longer attributable to it.
     d->stale[ep] = 0;
-    return command(d, ep, COMMAND_START, (uint32_t)(descriptor >> 32),
-                   (uint32_t)descriptor, 0);
+    if (!start_ep(d, ep, (uint32_t)(descriptor >> 32), (uint32_t)descriptor)) {
+        // Hand this endpoint back to the quarantine and let the next poll retry;
+        // EP0 keeps serving the host in the meantime.
+        d->busy[ep] = 0;
+        d->requested[ep] = 0;
+        d->stale[ep] = 1;
+        d->stale_until[ep] = d->polls + STALE_POLLS;
+    }
+    return 1;
 }
 
 static int setup_phase(struct tb710fu_dwc3 *d)
 {
     d->phase = TB710FU_DWC3_SETUP_PHASE;
+    d->control_polls = d->polls;
     d->setup_pending = d->set_line = 0;
     d->pending_address_valid = d->pending_configuration_valid = d->pending_dtr_valid = 0;
     return transfer(d, 0, TRB_SETUP, TB710FU_DWC3_SETUP, 8);
@@ -419,6 +499,7 @@ static int setup_request(struct tb710fu_dwc3 *d)
 
 static int control_not_ready(struct tb710fu_dwc3 *d, unsigned ep, unsigned status)
 {
+    d->control_polls = d->polls;
     if (status == 1 && d->phase == TB710FU_DWC3_DATA_PHASE) {
         if (ep != d->data_in) return fail(d, "new control direction while DMA active");
         return 1; // DATA was already started, not delayed until this event.
@@ -437,6 +518,7 @@ static int control_not_ready(struct tb710fu_dwc3 *d, unsigned ep, unsigned statu
 static int control_complete(struct tb710fu_dwc3 *d, unsigned ep, unsigned bytes,
                             unsigned trb_status)
 {
+    d->control_polls = d->polls;
     if (d->phase == TB710FU_DWC3_SETUP_PHASE) {
         if (ep != 0 || bytes != 8 || trb_status != 0) return fail(d, "invalid SETUP completion");
         d->ops.sync_for_cpu(d->ops.context, TB710FU_DWC3_SETUP, 8);
@@ -485,7 +567,17 @@ static int endpoint_event(struct tb710fu_dwc3 *d, uint32_t event)
     const unsigned status = (event >> 12) & 15u;
     if (ep >= 6 || ep == 4) return fail(d, "event for unowned endpoint");
     if (type == 3) return ep < 2 ? control_not_ready(d, ep, status) : 1;
-    if (type == 7) return 1; // No asynchronous cancel/recovery is issued here.
+    if (type == 7) {
+        // Command completion. The only asynchronous command posted here is End
+        // Transfer, and this is what releases the endpoint: until it arrives the
+        // core still owns the transfer the host abandoned.
+        if (d->cancel_pending[ep]) {
+            d->cancel_pending[ep] = 0;
+            d->resource[ep] = 0;
+            ++d->cancel_completions;
+        }
+        return 1;
+    }
     if (type != 1) return fail(d, "unexpected endpoint event");
     if (d->stale[ep]) {
         // Cancellation completion for the transfer a reset or pipe reset
@@ -494,7 +586,15 @@ static int endpoint_event(struct tb710fu_dwc3 *d, uint32_t event)
         ++d->stale_completions;
         return 1;
     }
-    if (!d->busy[ep]) return fail(d, "duplicate/unowned transfer completion");
+    if (!d->busy[ep]) {
+        // A completion nobody owns is the tail of a transfer this driver already
+        // abandoned (the host closed COM5, reset the pipe, or the quarantine
+        // expired). It cannot corrupt a live transfer, and failing the transport
+        // here is what made the next SerialPort.Open() report "A device attached
+        // to the system is not functioning".
+        ++d->orphan_completions;
+        return 1;
+    }
     const unsigned off = trb_offset(ep);
     d->ops.sync_for_cpu(d->ops.context, off, TB710FU_DWC3_TRB_STRIDE);
     const uint8_t *trb = d->dma + off;
@@ -517,7 +617,23 @@ static int endpoint_event(struct tb710fu_dwc3 *d, uint32_t event)
         }
         return 1;
     }
-    if (residual != 0) return fail(d, "short IN completion; log consumption ambiguous");
+    if (residual != 0) {
+        // Bulk IN ended with bytes still owed: the host stopped reading inside
+        // this span (COM5 close) and the core terminated it. Nothing was sent, so
+        // nothing is retired and the ring keeps the bytes; the transport stays up.
+        if (ep == EP_TX) {
+            d->tx_state = TX_IDLE;
+            d->tx_commit = 0;
+            d->tx_end = 0;
+            ++d->aborted_tx;
+            return 1;
+        }
+        if (ep == EP_NOTIFY) {
+            d->notification_pending = 1;
+            return 1;
+        }
+        return fail(d, "short IN completion; log consumption ambiguous");
+    }
     if (ep == EP_TX) {
         if (d->tx_state == TX_ACTIVE) {
             d->tx_commit = bytes;
@@ -546,7 +662,11 @@ static int device_event(struct tb710fu_dwc3 *d, uint32_t event)
         abandon_endpoint(d, EP_RX);
         abandon_endpoint(d, EP_TX);
         abandon_endpoint(d, EP_NOTIFY);
+        // The bus reset itself terminated every transfer, so an End Transfer that
+        // was still outstanding has nothing left to release.
+        for (unsigned i = 0; i < 6u; ++i) d->cancel_pending[i] = 0;
         d->phase = TB710FU_DWC3_SETUP_PHASE;
+        d->control_polls = d->polls;
         d->data_in = d->control_bytes = d->setup_pending = d->set_line = 0;
         d->pending_address_valid = d->pending_configuration_valid = 0;
         d->pending_dtr_valid = d->pending_dtr = 0;
@@ -600,6 +720,29 @@ static void tx_retire(struct tb710fu_dwc3 *d)
 
 static int pump(struct tb710fu_dwc3 *d)
 {
+    // A control stage the host never finished: Windows can cancel the STATUS
+    // stage of its close-time SET_CONTROL_LINE_STATE, and a panic can land
+    // between a SETUP and its DATA/STATUS. EP0 is then left without an armed
+    // SETUP TRB, the next open is answered by nobody, and Windows reports
+    // "A device attached to the system is not functioning". Silence for a whole
+    // control window means the stage was abandoned: give it back, stall the pipe
+    // and re-arm SETUP (Linux v6.1 ep0.c:221-246 dwc3_ep0_stall_and_restart).
+    if (d->phase != TB710FU_DWC3_SETUP_PHASE &&
+        d->polls - d->control_polls >= EP0_CONTROL_POLLS) {
+        if (d->phase == TB710FU_DWC3_DATA_PHASE) cancel_endpoint(d, d->data_in);
+        abandon_endpoint(d, 0);
+        abandon_endpoint(d, 1);
+        ++d->ep0_recoveries;
+        if (!d->cancel_pending[0]) {
+            if (!stall_setup(d)) return 0;
+        } else {
+            // The core is still terminating EP0's transfer; its command-complete
+            // event releases the endpoint and the re-arm below picks it up.
+            d->phase = TB710FU_DWC3_SETUP_PHASE;
+            d->data_in = d->control_bytes = d->setup_pending = d->set_line = 0;
+        }
+        d->control_polls = d->polls;
+    }
     // EP0 must never be left without an armed SETUP TRB. A host SETUP that
     // finds none is answered by nobody, and Windows reports that as
     // "A device attached to the system is not functioning" on the next open.
@@ -616,8 +759,9 @@ static int pump(struct tb710fu_dwc3 *d)
         const uint8_t notification[10] = {0xa1, 0x20, 0, 0, 0, 0, 2, 0, 0, 0};
         for (unsigned i = 0; i < 10; ++i) p[i] = notification[i];
         p[8] = d->dtr ? 3u : 0u; // RX/TX carrier state for this log channel.
-        if (!transfer(d, EP_NOTIFY, TRB_NORMAL, TB710FU_DWC3_NOTIFY, 10)) return 0;
-        d->notification_pending = 0;
+        (void)transfer(d, EP_NOTIFY, TRB_NORMAL, TB710FU_DWC3_NOTIFY, 10);
+        // Only a state the core accepted is reported; a deferred start retries.
+        if (d->busy[EP_NOTIFY]) d->notification_pending = 0;
     }
     // A successful USB transfer is retired once, from the position it started
     // at. Retiring can never fail, so a stalled consume can no longer hold Bulk
@@ -640,9 +784,12 @@ static int pump(struct tb710fu_dwc3 *d)
     }
     if (!endpoint_usable(d, EP_TX)) return 1;
     if (d->tx_state == TX_ZLP_PENDING) {
-        d->tx_state = TX_ZLP_ACTIVE;
         d->zlp_armed = d->polls;
-        return transfer(d, EP_TX, TRB_NORMAL, TB710FU_DWC3_TX, 0);
+        (void)transfer(d, EP_TX, TRB_NORMAL, TB710FU_DWC3_TX, 0);
+        // A span is only on the wire when the core accepted it. A deferred start
+        // leaves the state idle so the next poll retries the same bytes.
+        d->tx_state = d->busy[EP_TX] ? TX_ZLP_ACTIVE : TX_IDLE;
+        return 1;
     }
     if (d->tx_state != TX_IDLE) return 1;
     d->tx_end = 0;
@@ -650,8 +797,9 @@ static int pump(struct tb710fu_dwc3 *d)
                                         TB710FU_DWC3_TX_BYTES, &d->tx_end);
     if (bytes > TB710FU_DWC3_TX_BYTES) return fail(d, "log producer returned oversized copy");
     if (!bytes) return 1;
-    d->tx_state = TX_ACTIVE;
-    return transfer(d, EP_TX, TRB_NORMAL, TB710FU_DWC3_TX, (unsigned)bytes);
+    (void)transfer(d, EP_TX, TRB_NORMAL, TB710FU_DWC3_TX, (unsigned)bytes);
+    d->tx_state = d->busy[EP_TX] ? TX_ACTIVE : TX_IDLE;
+    return 1;
 }
 
 void tb710fu_dwc3_poll(struct tb710fu_dwc3 *d)
@@ -780,7 +928,9 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
         return 0;
     }
     // Do not replace firmware DMA addresses before proving the core halted and
-    // its device reset completed. No endpoint ENDTRANSFER assumption is used.
+    // its device reset completed. Data-plane cancellation issued later uses
+    // ENDTRANSFER (see cancel_endpoint); this adoption path itself never assumes
+    // that a posted cancel completed.
     // The SS PIPE control is read but never written: it is the register that says
     // whether the PHY handed the core a PIPE clock at all, which is the one
     // reason a live controller would answer commands but never finish them.
@@ -890,4 +1040,52 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     d->probe_trace[3] = read_reg(d, DSTS);
     d->running = 1;
     return 1;
+}
+
+// Panic context only. The worker that normally drives this controller is gone,
+// so nothing here may block on the core: no command is posted and no DMA address
+// is rewritten. What a panic needs is the two registers start()/stop() own -
+// device events and the pull-up - plus a SETUP TRB that the host's next
+// SET_CONTROL_LINE_STATE can land on. Without this, a panic that arrives while a
+// transport failure has already cleared DEVTEN/RUN_STOP leaves the shell deaf,
+// and a COM5 opened after the panic never sees the log it was opened for.
+void tb710fu_dwc3_panic_rearm(struct tb710fu_dwc3 *d)
+{
+    if (d == NULL || d->dma == NULL || d->ops.read32 == NULL || d->ops.write32 == NULL)
+        return;
+    /* Only a core that start() actually adopted is safe to touch here: probe_trace[1]
+     * is the DEVTEN readback recorded right before the pull-up was exposed, so an
+     * adoption that failed earlier leaves it zero and this does nothing at all. */
+    if (d->probe_trace[1] == 0u) return;
+    // A SETUP TRB the core already owns is the one transfer that must survive:
+    // re-arming it would hand the core a second TRB for one endpoint.
+    const int setup_armed = (d->phase == TB710FU_DWC3_SETUP_PHASE && d->busy[0]) ? 1 : 0;
+    for (unsigned ep = 0; ep < 6u; ++ep) {
+        if (ep == 4u || (ep == 0 && setup_armed)) continue;
+        if (d->busy[ep]) ++d->abandoned_transfers;
+        d->busy[ep] = 0;
+        d->requested[ep] = 0;
+        d->resource[ep] = 0;
+        d->stale[ep] = 0;
+        d->cancel_pending[ep] = 0;
+    }
+    d->tx_state = TX_IDLE;
+    d->tx_commit = 0;
+    d->tx_end = 0;
+    d->phase = TB710FU_DWC3_SETUP_PHASE;
+    d->data_in = d->control_bytes = d->setup_pending = d->set_line = 0;
+    d->pending_address_valid = d->pending_configuration_valid = 0;
+    d->pending_dtr_valid = d->pending_dtr = 0;
+    d->failed = 0;
+    d->failure = NULL;
+    d->running = 1;
+    d->control_polls = d->polls;
+    write_reg(d, DALEPENA, d->configured ? ENABLED_ENDPOINTS : 3u);
+    write_reg(d, DEVTEN, (1u << 11) | (1u << 9) | 7u);
+    // An already armed SETUP TRB is left where it is: re-arming it would hand the
+    // core a second TRB for one endpoint. As in start(), SETUP is posted before
+    // the pull-up is exposed so a host that arrives with the shell does not
+    // time out on its first request.
+    if (!d->busy[0] && d->phase == TB710FU_DWC3_SETUP_PHASE) (void)setup_phase(d);
+    write_reg(d, DCTL, (read_reg(d, DCTL) & ~(SOFT_RESET | DCTL_LPM_MASK)) | RUN_STOP);
 }

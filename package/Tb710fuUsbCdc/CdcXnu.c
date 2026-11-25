@@ -65,6 +65,11 @@ extern int tb710fu_shell_stat(const char *path)
 /* IOKit side: Macos27Services.cpp owns the registry plane. */
 extern void tb710fu_ioreg_dump(const char *filter)
     __attribute__((weak_import));
+/* Display bring-up lives in the GopDisplay archive. The CDC worker owns this call:
+ * a panic inside display bring-up is the panic that must still reach COM5, and the
+ * panic loop can only drive a controller that is already running. */
+extern void native_tb710fu_gop_display_start(void)
+    __attribute__((weak_import));
 extern volatile uint32_t armcpu_gic_ready;
 extern volatile uint64_t armcpu_timer_interrupts;
 extern kern_return_t armcpu_spi_attach(uint32_t intid, bool edge,
@@ -1539,6 +1544,17 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                "and host DTR\n",
                (unsigned long long)gReport.dma_physical, (unsigned)gReport.dma_bytes);
         cdc_checkpoint("cdcready");
+        /* Display bring-up starts here and not in bsd_init's services hook. A
+         * panic inside it is the one panic that must still reach COM5, and
+         * tb710fu_cdc_panic_loop() can only drive a controller that is already
+         * running. This point is ~1.5 s after bsd_init on this board and far
+         * ahead of WindowServer, so the ordering costs the desktop nothing. */
+        if (native_tb710fu_gop_display_start) {
+            cdc_lane_op(NULL, "cdcgop");
+            native_tb710fu_gop_display_start();
+            cdc_log("TB710FU CDC: GopDisplay start returned\n");
+            cdc_checkpoint("cdcgop");
+        }
         unsigned previous = 0;
         int bus_seen = 0, setup_seen = 0, yield_marked = 0;
         unsigned rounds = 0, beats = 0;
@@ -1591,6 +1607,16 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                 cdc_log("TB710FU CDC: configured=%u dtr=%u\n",
                        (unsigned)gCdc.controller.configured,
                        (unsigned)gCdc.controller.dtr);
+                /* One line per open/close transition: what the reopen cost. */
+                cdc_log("TB710FU CDC: rearm ep0=%llu/%llu cancel=%llu defer=%llu "
+                       "abort=%llu orphan=%llu stale=%llu\n",
+                       (unsigned long long)gCdc.controller.ep0_recoveries,
+                       (unsigned long long)gCdc.controller.ep0_rearms,
+                       (unsigned long long)gCdc.controller.cancel_completions,
+                       (unsigned long long)gCdc.controller.deferred_starts,
+                       (unsigned long long)gCdc.controller.aborted_tx,
+                       (unsigned long long)gCdc.controller.orphan_completions,
+                       (unsigned long long)gCdc.controller.stale_completions);
                 cdc_checkpoint(gCdc.controller.dtr ? "cdcdtr" :
                                gCdc.controller.configured ? "cdccfg" : "cdcevent");
                 previous = state;
@@ -1619,6 +1645,11 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                (unsigned long long)gCdc.controller.events,
                gCdc.controller.last_event,
                (unsigned long long)gCdc.controller.setup_requests);
+    } else if (native_tb710fu_gop_display_start) {
+        /* The platform never came up, so nothing here could report a panic
+         * anyway; the display must not be lost with the CDC transport. */
+        cdc_lane_op(NULL, "cdcgop");
+        native_tb710fu_gop_display_start();
     }
     // One last text checkpoint after the report: the QR frame is rebuilt on a
     // one second dwell, so a failure that ends the worker right after printing
@@ -1654,16 +1685,37 @@ void tb710fu_cdc_start(void)
            (unsigned)ml_get_interrupts_enabled());
 }
 
+// Answered to the services hook in Macos27Services.cpp: 1 when a worker was
+// queued for this boot, so the display is started by that worker once its
+// platform is live instead of ~1.5 s earlier. 0 keeps the old unconditional
+// start there, which is what a boot with tb710fu-cdc=0 still needs.
+int tb710fu_cdc_owns_display(void)
+{
+    return __atomic_load_n(&gAttempted, __ATOMIC_ACQUIRE) ? 1 : 0;
+}
+
 // Called from halt_all_cpus() after any kernel panic: keeps polling DWC3 on the
 // panicking CPU with zero interrupts/locks so the full panic log drains over COM5
 // and hands-free "edl" / "reboot" commands stay live even after a fatal panic.
 void tb710fu_cdc_panic_loop(void)
 {
-    if (!gCdc.controller.running || gCdc.controller.failed) {
-        return;
-    }
+    /* No worker ever adopted this controller: there is no event ring and no
+     * pull-up, so nothing here can be served and touching the core from a panic
+     * context would be the only risk left. Display bring-up is the path that used
+     * to panic in exactly this window, which is why it now runs after
+     * platform-up instead of before it. probe_trace[1] is the DEVTEN readback
+     * start() records just before exposing the pull-up. */
+    if (gCdc.controller.dma == NULL || gCdc.controller.probe_trace[1] == 0u) return;
+    /* A transport failure before the panic already cleared DEVTEN and dropped
+     * RUN_STOP. The shell still has to answer a host that opens COM5 AFTER the
+     * panic, so re-assert only what start()/stop() own and keep polling. */
+    if (!gCdc.controller.running || gCdc.controller.failed)
+        tb710fu_dwc3_panic_rearm(&gCdc.controller);
     for (;;) {
         tb710fu_dwc3_poll(&gCdc.controller);
+        /* A data-plane anomaly seen while the shell runs must not end the loop:
+         * 'edl' is the only reason to be here. */
+        if (gCdc.controller.failed) tb710fu_dwc3_panic_rearm(&gCdc.controller);
         const unsigned cmd = gPendingCmd;
         if (cmd >= 1u && cmd <= 4u) {
             cdc_exec_pending_cmd();

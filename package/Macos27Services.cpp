@@ -14,6 +14,10 @@ extern "C" void tb710fu_aes_meta_init(void) __asm__("__GLOBAL__sub_I_NativeAES.c
 extern "C" IOService *native_keyevents_allocate(void);
 extern "C" IOService *native_aes_allocate(void);
 extern "C" void native_tb710fu_gop_display_start(void);
+/* Answered by CdcXnu.c: 1 when a CDC worker was queued for this boot and will
+ * start the display itself once its platform is live. Weak, so a build without
+ * that archive keeps the unconditional start below. */
+extern "C" int tb710fu_cdc_owns_display(void) __attribute__((weak_import));
 extern "C" volatile uint32_t native_aes_kat_status;
 extern "C" volatile uint32_t native_aes_registered;
 extern "C" volatile uint32_t native_aes_interface_status;
@@ -97,7 +101,18 @@ extern "C" void native_tb710fu_services_start(void)
         }
     }
 
-    native_tb710fu_gop_display_start();
+    /* Display bring-up used to run here unconditionally, about 1.5 s before the
+     * CDC worker reached platform-up: native-source-storage defers that worker by
+     * 1500 ms, and this function runs right after bsd_init's storage hook. A panic
+     * inside display bring-up then had no COM5 to report to - the panic loop
+     * returns immediately when the controller was never started - so the boot
+     * looked like a silent hang. The CDC worker now owns the call and makes it
+     * once its platform is up, which is still far ahead of WindowServer. */
+    if (tb710fu_cdc_owns_display == NULL || tb710fu_cdc_owns_display() == 0) {
+        native_tb710fu_gop_display_start();
+    } else {
+        printf("TB710FU Services: GopDisplay deferred to the CDC worker\n");
+    }
 
     resources->release();
 }

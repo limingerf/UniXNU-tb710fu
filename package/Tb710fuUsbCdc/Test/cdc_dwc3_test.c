@@ -30,6 +30,10 @@ struct fixture {
     unsigned block_halt, block_reset, block_command, bad_command_status;
     unsigned stick_reset;
     unsigned halt_needs_event_ack;
+    // Model the states a Windows close leaves behind that software cannot see:
+    // an End Transfer the core completes asynchronously, one it completes without
+    // retiring the TRB, and a Start Transfer the core refuses on that endpoint.
+    unsigned hold_cancel, cancel_retires, refuse_start_ep;
 };
 
 static uint32_t load32(const uint8_t *p)
@@ -100,7 +104,23 @@ static void write32(void *context, unsigned reg, uint32_t value)
         f->regs[reg / 4] = command | (f->bad_command_status << 12);
         if (f->bad_command_status) return;
         if (command == 4) ++f->stall_commands;
+        if (command == 8) {
+            if (f->hold_cancel) {
+                // Asynchronous cancellation: CMDACT stays set until the
+                // command-complete event, exactly as DWC_usb31 does.
+                f->regs[reg / 4] = command | (1u << 10);
+                return;
+            }
+            if (f->cancel_retires) f->active[ep] = 0;
+            return;
+        }
         if (command == 6) {
+            if (f->refuse_start_ep != 0 && f->refuse_start_ep == ep) {
+                // The core still owns the transfer the host abandoned and
+                // refuses the new one. Status bits are not a transport verdict.
+                f->regs[reg / 4] = command | (2u << 12);
+                return;
+            }
             const uint64_t descriptor = (uint64_t)f->regs[(reg - 4) / 4] << 32 |
                                          f->regs[(reg - 8) / 4];
             assert(descriptor == PHYSICAL + trb(ep));
@@ -285,6 +305,14 @@ static void status(struct fixture *f, unsigned ep)
     complete(f, ep, 0, 0);
     tb710fu_dwc3_poll(&f->core);
     assert(!f->core.failed && f->active[0] && f->kind[0] == 2);
+}
+
+static void command_complete(struct fixture *f, unsigned ep)
+{
+    // The core retires the transfer when it completes the posted End Transfer.
+    f->active[ep] = 0;
+    event(f, (ep << 1) | (7u << 6));
+    tb710fu_dwc3_poll(&f->core);
 }
 
 static void read_request(struct fixture *f, unsigned value, unsigned index, unsigned requested, unsigned actual)
@@ -646,8 +674,165 @@ static void test_host_pipe_reset_aborts_bulk_in_and_keeps_ep0(void)
     assert(!f.core.failed && f.core.transmitted == 2048);
 }
 
-static void test_event_budget_and_wrap(void)
+// Bug 1 (reopen): the comment above covers the CLEAR_FEATURE(ENDPOINT_HALT) path.
+// This one covers what is left of it. The close abandons a Bulk IN transfer, the
+// cancel command completes, and the core still refuses the next Start Transfer
+// because its own copy of that transfer has not been retired. That refusal used
+// to be a transport failure, so EP0 stopped answering and the reopen reported
+// "A device attached to the system is not functioning".
+static void test_reopen_survives_core_refusing_start_on_abandoned_bulk_in(void)
 {
+    struct fixture f;
+    prepare(&f);
+    assert(start(&f, "diagnostic-test-1"));
+    connect(&f, 0);
+    configure(&f);
+    setup(&f, 0x21, 0x22, 3, 0, 0);
+    status(&f, 1);
+    for (unsigned i = 0; i < 2048; ++i) f.log[i] = (uint8_t)i;
+    f.log_length = 2048;
+    tb710fu_dwc3_poll(&f.core);
+    assert(f.core.dtr && f.active[3] && f.length[3] == 2048);
+    // Close: DTR drops, then the host aborts the read and clears bulk IN's halt.
+    setup(&f, 0x21, 0x22, 0, 0, 0);
+    status(&f, 1);
+    assert(!f.core.dtr && f.core.tx_state == 1); // Span still on the wire.
+    setup(&f, 0x02, 1, 0, 0x0081, 0);
+    status(&f, 1);
+    assert(!f.core.failed && f.core.tx_state == 0 && !f.core.busy[3]);
+    assert(f.active[0] && f.kind[0] == 2);
+    // Reopen against a core that still owns the abandoned transfer.
+    f.refuse_start_ep = 3;
+    setup(&f, 0x21, 0x22, 3, 0, 0);
+    status(&f, 1);
+    assert(f.core.dtr);
+    tb710fu_dwc3_poll(&f.core);
+    assert(!f.core.failed && f.core.running);
+    // The refusal is not a verdict: the endpoint is handed back to the
+    // quarantine, the transport still runs, and EP0 still owns its SETUP TRB.
+    assert(f.core.deferred_starts >= 1 && !f.core.busy[3] && f.core.tx_state == 0);
+    assert(f.core.dtr && f.active[0] && f.kind[0] == 2);
+    // EP0 is still alive with a refusal outstanding: a full close/open cycle
+    // completes on the host's terms, which is exactly what used to fail.
+    setup(&f, 0x21, 0x22, 0, 0, 0);
+    status(&f, 1);
+    assert(!f.core.dtr && !f.core.failed);
+    setup(&f, 0x21, 0x22, 3, 0, 0);
+    status(&f, 1);
+    assert(f.core.dtr && !f.core.failed);
+    // The core finally retires the abandoned transfer; its late completion is
+    // dropped, and the same log bytes go out again instead of being lost.
+    f.refuse_start_ep = 0;
+    complete(&f, 3, 0, 0);
+    for (unsigned i = 0; i < 6; ++i) tb710fu_dwc3_poll(&f.core);
+    assert(!f.core.failed);
+    assert((f.core.stale_completions + f.core.orphan_completions) >= 1);
+    assert(f.active[3] && f.length[3] == 2048);
+    assert(memcmp(f.device + f.buffer[3], f.log, 2048) == 0);
+    complete(&f, 3, 2048, 0);
+    tb710fu_dwc3_poll(&f.core);
+    assert(!f.core.failed && f.core.transmitted == 2048);
+}
+
+// Bug 1 (control plane): a control stage the host abandoned produces no event at
+// all, so EP0 stays in a DATA/STATUS phase with no SETUP TRB armed. Windows then
+// has nothing to land its next open on. A bounded control window must give the
+// stage back and re-arm SETUP.
+static void test_abandoned_control_stage_is_recycled(void)
+{
+    struct fixture f;
+    prepare(&f);
+    assert(start(&f, "diagnostic-test-1"));
+    connect(&f, 0);
+    configure(&f);
+    const unsigned stalled = f.stall_commands, setup_starts = f.starts[0];
+    setup(&f, 0x21, 0x22, 3, 0, 0); // Windows close-time DTR drop, then silence.
+    assert(!f.core.dtr && f.core.phase == TB710FU_DWC3_WAIT_STATUS2);
+    for (unsigned i = 0; i < 1000; ++i) {
+        tb710fu_dwc3_poll(&f.core);
+        assert(!f.core.failed);
+    }
+    assert(f.core.ep0_recoveries == 1 && f.stall_commands == stalled + 1);
+    assert(f.active[0] && f.kind[0] == 2 && f.starts[0] > setup_starts);
+    // The next open lands on a live EP0 and is answered.
+    setup(&f, 0x21, 0x22, 3, 0, 0);
+    status(&f, 1);
+    assert(f.core.dtr && !f.core.failed && f.active[0] && f.kind[0] == 2);
+}
+
+// Bug 1 (TRB ownership): an End Transfer the core completes asynchronously must
+// keep the endpoint out of service until its command-complete event arrives.
+// Arming over a transfer the core has not retired is the collision that a reopen
+// used to hit.
+static void test_held_end_transfer_blocks_rearm_until_it_completes(void)
+{
+    struct fixture f;
+    prepare(&f);
+    assert(start(&f, "diagnostic-test-1"));
+    connect(&f, 0);
+    configure(&f);
+    setup(&f, 0x21, 0x22, 3, 0, 0);
+    status(&f, 1);
+    for (unsigned i = 0; i < 2048; ++i) f.log[i] = (uint8_t)i;
+    f.log_length = 2048;
+    tb710fu_dwc3_poll(&f.core);
+    assert(f.core.dtr && f.active[3] && f.length[3] == 2048);
+    f.hold_cancel = 1;
+    setup(&f, 0x02, 1, 0, 0x0081, 0);
+    status(&f, 1);
+    assert(f.core.cancel_pending[3] && !f.core.busy[3]);
+    setup(&f, 0x21, 0x22, 3, 0, 0);
+    status(&f, 1);
+    tb710fu_dwc3_poll(&f.core);
+    assert(f.core.dtr && !f.core.failed && f.core.running);
+    assert(!f.core.busy[3] && f.core.cancel_pending[3] && f.core.tx_state == 0);
+    f.hold_cancel = 0;
+    command_complete(&f, 3);
+    assert(f.core.cancel_completions == 1 && !f.core.cancel_pending[3]);
+    tb710fu_dwc3_poll(&f.core);
+    assert(!f.core.failed && f.active[3] && f.length[3] == 2048);
+}
+
+// Bug 3: a timeout or a bad status on one endpoint must not leave the transport
+// dead, because the panic shell can only drive a running controller. After a
+// panic the worker is gone: the shell re-asserts the pull-up and EP0 itself, so
+// a COM5 opened only after the panic is still answered.
+static void test_panic_rearm_serves_a_host_that_arrives_late(void)
+{
+    struct fixture f;
+    prepare(&f);
+    assert(start(&f, "diagnostic-test-1"));
+    connect(&f, 0);
+    configure(&f);
+    // A failing endpoint command used to latch the transport off for good.
+    f.bad_command_status = 4;
+    assert(f.active[0] && f.kind[0] == 2);
+    const uint8_t clear_halt[8] = {0x02, 0x01, 0, 0, 0x81, 0, 0, 0};
+    memcpy(f.device + f.buffer[0], clear_halt, sizeof(clear_halt));
+    complete(&f, 0, 8, 0);
+    tb710fu_dwc3_poll(&f.core);
+    assert(f.core.failed && !f.core.running);
+    assert(f.regs[0xc708 / 4] == 0 && !(f.regs[0xc704 / 4] & (1u << 31)));
+    // Clearing RUN_STOP halted the device, so the core aborted its data transfers.
+    f.active[2] = 0;
+    f.bad_command_status = 0;
+    tb710fu_dwc3_panic_rearm(&f.core);
+    assert(!f.core.failed && f.core.running && f.core.failure == NULL);
+    assert(f.regs[0xc708 / 4] == ((1u << 11) | (1u << 9) | 7u));
+    assert(f.regs[0xc704 / 4] & (1u << 31));
+    assert(f.active[0] && f.kind[0] == 2); // EP0 lost its SETUP TRB to the panic.
+    memcpy(f.log, "panic log\n", 10);
+    f.log_length = 10;
+    setup(&f, 0x21, 0x22, 3, 0, 0);
+    status(&f, 1);
+    tb710fu_dwc3_poll(&f.core);
+    assert(!f.core.failed && f.core.dtr && f.active[3] && f.length[3] == 10);
+    complete(&f, 3, 10, 0);
+    tb710fu_dwc3_poll(&f.core);
+    assert(!f.core.failed && f.core.transmitted == 10);
+}
+
+static void test_event_budget_and_wrap(void){
     struct fixture f;
     prepare(&f);
     assert(start(&f, "diagnostic-test-1"));
@@ -673,6 +858,10 @@ int main(void)
     test_unclaimed_zlp_retires_instead_of_blocking();
     test_evicted_span_still_retires_and_keeps_sending();
     test_host_pipe_reset_aborts_bulk_in_and_keeps_ep0();
+    test_reopen_survives_core_refusing_start_on_abandoned_bulk_in();
+    test_abandoned_control_stage_is_recycled();
+    test_held_end_transfer_blocks_rearm_until_it_completes();
+    test_panic_rearm_serves_a_host_that_arrives_late();
     test_failures_retain_dma_and_do_not_restart();
     test_device_role_and_event_irq();
     test_event_budget_and_wrap();

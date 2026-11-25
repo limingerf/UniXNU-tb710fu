@@ -66,6 +66,13 @@ struct tb710fu_dwc3 {
     // is armed or when the quarantine expires.
     uint8_t stale[6];
     uint64_t stale_until[6];
+    // Set when the core, not this driver, still owns the End Transfer command
+    // posted for this endpoint. Nothing may be armed on it until that command
+    // completes: a Start Transfer issued over a transfer the core has not
+    // retired is what the core answers with "endpoint busy", and in the
+    // previous code that status latched failure and took EP0 down with it.
+    uint8_t cancel_pending[6];
+    uint8_t cancel_pad[2];
     enum tb710fu_dwc3_control_phase phase;
     uint8_t running, failed, configured, dtr, notification_pending;
     uint8_t data_in, set_line, pending_address_valid;
@@ -84,6 +91,13 @@ struct tb710fu_dwc3 {
     // had to abandon, how many late completions were dropped for them, how many
     // bus resets were survived, and how often EP0 lost and regained its SETUP.
     uint64_t polls, abandoned_transfers, stale_completions, resets, ep0_rearms;
+    // Close/reopen evidence: the poll at which a control stage last advanced,
+    // how many control pipes were recycled after the host abandoned a stage,
+    // how many End Transfer commands completed, how many completions arrived for
+    // an endpoint nobody owns, how many Bulk IN spans the host aborted, and how
+    // many transfer starts the core refused while it was still terminating.
+    uint64_t control_polls, ep0_recoveries, cancel_completions;
+    uint64_t orphan_completions, aborted_tx, deferred_starts;
     // Core reset evidence: DCTL before the halt, right after the assert, and
     // GCTL/phycfg after the preconditions, plus the state registers read at the
     // end. reset_stage is how the bit finally cleared, 0 when it never did.
@@ -113,5 +127,10 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *, const struct tb710fu_dwc3_ops *,
 void tb710fu_dwc3_poll(struct tb710fu_dwc3 *);
 void tb710fu_dwc3_enable_event_irq(struct tb710fu_dwc3 *);
 void tb710fu_dwc3_stop(struct tb710fu_dwc3 *, const char *reason);
+// A panic stops the worker that normally drives the controller. This re-asserts
+// only the state start()/stop() own - pull-up and device events - and re-arms
+// EP0, leaving every DMA address untouched, so a COM5 opened after the panic is
+// answered instead of never being heard at all.
+void tb710fu_dwc3_panic_rearm(struct tb710fu_dwc3 *);
 
 #endif

@@ -38,13 +38,19 @@ uintptr_t gLegacyVtable = 0;
 uint64_t *gLegacyTable = nullptr;
 
 // An authenticated vtable entry is stripped of its signature and re-signed for
-// this call site's own function type, so the original body is entered correctly.
+// this call site's own function type (arm64e kernel uses function-pointer type
+// discrimination, not 0).
 template <typename Fn>
 Fn legacyEntry(unsigned slot)
 {
     uint64_t raw = ((const volatile uint64_t *)gLegacyVtable)[slot];
     void *stripped = ptrauth_strip((void *)(uintptr_t)raw, ptrauth_key_function_pointer);
-    return (Fn)(uintptr_t)ptrauth_sign_unauthenticated(stripped, ptrauth_key_function_pointer, 0);
+#if __has_feature(ptrauth_function_pointer_type_discrimination)
+    return ptrauth_sign_unauthenticated((Fn)(uintptr_t)stripped, ptrauth_key_function_pointer,
+                                        ptrauth_type_discriminator(Fn));
+#else
+    return ptrauth_sign_unauthenticated((Fn)(uintptr_t)stripped, ptrauth_key_function_pointer, 0);
+#endif
 }
 
 bool legacySlotIsOwned(unsigned slot)
@@ -112,12 +118,11 @@ extern "C" void native_tb710fu_gop_adopt(void *object)
         printf("TB710FU GopDisplay: adopted %u live slots, %u owned overrides (resigned at %p)\n",
                TB710FU_GOP_SLOT_COUNT - TB710FU_GOP_OWNED_COUNT, TB710FU_GOP_OWNED_COUNT, (void *)table);
     }
-    if (rawStatic != staticTable) {
-        uint64_t vdisc = ptrauth_blend_discriminator(object, 0);
-        *(uintptr_t *)object = (uintptr_t)ptrauth_sign_unauthenticated(gLegacyTable, ptrauth_key_cxx_vtable_pointer, vdisc);
-    } else {
-        *(uintptr_t *)object = (uintptr_t)gLegacyTable;
-    }
+    // arm64e XNU signs OSObject/IOService/IOMobileFramebufferLegacy vptrs with
+    // ASDA, address discrimination on `this`, and root type discriminator 0xcda1
+    // (ptrauth_string_discriminator("_ZTV15OSMetaClassBase")).
+    uint64_t vdisc = ptrauth_blend_discriminator(object, 0xcda1u);
+    *(uintptr_t *)object = (uintptr_t)ptrauth_sign_unauthenticated(gLegacyTable, ptrauth_key_cxx_vtable_pointer, vdisc);
 }
 
 // Qualified base calls in NativeLegacyDisplay.cpp are routed here: the live
