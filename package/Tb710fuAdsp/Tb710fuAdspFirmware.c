@@ -22,7 +22,6 @@
 #include <sys/kauth.h>
 #include <sys/errno.h>
 #include <IOKit/IOLib.h>
-#include <libkern/libkern.h>
 #include <libkern/zlib.h>
 
 #include "Tb710fuAddon.h"
