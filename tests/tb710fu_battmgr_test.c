@@ -239,6 +239,26 @@ static void test_notification_and_enable(void)
     CHECK(bm.cursor == 0);  /* a notification starts the cycle at once */
 }
 
+static void test_notification_info_is_slow(void)
+{
+    Tb710fuBattmgr bm;
+    tb710fu_battmgr_init(&bm);
+    bm.valid = 1u << BmFull;  /* the slow set is known, so an ordinary cycle skips it */
+    tb710fu_battmgr_refresh(&bm, 0);
+    CHECK(bm.slow_due == 0);
+    uint8_t note[24];
+    frame(note, TB710FU_BATTMGR_OP_NOTIFICATION, 0, 0, 0);
+    note[4] = (uint8_t)TB710FU_BATTMGR_TYPE_NOTIFY;
+    note[12] = 0x81;  /* battery information changed: model, design/full capacity, cycle count */
+    CHECK(tb710fu_battmgr_receive(&bm, note, 16) == BmNotified);
+    CHECK(bm.refresh_wanted == 2);  /* the cycle that follows also reads the slow fields */
+    /* a status notification (0x80) asks for an ordinary cycle only */
+    bm.refresh_wanted = 0;
+    note[12] = 0x80;
+    CHECK(tb710fu_battmgr_receive(&bm, note, 16) == BmNotified);
+    CHECK(bm.refresh_wanted == 1);
+}
+
 static void test_ignores_foreign_and_malformed(void)
 {
     Tb710fuBattmgr bm;
@@ -316,6 +336,7 @@ int main(void)
     test_capacity_fallback();
     test_error_retention_and_timeout();
     test_notification_and_enable();
+    test_notification_info_is_slow();
     test_ignores_foreign_and_malformed();
     test_input_limit_policy();
     test_zero_limit_never_writes();

@@ -172,7 +172,13 @@ int tb710fu_battmgr_receive(Tb710fuBattmgr *b, const uint8_t *data, uint32_t len
     const uint32_t type = le32(data + 4), opcode = le32(data + 8);
     if (opcode == TB710FU_BATTMGR_OP_NOTIFICATION) {
         b->notifications++;
-        tb710fu_battmgr_refresh(b, 0);
+        /* The payload is one word; its low byte names what changed (0x30/0x32/0x34 a property family, 0x80 battery
+         * status, 0x81 battery information, 0x83 charging state -- qcom_battmgr.c in mainline Linux). Only 0x81
+         * moves the slow set (model, design/full capacity, cycle count), so only that notification forces the slow
+         * fields into the next cycle instead of waiting for the ten-cycle pass. Everything else is a status
+         * change and a normal cycle is enough. */
+        const uint32_t what = length >= 16 ? le32(data + 12) & 0xffu : 0;
+        tb710fu_battmgr_refresh(b, what == 0x81u);
         return BmNotified;
     }
     if (type != TB710FU_BATTMGR_TYPE_REQUEST) {b->ignored++; return BmIgnored;}

@@ -25,6 +25,43 @@ The battery and charger are owned by the audio DSP, not by the application proce
 Consequence: no direct PMIC/SPMI read on this board can produce a state of charge. Any percentage has to come from
 the battery manager on the DSP. This is the same architecture UniXNU-sheng used on SM8550 (hardware-verified there).
 
+## The Linux port on this same board
+
+The mainline Linux port for this exact device (`MeteoricmeteorLL/tb710fu-linux`, Linux 7.2.0 mainline plus a
+49-file board diff) settles the architecture and gives a working reference:
+
+- `docs/STATUS.md` lists **Battery reporting** and **Charging** as working on the real device (⚠️ partial):
+  `qcom_battmgr` drives the battery (upower needs its system user and `PrivateUsers=no` under a root session),
+  the tablet charges over USB-C, and some properties intermittently log `-110` (`ETIMEDOUT`).
+- `board/hardware.md`: `battery | qcom_battmgr (ADSP)`. There is **no board-specific gauge or charger driver** in
+  that port: stock mainline `drivers/power/supply/qcom_battmgr.c` is the whole battery stack.
+- The ADSP is loaded by the usual remoteproc path; the board DTS names the firmware files
+  `qcom/sm8650/xiaoxin/gt/adsp.mbn` and `adsp_dtb.mbn` (`&remoteproc_adsp { firmware-name = ...; status = "okay"; }`),
+  and the firmware set also carries a small `battmgr.jsn`.
+- `qcom_battmgr.c` (SM8550 pmic-glink variant, which this board's DT compatible selects) sends the **same 24-byte
+  property request** (`{owner, type, opcode, battery 0, property, value}`) and the **same 28-byte
+  notification-enable frame** as `Tb710fuBattmgr.c`, and numbers the properties exactly as this board's
+  `qti_battery_charger.ko` does (`CHG_CTRL_LIM` 10 / `CHG_CTRL_LIM_MAX` 11, temperature 12, charge counter 14,
+  cycle count 15). That is an independent confirmation of the table extracted from the local module.
+- Its notification classes are `0x30`/`0x32`/`0x34` (a property family), `0x80` (battery status), `0x81` (battery
+  information), `0x83` (charging state). `Tb710fuBattmgr.c` now re-reads the slow set (model, design/full capacity,
+  cycles) only on `0x81`, instead of waiting for the ten-cycle pass.
+- The `-110` timeouts are the behaviour the codec is built to tolerate: the Linux port ships no workaround for them,
+  so one unanswered property is expected and must not invalidate the rest of the cycle.
+
+Consequences for this port:
+
+1. We do not need a TB710FU-specific battery driver; the DSP protocol is generic Qualcomm. The one missing piece is
+   the **ADSP + PMIC GLINK transport**.
+2. Firmware packaging is the gating item: `adsp.mbn` is 34.8 MB and `adsp_dtb.mbn` 5.9 MB. This project's built
+   `vendor_boot.img` is 11.8 MB inside a 96 MB partition, so both files fit in that FAT payload; the alternative is
+   reading them from a UFS partition at boot.
+3. The closest transport template is sheng's own ADSP stack (`.work/UniXNU-sheng/package`: `AdspProbe.cpp`,
+   `QcomGlink.c`, `QcomSmem.c`, `QcomSmp2p.c`, `QcomQmp.c`, `QcomRpmh.c`, `AdspFirmware.c`, `ShengAdsp.h`, all
+   BSD-2-Clause-Patent): same PMIC GLINK battery protocol, already hardware-verified, and its channel API is the
+   shape `Tb710fuPowerLink.h` mirrors. PianoPower remains the newer alternative, but its battery protocol is
+   Xiaomi's MCA, so only its transport is reusable.
+
 ## Property numbers are this device's own
 
 `qti_battery_charger.ko` keeps its property tables in `.rodata`; the strings are contiguous in source order:
@@ -93,11 +130,15 @@ Publishing an `IOPMPowerSource` needs the transport. The facts for it are in thi
   entries `master-kernel`, `slave-kernel`.
 - IPCC `/soc/qcom,ipcc@406000`; ADSP `glink-edge` uses mbox channel 3 (`adsp_smem`), label `adsp`/`lpass`.
 - GLINK channel `PMIC_RTR_ADSP_APPS`; the intents listed on `qcom,adsp_qrtr` belong to QRTR, not this channel.
+- Firmware: `adsp.mbn` (34.8 MB) and `adsp_dtb.mbn` (5.9 MB) from this device's own vendor image, the same two files
+  the Linux port loads as `qcom/sm8650/xiaoxin/gt/adsp.mbn` / `adsp_dtb.mbn`; `battmgr.jsn` is their metadata.
 
-Reference implementation to port: `UniXNU-xiaomipad8pro` → `package/PianoPower` (BSD-2-Clause-Patent;
-`PianoAdsp.cpp`, `QcomGlink.c`, `QcomQrtr.c`, `QcomSmem.c`, `QcomSmp2p.c`, `QcomQmp.c`, `FatVolume.c`,
-`PianoAdspFirmware.c`) with SM8750 addresses replaced by the SM8650 ones above. Note that PianoPower's battery
-protocol is Xiaomi's MCA, not the Qualcomm battery manager this board speaks; only its transport is reusable.
+Reference implementation to port: sheng's ADSP stack first (`.work/UniXNU-sheng/package`, BSD-2-Clause-Patent,
+same PMIC GLINK battery protocol already hardware-verified on SM8550), with the SM8650/ITB710FU DT facts above
+replacing its SM8550 addresses, then `UniXNU-xiaomipad8pro` → `package/PianoPower` (`PianoAdsp.cpp`, `QcomGlink.c`,
+`QcomQrtr.c`, `QcomSmem.c`, `QcomSmp2p.c`, `QcomQmp.c`, `FatVolume.c`, `PianoAdspFirmware.c`) for anything newer.
+Note that PianoPower's battery protocol is Xiaomi's MCA, not the Qualcomm battery manager this board speaks; only
+its transport is reusable.
 
 Acceptance for the transport, in order: (1) `battery=1` prints the ADT survey; (2) channel opens and the enable
 request answers (`native_battery_stats[9]` grows); (3) one full cycle yields plausible voltage/current/temperature

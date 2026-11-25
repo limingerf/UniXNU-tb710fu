@@ -13,7 +13,11 @@
  *    (/soc/qcom,pmic_glink, .local/input-sources/sm8650-lenovo-tb710fu.dts) and its vendor_dlkm
  *    (qti_battery_charger.ko, modules.load).
  *  - Owner 32778 and the message framing/opcodes: UniXNU-sheng's ShengBattmgr.c, hardware-verified on SM8550
- *    (porting.toml "battery properties after 11 are shifted by one" note), and mainline qcom_battmgr.
+ *    (porting.toml "battery properties after 11 are shifted by one" note), and mainline qcom_battmgr. The mainline
+ *    driver (drivers/power/supply/qcom_battmgr.c) sends exactly the same 24-byte property request
+ *    {owner, type, opcode, battery 0, property, value} and the same 28-byte notification-enable frame, and its
+ *    SM8550 variant is what runs on this board's Linux port; its notification classes (0x80 status, 0x81 information,
+ *    0x83 charging state) are used here to decide when the slow fields are re-read.
  *  - Property numbers: NOT sheng's. They are this device's own order, read from qti_battery_charger.ko's
  *    "battery_props" and "usb_props" string tables in .rodata (file offsets 113201..113631 and 115649..115892).
  *    sheng's list inserted thermal level / its max / charge current before temperature, shifting 10..21 by one;
