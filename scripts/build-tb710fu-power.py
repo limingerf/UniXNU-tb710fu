@@ -17,7 +17,13 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGE = ROOT / 'package/Tb710fuPower'
+# The archive runs inside the materialised tree; its package link is not
+# guaranteed to carry device sources added after the tree was first linked
+# (the CI tree is built from the framework checkout). Resolve the sources from
+# the device repository the framework hands every archive through
+# UNIXNU_DEVICE, exactly as build-tb710fu-macos27-services.py does.
+DEVICE = Path(os.environ['UNIXNU_DEVICE']).resolve() if os.environ.get('UNIXNU_DEVICE') else ROOT
+PACKAGE = DEVICE / 'package/Tb710fuPower'
 OUT = ROOT / 'build/tb710fu-power'
 RECORD_C = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/osfmk/DEVELOPMENT/startup.o.json'
 RECORD_CPP = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/iokit/DEVELOPMENT/IOPlatformExpert.cpo.json'
