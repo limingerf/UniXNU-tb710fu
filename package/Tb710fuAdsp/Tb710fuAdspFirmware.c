@@ -21,10 +21,17 @@
 #include <sys/fcntl.h>
 #include <sys/kauth.h>
 #include <sys/errno.h>
-#include <IOKit/IOLib.h>
+#include <mach/vm_types.h>
 #include <libkern/zlib.h>
 
 #include "Tb710fuAddon.h"
+
+/* Only the two data-heap entry points from IOKit are needed here.  Including <IOKit/IOLib.h> pulls
+ * <IOKit/system.h> and the whole mach_interface.h server surface, whose generated headers need the
+ * private osfmk include tree; the BSD compile recipe deliberately does not have that, and adding it
+ * makes <kern/ipc_tt.h> collide with the exported kern/thread.h enum. */
+extern void *IOMallocData(vm_size_t size) __attribute__((alloc_size(1)));
+extern void IOFreeData(void *address, vm_size_t size);
 
 #define kAddonPrefix "EFI/UniXNU/firmware/Adsp/"
 #define kZPrefix 16u
@@ -50,12 +57,12 @@ extern int native_ram_block_gpu_addon(const uint8_t **data, uint64_t *bytes) __a
 
 static int allocImage(uint64_t bytes, const uint8_t **image, void **handle)
 {
-    struct tb710fu_fw *fw = IOMallocType(struct tb710fu_fw);
+    struct tb710fu_fw *fw = IOMallocData(sizeof *fw);
     if (!fw) return ENOMEM;
     bzero(fw, sizeof *fw);
     fw->vnode = NULLVP;
-    fw->bytes = IOMallocData((size_t)bytes);
-    if (!fw->bytes) {IOFreeType(fw, struct tb710fu_fw); return ENOMEM;}
+    fw->bytes = IOMallocData((vm_size_t)bytes);
+    if (!fw->bytes) {IOFreeData(fw, sizeof *fw); return ENOMEM;}
     fw->size = bytes;
     fw->owned = 1;
     *image = fw->bytes;
@@ -69,7 +76,7 @@ static voidpf zblockAlloc(voidpf opaque, uInt items, uInt size)
     (void)opaque;
     const uint64_t bytes = (uint64_t)items * size;
     if (!bytes || bytes > TB710FU_ADDON_MAX_BYTES) return Z_NULL;
-    uint8_t *p = IOMallocData((size_t)bytes + kZPrefix);
+    uint8_t *p = IOMallocData((vm_size_t)bytes + kZPrefix);
     if (!p) return Z_NULL;
     for (unsigned i = 0; i < 8; ++i) p[i] = (uint8_t)(bytes >> (8 * i));
     return p + kZPrefix;
@@ -82,7 +89,7 @@ static void zblockFree(voidpf opaque, voidpf address)
     uint8_t *p = (uint8_t *)address - kZPrefix;
     uint64_t bytes = 0;
     for (unsigned i = 0; i < 8; ++i) bytes |= (uint64_t)p[i] << (8 * i);
-    IOFreeData(p, (size_t)bytes + kZPrefix);
+    IOFreeData(p, (vm_size_t)bytes + kZPrefix);
 }
 
 static int inflateImage(uint8_t *to, uint64_t to_bytes, const uint8_t *from, uint64_t from_bytes)
@@ -135,7 +142,7 @@ int tb710fu_fw_open_addon(const char *name, void **handle, uint64_t *size)
 
 int tb710fu_fw_open(const char *path, void **handle, uint64_t *size)
 {
-    struct tb710fu_fw *fw = IOMallocType(struct tb710fu_fw);
+    struct tb710fu_fw *fw = IOMallocData(sizeof *fw);
     if (!fw) return ENOMEM;
     bzero(fw, sizeof *fw);
     fw->vnode = NULLVP;
@@ -153,7 +160,7 @@ int tb710fu_fw_open(const char *path, void **handle, uint64_t *size)
             *size = va.va_data_size;
         }
     }
-    if (error) {IOFreeType(fw, struct tb710fu_fw); return error;}
+    if (error) {IOFreeData(fw, sizeof *fw); return error;}
     *handle = fw;
     return 0;
 }
@@ -187,6 +194,6 @@ void tb710fu_fw_close(void *handle)
     struct tb710fu_fw *fw = handle;
     if (!fw) return;
     if (fw->vnode) vnode_close(fw->vnode, FREAD, vfs_context_kernel());
-    if (fw->owned && fw->bytes) IOFreeData((uint8_t *)fw->bytes, (size_t)fw->size);
-    IOFreeType(fw, struct tb710fu_fw);
+    if (fw->owned && fw->bytes) IOFreeData((uint8_t *)fw->bytes, (vm_size_t)fw->size);
+    IOFreeData(fw, sizeof *fw);
 }
