@@ -55,11 +55,12 @@ jobs:
           ref: 0c1bac3d51a3009dca1708b15a5198f4b43d057a
           path: .work/UniXNU
           persist-credentials: false
-      - name: Build arm64e apfs_boot_util shim and NGPUADD2 addon
+      - name: Build arm64e apfs_boot_util shim and NGPUADD2 addon (with ADSP firmware)
         run: |
           set -euo pipefail
           out=.work/boot-shims-out
-          mkdir -p "$out/bootshim"
+          fw=.work/boot-shims-fw
+          mkdir -p "$out/bootshim" "$fw/Adsp"
           sdk=$(xcrun --sdk macosx --show-sdk-path)
           xcrun --sdk macosx clang -target arm64e-apple-macos27.0 -isysroot "$sdk" -O2 -Wall -Werror \
             .work/UniXNU/scripts/macos-boot-shims/apfs_boot_util.c -o "$out/bootshim/apfs_boot_util"
@@ -68,10 +69,26 @@ jobs:
           cdhash=$(codesign --display --verbose=4 "$out/bootshim/apfs_boot_util" 2>&1 | sed -n 's/^CDHash=\([0-9a-f]\{40\}\)$/\1/p')
           test -n "$cdhash"
           echo "$cdhash" > "$out/cdhash.txt"
+          # The ADSP firmware rides in the same addon: entry paths EFI/UniXNU/firmware/Adsp/..., the layout UniXNU's
+          # firmware loader reads (PianoFirmware.h). Pinned Linux port archive, byte-checked per file; the blob is never
+          # committed, only downloaded in this job.
+          curl -fsSL --retry 3 --retry-delay 5 -o "$fw/firmware.tar.gz" \
+            "https://raw.githubusercontent.com/MeteoricmeteorLL/tb710fu-linux/16e800d4f6e5cf4a8517900a9e11eec0ebc91bd3/firmware/tb710fu-firmware-20261005.tar.gz"
+          test "$(md5 -q "$fw/firmware.tar.gz")" = "c29a0af246551ea07983cdcc5876315f"
+          gt=lib/firmware/qcom/sm8650/xiaoxin/gt
+          tar -xzf "$fw/firmware.tar.gz" -C "$fw" "$gt/adsp.mbn" "$gt/adsp_dtb.mbn"
+          cp "$fw/$gt/adsp.mbn" "$fw/Adsp/adsp.mbn"
+          cp "$fw/$gt/adsp_dtb.mbn" "$fw/Adsp/adsp_dtb.mbn"
+          chmod 0644 "$fw/Adsp/adsp.mbn" "$fw/Adsp/adsp_dtb.mbn"
+          test "$(md5 -q "$fw/Adsp/adsp.mbn")" = "a0686c2b0ed4b6a8a0250c31aa2bc46c"
+          test "$(md5 -q "$fw/Adsp/adsp_dtb.mbn")" = "4b2480da1dbff4932c6d9f4eb40222e4"
           python3 -c 'import struct, pathlib; pathlib.Path(".work/boot-shims-out/empty.bin").write_bytes(b"NGPUADD2" + struct.pack("<IIQ", 0, 0, 24))'
-          python3 .work/UniXNU/scripts/addon-add-dir.py "$out/empty.bin" "$out/boot-shims.bin" bootshim "$out/bootshim"
+          python3 .work/UniXNU/scripts/addon-add-dir.py "$out/empty.bin" "$out/boot-shims.bin" \
+            bootshim "$out/bootshim" EFI/UniXNU/firmware/Adsp "$fw/Adsp"
           rm -f "$out/empty.bin"
+          rm -rf "$fw"
           shasum -a 256 "$out/boot-shims.bin" "$out/bootshim/apfs_boot_util"
+          ls -l "$out/boot-shims.bin"
           echo "CDHash=$cdhash"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:

@@ -12,8 +12,9 @@
 // GLINK items 478 (descriptor), 479 (our FIFO), 480 (the DSP's FIFO), the ids mainline's qcom_glink_smem.c allocates; AOSS message
 // RAM 0xc300000 + 0x400; apps RSC DRV 2 at 0x17a20000 with the TCS block at +0xd00 and its interrupt SPI 5; cmd-db 0x81c60000.
 //
-// Firmware: adsp.mbn and adsp_dtb.mbn from the board's Linux port (MeteoricmeteorLL/tb710fu-linux, firmware archive 20261005), installed
-// by the owner under /private/var/firmware/qcom/sm8650/xiaoxin/gt (or the directory named by the adsp-fw boot argument). The Linux
+// Firmware: adsp.mbn and adsp_dtb.mbn from the board's Linux port (MeteoricmeteorLL/tb710fu-linux, firmware archive 20261005). They ride
+// in the boot addon (EFI/UniXNU/firmware/Adsp/..., /chosen/memory-map GpuAddon, zlib) and are read from there first; a directory under
+// /private/var/firmware/qcom/sm8650/xiaoxin/gt (or the one the adsp-fw boot argument names) is the fallback. The Linux
 // port reports its battery service (-110 timeouts) working on this same board with qcom_battmgr over PMIC GLINK, which is what this
 // transport feeds.
 //
@@ -42,6 +43,7 @@ extern "C" {
 #include "QcomSmp2p.h"
 #include "Tb710fuPowerLink.h"
 int tb710fu_fw_open(const char *path, void **handle, uint64_t *size);
+int tb710fu_fw_open_addon(const char *name, void **handle, uint64_t *size);
 int tb710fu_fw_read(void *handle, uint64_t offset, void *to, size_t length);
 void tb710fu_fw_close(void *handle);
 }
@@ -321,6 +323,13 @@ int openImage(Image &image, const char *path) {
     rc = qcom_mdt_parse(&image.mdt, image.size, fileRead, image.file);
     return rc ? 1000 - rc : 0;
 }
+// The same image taken from the boot's addon (EFI/UniXNU/firmware/Adsp/<name>), inflated into kernel memory by the reader.
+int openAddonImage(Image &image, const char *name) {
+    int rc = tb710fu_fw_open_addon(name, &image.file, &image.size);
+    if (rc) {image.file = nullptr; return rc;}
+    rc = qcom_mdt_parse(&image.mdt, image.size, fileRead, image.file);
+    return rc ? 1000 - rc : 0;
+}
 // init_image with the metadata in physically contiguous memory, then the memory setup of a relocatable image.
 int authenticateHeader(Image &image, uint32_t pas, uint64_t base) {
     const uint64_t bytes = qcom_mdt_metadata_size(&image.mdt);
@@ -480,9 +489,23 @@ bool attachIrqs() {
     return true;
 }
 
-// The firmware comes from the directory adsp-fw names, else kFirmwareDefault. The Data volume may not be up when this thread starts:
-// a few tries with growing pauses (about five minutes in all), not a poll. source gets the directory that opened.
-int openPair(Image &dtb, Image &adsp, const char *dir, char *path, size_t size) {
+// The firmware comes from the boot's addon first (when no adsp-fw directory pins the source), then from the directory adsp-fw
+// names or kFirmwareDefault. The Data volume may not be up when this thread starts: a few tries with growing pauses (about
+// five minutes in all), not a poll. path gets the file that opened, fromAddon says whether the addon served the pair.
+int openPair(Image &dtb, Image &adsp, const char *dir, char *path, size_t size, bool allowAddon, bool *fromAddon) {
+    if (fromAddon) *fromAddon = false;
+    if (allowAddon) {
+        int arc = openAddonImage(dtb, "adsp_dtb.mbn");
+        if (!arc) {
+            arc = openAddonImage(adsp, "adsp.mbn");
+            if (!arc) {
+                if (fromAddon) *fromAddon = true;
+                return 0;
+            }
+            release(dtb);
+        }
+        // An addon without the pair, or one this reader refuses, does not stop a directory install: fall through to VFS.
+    }
     snprintf(path, size, "%s/adsp_dtb.mbn", dir);
     int rc = openImage(dtb, path);
     if (rc) return rc;
@@ -490,12 +513,13 @@ int openPair(Image &dtb, Image &adsp, const char *dir, char *path, size_t size) 
     if ((rc = openImage(adsp, path))) release(dtb);
     return rc;
 }
-int openFirmware(Image &dtb, Image &adsp, char *path, size_t size, const char *chosen) {
+int openFirmware(Image &dtb, Image &adsp, char *path, size_t size, const char *chosen, bool *fromAddon) {
     static const uint32_t pauses[] = {1, 2, 4, 8, 16, 30, 30, 60, 60, 60, 60};
     const char *source = chosen ? chosen : kFirmwareDefault;
+    const bool allowAddon = chosen == nullptr;
     int rc = 0;
     for (unsigned i = 0;; ++i) {
-        rc = openPair(dtb, adsp, source, path, size);
+        rc = openPair(dtb, adsp, source, path, size, allowAddon, fromAddon);
         if (!rc) return 0;
         if (rc != ENOENT && rc != ENXIO && rc != EIO) return rc;  // found but unusable: no retry
         if (i == sizeof pauses / sizeof pauses[0]) return rc;
@@ -512,9 +536,11 @@ bool start() {
     char dir[96] = "";
     const bool chosen = PE_parse_boot_argn("adsp-fw", dir, sizeof dir) && dir[0];
     char path[128];
+    bool fromAddon = false;
     Image &dtb = gDtbImage, &adsp = gAdspImage;
-    int rc = openFirmware(dtb, adsp, path, sizeof path, chosen ? dir : nullptr);
+    int rc = openFirmware(dtb, adsp, path, sizeof path, chosen ? dir : nullptr, &fromAddon);
     if (rc) {note("fw: ", path); fail(StFirmware, rc); return false;}
+    if (fromAddon) note("fw: ", "addon");
     native_tb710fu_adsp_stats[7] = (int32_t)(adsp.size >> 10);
     stage(StFirmware);
     if (native_tb710fu_adsp_stats[3] > 0) {fail(StFirmware, -114); release(dtb); release(adsp); return false;}  // running already: left alone

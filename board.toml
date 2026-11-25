@@ -102,6 +102,12 @@ lba_bytes = 4096
 #   chip_id          -- Mac17,11 / T6050 identity, confirmed by the user
 #   owned_memory_size -- the DarwinBoot window this board asks for (2 GiB)
 # Evidence: docs/evidence/greenbar-audit.json, docs/GREENBAR_AUDIT.md
+[payload]
+# The FatFs volume DarwinBoot mounts from vendor_boot. 56 MiB held the LZMA kernel, the Data seed, the TrustCache and the
+# boot-shim addon with ~10 MiB left; the ADSP firmware addon adds 22.3 MB (zlib of adsp.mbn 34.8 MB + adsp_dtb.mbn 64 KB).
+# 78 MiB keeps the files under 95% of the volume and stays inside the 85,024,768-byte vendor_ramdisk budget.
+size_mib = 78
+
 [payload.adt]
 chip_id = "0x6050"
 owned_memory_size = "0x80000000"

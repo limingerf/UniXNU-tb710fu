@@ -22,10 +22,12 @@ OUT = ROOT / 'build/tb710fu-adsp'
 RECORD_C = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/osfmk/DEVELOPMENT/startup.o.json'
 RECORD_CPP = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/iokit/DEVELOPMENT/IOPlatformExpert.cpo.json'
 C_SOURCES = [PACKAGE / name for name in (
-    'QcomSmem.c', 'QcomSmp2p.c', 'QcomGlink.c', 'QcomQmp.c', 'QcomRpmh.c', 'QcomMdt.c', 'Tb710fuAdspFirmware.c')]
+    'QcomSmem.c', 'QcomSmp2p.c', 'QcomGlink.c', 'QcomQmp.c', 'QcomRpmh.c', 'QcomMdt.c', 'Tb710fuAddon.c',
+    'Tb710fuAdspFirmware.c')]
 CPP_SOURCES = [PACKAGE / 'Tb710fuAdsp.cpp']
 HEADERS = [PACKAGE / name for name in (
-    'QcomSmem.h', 'QcomSmp2p.h', 'QcomGlink.h', 'QcomQmp.h', 'QcomRpmh.h', 'QcomMdt.h', 'QcomScm.h')]
+    'QcomSmem.h', 'QcomSmp2p.h', 'QcomGlink.h', 'QcomQmp.h', 'QcomRpmh.h', 'QcomMdt.h', 'QcomScm.h',
+    'Tb710fuAddon.h')]
 TARGET = 'arm64e-apple-ios27.0'
 
 

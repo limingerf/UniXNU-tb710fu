@@ -53,10 +53,10 @@ Consequences for this port:
 
 1. We do not need a TB710FU-specific battery driver; the DSP protocol is generic Qualcomm. The one missing piece is
    the **ADSP + PMIC GLINK transport**.
-2. Firmware packaging is the gating item: `adsp.mbn` is 34.8 MB and `adsp_dtb.mbn` 64 KB. The current payload FAT
-   has 5.49 MiB free of its 81.1 MiB budget (the LZMA kernel and the Data seed take the rest), so 34.9 MB do not
-   fit raw; the realistic sources are the boot addon (zlib, 22.3 MB, needs a larger payload), a UFS partition read
-   in place, or a file installed on the Data volume.
+2. Firmware packaging is the gating item: `adsp.mbn` is 34.8 MB and `adsp_dtb.mbn` 64 KB. The 56 MiB payload held
+   the LZMA kernel, the Data seed, the TrustCache and the boot shim with about 10 MiB free, so 34.9 MB do not fit
+   raw. The port carries them in the boot addon (zlib, 22.3 MB) and raises `board.toml [payload] size_mib` to 78;
+   a UFS partition read in place or a file installed on the Data volume remain the fallbacks.
 3. The closest transport template is sheng's own ADSP stack (`.work/UniXNU-sheng/package`: `AdspProbe.cpp`,
    `QcomGlink.c`, `QcomSmem.c`, `QcomSmp2p.c`, `QcomQmp.c`, `QcomRpmh.c`, `AdspFirmware.c`, `ShengAdsp.h`, all
    BSD-2-Clause-Patent): same PMIC GLINK battery protocol, already hardware-verified, and its channel API is the
@@ -110,8 +110,11 @@ addresses:
 - `QcomSmem.c`, `QcomSmp2p.c`, `QcomGlink.c`, `QcomQmp.c`, `QcomRpmh.c`, `QcomMdt.c`, `QcomScm.h` — copied
   unchanged (SMEM partitions/alloc under the TCSR mutex, SMP2P items, GLINK native protocol on a pair of SMEM
   FIFOs, the AOSS mailbox handshake, RPMh proxy votes, `.mbn` parsing and SCM/PAS calls).
-- `Tb710fuAdspFirmware.c` — VFS reads of the two firmware files (no FAT/modem partition path: nothing is
-  unpacked from the vendor image).
+- `Tb710fuAddon.c` — the `NGPUADD2` container walk (bounds checked, whole container to its exact end).
+- `Tb710fuAdspFirmware.c` — the two firmware sources: the boot addon (entries
+  `EFI/UniXNU/firmware/Adsp/adsp_dtb.mbn` and `adsp.mbn`, zlib-inflated with libkern's zlib) first, then VFS
+  reads of the same names under a directory. No FAT/modem partition path: nothing is unpacked from the vendor
+  image.
 - `Tb710fuAdsp.cpp` — the probe/thread: maps SMEM/TCSR/IPCC/AOSS/RSC, surveys (`adsp=1`), then for `adsp=2`
   allocates the SMP2P out item, attaches the two GIC SPIs, runs QMP `load_state adsp`, votes lcx/lmx through
   RPMh, authenticates and loads `adsp_dtb.mbn` (PAS 36) then `adsp.mbn` (PAS 1), waits for the DSP's ready bit,
@@ -129,18 +132,28 @@ cmd-db `0x81c60000`, `adspslpi` `0x9df00000 + 0x4080000`, `q6-adsp-dtb` `0x9de80
 
 Firmware: `adsp.mbn` (34.8 MB) and `adsp_dtb.mbn` (64 KB) come from the Linux port's archive
 (`firmware/tb710fu-firmware-20261005.tar.gz`, revision `16e800d4`), verified against its `MD5SUMS`:
-`a0686c2b0ed4b6a8a0250c31aa2bc46c` and `4b2480da1dbff4932c6d9f4eb40222e4`. They are **not** built into the
-image: the payload FAT leaves only 5.49 MiB free, so 34.9 MB cannot travel raw in `vendor_boot`; the addon route compresses it to 22.3 MB (zlib) but needs a larger payload. Install them once on
-the Data volume at `/private/var/firmware/qcom/sm8650/xiaoxin/gt/` (the same paths the Linux port uses), or
-point `adsp-fw=DIR` at another mounted directory. The probe retries for about five minutes, so it can start
-before the Data volume is mounted.
+`a0686c2b0ed4b6a8a0250c31aa2bc46c` and `4b2480da1dbff4932c6d9f4eb40222e4`.
+
+They travel in the **boot addon**, the same `kernel.macho.gpuaddon` channel the boot shim uses: the payload's
+CI job downloads the archive, checks both files, and appends `EFI/UniXNU/firmware/Adsp/adsp.mbn` +
+`adsp_dtb.mbn` (`addon-add-dir.py`, zlib). DarwinBoot hands the container to the kernel at
+`/chosen/memory-map GpuAddon`; the reader inflates the pair into kernel memory before the MDT parse, so no manual
+copy is needed on a fresh install. zlib turns the 34.9 MB into 22.3 MB, and `board.toml [payload] size_mib` is
+78 MiB: the LZMA kernel (23 MiB), the Data seed (20.8 MiB), the TrustCache, the boot shim and the firmware addon
+fit under 95% of the volume and inside the 85,024,768-byte vendor_ramdisk budget.
+
+`adsp-fw=DIR` still pins the source to a directory and skips the addon; the same files under
+`/private/var/firmware/qcom/sm8650/xiaoxin/gt/` (the Linux port's paths) are the fallback when an older image
+carries no firmware addon. The probe retries the directory for about five minutes, so it can start before the
+Data volume is mounted; the addon path needs no wait.
 
 Boot arguments:
 
 - `battery=1` — required; without it the provider only prints that it was not requested.
 - `adsp=1` — read-only survey into `native_tb710fu_adsp_stats`; writes nothing and starts no DSP.
 - `adsp=2` — start the DSP and bring up GLINK. Needed before `battery=1` can publish anything.
-- `adsp-fw=DIR` — firmware directory, default `/private/var/firmware/qcom/sm8650/xiaoxin/gt`.
+- `adsp-fw=DIR` — pin the firmware to this directory (the addon is then skipped), default
+  `/private/var/firmware/qcom/sm8650/xiaoxin/gt`.
 - `usb-sdp-ma=N` — input current limit for a standard host port, 0..3000 mA. Default 0: the firmware's limit is
   left alone, which is also what the DSP does when no host asks for more.
 - `battery` sets no other charger state; charging stays autonomous in the PMIC/DSP firmware.
@@ -163,10 +176,13 @@ Result: all checks pass; `build/tb710fu-power-host/report.json` records compiler
 The transport is in the tree; nothing about it has been run on the device yet. Two steps remain before battery
 readings can exist:
 
-1. **Install the firmware once.** Copy `adsp.mbn` and `adsp_dtb.mbn` (verified copies are in
-   `.local/input-sources/firmware/lib/firmware/qcom/sm8650/xiaoxin/gt/`, from the Linux port's archive) to the
-   device's Data volume at `/private/var/firmware/qcom/sm8650/xiaoxin/gt/`. They are not committed and not part
-   of any image; the payload FAT has only 5.49 MiB free. A different directory works with `adsp-fw=DIR`.
+1. **Rebuild the payload and vendor_boot.** The boot-shims job builds `boot-shims.bin` with
+   `EFI/UniXNU/firmware/Adsp/adsp.mbn` and `adsp_dtb.mbn`; `board.toml [payload] size_mib` is 78 MiB, so the
+   payload carries the firmware addon next to the kernel and seed. Flash the resulting `vendor_boot_b`. A fresh
+   install then needs no copy. The verified local copies stay in
+   `.local/input-sources/firmware/lib/firmware/qcom/sm8650/xiaoxin/gt/` for a manual fallback on the Data volume
+   (`/private/var/firmware/qcom/sm8650/xiaoxin/gt/`, or a directory named by `adsp-fw=DIR`); they are never
+   committed.
 2. **Build with the new archives.** `build-tb710fu-adsp.py` needs the macOS runner (XNU compile records), like
    `build-tb710fu-power.py`; neither has been target-compiled since the transport was added.
 
