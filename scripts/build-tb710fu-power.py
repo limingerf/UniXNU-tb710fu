@@ -25,6 +25,18 @@ ROOT = Path(__file__).resolve().parents[1]
 DEVICE = Path(os.environ['UNIXNU_DEVICE']).resolve() if os.environ.get('UNIXNU_DEVICE') else ROOT
 PACKAGE = DEVICE / 'package/Tb710fuPower'
 OUT = ROOT / 'build/tb710fu-power'
+
+
+def reported(path):
+    # Sources live in DEVICE, build outputs in ROOT (the materialised tree); report whichever contains them.
+    for base in (DEVICE, ROOT):
+        try:
+            return str(path.relative_to(base))
+        except ValueError:
+            pass
+    return str(path)
+
+
 RECORD_C = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/osfmk/DEVELOPMENT/startup.o.json'
 RECORD_CPP = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/iokit/DEVELOPMENT/IOPlatformExpert.cpo.json'
 C_SOURCES = [PACKAGE / 'Tb710fuBattmgr.c']
@@ -191,7 +203,7 @@ def main():
         'archive_sha256': digest,
         'framework_revision': revision,
         'objects': {obj.name: sha(obj) for obj in objects},
-        'sources': {str(path.relative_to(ROOT)): sha(path) for path in C_SOURCES + CPP_SOURCES +
+        'sources': {reported(path): sha(path) for path in C_SOURCES + CPP_SOURCES +
                     [PACKAGE / 'Tb710fuBattmgr.h', PACKAGE / 'Tb710fuPowerLink.h']},
         'compile_commands_sha256': {name: hashlib.sha256(json.dumps(cmd).encode()).hexdigest()
                                     for name, cmd in commands.items()},
