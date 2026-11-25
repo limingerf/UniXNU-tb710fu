@@ -1,5 +1,86 @@
 # TB710FU USB CDC port · 2026-11-17
 
+## pl43 CDC regression and the GopDisplay gate · 2026-11-25
+
+Run 45535416346 (pl43, `b642a67`) booted past `handle_mount`, but COM5 first
+appeared at +46 s instead of +20 s, opened once with 0 bytes and vanished.
+
+### A. `COMMAND_CMDIOC` was written into the status field
+
+`COMMAND_CMDIOC` was `(1u << 12)`. In DEPCMD, bit 8 is CMDIOC; bits 15:12 are
+the read-only CMD_STATUS field (`DWC3_DEPCMD_STATUS(x) = (x >> 12) & 0xf`),
+bit 11 is HIPRI_FORCERM/CLEARPENDIN and bit 10 is CMDACT
+(`drivers/usb/dwc3/core.h`, v6.1). Writing bit 12 therefore *requested no
+command-complete interrupt at all* and wrote into the field the driver then
+read back, so a command that succeeded could look failed.
+
+DWC_usb31 has no GUCTL2[14] CMDACT-polling mode (`gadget.c`: not available on
+that IP), so the 200 µs CMDACT poll in `cancel_endpoint()` (`CANCEL_POLLS` 20 ×
+10 µs) cannot observe a synchronous retire. Every cancellation fell through to
+`cancel_pending[ep] = 1`, and the type-7 event that clears it never arrived
+because CMDIOC was never set: the quarantine was permanent and
+`endpoint_usable()` returned 0 for that endpoint for the rest of the boot.
+
+Once EP0 had been recycled by the `EP0_CONTROL_POLLS` 1000 (100 ms while
+enumerating, 2 s once the loop settles) control-stage timeout, or by a bus
+reset, it could no longer re-arm its SETUP TRB; the pump gate is
+`endpoint_usable(d, 0)`. Host control requests went unanswered, Windows
+retried and reset the port, and the first clean enumeration was the one after
+a bus reset cleared `cancel_pending` - the +46 s. A Bulk IN span abandoned
+after a ZLP latched the same state on EP_TX, which is the open that read 0
+bytes and dropped. pl39/pl40b cannot show this: at `1b85d92` the handler was
+`if (type == 7) return 1;` and no asynchronous cancel existed.
+
+Fixes, in `CdcDwc3.c` / `CdcDwc3.h`:
+
+| Change | Reason |
+| --- | --- |
+| `COMMAND_CMDIOC` is `(1u << 8)` | Request the completion the ring is read for |
+| `cancel_endpoint()` returns when the endpoint is not busy | Nothing to terminate, and the command would only fabricate a stale quarantine |
+| End Transfer to EP0 only in the Data Phase | `dwc3_stop_active_transfer()`; a STATUS stage has no transfer left |
+| Resource index 0 refused for non-EP0 | `ep0.c` 1096-1106: index 0 is legal for EP0 OUT only |
+| Status read once, `retired = CMDACT cleared` | One read cannot disagree with itself |
+| Give up after `CANCEL_GIVEUP_POLLS` 128, release + count `cancel_timeouts` | A lost event must not kill the only log channel; a start the core refuses is already non-fatal (`deferred_starts`) |
+| type-7, bus reset, abandon, `panic_rearm` clear `cancel_until` | No stale deadline survives the event that ends it |
+| rearm evidence line logs `cancel=completions/timeouts` | Tells a working cancel from a given-up one on the next run |
+
+### B. GopDisplay started before COM5 was streaming
+
+`cdc_display_gate()` in `CdcXnu.c` replaces the `configured == 1` trigger
+inside the poll loop. Three gates: the host opened the port
+(`configured && dtr`), then 500 ms and at least one byte of log retired since
+that open; the same open with no drain starts after 3 s; with no host, every
+USB event (`events + setup_requests + connected`) re-arms an 8 s fallback, so
+Windows' ~20 s static enumeration is not pre-empted. The thread keeps
+`BASEPRI_KERNEL`, so the 2 ms preemptions continue to answer EP0 and drain the
+ring; the cross-thread `cdc_checkpoint` calls are gone.
+
+`publish_gop_memory()` no longer calls `IOResources::setDeviceMemory()`. IOResources
+is the shared nub every IOResources client matches, the write takes its
+arbitration lock while boot is still attaching drivers through it, and the
+service outlives the display that maps the range. The range now belongs to a
+dedicated bare `IOService` (`TB710FUGopProvider`) attached under IOResources
+and deliberately not registered, so `startHardware()`'s provider contract
+(index 0, `kIOMapInhibitCache`, map must equal the console) is unchanged and
+`IOProviderClass`, `attach()` and `start()` all name that provider.
+
+The six owned IOService base slots are now audited at build time
+(`scripts/build-tb710fu-gop-display.py`): each compiled entry's discriminator
+must equal the fixture's at that slot. `check-gop-display-abi.py` resolves
+`registerService` 188 / `0x7d59`, `start` 190 / `0x3c68`, `stop` 191 /
+`0xb085` by name hash, which matches the pl43 call site's `movk x17,#0x3c68`.
+`startDisplay()` only calls `startHardware()` when `bootMapping` is unset, so a
+second start cannot map the range twice.
+
+### Verification
+
+`gcc` and `clang` 17, `-std=c11 -Wall -Wextra -Werror`, plus ASan/UBSan:
+the whole DWC3 suite passes, including the new
+`test_lost_cancel_completion_releases_the_endpoint` (core retires the transfer,
+the event is lost, the give-up window releases the endpoint and re-arms it).
+`py_compile` clean; `check-gop-display-abi.py` and `check_boot_mark_names.py`
+pass. Not committed.
+
 ## SID 0x40 route class and one-shot bypass claim · 2026-11-22
 
 The photo with SHA-256

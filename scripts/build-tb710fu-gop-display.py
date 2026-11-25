@@ -368,8 +368,11 @@ OSDefineOperatorMethods(NativeLegacyDisplay)'''
          '        // No caller in this port reached startHardware(): the platform subclass that\n'
          '        // owns the panel does that in Apple\'s stack and is absent here. Without it\n'
          '        // bootMapping and primary stay unset and the gate below rejects the start.\n'
-         '        if(!startHardware()){IOLog("TB710FU GopDisplay: startHardware failed\\n");return false;}\n'
-         '        IOLog("TB710FU GopDisplay: startHardware ok primary=%u\\n",primary?1u:0u);\n'),
+         '        // Guard on bootMapping: now that NativeLegacyDisplay owns the start slot,\n'
+         '        // the base start runs our overrides, and a second call here would map the\n'
+         '        // same range twice and reset a display the base had already brought up.\n'
+         '        if(!bootMapping && !startHardware()){IOLog("TB710FU GopDisplay: startHardware failed\\n");return false;}\n'
+         '        IOLog("TB710FU GopDisplay: startHardware ok boot=%p primary=%u\\n",(void*)bootMapping,primary?1u:0u);\n'),
         ('        PE_Video video={};IOService *provider=getProvider();\n'
          '        if(!provider || PE_current_console(&video) || !video.v_baseAddr ||\n'
          '           !video.v_width || !video.v_height || video.v_depth!=32 || video.v_rotate ||\n'
@@ -507,12 +510,29 @@ def main():
         raise SystemExit('Owned vtable is not an exact authenticated-pointer array of 483 entries')
     diversities = [int(diversity, 16) for _, diversity in abi['slots']]
     owned, guards, ioservice, failures = [], [], {}, []
+    ioservice_diversity = {}
     owned_labels = {abi['names'][name][0] if name in abi['names'] else name for name in abi['methods']}
     for index, (symbol, discriminator) in enumerate(entries):
         label = demangled_label(symbol)
         if index < abi['base_slots']:
             if label in IOSERVICE_SLOTS:
+                # pl43 owned these six IOService slots without checking them. The
+                # runtime re-signs their entries with tb710fu_gop_slot_diversity[index]
+                # because every call site builds its PAC modifier from that slot
+                # address and that 16-bit discriminator; if clang emitted anything
+                # else for the override, the very first virtual call through
+                # IOService (start/registerService/retain path) traps on the tablet.
+                if label in ioservice:
+                    raise SystemExit(f'IOService::{label} appears at slots '
+                                     f'{ioservice[label]} and {index}')
+                if not diversities[index]:
+                    raise SystemExit(f'IOService::{label} slot {index}: fixture has no diversity')
+                if discriminator != diversities[index]:
+                    failures.append(
+                        f'IOService::{label} slot {index}: compiled diversity '
+                        f'{discriminator:#x} != fixture {diversities[index]:#x}')
                 ioservice[label] = index
+                ioservice_diversity[label] = diversities[index]
             continue
         if discriminator != diversities[index] and index not in REBOUND_SLOTS:
             failures.append(f'slot {index}: diversity {discriminator:#x} != {diversities[index]:#x}')
@@ -569,6 +589,8 @@ def main():
         'owned_slots': sorted(owned),
         'guard_slots': len(guards),
         'ioservice_slots': ioservice,
+        'ioservice_diversity': {name: f'{value:#06x}'
+                                for name, value in sorted(ioservice_diversity.items())},
         'rebound_slots': list(REBOUND_SLOTS),
         'surface_accessors': report.get('surface_accessors', {}),
         'objects_sha256': {o.name: sha(o) for o in objects},

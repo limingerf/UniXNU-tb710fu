@@ -66,10 +66,11 @@ extern int tb710fu_shell_stat(const char *path)
 extern void tb710fu_ioreg_dump(const char *filter)
     __attribute__((weak_import));
 /* Display bring-up lives in the GopDisplay archive. It never runs on the poll
- * thread: the worker spawns a separate thread for it once the host has
- * configured the CDC function (or after three seconds without a host), so COM5
- * is always enumerated and tb710fu_cdc_panic_loop() always has a controller
- * that the host can see before any display code executes. */
+ * thread: the worker spawns a separate thread for it only once the host has
+ * opened the CDC port (configured && dtr) and that port has streamed live log
+ * bytes for 500 ms - or after an 8 s fallback when no host ever opens it. COM5
+ * is therefore not just enumerated but streaming before any display code
+ * executes, and tb710fu_cdc_panic_loop() always has a live channel. */
 extern void native_tb710fu_gop_display_start(void)
     __attribute__((weak_import));
 extern volatile uint32_t armcpu_gic_ready;
@@ -1449,10 +1450,15 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
  * Display bring-up thread. pl42 called native_tb710fu_gop_display_start()
  * synchronously on this worker before the poll loop: whatever stopped inside
  * GopDisplay also stopped the DWC3 poll, so EP0 was never answered and COM5
- * never enumerated - the panic (if any) had no channel at all. This thread is
- * only queued after the poll loop is running, and only after the host has
- * configured the function or three seconds have passed, so the port is open
- * and enumerated first.
+ * never enumerated - the panic (if any) had no channel at all. pl43 moved it
+ * to a second thread but still queued it on configured==1, i.e. as soon as
+ * SET_CONFIGURATION landed and before the host had opened the port: the
+ * display crashed or wedged while COM5 was not yet streaming, and the boot
+ * died with no log.
+ *
+ * This thread therefore runs at BASEPRI_KERNEL (kernel_thread_start), below
+ * the worker's MAXPRI_KERNEL: every preemption of it lets the poll loop answer
+ * EP0 and pump the log ring, so bringing the display up cannot starve COM5.
  */
 static unsigned gDisplayThreadStarted;
 
@@ -1461,16 +1467,15 @@ static void cdc_display_thread(void *argument, wait_result_t wait_result)
     (void)argument;
     (void)wait_result;
     cdc_lane_op(NULL, "cdcgop");
-    cdc_log("TB710FU CDC: display thread running (cfg=%u dtr=%u req=%llu)\n",
+    cdc_log("TB710FU CDC: display thread running (cfg=%u dtr=%u req=%llu tx=%llu)\n",
            (unsigned)gCdc.controller.configured, (unsigned)gCdc.controller.dtr,
-           (unsigned long long)gCdc.controller.setup_requests);
-    cdc_checkpoint("cdcgop");
+           (unsigned long long)gCdc.controller.setup_requests,
+           (unsigned long long)gCdc.controller.transmitted);
     if (!native_tb710fu_gop_display_start) {
         cdc_log("TB710FU CDC: GopDisplay start is not linked\n");
     } else {
         native_tb710fu_gop_display_start();
         cdc_log("TB710FU CDC: GopDisplay start returned\n");
-        cdc_checkpoint("cdcgop");
     }
     (void)thread_terminate(current_thread());
     thread_block(THREAD_CONTINUE_NULL);
@@ -1495,6 +1500,68 @@ static int cdc_queue_display_thread(const char *reason)
     cdc_log("TB710FU CDC: display thread queued (%s)\n", reason);
     cdc_checkpoint("cdcgopq");
     return 1;
+}
+
+/*
+ * When the display may run. The one rule this port must never break: COM5 is
+ * open and has already streamed live log bytes before any GopDisplay code
+ * executes, so a fault there is visible instead of silent. Three gates, in
+ * order:
+ *   1. host opened the port (configured && dtr), then 500 ms and at least
+ *      one byte retired to the host since the open - the drain proves the
+ *      channel is not just enumerated but live;
+ *   2. the same open without a live drain: after 3 s start anyway, so a TX
+ *      quirk cannot keep the display down forever;
+ *   3. no host: every USB event re-arms an 8 s fallback, so a static
+ *      enumeration (Windows takes ~20 s on this board) is never preempted,
+ *      while a truly headless boot still gets the display after 8 s.
+ */
+static uint64_t gDisplayFallback;
+static uint64_t gDisplayProgress;
+static uint64_t gDisplayHostOpen;
+static uint64_t gDisplayDrainBaseline;
+static uint64_t gDisplayDrainDeadline;
+static uint64_t gDisplayDrainStalled;
+
+static void cdc_display_gate(void)
+{
+    if (gDisplayThreadStarted) return;
+    const struct tb710fu_dwc3 *c = &gCdc.controller;
+    const uint64_t now = mach_absolute_time();
+    const uint64_t progress = c->events + c->setup_requests +
+                              (c->connected ? 0x100000000ull : 0ull);
+    if (progress != gDisplayProgress) {
+        gDisplayProgress = progress;
+        clock_interval_to_deadline(8000u, NSEC_PER_MSEC, &gDisplayFallback);
+    }
+    if (c->configured && c->dtr) {
+        if (gDisplayHostOpen == 0) {
+            gDisplayHostOpen = now ? now : 1u;
+            gDisplayDrainBaseline = c->transmitted;
+            clock_interval_to_deadline(500u, NSEC_PER_MSEC, &gDisplayDrainDeadline);
+            clock_interval_to_deadline(3000u, NSEC_PER_MSEC, &gDisplayDrainStalled);
+            cdc_log("TB710FU CDC: COM5 opened (dtr=1), holding GopDisplay until a live drain\n");
+            cdc_checkpoint("cdcdtro");
+            return;
+        }
+        if (c->transmitted != gDisplayDrainBaseline && now >= gDisplayDrainDeadline) {
+            cdc_log("TB710FU CDC: COM5 drained %llu live bytes, starting GopDisplay\n",
+                   (unsigned long long)(c->transmitted - gDisplayDrainBaseline));
+            cdc_queue_display_thread("dtr-drain");
+            return;
+        }
+        if (now >= gDisplayDrainStalled) {
+            cdc_log("TB710FU CDC: COM5 has not drained a byte in 3 s, starting GopDisplay\n");
+            cdc_queue_display_thread("dtr-nodrain");
+        }
+        return;
+    }
+    gDisplayHostOpen = 0;
+    if (now >= gDisplayFallback) {
+        cdc_log("TB710FU CDC: no host open in the fallback window (cfg=%u conn=%u)\n",
+               (unsigned)c->configured, (unsigned)c->connected);
+        cdc_queue_display_thread(c->configured ? "configured-nodtr" : "no-host");
+    }
 }
 
 static void cdc_worker(void *argument, wait_result_t wait_result)
@@ -1598,15 +1665,15 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                "and host DTR\n",
                (unsigned long long)gReport.dma_physical, (unsigned)gReport.dma_bytes);
         cdc_checkpoint("cdcready");
-        /* Never start the display on this thread. The poll loop below starts
-         * first and answers EP0, so COM5 enumerates on the host; the display is
-         * handed to cdc_display_thread once configured==1 (the host completed
-         * SET_CONFIGURATION, i.e. the COM port exists) or after three seconds
-         * when no host is attached. Anything that stops inside GopDisplay after
-         * that point is visible on an already enumerated COM5 and through
-         * tb710fu_cdc_panic_loop(). */
-        uint64_t display_deadline;
-        clock_interval_to_deadline(3000u, NSEC_PER_MSEC, &display_deadline);
+        /* Never start the display on this thread and never before the host
+         * owns a live COM5. The poll loop below starts first and answers EP0,
+         * so COM5 enumerates on the host; cdc_display_gate() hands the display
+         * to cdc_display_thread only after the port is open (configured &&
+         * dtr) and has streamed live log bytes for 500 ms. Anything that
+         * stops inside GopDisplay after that point is visible on an already
+         * streaming COM5 and through tb710fu_cdc_panic_loop(). */
+        clock_interval_to_deadline(8000u, NSEC_PER_MSEC, &gDisplayFallback);
+        gDisplayProgress = gCdc.controller.events + gCdc.controller.setup_requests;
         unsigned previous = 0;
         int bus_seen = 0, setup_seen = 0, yield_marked = 0;
         unsigned rounds = 0, beats = 0;
@@ -1617,15 +1684,8 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
         while (gCdc.controller.running && !gCdc.controller.failed) {
             tb710fu_dwc3_poll(&gCdc.controller);
             if (gPendingCmd) cdc_exec_pending_cmd();
-            /* The poll loop owns EP0 from the first round; the display thread is
-             * only queued once the host has configured this function (COM5 now
-             * exists on the host) or the three second grace expired. */
-            if (!gDisplayThreadStarted &&
-                (gCdc.controller.configured ||
-                 mach_absolute_time() >= display_deadline)) {
-                cdc_queue_display_thread(gCdc.controller.configured ? "configured"
-                                                                   : "3s-timeout");
-            }
+            /* Queues the display thread only when the host gate above allows it. */
+            cdc_display_gate();
             ++rounds;
             if (!gCdc.controller.configured && beats < 6u) {
                 const uint32_t dsts_now = cdc_read(gCdc.dwc, 0xc70c);
@@ -1669,11 +1729,12 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
                        (unsigned)gCdc.controller.configured,
                        (unsigned)gCdc.controller.dtr);
                 /* One line per open/close transition: what the reopen cost. */
-                cdc_log("TB710FU CDC: rearm ep0=%llu/%llu cancel=%llu defer=%llu "
+                cdc_log("TB710FU CDC: rearm ep0=%llu/%llu cancel=%llu/%llu defer=%llu "
                        "abort=%llu orphan=%llu stale=%llu\n",
                        (unsigned long long)gCdc.controller.ep0_recoveries,
                        (unsigned long long)gCdc.controller.ep0_rearms,
                        (unsigned long long)gCdc.controller.cancel_completions,
+                       (unsigned long long)gCdc.controller.cancel_timeouts,
                        (unsigned long long)gCdc.controller.deferred_starts,
                        (unsigned long long)gCdc.controller.aborted_tx,
                        (unsigned long long)gCdc.controller.orphan_completions,

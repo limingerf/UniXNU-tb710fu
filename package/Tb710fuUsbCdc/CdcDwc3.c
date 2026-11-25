@@ -42,8 +42,13 @@
 // core until an End Transfer command retires it. DWC_usb31 completes that command
 // asynchronously and has no GUCTL2[14] CMDACT-polling mode, so CMDIOC is set and
 // the completion is read from the endpoint event ring instead of from CMDACT.
+// DEPCMD bit layout, drivers/usb/dwc3/core.h (v6.1): CMDACT BIT(10),
+// HIPRI_FORCERM/CLEARPENDIN BIT(11), CMDIOC BIT(8), and CMD_STATUS is the
+// read-only field at bits 15:12 (DWC3_DEPCMD_STATUS(x) = (x >> 12) & 0xf).
+// pl42/pl43 wrote CMDIOC as bit 12, i.e. into CMD_STATUS: no command-complete
+// event was ever requested and every readback then looked like a failed command.
 #define COMMAND_ENDTRANSFER 8u
-#define COMMAND_CMDIOC (1u << 12)
+#define COMMAND_CMDIOC (1u << 8)
 #define CANCEL_POLLS 20u
 #define PHY_SUSPEND ((1u << 6) | (1u << 8))
 #define PIPE_SUSPEND (1u << 17)
@@ -174,6 +179,15 @@ static int fail(struct tb710fu_dwc3 *d, const char *reason)
 // wanted that terminator issues its IN token well inside this window.
 #define ZLP_POLLS 4u
 
+// Polls an outstanding End Transfer may keep an endpoint out of service. The
+// command-complete event normally releases it within a few polls, but a lost
+// event must never be able to kill an endpoint for the rest of the boot: that
+// is exactly how a COM5 open reads zero bytes and the port disappears. After
+// this window the caller retries; a Start Transfer the core still refuses
+// simply defers again (deferred_starts), so releasing early cannot corrupt a
+// live transfer - it only stops the wedge.
+#define CANCEL_GIVEUP_POLLS 128u
+
 // A control stage the host abandoned leaves no trace at all: this core reports
 // nothing when the host stops driving a stage. Silence for a full control window
 // is the only evidence, and recycling EP0 after it is what keeps the next open
@@ -192,10 +206,12 @@ static void abandon_endpoint(struct tb710fu_dwc3 *d, unsigned ep);
 // Windows close/open cycle is what took COM5 down for good.
 static void cancel_endpoint(struct tb710fu_dwc3 *d, unsigned ep)
 {
-    if (ep >= 6u || ep == 4u || d->cancel_pending[ep]) return;
-    // A SETUP packet that has not been DMA'd out yet blocks End Transfer on every
-    // endpoint (Linux v6.1 gadget.c:3717-3722), so an armed SETUP is left alone.
-    if (ep <= 1u && d->phase == TB710FU_DWC3_SETUP_PHASE && !d->busy[ep]) return;
+    if (ep >= 6u || ep == 4u || d->cancel_pending[ep] || !d->busy[ep]) return;
+    // Linux v6.1 gadget.c dwc3_stop_active_transfer(): End Transfer is only issued
+    // to the control endpoint while its Data Phase is actually running. A SETUP
+    // packet still waiting to be DMA'd out blocks that command on every endpoint,
+    // and a STATUS stage has no transfer left to terminate.
+    if (ep <= 1u && d->phase != TB710FU_DWC3_DATA_PHASE) return;
     // Resource index zero is valid for EP0 OUT only (Linux v6.1 ep0.c:1096-1106).
     if (ep != 0u && d->resource[ep] == 0u) return;
     write_reg(d, EP_PAR0(ep), 0);
@@ -203,20 +219,28 @@ static void cancel_endpoint(struct tb710fu_dwc3 *d, unsigned ep)
     write_reg(d, EP_PAR2(ep), 0);
     write_reg(d, EP_CMD(ep), COMMAND_ENDTRANSFER | COMMAND_CMDIOC |
                              COMMAND_ACTIVE | ((uint32_t)d->resource[ep] << 16));
+    // DWC_usb31 has no CMDACT polling mode, so a command that is still running
+    // legitimately keeps CMDACT set. Only a command that already retired with
+    // success frees the endpoint here; anything else waits for its event.
+    int retired = 0;
     for (unsigned i = 0; i < CANCEL_POLLS; ++i) {
-        if (!(read_reg(d, EP_CMD(ep)) & COMMAND_ACTIVE)) break;
+        if (!(read_reg(d, EP_CMD(ep)) & COMMAND_ACTIVE)) {
+            retired = 1;
+            break;
+        }
         d->ops.delay_us(d->ops.context, 10u);
     }
-    if (!(read_reg(d, EP_CMD(ep)) & COMMAND_ACTIVE) &&
-        !((read_reg(d, EP_CMD(ep)) >> 12) & 15u)) {
+    if (retired && !((read_reg(d, EP_CMD(ep)) >> 12) & 15u)) {
         // Completed and the core retired the transfer: the endpoint is free now.
         d->resource[ep] = 0;
         ++d->cancel_completions;
         return;
     }
     // Still terminating. Nothing may be armed here until the command-complete
-    // event for this endpoint arrives; that event is what releases it.
+    // event for this endpoint arrives, and CANCEL_GIVEUP_POLLS bounds that wait
+    // so a completion the ring loses cannot wedge the channel forever.
     d->cancel_pending[ep] = 1;
+    d->cancel_until[ep] = d->polls + CANCEL_GIVEUP_POLLS;
 }
 
 static void abandon_endpoint(struct tb710fu_dwc3 *d, unsigned ep)
@@ -235,8 +259,14 @@ static int endpoint_usable(struct tb710fu_dwc3 *d, unsigned ep)
 {
     if (ep >= 6u || ep == 4u) return 0;
     // The core still owns this endpoint's cancellation. Arming it now is the
-    // collision that a reopen used to hit.
-    if (d->cancel_pending[ep]) return 0;
+    // collision that a reopen used to hit. The wait is bounded: a command
+    // completion the event ring never delivers must not take EP0 - the only
+    // channel this port has - out of service for the rest of the boot.
+    if (d->cancel_pending[ep]) {
+        if (d->polls < d->cancel_until[ep]) return 0;
+        d->cancel_pending[ep] = 0;
+        ++d->cancel_timeouts;
+    }
     if (!d->stale[ep]) return 1;
     if (d->polls < d->stale_until[ep]) return 0;
     d->stale[ep] = 0;
@@ -569,10 +599,11 @@ static int endpoint_event(struct tb710fu_dwc3 *d, uint32_t event)
     if (type == 3) return ep < 2 ? control_not_ready(d, ep, status) : 1;
     if (type == 7) {
         // Command completion. The only asynchronous command posted here is End
-        // Transfer, and this is what releases the endpoint: until it arrives the
-        // core still owns the transfer the host abandoned.
+        // Transfer with CMDIOC set, and this event is what releases the endpoint:
+        // until it arrives the core still owns the transfer the host abandoned.
         if (d->cancel_pending[ep]) {
             d->cancel_pending[ep] = 0;
+            d->cancel_until[ep] = 0;
             d->resource[ep] = 0;
             ++d->cancel_completions;
         }
@@ -664,7 +695,10 @@ static int device_event(struct tb710fu_dwc3 *d, uint32_t event)
         abandon_endpoint(d, EP_NOTIFY);
         // The bus reset itself terminated every transfer, so an End Transfer that
         // was still outstanding has nothing left to release.
-        for (unsigned i = 0; i < 6u; ++i) d->cancel_pending[i] = 0;
+        for (unsigned i = 0; i < 6u; ++i) {
+            d->cancel_pending[i] = 0;
+            d->cancel_until[i] = 0;
+        }
         d->phase = TB710FU_DWC3_SETUP_PHASE;
         d->control_polls = d->polls;
         d->data_in = d->control_bytes = d->setup_pending = d->set_line = 0;
@@ -1068,6 +1102,7 @@ void tb710fu_dwc3_panic_rearm(struct tb710fu_dwc3 *d)
         d->resource[ep] = 0;
         d->stale[ep] = 0;
         d->cancel_pending[ep] = 0;
+        d->cancel_until[ep] = 0;
     }
     d->tx_state = TX_IDLE;
     d->tx_commit = 0;

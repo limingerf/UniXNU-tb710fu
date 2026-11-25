@@ -105,13 +105,17 @@ static void write32(void *context, unsigned reg, uint32_t value)
         if (f->bad_command_status) return;
         if (command == 4) ++f->stall_commands;
         if (command == 8) {
+            // cancel_retires models the core having retired the transfer; it is
+            // independent of hold_cancel, which models the completion (CMDACT
+            // and the event) never reaching software.
+            if (f->cancel_retires) f->active[ep] = 0;
             if (f->hold_cancel) {
-                // Asynchronous cancellation: CMDACT stays set until the
-                // command-complete event, exactly as DWC_usb31 does.
+                // Asynchronous cancellation: CMDACT stays set and no
+                // command-complete event is raised, exactly as DWC_usb31 does
+                // when that event is lost from the event ring.
                 f->regs[reg / 4] = command | (1u << 10);
                 return;
             }
-            if (f->cancel_retires) f->active[ep] = 0;
             return;
         }
         if (command == 6) {
@@ -793,6 +797,44 @@ static void test_held_end_transfer_blocks_rearm_until_it_completes(void)
     assert(!f.core.failed && f.active[3] && f.length[3] == 2048);
 }
 
+// Bug 4 (lost command completion): the command-complete event is what normally
+// releases an endpoint, so a completion the event ring never delivers used to
+// take that endpoint down for the rest of the boot. That is exactly the pl43
+// symptom: COM5 opened, read zero bytes, and the port disappeared. The give-up
+// window must release the endpoint and re-issue the transfer it abandoned.
+static void test_lost_cancel_completion_releases_the_endpoint(void)
+{
+    struct fixture f;
+    prepare(&f);
+    assert(start(&f, "diagnostic-test-1"));
+    connect(&f, 0);
+    configure(&f);
+    setup(&f, 0x21, 0x22, 3, 0, 0);
+    status(&f, 1);
+    for (unsigned i = 0; i < 2048; ++i) f.log[i] = (uint8_t)i;
+    f.log_length = 2048;
+    tb710fu_dwc3_poll(&f.core);
+    assert(f.core.dtr && f.active[3] && f.length[3] == 2048);
+    f.hold_cancel = 1;
+    f.cancel_retires = 1;
+    setup(&f, 0x02, 1, 0, 0x0081, 0);
+    status(&f, 1);
+    assert(f.core.cancel_pending[3] && !f.core.busy[3]);
+    // The core retired the transfer (cancel_retires) but its command-complete
+    // event never reaches the ring (hold_cancel): software must not stay blind.
+    const uint64_t window = f.core.cancel_until[3] - f.core.polls;
+    assert(window >= 32 && window <= 4096);
+    for (unsigned i = 0; i + 1 < window; ++i) {
+        tb710fu_dwc3_poll(&f.core);
+        assert(f.core.cancel_pending[3]);
+    }
+    assert(!f.core.failed && f.core.running);
+    for (unsigned i = 0; i < 4; ++i) tb710fu_dwc3_poll(&f.core);
+    assert(!f.core.cancel_pending[3] && f.core.cancel_timeouts == 1);
+    assert(f.core.deferred_starts == 0);
+    assert(!f.core.failed && f.core.running && f.active[3] && f.length[3] == 2048);
+}
+
 // Bug 3: a timeout or a bad status on one endpoint must not leave the transport
 // dead, because the panic shell can only drive a running controller. After a
 // panic the worker is gone: the shell re-asserts the pull-up and EP0 itself, so
@@ -861,6 +903,7 @@ int main(void)
     test_reopen_survives_core_refusing_start_on_abandoned_bulk_in();
     test_abandoned_control_stage_is_recycled();
     test_held_end_transfer_blocks_rearm_until_it_completes();
+    test_lost_cancel_completion_releases_the_endpoint();
     test_panic_rearm_serves_a_host_that_arrives_late();
     test_failures_retain_dma_and_do_not_restart();
     test_device_role_and_event_irq();

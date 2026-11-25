@@ -226,18 +226,29 @@ extern "C" void native_legacy_parent_create_default_surface(void *display)
     legacyEntry<Fn>(420)(display);
 }
 
-/* The generic provider (IOResources) owns no device memory. NativeLegacyDisplay
- * ::startHardware() maps provider index 0 with kIOMapInhibitCache and then
- * requires that the map describe the live GOP framebuffer exactly (physical
- * base, and length == rowBytes * height), so that one range is published on the
- * provider first. It comes from the console PE state, the same source the
- * backend validates - nothing is guessed. */
-static int publish_gop_memory(IOService *provider)
+/* The GOP range needs an owner, but not the global one. pl43 published it on
+ * IOResources - the shared resources nub every IOResources client matches
+ * against. That is wrong three ways: "IODeviceMemory" on IOResources describes
+ * a framebuffer to every one of those clients, the write takes IOResources'
+ * arbitration lock while boot is still attaching drivers through it, and the
+ * service outlives every display that maps the range. The range gets a
+ * dedicated provider instead - a bare IOService that owns nothing else - so
+ * NativeLegacyDisplay::startHardware() keeps the ordinary provider contract
+ * (provider index 0 mapped with kIOMapInhibitCache, and the map must describe
+ * the live console exactly) and no global service is mutated. The provider is
+ * attached under IOResources for the plane and deliberately not registered:
+ * nothing may match it and only this display uses it. */
+static IOService *gGopProvider;
+
+static IOService *publish_gop_memory(IOService *resources)
 {
+    /* One provider per boot: a second call must not publish a second range or
+     * orphan the one the display already attached to. */
+    if (gGopProvider) return gGopProvider;
     PE_Video video = {};
-    if (!provider || PE_current_console(&video)) {
-        printf("TB710FU GopDisplay: no console state (provider=%p)\n", (void *)provider);
-        return 0;
+    if (!resources || PE_current_console(&video)) {
+        printf("TB710FU GopDisplay: no console state (resources=%p)\n", (void *)resources);
+        return nullptr;
     }
     if (!video.v_baseAddr || video.v_depth != 32 || !video.v_width || !video.v_height ||
         video.v_rotate || video.v_width > 16384 || video.v_height > 16384 ||
@@ -247,7 +258,7 @@ static int publish_gop_memory(IOService *provider)
                (unsigned long long)video.v_baseAddr, (unsigned)video.v_width,
                (unsigned)video.v_height, (unsigned)video.v_depth,
                (unsigned)video.v_rowBytes, (unsigned)video.v_rotate);
-        return 0;
+        return nullptr;
     }
     const uint64_t bytes = (uint64_t)video.v_rowBytes * video.v_height;
     IODeviceMemory *range = IODeviceMemory::withRange((IOPhysicalAddress)video.v_baseAddr, (IOByteCount)bytes);
@@ -257,15 +268,33 @@ static int publish_gop_memory(IOService *provider)
                (unsigned long long)bytes);
         OSSafeReleaseNULL(range);
         OSSafeReleaseNULL(ranges);
-        return 0;
+        return nullptr;
     }
+    IOService *provider = new IOService;
+    if (!provider || !provider->init()) {
+        printf("TB710FU GopDisplay: no provider for the GOP range\n");
+        if (provider) provider->release();
+        OSSafeReleaseNULL(range);
+        OSSafeReleaseNULL(ranges);
+        return nullptr;
+    }
+    provider->setName("TB710FUGopProvider");
+    /* setDeviceMemory is setProperty("IODeviceMemory", ranges): it takes its own
+     * reference, so the local array and range are released right after. */
     provider->setDeviceMemory(ranges);
     OSSafeReleaseNULL(range);
     OSSafeReleaseNULL(ranges);
-    printf("TB710FU GopDisplay: GOP framebuffer phys=%llx %ux%u stride=%u bytes=%llu published\n",
+    if (!provider->attach(resources)) {
+        printf("TB710FU GopDisplay: GOP provider attach failed\n");
+        provider->release();
+        return nullptr;
+    }
+    gGopProvider = provider;
+    printf("TB710FU GopDisplay: GOP framebuffer phys=%llx %ux%u stride=%u bytes=%llu on %s\n",
            (unsigned long long)video.v_baseAddr, (unsigned)video.v_width,
-           (unsigned)video.v_height, (unsigned)video.v_rowBytes, (unsigned long long)bytes);
-    return 1;
+           (unsigned)video.v_height, (unsigned)video.v_rowBytes, (unsigned long long)bytes,
+           provider->getName());
+    return provider;
 }
 
 extern "C" void native_tb710fu_gop_display_start(void)
@@ -352,7 +381,14 @@ extern "C" void native_tb710fu_gop_display_start(void)
         printf("TB710FU GopDisplay: IOResources unavailable\n");
         return;
     }
-    (void)publish_gop_memory(resources);
+    printf("TB710FU GopDisplay: publishing the GOP range\n");
+    IOService *provider = publish_gop_memory(resources);
+    if (!provider) {
+        printf("TB710FU GopDisplay: GOP range unavailable, display not registered\n");
+        resources->release();
+        return;
+    }
+    printf("TB710FU GopDisplay: provider=%s %p\n", provider->getName(), (void *)provider);
 
     printf("TB710FU GopDisplay: allocating NativeLegacyDisplay\n");
     IOService *display = native_legacy_display_allocate();
@@ -364,7 +400,12 @@ extern "C" void native_tb710fu_gop_display_start(void)
     }
     /* PAC probe: two base-slot virtual calls through the vptr adoption just
      * installed. If the vptr or table signing were wrong this traps here, after
-     * a breadcrumb, instead of inside init(). */
+     * a breadcrumb, instead of inside init(). It cannot free a half-built
+     * object: OSObject's constructor sets retainCount to 1, so retain()/release()
+     * only takes it to 2 and back to 1. The six IOService slots adoption now
+     * owns (start/stop/free/setPowerState/newUserClient/registerService) cannot
+     * be probed here without side effects; their discriminators are audited
+     * against the fixture at build time instead. */
     printf("TB710FU GopDisplay: pac probe\n");
     display->retain();
     display->release();
@@ -384,10 +425,10 @@ extern "C" void native_tb710fu_gop_display_start(void)
      * with no output at all - the actual stop after adoption. */
     display->setProperty("IOClass", "NativeLegacyDisplay");
     display->setProperty("IOMatchCategory", "IOMobileFramebuffer");
-    display->setProperty("IOProviderClass", "IOResources");
+    display->setProperty("IOProviderClass", provider->getMetaClass()->getClassName());
 
     printf("TB710FU GopDisplay: attach\n");
-    bool attached = display->attach(resources);
+    bool attached = display->attach(provider);
     printf("TB710FU GopDisplay: attach -> %d\n", attached ? 1 : 0);
     if (!attached) {
         display->release();
@@ -396,7 +437,7 @@ extern "C" void native_tb710fu_gop_display_start(void)
     }
 
     printf("TB710FU GopDisplay: start\n");
-    bool started = display->start(resources);
+    bool started = display->start(provider);
     printf("TB710FU GopDisplay: start -> %d\n", started ? 1 : 0);
     if (started) {
         printf("TB710FU GopDisplay: registerService\n");

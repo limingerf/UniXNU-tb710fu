@@ -69,6 +69,35 @@ def discriminator(name):
     return (v[0] ^ v[1] ^ v[2] ^ v[3]) % 0xffff + 1
 
 
+def check_ioservice_base(fixture):
+    """The IOService half of the adopted table must carry the call-site ABI values.
+
+    pl43 started owning the six IOService virtuals the backend overrides, and the
+    runtime re-signs those entries with tb710fu_gop_slot_diversity[slot]. That is
+    only correct if the fixture's value at that slot is the discriminator every
+    call site builds (slot address | disc << 48), so verify it against the base
+    declaration's string hash for the three slots that resolve uniquely here:
+    start at slot 190 (0x3c68, the movk #0x3c68 the 26C5035r call site uses),
+    stop at 191, registerService at 188. free, setPowerState and the two
+    newUserClient overloads are covered by the compiled-vs-fixture comparison in
+    scripts/build-tb710fu-gop-display.py, because their mangled variance differs.
+    """
+    slots = [int(d, 16) for _, d in fixture['slots']]
+    expected = {
+        'registerService': '_ZN9IOService15registerServiceEj',
+        'start': '_ZN9IOService5startEPS_',
+        'stop': '_ZN9IOService4stopEPS_',
+    }
+    found = {}
+    for name, mangled in expected.items():
+        want = discriminator(mangled)
+        hits = [i for i, value in enumerate(slots) if value == want and i < BASE_SLOTS]
+        assert len(hits) == 1, f'IOService::{name} diversity {want:#x} is not one base slot: {hits}'
+        found[name] = hits[0]
+    assert found['registerService'] < found['start'] < found['stop'], 'IOService slot order changed'
+    return found
+
+
 def check_fixture(fixture):
     """Structural facts the generated header and the runtime adoption depend on."""
     slots = [(int(t, 16), int(d, 16)) for t, d in fixture['slots']]
@@ -121,6 +150,7 @@ def check_fixture(fixture):
         'base_slots': BASE_SLOTS,
         'slot_count': SLOT_COUNT,
         'diversity': hashlib.sha256(''.join(f'{d:04x}' for _, d in slots).encode()).hexdigest(),
+        'ioservice_base_slots': check_ioservice_base(fixture),
         'surface_accessors': decoded,
         'collection_slide': fixture['collection_slide'],
         'vtable': fixture['vtable'],

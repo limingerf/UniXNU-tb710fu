@@ -71,8 +71,11 @@ struct tb710fu_dwc3 {
     // completes: a Start Transfer issued over a transfer the core has not
     // retired is what the core answers with "endpoint busy", and in the
     // previous code that status latched failure and took EP0 down with it.
+    // cancel_until bounds that wait, so an event the ring never delivers cannot
+    // wedge an endpoint for the rest of the boot.
     uint8_t cancel_pending[6];
     uint8_t cancel_pad[2];
+    uint64_t cancel_until[6];
     enum tb710fu_dwc3_control_phase phase;
     uint8_t running, failed, configured, dtr, notification_pending;
     uint8_t data_in, set_line, pending_address_valid;
@@ -94,10 +97,11 @@ struct tb710fu_dwc3 {
     // Close/reopen evidence: the poll at which a control stage last advanced,
     // how many control pipes were recycled after the host abandoned a stage,
     // how many End Transfer commands completed, how many completions arrived for
-    // an endpoint nobody owns, how many Bulk IN spans the host aborted, and how
-    // many transfer starts the core refused while it was still terminating.
+    // an endpoint nobody owns, how many Bulk IN spans the host aborted, how many
+    // transfer starts the core refused while it was still terminating, and how
+    // often an End Transfer completion had to be assumed after its window.
     uint64_t control_polls, ep0_recoveries, cancel_completions;
-    uint64_t orphan_completions, aborted_tx, deferred_starts;
+    uint64_t orphan_completions, aborted_tx, deferred_starts, cancel_timeouts;
     // Core reset evidence: DCTL before the halt, right after the assert, and
     // GCTL/phycfg after the preconditions, plus the state registers read at the
     // end. reset_stage is how the bit finally cleared, 0 when it never did.
