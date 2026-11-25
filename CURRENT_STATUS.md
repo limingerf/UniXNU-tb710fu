@@ -1,5 +1,35 @@
 # Current status · 2026-11-25
 
+## 🔋 充电/电池：D 盘没有 TB710FU 可直接用的驱动；已落地电池软件层（协议 codec + `IOPMPowerSource`，主机测试全过），实机百分比仍待 ADSP/PMIC GLINK 传输层 · 2026-11-25
+
+- **盘点**：D 盘唯一“写好的”电池驱动在 `.work/UniXNU-sheng`（`ShengBattery.cpp` + `ShengBattmgr.c`，SM8550 小米平板 6 Pro，ADSP 路径实机验证过），不是本机 SoC/板子，且 clean 工程里没有任何 battery/power 源码。同类上游参考为 `UniXNU-xiaomipad8pro/package/PianoPower`（SM8750，BSD-2，含完整 ADSP 传输，但电池协议是小米 MCA，不是本机的高通 battmgr）。
+- **本机事实（新取证）**：live DT `/soc/qcom,pmic_glink` → `qcom,pmic-glink-channel="PMIC_RTR_ADSP_APPS"`、`qcom,protection-domain="tms/servreg","msm/adsp/charger_pd"`、子节点 `qcom,battery_charger`；ADSP `glink-edge`（`remoteproc-adsp@03000000`，mbox `adsp_smem`，remote-pid 2）；`vendor_dlkm.img` 装载 `qti_battery_charger.ko`；板级 DT 无 fuel-gauge / 电池 ADC 节点 → **电量只能由 DSP 电池管理器给出，AP 直读 SPMI 拿不到 SOC**。
+- **属性序号纠正**：从本机 `qti_battery_charger.ko` 的 `battery_props`/`usb_props` 字符串表读出真实顺序；本机 `BATT_CHG_CTRL_LIM(10)`、`BATT_CHG_CTRL_LIM_MAX(11)` 占了 sheng 的 thermal level / its max 位置，故温度是 12、charge counter 14、cycle count 15（sheng 的 10..21 整体错一位，照搬会把充电限流读成温度）。
+- **新增** `package/Tb710fuPower/`：`Tb710fuBattmgr.{h,c}`（协议 codec：单请求在飞、整轮刷新、通知使能、超时跳字段、断电状态保持、双 gauge/容量回退、适配器明细、可选输入限流写）、`Tb710fuPowerLink.h`（传输契约）、`Tb710fuBattery.cpp`（`IOPMPowerSource`：work loop、2 s 请求定时、60 s 刷新、16 槽消息环、`battery=1` 开关、ADT 取证行、有电量读数才发布）。
+- **接线**：`board.toml` archives + `configs/tb710fu_macos_defconfig`（`-force_load libTb710fuPower.a`、`-DXNU_TB710FU_POWER=1`）+ `package/Macos27Services.cpp`（`postModLoad` 前装 meta、弱引用启动）。构建脚本 `scripts/build-tb710fu-power.py`，主机测试 `scripts/check-tb710fu-power-host.py` + `tests/tb710fu_battmgr_test.c`。
+- **验证**：主机测试 `-Wall -Wextra -Werror` + sanitizer 全过（整轮解码/容量回退/超时保留/通知/外来消息忽略/限流策略），报告 `build/tb710fu-power-host/report.json`；实机未验证：本内核没有 ADSP 传输，`battery=1` 会打印 `ADT pmic-glink ...` 与 `no PMIC GLINK transport` 并**不注册电源**（不编造百分比）。
+- **下一步（明确依赖）**：移植 ADSP/PMIC GLINK 传输（PAS 载入 `adsp` 固件、SMP2P `qcom,smem=<0x1bb 0x1ad>` remote-pid 2、IPCC `0x406000`、GLINK `adsp_smem` FIFO、QRTR），实现 `tb710fu_power_link_acquire/send`；DT 事实与验收顺序见 `docs/POWER_BATTERY.md`。
+
+## 🏆 重大里程碑：`pl46` 实机稳跑 **macOS 27.3 142 进程完整用户态 + 苹果启动进度条实机点亮 + `COM5` 连续重开通过 + 零 panic**；`pl47`（实机 live `IOAVFamily` `DisplayAttributes` + `vsync` / `hotplug` + `AppleARMIODevice` + `/arm-io` DT + `IOSurfaceRoot` 等待）预链接内核已编绿正打包刷机 · 2026-11-25
+
+- **`pl40b`–`pl45b` 攻克 arm64e `IOMobileFramebufferLegacy` 实机注册 + DWC3 `COM5` 稳定性 + panic 串口留驻**：
+  - `pl41` (`1b85d92`) / `pl42` (`b17c5a5`, run [45523632045](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45523632045))：修正 `DA` vptr 判别子 `0xcda1`（`_ZTV15OSMetaClassBase`）、live vtable 指针重签、DWC3 `End Transfer` 取消/重开、EP0 watchdog 与 `offline-legacy-*` 启动参数。
+  - `pl43` (`b642a67`, run [45535416346](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45535416346)) / `pl44` (`f2e8481`, run [45553701071](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45553701071))：修正 `COMMAND_CMDIOC` 位掩码（`1u << 12` → `1u << 8`）、`GopDisplay` 移入 `cdc_display_thread` 异步线程并在 `COM5` 首次 live drain 后启动、`setProperty()` 移至 `init()` 之后、复制 6 个 `IOService` 基类槽、`TB710FUGopProvider` 独立发布 3200×2000 GOP 帧缓冲 → 实机 `+19.9s` 打开 `COM5` 并通过 `pac probe ok`、`init -> 1`、`attach -> 1`。
+  - `pl45b` (`df1aadd`, run [45563220726](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45563220726))：用 `ptrauth_auth_and_resign(..., slotModifier, ..., 0)` 根除 `legacyEntry<Fn>()` `brk #0xc470` PAC 陷阱，并将 `tb710fu_cdc_panic_drain/loop()` 接入 `panic_spin_forever()` / `panic_spin_shmcon()` → 实机首次通过 `startDisplay 1/4..4/4`、`startHardware ok primary=1`、`start -> 1`、`registered IOMobileFramebufferLegacy`。
+- **`pl46` 实机里程碑（当前平板在跑版本）**（commit `652f95c`，run [45571102967](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45571102967)，`kernel.macho` `142,966,784` B，SHA-256 `aad631b55e9ce98f4d4983b59f8c970f3b85f6bd2b9c3c6a048d112729bfb52b`，镜像 `out/pl16-45571102967-pl46-desktop-signed/`，日志 `scratch/com5_pl46_desktop.log`）：
+  - 新增 `patches/xnu/0050-tb710fu-watchdogd-critical-exit.patch` 拦截 `watchdogd` 关键退出 panic，并在 `0049` 中加固 `SavePanicInfo()` 空指针嵌套 panic；启用 `tb710fu-gop=1` 时自动剥离 `vc-text=1`。
+  - **实机验证结果**：
+    1. `COM5` 在 `+19.3s` 打开并完整输出 `89,016` 字节，**连续两次关闭→重开均通过**（`COM5 REOPEN PASS!!` / `LIVE COM5 REOPEN #2 PASS!!`）；
+    2. **零 panic、零 `vnode: table is full`，142 个 macOS 27.3 进程同时存活**（`Installer Progress` PID 97、`WindowServer` PID 141、`loginwindow` PID 142、`IOMFB_bics_daemon` PID 80、`coreaudiod` 等）；
+    3. **屏幕已实机点亮苹果系统启动进度条**（由 `Installer Progress` 绘制）；
+    4. 抓出未切进 `WindowServer` 桌面的根因：`GopDisplaySupport.cpp` 中 `native_legacy_ioav_timing/color` 此前返回 `nullptr` 导致 `NativeLegacyDisplay: display attributes not published`，且 `vsync_notify` / `hotplug` 尚未接通家族发送器。
+- **`pl47` 预链接内核已编绿**（commit `2c06d5e`，native run [45584444513](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45584444513) + prelink run [45585735207](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45585735207)，`kernel.macho` `142,966,784` B，SHA-256 `ce64c7b4beaf4f819c4701704594f1189afba379221e4c254d03af5431d04d98`）：
+  - `package/GopDisplaySupport.cpp`：接通 26C5035r 实机 live `IOAVVideoTimingElement::initWithData`（vtable `+0x170`, div `0xf722`）/ `setColorElements`（`+0x1a0`, div `0x828c`）与 `IOAVVideoColorElement::withCapabilities`（`ptrauth_sign_unauthenticated` 签 IA 指针），接通 `swap_notify_dispatch_gated`（`vsync` vblank 源）、`setDisplayRefreshProperties`、`swap_info_notify_dispatch` 与 `hotplug` 状态字（`+0x2380`）。
+  - `package/GopDisplayStart.cpp`：使用 `AppleARMIODevice` provider + `dot-pitch=294` + `/arm-io` `display-subsystem` 设备树挂载 + `IOSurfaceRoot` 等待。
+- **当前精确阶段**：`pl46` 已在实机跑稳 142 进程 macOS 27.3 用户态 + 实机显示苹果启动进度条 + `COM5` 持久重开（尚未切换至 `WindowServer` 桌面）；`pl47` 预链接内核已编绿下载完成，正在打包签名并准备走 `COM5 -> edl` 免按键刷入实机验证 `DisplayAttributes` 与 `WindowServer` 亮屏。
+
+---
+
 ## 🏆 重大里程碑：`pl37` / `pl38f` 在 TB710FU 实机跑通 **macOS 27.3 完整多守护进程用户态（PID 523+，含 `WindowServer` / `loginwindow` / `opendirectoryd` / DriverKit）**；`pl39`（`GopFramebuffer` + `desiredvnodes=65536`）已编绿打包签名就绪待刷 · 2026-11-25
 
 - **`pl35c` & `pl36` 无人值守定位 `launchd` `SIGABRT` 根因**：

@@ -11,6 +11,8 @@
 extern kmod_info_t g_kernel_kmod_info;
 extern "C" void tb710fu_aks_meta_init(void) __asm__("__GLOBAL__sub_I_NativeKeyStoreEvents.cpp");
 extern "C" void tb710fu_aes_meta_init(void) __asm__("__GLOBAL__sub_I_NativeAES.cpp");
+extern "C" void tb710fu_battery_meta_init(void) __asm__("__GLOBAL__sub_I_Tb710fuBattery.cpp") __attribute__((weak_import));
+extern "C" void tb710fu_battery_start(void) __attribute__((weak_import));
 extern "C" IOService *native_keyevents_allocate(void);
 extern "C" IOService *native_aes_allocate(void);
 extern "C" void native_tb710fu_gop_display_start(void);
@@ -65,6 +67,12 @@ extern "C" void native_tb710fu_services_start(void)
     if (aesParentOk) {
         tb710fu_aes_meta_init();
     }
+    /* The battery's IOKit metaclass lives in its own archive; installing it before postModLoad keeps every
+     * constructor of this module in the same registration pass. Weak, so a kernel without that archive still
+     * loads. */
+    if (tb710fu_battery_meta_init) {
+        tb710fu_battery_meta_init();
+    }
     OSReturn status = OSMetaClass::postModLoad(handle);
     if (status != kOSReturnSuccess) {
         printf("TB710FU Services: postModLoad failed %x\n", status);
@@ -99,6 +107,12 @@ extern "C" void native_tb710fu_services_start(void)
         } else {
             printf("TB710FU Services: SoftwareAES alloc failed\n");
         }
+    }
+
+    /* Battery: the service checks the battery=1 boot argument itself, prints its ADT survey, and stays unregistered
+     * when the PMIC GLINK transport is not part of this kernel. */
+    if (tb710fu_battery_start) {
+        tb710fu_battery_start();
     }
 
     /* Display bring-up used to run here unconditionally, about 1.5 s before the

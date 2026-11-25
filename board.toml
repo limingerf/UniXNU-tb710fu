@@ -31,6 +31,7 @@ archives = [
   "build-tb710fu-live-log.py",
   "build-tb710fu-macos27-services.py",
   "build-tb710fu-gop-display.py",
+  "build-tb710fu-power.py",
   "build-tb710fu-source-storage-archive.py",
 ]
 
