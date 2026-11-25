@@ -21,7 +21,13 @@
 #include <IOKit/IOService.h>
 #include <IOKit/IOUserClient.h>
 #include <IOKit/IODeviceMemory.h>
+#include <IOKit/IODeviceTreeSupport.h>
+#include <IOKit/IORegistryEntry.h>
 #include <libkern/c++/OSArray.h>
+#include <libkern/c++/OSData.h>
+#include <libkern/c++/OSDictionary.h>
+#include <libkern/c++/OSMetaClass.h>
+#include <libkern/c++/OSString.h>
 #include <libkern/OSKextLib.h>
 #include <libkern/libkern.h>
 #include <mach/kmod.h>
@@ -245,13 +251,58 @@ extern "C" void native_legacy_parent_create_default_surface(void *display)
  * a framebuffer to every one of those clients, the write takes IOResources'
  * arbitration lock while boot is still attaching drivers through it, and the
  * service outlives every display that maps the range. The range gets a
- * dedicated provider instead - a bare IOService that owns nothing else - so
- * NativeLegacyDisplay::startHardware() keeps the ordinary provider contract
- * (provider index 0 mapped with kIOMapInhibitCache, and the map must describe
- * the live console exactly) and no global service is mutated. The provider is
- * attached under IOResources for the plane and deliberately not registered:
- * nothing may match it and only this display uses it. */
+ * dedicated provider instead, so NativeLegacyDisplay::startHardware() keeps the
+ * ordinary provider contract (provider index 0 mapped with kIOMapInhibitCache,
+ * and the map must describe the live console exactly) and no global service is
+ * mutated. The provider is attached under IOResources for the plane and
+ * deliberately not registered: nothing may match it and only this display uses
+ * it.
+ *
+ * The provider must be an AppleARMIODevice instance, not a bare IOService.
+ * IOMobileFramebufferLegacy::start() casts it with
+ * provider->metaCast("AppleARMIODevice") and keeps the result in
+ * fAppleARMIODevice (instance +0x2140); a failed cast logs
+ * "%s: provider was not AppleARMIODevice." and leaves the pointer null. The
+ * family reads that pointer in its own getDotPitch(), in
+ * find_swap_function_gated() ("function-clpc_enabled"/"function-frame_swap")
+ * and in allocate_carveout() ("framebuffer-width"/"framebuffer-height").
+ * NativeLegacyDisplay overrides getDotPitch() to read "dot-pitch" from the
+ * provider directly, but the other two still look through the family pointer
+ * and saw null on pl46. */
 static IOService *gGopProvider;
+
+static IOService *allocate_gop_provider()
+{
+    /* AppleARMPlatform registers this class in the prelinked kernel, so the
+     * metaclass alloc runs the same operator new + constructor its own arm-io
+     * nodes use. init() is the inherited IOService::init(): AppleARMIODevice
+     * adds no initialiser of its own, and the instance is neither started nor
+     * registered here, so it needs no AppleARMIOP parent. */
+    IOService *provider = OSDynamicCast(IOService, OSMetaClass::allocClassWithName("AppleARMIODevice"));
+    if (provider && provider->init()) {
+        printf("TB710FU GopDisplay: provider is %s\n", provider->getMetaClass()->getClassName());
+        return provider;
+    }
+    if (provider) {
+        printf("TB710FU GopDisplay: AppleARMIODevice init failed\n");
+        provider->release();
+    } else {
+        printf("TB710FU GopDisplay: AppleARMIODevice class unavailable\n");
+    }
+    /* Keep the display bootable if a future fileset drops the class: the family
+     * falls back to the null fAppleARMIODevice path pl46 already ran, it does
+     * not fail the display start. */
+    provider = new IOService;
+    if (provider && provider->init()) {
+        printf("TB710FU GopDisplay: provider is %s (AppleARMIODevice unavailable)\n",
+               provider->getMetaClass()->getClassName());
+        return provider;
+    }
+    if (provider) {
+        provider->release();
+    }
+    return nullptr;
+}
 
 static IOService *publish_gop_memory(IOService *resources)
 {
@@ -283,15 +334,26 @@ static IOService *publish_gop_memory(IOService *resources)
         OSSafeReleaseNULL(ranges);
         return nullptr;
     }
-    IOService *provider = new IOService;
-    if (!provider || !provider->init()) {
+    IOService *provider = allocate_gop_provider();
+    if (!provider) {
         printf("TB710FU GopDisplay: no provider for the GOP range\n");
-        if (provider) provider->release();
         OSSafeReleaseNULL(range);
         OSSafeReleaseNULL(ranges);
         return nullptr;
     }
     provider->setName("TB710FUGopProvider");
+    /* getDotPitch() reads "dot-pitch" from fAppleARMIODevice as OSData holding
+     * one uint32 dots-per-inch value. 294 dpi is the density the 3200x2000 panel
+     * reports; tb710fu-gop-dpi overrides it for a different panel. */
+    uint32_t dotPitch = 294;
+    PE_parse_boot_argn("tb710fu-gop-dpi", &dotPitch, sizeof(dotPitch));
+    if (dotPitch) {
+        OSData *pitch = OSData::withBytes(&dotPitch, sizeof(dotPitch));
+        if (pitch) {
+            provider->setProperty("dot-pitch", pitch);
+            pitch->release();
+        }
+    }
     /* setDeviceMemory is setProperty("IODeviceMemory", ranges): it takes its own
      * reference, so the local array and range are released right after. */
     provider->setDeviceMemory(ranges);
@@ -308,6 +370,71 @@ static IOService *publish_gop_memory(IOService *resources)
            (unsigned)video.v_height, (unsigned)video.v_rowBytes, (unsigned long long)bytes,
            provider->getName());
     return provider;
+}
+
+/* pl47: the display-subsystem node CoreDisplay walks to find the panel.
+ *
+ * Sheng's reference attaches the started GOP nub under /arm-io in gIODTPlane
+ * with device_type "display-subsystem" and DT name "gop-display"
+ * (LegacyDisplayProbe.cpp 685-695). This port's provider is already attached
+ * under IOResources for the service plane; the DT parent is what makes the
+ * display exist in the device tree at all. The node is attached whenever
+ * /arm-io exists - the display itself still cannot start without
+ * offline-legacy-phase=4, so there is no extra gate to duplicate here. */
+static void attach_gop_device_tree(IOService *provider)
+{
+    unsigned phase = 0;
+    PE_parse_boot_argn("offline-legacy-phase", &phase, sizeof(phase));
+    IORegistryEntry *armIo = IORegistryEntry::fromPath("/arm-io", gIODTPlane);
+    if (!armIo) {
+        printf("TB710FU GopDisplay: /arm-io absent, no display-subsystem node (phase=%u)\n", phase);
+        return;
+    }
+    bool attached = false;
+    const char type[] = "display-subsystem";
+    OSData *data = OSData::withBytes(type, sizeof(type));
+    if (data && provider->setProperty("device_type", data)) {
+        provider->setName("gop-display", gIODTPlane);
+        attached = provider->attachToParent(armIo, gIODTPlane);
+    }
+    OSSafeReleaseNULL(data);
+    printf("TB710FU GopDisplay: /arm-io display-subsystem attach=%d phase=%u\n",
+           attached ? 1 : 0, phase);
+    armIo->release();
+}
+
+/* pl47: the IOSurface root service, loaded and waited for before start().
+ *
+ * iPadOS names the root IOCoreSurfaceRoot; macOS leaves it unnamed so its name
+ * is its class, IOSurfaceRoot. IONameMatch accepts either
+ * (LegacyDisplayProbe.cpp 643-655). CoreDisplay creates its framebuffer
+ * surfaces through this root, so the display publishes attributes only once
+ * it exists. */
+static void wait_for_surface_root(void)
+{
+    OSReturn loaded = OSKextLoadKextWithIdentifier("com.apple.iokit.IOSurface");
+    printf("TB710FU GopDisplay: IOSurface load=%x\n", loaded);
+    OSDictionary *matching = OSDictionary::withCapacity(1);
+    OSString *core = OSString::withCString("IOCoreSurfaceRoot");
+    OSString *root = OSString::withCString("IOSurfaceRoot");
+    const OSObject *names[2] = { core, root };
+    OSArray *list = (core && root) ? OSArray::withObjects(names, 2) : nullptr;
+    IOService *surface = nullptr;
+    if (matching && list && matching->setObject(gIONameMatchKey, list)) {
+        surface = IOService::waitForMatchingService(matching, 5000000000ULL);
+    }
+    printf("TB710FU GopDisplay: IOSurfaceRoot=%p\n", (void *)surface);
+    if (surface) {
+        surface->release();
+    }
+    OSSafeReleaseNULL(list);
+    OSSafeReleaseNULL(matching);
+    if (core) {
+        core->release();
+    }
+    if (root) {
+        root->release();
+    }
 }
 
 extern "C" void native_tb710fu_gop_display_start(void)
@@ -402,6 +529,8 @@ extern "C" void native_tb710fu_gop_display_start(void)
         return;
     }
     printf("TB710FU GopDisplay: provider=%s %p\n", provider->getName(), (void *)provider);
+    printf("TB710FU GopDisplay: attaching the display-subsystem node\n");
+    attach_gop_device_tree(provider);
 
     printf("TB710FU GopDisplay: allocating NativeLegacyDisplay\n");
     IOService *display = native_legacy_display_allocate();
@@ -448,6 +577,9 @@ extern "C" void native_tb710fu_gop_display_start(void)
         resources->release();
         return;
     }
+
+    printf("TB710FU GopDisplay: waiting for IOSurfaceRoot\n");
+    wait_for_surface_root();
 
     printf("TB710FU GopDisplay: start\n");
     bool started = display->start(provider);
