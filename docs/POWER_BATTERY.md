@@ -53,9 +53,10 @@ Consequences for this port:
 
 1. We do not need a TB710FU-specific battery driver; the DSP protocol is generic Qualcomm. The one missing piece is
    the **ADSP + PMIC GLINK transport**.
-2. Firmware packaging is the gating item: `adsp.mbn` is 34.8 MB and `adsp_dtb.mbn` 5.9 MB. This project's built
-   `vendor_boot.img` is 11.8 MB inside a 96 MB partition, so both files fit in that FAT payload; the alternative is
-   reading them from a UFS partition at boot.
+2. Firmware packaging is the gating item: `adsp.mbn` is 34.8 MB and `adsp_dtb.mbn` 64 KB. The current payload FAT
+   has 5.49 MiB free of its 81.1 MiB budget (the LZMA kernel and the Data seed take the rest), so 34.9 MB do not
+   fit raw; the realistic sources are the boot addon (zlib, 22.3 MB, needs a larger payload), a UFS partition read
+   in place, or a file installed on the Data volume.
 3. The closest transport template is sheng's own ADSP stack (`.work/UniXNU-sheng/package`: `AdspProbe.cpp`,
    `QcomGlink.c`, `QcomSmem.c`, `QcomSmp2p.c`, `QcomQmp.c`, `QcomRpmh.c`, `AdspFirmware.c`, `ShengAdsp.h`, all
    BSD-2-Clause-Patent): same PMIC GLINK battery protocol, already hardware-verified, and its channel API is the
@@ -126,10 +127,10 @@ cmd-db `0x81c60000`, `adspslpi` `0x9df00000 + 0x4080000`, `q6-adsp-dtb` `0x9de80
 478/479/480 are the ids `qcom_glink_smem.c` itself allocates. `armcpu_spi_attach` resolves in this kernel
 (`_armcpu_spi_attach` is in the built symbol table).
 
-Firmware: `adsp.mbn` (34.8 MB) and `adsp_dtb.mbn` (5.9 MB) come from the Linux port's archive
+Firmware: `adsp.mbn` (34.8 MB) and `adsp_dtb.mbn` (64 KB) come from the Linux port's archive
 (`firmware/tb710fu-firmware-20261005.tar.gz`, revision `16e800d4`), verified against its `MD5SUMS`:
 `a0686c2b0ed4b6a8a0250c31aa2bc46c` and `4b2480da1dbff4932c6d9f4eb40222e4`. They are **not** built into the
-image: the payload FAT leaves only 5.49 MiB free, so 40.7 MB cannot travel in `vendor_boot`. Install them once on
+image: the payload FAT leaves only 5.49 MiB free, so 34.9 MB cannot travel raw in `vendor_boot`; the addon route compresses it to 22.3 MB (zlib) but needs a larger payload. Install them once on
 the Data volume at `/private/var/firmware/qcom/sm8650/xiaoxin/gt/` (the same paths the Linux port uses), or
 point `adsp-fw=DIR` at another mounted directory. The probe retries for about five minutes, so it can start
 before the Data volume is mounted.
