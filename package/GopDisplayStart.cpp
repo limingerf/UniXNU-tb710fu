@@ -212,13 +212,13 @@ extern "C" IOReturn native_legacy_parent_new_user_client(void *display, task_t t
                                                          UInt32 type, IOUserClient **client)
 {
     typedef IOReturn (*Fn)(void *, task_t, void *, UInt32, IOUserClient **);
-    IOReturn status = legacyEntry<Fn>(TB710FU_GOP_SLOT_NEWUSERCLIENT)(display, task, security, type, client);
-    /* pl48: the only way to tell a client that cannot match from a client that
-     * matches and is then refused. On pl46/pl47 this was silent and the frame
-     * buffer stayed at busy=0 for the whole boot. */
-    printf("TB710FU GopDisplay: newUserClient task=%p type=%u -> 0x%x\n",
-           (void *)task, (unsigned)type, (unsigned)status);
-    return status;
+    /* pl49: no console output on this path. newUserClient is entered from a
+     * user task while IOKit holds the service lock with preemption disabled;
+     * the pl48 trace line did a synchronous CDC write here and the 26C5035r
+     * kernel panicked with "preemption disable timeout exceeded: gross 6.637
+     * ms, net 6.220 ms >= 5.0 ms" right after WindowServer opened the
+     * framebuffer. The forwarding call itself is unchanged. */
+    return legacyEntry<Fn>(TB710FU_GOP_SLOT_NEWUSERCLIENT)(display, task, security, type, client);
 }
 
 extern "C" bool native_legacy_parent_refresh_attributes(void *display, uint64_t *words, bool fixed)
