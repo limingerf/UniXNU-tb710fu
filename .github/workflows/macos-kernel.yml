@@ -117,6 +117,18 @@ jobs:
       - name: Validate the restored XNU state and pin its timestamps
         id: adopt
         run: python3 tools/ci_cache.py adopt --key "${{ steps.cache-key.outputs.xnu-key }}" --github-output "$GITHUB_OUTPUT"
+      # The tree is assembled before the cache is restored, so a restored tree can still carry the
+      # scripts from the run that filled the cache.  Copy the checked-out device scripts over it and
+      # drop stale bytecode before any archive runs: the compile recipe lives in those scripts.
+      - name: Refresh the device build scripts in the tree
+        run: |
+          set -euo pipefail
+          for tree in .work/UniXNU/out/tb710fu/*/tb710fu_macos/tree; do
+            [ -d "$tree/scripts" ] || continue
+            cp -R scripts/. "$tree/scripts/"
+            find "$tree/scripts" -type d -name __pycache__ -prune -exec rm -rf {} +
+            sha256sum "$tree/scripts/build-tb710fu-adsp.py"
+          done
       - name: Build and verify the native arm64e kernel
         env:
           GITHUB_TOKEN: ${{ github.token }}

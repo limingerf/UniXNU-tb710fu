@@ -139,7 +139,10 @@ def main():
     archive = OUT / 'libTb710fuAdsp.a'
     archive.unlink(missing_ok=True)
     objects, commands = [], {}
-    includes = [PACKAGE, POWER, tree / '.cache/xnu-work/osfmk', tree / '.cache/xnu-work/libkern']
+    # The compile records already carry the EXPORT_HDRS and patched-source directories.  Adding the
+    # patched osfmk/libkern roots again makes <kern/ipc_tt.h> resolve twice (the source copy and the
+    # exported copy), and that header has no include guard, so keep the record's own search order.
+    includes = [PACKAGE, POWER]
 
     for source in C_SOURCES:
         output = OUT / (source.stem + '.o')
