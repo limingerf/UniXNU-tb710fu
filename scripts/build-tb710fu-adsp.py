@@ -59,13 +59,17 @@ def compile_command(record, source, output, includes, extra):
     command = []
     index = 0
     replaced = False
+    output_seen = False
     while index < len(arguments):
         value = arguments[index]
         if value == record['file']:
-            command.append(str(source))
-            replaced = True
+            if not replaced:
+                command.append(str(source))
+                replaced = True
         elif value == '-o':
-            command.extend(['-o', str(output)])
+            if not output_seen:
+                command.extend(['-o', str(output)])
+                output_seen = True
             index += 1
         elif value in ('-MF', '-MT', '-MQ', '-MJ'):
             index += 1
@@ -78,6 +82,8 @@ def compile_command(record, source, output, includes, extra):
         index += 1
     if not replaced:
         raise SystemExit(f'{record["file"]}: compile record does not name its source')
+    if not output_seen:
+        command.extend(['-o', str(output)])
     command = ['--target=' + TARGET if value.startswith('--target=') else value for value in command]
     command += ['-Wall', '-Wextra', '-Werror', '-Wno-overriding-option', '-Wno-unused-parameter']
     command += ['-I', *map(str, includes)]
@@ -136,7 +142,7 @@ def main():
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         (OUT / (source.stem + '.log')).write_text(result.stdout)
         if result.returncode:
-            raise SystemExit(f'{source.name}:\n{result.stdout[-6000:]}')
+            raise SystemExit(f'{source.name}:\nCMD: {" ".join(command)}\nRECORD: {c_record["arguments"]}\n{result.stdout[-6000:]}')
         target.check_object(output.read_bytes(), source.name)
         objects.append(output)
 
@@ -150,7 +156,7 @@ def main():
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         (OUT / (source.stem + '.log')).write_text(result.stdout)
         if result.returncode:
-            raise SystemExit(f'{source.name}:\n{result.stdout[-6000:]}')
+            raise SystemExit(f'{source.name}:\nCMD: {" ".join(command)}\nRECORD: {cpp_record["arguments"]}\n{result.stdout[-6000:]}')
         target.check_object(output.read_bytes(), source.name)
         objects.append(output)
 
