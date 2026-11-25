@@ -78,7 +78,7 @@ def compile_command(record, source, output, includes, extra):
         index += 1
     if not replaced:
         raise SystemExit(f'{record["file"]}: compile record does not name its source')
-    command = [TARGET if value.startswith('--target=') else value for value in command]
+    command = ['--target=' + TARGET if value.startswith('--target=') else value for value in command]
     command += ['-Wall', '-Wextra', '-Werror', '-Wno-overriding-option', '-Wno-unused-parameter']
     command += ['-I', *map(str, includes)]
     command += extra
@@ -143,7 +143,7 @@ def main():
     for source in CPP_SOURCES:
         output = OUT / (source.stem + '.o')
         command = adapter.compile_command(cpp_record, source, output, includes, [])
-        command = [TARGET if value.startswith('--target=') else value for value in command]
+        command = ['--target=' + TARGET if value.startswith('--target=') else value for value in command]
         command += ['-Wno-unused-parameter', '-Wno-implicit-fallthrough']
         commands[source.name] = command
         result = subprocess.run(command, cwd=cpp_record['directory'], text=True,

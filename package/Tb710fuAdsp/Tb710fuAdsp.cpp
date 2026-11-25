@@ -321,14 +321,16 @@ int openImage(Image &image, const char *path) {
     int rc = tb710fu_fw_open(path, &image.file, &image.size);
     if (rc) {image.file = nullptr; return rc;}
     rc = qcom_mdt_parse(&image.mdt, image.size, fileRead, image.file);
-    return rc ? 1000 - rc : 0;
+    if (rc) {tb710fu_fw_close(image.file); image.file = nullptr; return 1000 - rc;}
+    return 0;
 }
 // The same image taken from the boot's addon (EFI/UniXNU/firmware/Adsp/<name>), inflated into kernel memory by the reader.
 int openAddonImage(Image &image, const char *name) {
     int rc = tb710fu_fw_open_addon(name, &image.file, &image.size);
     if (rc) {image.file = nullptr; return rc;}
     rc = qcom_mdt_parse(&image.mdt, image.size, fileRead, image.file);
-    return rc ? 1000 - rc : 0;
+    if (rc) {tb710fu_fw_close(image.file); image.file = nullptr; return 1000 - rc;}
+    return 0;
 }
 // init_image with the metadata in physically contiguous memory, then the memory setup of a relocatable image.
 int authenticateHeader(Image &image, uint32_t pas, uint64_t base) {
