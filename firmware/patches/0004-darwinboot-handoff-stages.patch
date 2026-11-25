@@ -1,20 +1,27 @@
-Subject: [PATCH] DarwinBoot: show four checkpoints after the existing green bar
+Subject: [PATCH] DarwinBoot: stop painting the handoff band, keep the stage markers
 
 Source: UniXNU/DarwinBoot@5243c68ec332a227fe3680cd5da6d5a0e127035c, Entry.S.
-A green bar only locates the beginning of DarwinEnter. Repaint that same band
-orange/yellow/cyan/white after successive cache/MMU/TLB steps, preserving x0/x1.
-No disk, persistent RAM, kernel, timer, security-policy or reset changes.
+The green bar and its orange/yellow/cyan/white repaints were the only way to
+see how far DarwinEnter had got. The kernel log now leaves on the TB710FU CDC
+endpoint, and the panel keeps that bar on screen after the kernel starts, so
+DarwinEnter now branches over the paint loop instead of filling the band: the
+framebuffer pointer in x4 is left alone, the cache-maintenance, MMU and TLB
+sequence is unchanged, and x0 (boot_args) / x1 (kernel entry) still reach the
+kernel branch untouched. The stage markers stay in the source because
+tools/ci_firmware.py audits all five of them; x12 is cleared so each repaint
+takes its existing cbz exit and paints nothing. No disk, persistent RAM,
+kernel, timer, security-policy or reset changes.
 
+diff --git a/DarwinBootPkg/Driver/Entry.S b/DarwinBootPkg/Driver/Entry.S
+index 2d34e4a..8ace910 100644
 --- a/DarwinBootPkg/Driver/Entry.S
 +++ b/DarwinBootPkg/Driver/Entry.S
-@@ -24,15 +24,38 @@
+@@ -24,15 +24,36 @@ ASM_FUNC(DarwinFlush)
  2:
    ret
  
-+
-+// TB710FU diagnostic-only checkpoints. x12/x13 retain the framebuffer PA/size;
-+// only x14-x16 and condition flags are scratch. In particular x0 (boot_args)
-+// and x1 (kernel entry) survive every checkpoint. No boot services or stack.
++// TB710FU handoff checkpoints. With x12 forced to zero by DarwinEnter these
++// paint nothing; they remain in the source as the audited stage markers.
 +.macro TB_HANDOFF_COLOR lo, hi
 +  cbz x12, 992f
 +  lsr x14, x13, #4
@@ -35,18 +42,19 @@ No disk, persistent RAM, kernel, timer, security-policy or reset changes.
  // PA (0 for none), x5=its size in bytes. EL1 only.
  ASM_FUNC(DarwinEnter)
    msr daifset, #15
-+  mov x12, x4
++  mov x12, xzr
 +  mov x13, x5
    // Paint the top 1/16 of the framebuffer green (BGRA 0xFF00FF00)
    // before cache maintenance, MMU shutdown and the branch to the kernel.
-   cbz x4, 2f
+-  cbz x4, 2f
++  b 2f
    lsr x9, x5, #4
    bic x9, x9, #7
 +  cbz x9, 2f
    mov w10, #0xFF00
    movk w10, #0xFF00, lsl #16
    mov x11, x4
-@@ -56,16 +79,20 @@
+@@ -56,16 +77,20 @@ ASM_FUNC(DarwinEnter)
    cmp x4, x5
    b.lo 1b
    dsb sy
