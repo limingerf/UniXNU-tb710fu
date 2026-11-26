@@ -16,9 +16,6 @@ int tb710fu_fw_open(const char *path, void **handle, uint64_t *size);
 int tb710fu_fw_open_addon_path(const char *path, void **handle, uint64_t *size);
 int tb710fu_fw_read(void *handle, uint64_t offset, void *to, size_t length);
 void tb710fu_fw_close(void *handle);
-/* libkern IOMallocData is what that reader allocates its images with. */
-void *IOMallocData(vm_size_t size) __attribute__((alloc_size(1)));
-void IOFreeData(void *address, vm_size_t size);
 }
 
 namespace {
