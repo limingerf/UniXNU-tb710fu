@@ -34,6 +34,11 @@ archives = [
   "build-tb710fu-power.py",
   "build-tb710fu-adsp.py",
   "build-tb710fu-gpu.py",
+  "build-tb710fu-wifi.py",
+  "build-tb710fu-audio.py",
+  "build-tb710fu-input.py",
+  "build-tb710fu-bt.py",
+  "build-tb710fu-platform.py",
   "build-tb710fu-source-storage-archive.py",
 ]
 

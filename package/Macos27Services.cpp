@@ -33,6 +33,15 @@ extern "C" int tb710fu_gpu_probe(void) __attribute__((weak_import));
 extern "C" void tb710fu_gpu_meta_init(void) __attribute__((weak_import));
 extern "C" void tb710fu_gpu_power_meta_init(void) __attribute__((weak_import));
 extern "C" void tb710fu_gpu_start(void) __attribute__((weak_import));
+/* Peripheral bring-up archives (all boot-arg gated, default OFF). */
+extern "C" void tb710fu_wifi_probe(void) __attribute__((weak_import));
+extern "C" void tb710fu_audio_meta_init(void) __asm__("__GLOBAL__sub_I_Tb710fuAudioService.cpp") __attribute__((weak_import));
+extern "C" void tb710fu_audio_start(void) __attribute__((weak_import));
+extern "C" int tb710fu_input_start(void) __attribute__((weak_import));
+extern "C" void tb710fu_bluetooth_meta_init(void) __asm__("__GLOBAL__sub_I_Tb710fuBluetooth.cpp") __attribute__((weak_import));
+extern "C" void tb710fu_bluetooth_probe(void) __attribute__((weak_import));
+extern "C" void tb710fu_platform_meta_all(void) __attribute__((weak_import));
+extern "C" void tb710fu_platform_services_start(void) __attribute__((weak_import));
 extern "C" volatile uint32_t native_aes_kat_status;
 extern "C" volatile uint32_t native_aes_registered;
 extern "C" volatile uint32_t native_aes_interface_status;
@@ -100,6 +109,15 @@ extern "C" void native_tb710fu_services_start(void)
     if (tb710fu_battery_meta_init) {
         tb710fu_battery_meta_init();
     }
+    if (tb710fu_audio_meta_init) {
+        tb710fu_audio_meta_init();
+    }
+    if (tb710fu_bluetooth_meta_init) {
+        tb710fu_bluetooth_meta_init();
+    }
+    if (tb710fu_platform_meta_all) {
+        tb710fu_platform_meta_all();
+    }
     OSReturn status = OSMetaClass::postModLoad(handle);
     if (status != kOSReturnSuccess) {
         printf("TB710FU Services: postModLoad failed %x\n", status);
@@ -164,6 +182,23 @@ extern "C" void native_tb710fu_services_start(void)
      * WindowServer waits indefinitely on clocksyncd. Runs on its own worker thread. */
     if (tb710fu_ethernet_probe) {
         tb710fu_ethernet_probe();
+    }
+
+    /* Peripheral drivers: each reads its own boot-arg and stays idle when unset. */
+    if (tb710fu_platform_services_start) {
+        tb710fu_platform_services_start();
+    }
+    if (tb710fu_input_start) {
+        tb710fu_input_start();
+    }
+    if (tb710fu_audio_start) {
+        tb710fu_audio_start();
+    }
+    if (tb710fu_wifi_probe) {
+        tb710fu_wifi_probe();
+    }
+    if (tb710fu_bluetooth_probe) {
+        tb710fu_bluetooth_probe();
     }
 
     /* Display bring-up used to run here unconditionally, about 1.5 s before the
