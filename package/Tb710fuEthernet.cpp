@@ -257,7 +257,7 @@ void ethernetWorker(void *, wait_result_t)
         return;
     }
 
-    unsigned int instSize = ioEthMeta->getInstanceSize();
+    unsigned int instSize = ioEthMeta->getClassSize();
     printf("TB710FU Ethernet: meta=%p size=0x%x expected=0x%x\n",
            (const void *)ioEthMeta, instSize, (unsigned)TB710FU_ETH_INSTANCE_SIZE);
     if (instSize != TB710FU_ETH_INSTANCE_SIZE) {
