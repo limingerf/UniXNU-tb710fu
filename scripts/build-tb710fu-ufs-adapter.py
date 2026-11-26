@@ -43,6 +43,10 @@ PATCHES = (
     # unconditional, so the stop point remains visible with the probes quiet.
     ROOT / 'patches/ufs/0009-quiet-command-probes.patch',
     ROOT / 'patches/ufs/0010-event-driven-root-publication.patch',
+    # 0011 adds a bounded settle delay and stage lines across the currently dark
+    # span between "root layout-done" and "ufs-start-done". Zero delay unless
+    # native-ufs-root-delay is present; no publication order change.
+    ROOT / 'patches/ufs/0011-root-settle-and-stage.patch',
 )
 
 
@@ -62,6 +66,13 @@ def stage_source(upstream_source, stage, patches=PATCHES):
 
 
 def run_host_tests(stage, output_dir, patches=PATCHES):
+    # The kernel build prepends the Linux Darwin toolchain to PATH. Its `as` is a
+    # clang wrapper that passes GNU as options through to clang, so the host g++
+    # driver dies on its own `--64`. Host tests are plain Linux executables and
+    # must use the distribution compiler and assembler.
+    host_env = dict(os.environ)
+    host_env['PATH'] = os.pathsep.join(
+        part for part in host_env.get('PATH', '').split(os.pathsep) if '.linux-toolchain' not in part)
     compiler = shlex.split(os.environ.get('CXX', 'c++'))
     version = subprocess.check_output([*compiler, '--version'], text=True).strip()
     report = {'compiler': version, 'upstream_revision': PIN, 'tests': [],
@@ -71,7 +82,8 @@ def run_host_tests(stage, output_dir, patches=PATCHES):
         executable = stage / f'{name}-host-test'
         command = [*compiler, '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror',
                    '-Wno-unused-parameter', str(source), '-o', str(executable)]
-        compiled = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        compiled = subprocess.run(command, env=host_env, text=True,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         (output_dir / f'{name}-host-compile.log').write_text(compiled.stdout)
         if compiled.returncode:
             raise SystemExit(compiled.stdout[-6000:])

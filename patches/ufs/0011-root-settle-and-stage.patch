@@ -1,0 +1,65 @@
+From: TB710FU clean board
+Subject: [PATCH] Let the UFS root path settle and log every prepare stage
+
+The intermittent stop is after "root layout-done" and before
+"SourceStorage: ufs-start-done". That span contains IOService::start(provider),
+the three NativeUfsBlock allocations/attachments and the signed-UUID reads.
+None of those reported a stage, so a failed boot could not distinguish a
+settling device from a blocked attach or identity read.
+
+Add a bounded native-ufs-root-delay (milliseconds) before IOService::start and
+unconditional stage lines for service start, each attach and each identity
+read. The delay is zero unless the boot argument is present; no policy or
+publication order changes.
+
+Verification: apply after 0010, compile the adapter and boot once with
+native-ufs-root-delay=200; the last printed root line identifies the wait.
+---
+
+diff --git a/NativeUfs.cpp b/NativeUfs.cpp
+--- a/NativeUfs.cpp
++++ b/NativeUfs.cpp
+@@ -2551,6 +2551,12 @@
+     return false;
+   }
+   ufsCheckpoint ("ufssuper");
++  unsigned rootDelayMs = 0;
++  if (PE_parse_boot_argn ("native-ufs-root-delay", &rootDelayMs, sizeof (rootDelayMs)) && rootDelayMs) {
++    printf ("NativeUfs: root settle delay %u ms\n", rootDelayMs);
++    IOSleep (rootDelayMs);
++  }
++  printf ("NativeUfs: root ioservice-start-begin\n");
+   if (!IOService::start (provider)) {
+     rootDiagnosticFailure ("root IOService start failed");
+     IOFree (layout, sizeof (RootLayout));
+@@ -2575,7 +2581,9 @@
+       if (!device || !device->init (static_cast<OSDictionary *> (nullptr)) ||
+           !device->configure (layout->window[index].name, absolute, layout->window[index].size)) return false;
+       gRootDiagnostic.stage = "root window attachment";
++      printf ("NativeUfs: root window %u attach-begin\n", index);
+       if (!device->attach (owner)) return false;
++      printf ("NativeUfs: root window %u attach-done\n", index);
+       gPendingAttached[index] = true;
+       ++gPending;
+       gRootDiagnostic.prepared = gPending;
+@@ -2587,7 +2595,9 @@
+ #if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
+       for (unsigned i = 0; i < gPending; ++i) {
+         gRootDiagnostic.publicationWindow = i;
++        printf ("NativeUfs: root window %u identity-begin\n", i);
+         if (!gPendingDevice[i]->signedVolumeUuid (gPendingUuid[i])) return false;
++        printf ("NativeUfs: root window %u identity-done\n", i);
+         for (unsigned j = 0; j < i; ++j) if (!strcmp (gPendingUuid[i], gPendingUuid[j])) return false;
+       }
+       return true;
+@@ -2611,7 +2621,10 @@
+     void discard (unsigned index) { discardPendingWindow (index); }
+   } operations = { this, layout };
+   ufsCheckpoint ("ufspub");
++  printf ("NativeUfs: root prepare-begin windows=%u\n", layout->windows);
+   UfsRootPublicationResult result = ufsPrepareRootWindows (operations, layout->windows);
++  printf ("NativeUfs: root prepare-done phase=%u window=%u\n",
++          static_cast<unsigned> (result.phase), result.index);
+   IOFree (layout, sizeof (RootLayout));
+   if (result.phase != UfsRootPhase::Complete) {
+     gPending = 0;
