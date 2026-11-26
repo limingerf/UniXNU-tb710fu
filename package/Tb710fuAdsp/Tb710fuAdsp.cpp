@@ -348,6 +348,40 @@ int authenticateHeader(Image &image, uint32_t pas, uint64_t base) {
     return 0;
 }
 
+static void mmioCopy(volatile uint8_t *dst, const uint8_t *src, size_t n) {
+    size_t i = 0;
+    while (i < n && (((uintptr_t)(dst + i)) & 7u)) {
+        dst[i] = src[i];
+        ++i;
+    }
+    while (i + 8 <= n) {
+        uint64_t v = 0;
+        memcpy(&v, src + i, sizeof(v));
+        *reinterpret_cast<volatile uint64_t *>(dst + i) = v;
+        i += 8;
+    }
+    while (i < n) {
+        dst[i] = src[i];
+        ++i;
+    }
+}
+
+static void mmioZero(volatile uint8_t *dst, size_t n) {
+    size_t i = 0;
+    while (i < n && (((uintptr_t)(dst + i)) & 7u)) {
+        dst[i] = 0;
+        ++i;
+    }
+    while (i + 8 <= n) {
+        *reinterpret_cast<volatile uint64_t *>(dst + i) = 0;
+        i += 8;
+    }
+    while (i < n) {
+        dst[i] = 0;
+        ++i;
+    }
+}
+
 int loadSegments(Image &image, uint64_t base, uint64_t size) {
     Window region = {};
     if (!mapWindow(region, base, size, kIOMapWriteCombineCache)) return -12;
@@ -359,14 +393,14 @@ int loadSegments(Image &image, uint64_t base, uint64_t size) {
         uint64_t at = 0;
         if (!s.load) continue;
         if (qcom_mdt_place(&image.mdt, i, base, size, &at)) {rc = -7; break;}
-        uint8_t *to = const_cast<uint8_t *>(region.va) + at;
+        volatile uint8_t *to = region.va + at;
         for (uint64_t done = 0; !rc && done < s.file_size;) {
             const size_t n = s.file_size - done < kChunk ? (size_t)(s.file_size - done) : kChunk;
             if (tb710fu_fw_read(image.file, s.file_offset + done, bounce, n)) {rc = -5; break;}
-            memcpy(to + done, bounce, n);
+            mmioCopy(to + done, bounce, n);
             done += n;
         }
-        if (!rc && s.memory_size > s.file_size) bzero(to + s.file_size, (size_t)(s.memory_size - s.file_size));
+        if (!rc && s.memory_size > s.file_size) mmioZero(to + s.file_size, (size_t)(s.memory_size - s.file_size));
     }
     __asm__ volatile("dsb sy" ::: "memory");
     if (bounce) IOFreeData(bounce, kChunk);
