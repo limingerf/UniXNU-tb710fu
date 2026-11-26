@@ -21,6 +21,7 @@
 #include "Tb710fuGpu.h"
 #include "Tb710fuGpuABI.h"
 #include <IOKit/IOLib.h>
+#include <IOKit/IOPlatformExpert.h>
 #include <IOKit/IOUserClient.h>
 #include <libkern/c++/OSDictionary.h>
 #include <libkern/c++/OSMetaClass.h>
@@ -76,7 +77,7 @@ IOReturn Tb710fuGpuAccelerator::newUserClient(task_t owningTask, void *securityI
     if (handler) {
         *handler = nullptr;
     }
-    tb710fu_gpu_stats[TB710FU_GPU_OPENS]++;
+    tb710fu_gpu_stats[TB710FU_GPU_OPENS] = tb710fu_gpu_stats[TB710FU_GPU_OPENS] + 1;
     tb710fu_gpu_stats[TB710FU_GPU_OPEN_TYPE] = type;
     return kIOReturnUnsupported;
 }
@@ -87,7 +88,7 @@ IOReturn Tb710fuGpuAccelerator::newUserClient(task_t owningTask, void *securityI
 OSObject *Tb710fuGpuAccelerator::copyProperty(const OSSymbol *key) const
 {
     const char *name = key ? key->getCStringNoCopy() : nullptr;
-    tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS]++;
+    tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] = tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] + 1;
     if (name && strcmp(name, "MetalPluginName") == 0 &&
         __atomic_exchange_n(&gMetalPluginNameReads, 1u, __ATOMIC_ACQ_REL) == 0) {
         printf("TB710FU GPU: discovery read MetalPluginName (accelerator reached)\n");
@@ -98,7 +99,7 @@ OSObject *Tb710fuGpuAccelerator::copyProperty(const OSSymbol *key) const
 OSObject *Tb710fuGpuAccelerator::copyProperty(const OSString *key) const
 {
     const char *name = key ? key->getCStringNoCopy() : nullptr;
-    tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS]++;
+    tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] = tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] + 1;
     if (name && strcmp(name, "MetalPluginName") == 0 &&
         __atomic_exchange_n(&gMetalPluginNameReads, 1u, __ATOMIC_ACQ_REL) == 0) {
         printf("TB710FU GPU: discovery read MetalPluginName (accelerator reached)\n");
@@ -108,7 +109,7 @@ OSObject *Tb710fuGpuAccelerator::copyProperty(const OSString *key) const
 
 OSObject *Tb710fuGpuAccelerator::copyProperty(const char *key) const
 {
-    tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS]++;
+    tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] = tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] + 1;
     if (key && strcmp(key, "MetalPluginName") == 0 &&
         __atomic_exchange_n(&gMetalPluginNameReads, 1u, __ATOMIC_ACQ_REL) == 0) {
         printf("TB710FU GPU: discovery read MetalPluginName (accelerator reached)\n");

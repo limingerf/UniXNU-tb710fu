@@ -18,6 +18,7 @@
 #include "Tb710fuGpu.h"
 #include "Tb710fuAddon.h"
 #include <IOKit/IOLib.h>
+#include <IOKit/IOPlatformExpert.h>
 #include <IOKit/IOService.h>
 #include <libkern/c++/OSNumber.h>
 #include <libkern/libkern.h>
