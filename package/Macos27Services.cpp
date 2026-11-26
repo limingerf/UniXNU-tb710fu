@@ -13,6 +13,7 @@ extern "C" void tb710fu_aks_meta_init(void) __asm__("__GLOBAL__sub_I_NativeKeySt
 extern "C" void tb710fu_aes_meta_init(void) __asm__("__GLOBAL__sub_I_NativeAES.cpp");
 extern "C" void tb710fu_battery_meta_init(void) __asm__("__GLOBAL__sub_I_Tb710fuBattery.cpp") __attribute__((weak_import));
 extern "C" void tb710fu_battery_start(void) __attribute__((weak_import));
+extern "C" void tb710fu_ethernet_probe(void) __attribute__((weak_import));
 #if defined(XNU_TB710FU_ADSP) && XNU_TB710FU_ADSP
 extern "C" void tb710fu_adsp_probe(void) __attribute__((weak_import));
 #endif
@@ -124,6 +125,13 @@ extern "C" void native_tb710fu_services_start(void)
      * when the PMIC GLINK transport (the ADSP archive) is not part of this kernel. */
     if (tb710fu_battery_start) {
         tb710fu_battery_start();
+    }
+
+    /* Ethernet (en0): macOS IOTimeSyncFamily derives the TimeSync clock ID from an
+     * IOEthernetInterface MAC; without en0, clocksyncd never publishes a clock and
+     * WindowServer waits indefinitely on clocksyncd. Runs on its own worker thread. */
+    if (tb710fu_ethernet_probe) {
+        tb710fu_ethernet_probe();
     }
 
     /* Display bring-up used to run here unconditionally, about 1.5 s before the

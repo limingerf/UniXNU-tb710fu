@@ -188,11 +188,31 @@ extern "C" IOService *native_aes_allocate(void) { return OSTypeAlloc(NativeAES);
     gen_aes = output / 'NativeAES.cpp'
     gen_aes.write_text(orig_aes.replace(anchor_methods, hw_overrides, 1).replace(macro_aes, aes_binding, 1))
 
+    # Generate Tb710fuEthernetSlots.h from the verified 26C5035r IONetworkingFamily ABI fixture.
+    eth_fixture = device / 'scripts/net-ether-26C5035r.json'
+    if not eth_fixture.is_file():
+        raise SystemExit(f'Missing Ethernet ABI fixture: {eth_fixture}')
+    eth_abi = json.loads(eth_fixture.read_text())
+    eth_slots = eth_abi['slots']
+    eth_bindings = eth_abi['bindings']
+    eth_divs = ', '.join(f'{int(d, 16):#06x}' for _, d in eth_slots)
+    (output / 'Tb710fuEthernetSlots.h').write_text(
+        '#pragma once\n'
+        '#include <stdint.h>\n'
+        f'#define TB710FU_ETH_METACLASS_VA {int(eth_bindings["__ZN20IOEthernetController10gMetaClassE"], 16):#x}ULL\n'
+        f'#define TB710FU_ETH_VTABLE_VA {int(eth_abi["vtable"], 16):#x}ULL\n'
+        f'#define TB710FU_ETH_C2_VA {int(eth_bindings["__ZN20IOEthernetControllerC2EPK11OSMetaClass"], 16):#x}ULL\n'
+        f'#define TB710FU_ETH_INSTANCE_SIZE {int(eth_abi["instance_size"], 16):#x}U\n'
+        f'#define TB710FU_ETH_SLOT_COUNT {len(eth_slots)}U\n'
+        f'static const uint16_t tb710fu_eth_slot_diversity[{len(eth_slots)}] = {{ {eth_divs} }};\n'
+    )
+
     includes = [output, aks_dir, aes_dir, tree / '.cache/xnu-work/osfmk', tree / '.cache/xnu-work/libkern']
     sources = [
         (aks_dir / 'NativeKeyStoreEvents.cpp', []),
         (gen_aes, ['-DNATIVE_AES_DARWIN26=1']),
         (device / 'package/AppleKeyStoreHooks.cpp', []),
+        (device / 'package/Tb710fuEthernet.cpp', []),
         (device / 'package/Macos27Services.cpp', []),
     ]
     objects = []
