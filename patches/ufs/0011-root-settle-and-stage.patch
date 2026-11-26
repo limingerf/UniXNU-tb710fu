@@ -9,30 +9,34 @@ settling device from a blocked attach or identity read.
 
 Add a bounded native-ufs-root-delay (milliseconds) before IOService::start and
 unconditional stage lines for service start, each attach and each identity
-read. The delay defaults to 200 ms and the boot argument overrides it; no policy or
-publication order changes.
+read. The delay defaults to 1000 ms and the boot argument overrides it; the delay
+always runs, including when no boot argument is supplied. No policy or publication
+order changes.
 
-Verification: apply after 0010, compile the adapter and boot once with
-native-ufs-root-delay=200; the last printed root line identifies the wait.
+Verification: apply after 0010, compile the adapter and boot without any extra
+argument; "root settle delay 1000 ms (default)" and "root ioservice-start-begin"
+must appear before ufs-start-done.
 ---
 
 diff --git a/NativeUfs.cpp b/NativeUfs.cpp
 --- a/NativeUfs.cpp
 +++ b/NativeUfs.cpp
-@@ -2551,6 +2551,12 @@
+@@ -2551,6 +2551,14 @@
      return false;
    }
    ufsCheckpoint ("ufssuper");
-+  unsigned rootDelayMs = 200;
-+  if (PE_parse_boot_argn ("native-ufs-root-delay", &rootDelayMs, sizeof (rootDelayMs)) && rootDelayMs) {
-+    printf ("NativeUfs: root settle delay %u ms\n", rootDelayMs);
++  unsigned rootDelayMs = 1000;
++  boolean_t rootDelayOverride = PE_parse_boot_argn ("native-ufs-root-delay", &rootDelayMs, sizeof (rootDelayMs));
++  if (rootDelayMs) {
++    printf ("NativeUfs: root settle delay %u ms%s\n", rootDelayMs,
++            rootDelayOverride ? " (boot-arg)" : " (default)");
 +    IOSleep (rootDelayMs);
 +  }
 +  printf ("NativeUfs: root ioservice-start-begin\n");
    if (!IOService::start (provider)) {
      rootDiagnosticFailure ("root IOService start failed");
      IOFree (layout, sizeof (RootLayout));
-@@ -2575,7 +2581,9 @@
+@@ -2575,7 +2583,9 @@
        if (!device || !device->init (static_cast<OSDictionary *> (nullptr)) ||
            !device->configure (layout->window[index].name, absolute, layout->window[index].size)) return false;
        gRootDiagnostic.stage = "root window attachment";
@@ -42,7 +46,7 @@ diff --git a/NativeUfs.cpp b/NativeUfs.cpp
        gPendingAttached[index] = true;
        ++gPending;
        gRootDiagnostic.prepared = gPending;
-@@ -2587,7 +2595,9 @@
+@@ -2587,7 +2597,9 @@
  #if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
        for (unsigned i = 0; i < gPending; ++i) {
          gRootDiagnostic.publicationWindow = i;
@@ -52,7 +56,7 @@ diff --git a/NativeUfs.cpp b/NativeUfs.cpp
          for (unsigned j = 0; j < i; ++j) if (!strcmp (gPendingUuid[i], gPendingUuid[j])) return false;
        }
        return true;
-@@ -2611,7 +2621,10 @@
+@@ -2611,7 +2623,10 @@
      void discard (unsigned index) { discardPendingWindow (index); }
    } operations = { this, layout };
    ufsCheckpoint ("ufspub");

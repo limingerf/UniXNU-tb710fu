@@ -44,8 +44,9 @@ PATCHES = (
     ROOT / 'patches/ufs/0009-quiet-command-probes.patch',
     ROOT / 'patches/ufs/0010-event-driven-root-publication.patch',
     # 0011 adds a bounded settle delay and stage lines across the currently dark
-    # span between "root layout-done" and "ufs-start-done". Zero delay unless
-    # native-ufs-root-delay is present; no publication order change.
+    # span between "root layout-done" and "ufs-start-done". The default is now
+    # 1000 ms and always runs; native-ufs-root-delay overrides it. No publication
+    # order change.
     ROOT / 'patches/ufs/0011-root-settle-and-stage.patch',
 )
 
