@@ -91,6 +91,28 @@ def import_native_run(run_id, ctx, output):
     target = ctx.tree / ctx.board['kernel']['prelink']['kernel']
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(data)
+    # The native artifact carries auxiliary archive reports under artifact
+    # names. Prelink verification reads the same bytes from the tree's build
+    # paths; restore them so a cache-hit prelink does not fail on a report the
+    # native job already produced.
+    restored = {
+        'usb-cdc': 'tb710fu-cdc-log',
+        'live-log': 'tb710fu-live-log',
+        'ufs-adapter': 'tb710fu-ufs-adapter',
+        'source-storage': 'tb710fu-source-storage',
+    }
+    with zipfile.ZipFile(archive) as bundle:
+        for artifact_name, build_name in restored.items():
+            prefix = artifact_name + '/'
+            members = [name for name in bundle.namelist() if name.startswith(prefix)]
+            destination = ctx.tree / 'build' / build_name
+            for name in members:
+                relative = name[len(prefix):]
+                if not relative or name.endswith('/'):
+                    continue
+                path = destination / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(bundle.read(name))
     provenance = {'native_run_id': run_id, 'native_run_revision': run['head_sha'],
                   'native_artifact_id': artifact['id'], 'native_sha256': digest,
                   'configuration_and_patches_match': True, 'native_recompiled': False}
