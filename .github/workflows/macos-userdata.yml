@@ -260,7 +260,7 @@ jobs:
       HOMEBREW_NO_ENV_HINTS: 1
       UNIXNU_COMMIT: 0c1bac3d51a3009dca1708b15a5198f4b43d057a
       ADRENO740_COMMIT: 6fa7bae2a5b3b523e790eb3e0348af4d98969e4d
-      GPU_ADDON_BUDGET: 7864320
+      GPU_ADDON_BUDGET: 16777216
     steps:
       - uses: actions/checkout@v4
       - name: Framework at pinned revision
@@ -274,12 +274,48 @@ jobs:
       - name: Tools
         run: |
           set -euo pipefail
-          brew install llvm lld cmake ninja dtc mtools glslang unifdef || true
-          for tool in glslangValidator cmake ninja dtc mtools; do
+          brew install llvm lld cmake ninja dtc mtools glslang unifdef bison || true
+          echo "/opt/homebrew/opt/bison/bin" >> "$GITHUB_PATH"
+          echo "/opt/homebrew/opt/llvm/bin" >> "$GITHUB_PATH"
+          export PATH="/opt/homebrew/opt/bison/bin:/opt/homebrew/opt/llvm/bin:$PATH"
+          for tool in glslangValidator cmake ninja dtc mtools bison llvm-as llvm-objcopy; do
             command -v "${tool}" >/dev/null || { echo "${tool} missing" >&2; exit 1; }
           done
           rustup toolchain install 1.98.0 --profile minimal --component rust-src
           cargo +1.98.0 --version
+      - name: Prepare Mesa, metal2vulkan, and meson venv
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, subprocess, sys
+          from pathlib import Path
+
+          root = Path('.work/UniXNU').resolve()
+          def run(*cmd):
+              print('+', ' '.join(str(c) for c in cmd), flush=True)
+              subprocess.run([str(c) for c in cmd], check=True)
+
+          def checkout(path, pin):
+              if not path.exists():
+                  path.mkdir(parents=True)
+                  run('git', 'init', '-q', path)
+                  run('git', '-C', path, 'fetch', '--depth=1', pin.get('mirror', pin['repository']), pin['commit'])
+                  run('git', '-C', path, 'checkout', '--detach', 'FETCH_HEAD')
+                  return True
+              return False
+
+          pins = json.loads((root / 'scripts/data/adreno-compiler-inputs.json').read_text())
+          mesa = root / '.cache/mesa-work'
+          if checkout(mesa, pins['mesa']):
+              for patch in pins['patches']:
+                  run('git', '-C', mesa, 'apply', root / patch)
+          translator = json.loads((root / 'scripts/data/gpu-metal-vulkan-inputs.json').read_text())['translator']
+          checkout(root / '.cache/gpu-reference/metal2vulkan', translator)
+          venv = root / '.cache/mesa-venv'
+          if not (venv / 'bin/python').is_file():
+              run(sys.executable, '-m', 'venv', venv)
+          run(venv / 'bin/python', '-m', 'pip', 'install', '-r', root / 'scripts/requirements-adreno-compiler.txt')
+          PY
       - name: Build Turnip, NativeAdrenoMetal.bundle and gpuaddon.bin
         run: |
           set -euo pipefail
