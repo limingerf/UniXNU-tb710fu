@@ -76,8 +76,14 @@ struct tb710fu_dwc3 {
     uint8_t cancel_pending[6];
     uint8_t cancel_pad[2];
     uint64_t cancel_until[6];
+    // Poll at which busy[ep] was set. pump() uses it only in panic mode, where
+    // nothing else can ever complete a TRB a halted worker never submitted.
+    uint64_t armed_at[6];
     enum tb710fu_dwc3_control_phase phase;
-    uint8_t running, failed, configured, dtr, notification_pending;
+    // panic_mode is set by tb710fu_dwc3_panic_rearm(): from then on the worker
+    // that normally drives this controller is gone, so pump() bounds how long
+    // a Bulk transfer may stay owned before it is retired and re-armed.
+    uint8_t running, failed, configured, dtr, notification_pending, panic_mode;
     uint8_t data_in, set_line, pending_address_valid;
     uint8_t coding[7], pending_address;
     uint8_t connected, setup_pending, tx_state;
@@ -114,7 +120,11 @@ struct tb710fu_dwc3 {
     uint8_t reset_stage;
     uint8_t reset_adopted;
     uint8_t reset_forced;
-    uint8_t reset_pad;
+    // Set only when start() completed: the core was halted and reset, the
+    // event ring and every endpoint were configured and RUN_STOP was raised.
+    // It is never cleared, because a transport failure before a panic (which
+    // clears DEVTEN/RUN_STOP) must not hide the channel from the panic shell.
+    uint8_t adopted;
 };
 
 // The XNU adapter must first validate live role/clocks/PHY/SMMU and permanent,
@@ -132,9 +142,12 @@ void tb710fu_dwc3_poll(struct tb710fu_dwc3 *);
 void tb710fu_dwc3_enable_event_irq(struct tb710fu_dwc3 *);
 void tb710fu_dwc3_stop(struct tb710fu_dwc3 *, const char *reason);
 // A panic stops the worker that normally drives the controller. This re-asserts
-// only the state start()/stop() own - pull-up and device events - and re-arms
-// EP0, leaving every DMA address untouched, so a COM5 opened after the panic is
-// answered instead of never being heard at all.
+// only the state start()/stop() own - pull-up and device events - and reclaims
+// every endpoint before re-arming EP0, leaving every DMA address untouched, so
+// a COM5 opened during or after the panic is answered instead of never being
+// heard at all. It is the panic hand-over: it runs once, unconditionally, on
+// a controller that start() adopted, even when that controller still looked
+// healthy immediately before the panic.
 void tb710fu_dwc3_panic_rearm(struct tb710fu_dwc3 *);
 
 #endif

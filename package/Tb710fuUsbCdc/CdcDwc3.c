@@ -179,6 +179,15 @@ static int fail(struct tb710fu_dwc3 *d, const char *reason)
 // wanted that terminator issues its IN token well inside this window.
 #define ZLP_POLLS 4u
 
+// Polls a Bulk transfer may keep an endpoint owned in panic mode before it is
+// retired and re-armed. A CPU halted inside transfer() can leave busy[] set for
+// a TRB the core never received; no completion can ever arrive for it, and the
+// panic shell would then wait on that endpoint for the rest of the boot. 32
+// polls are 16 ms at the panic loop's 500 us cadence (64 ms at the worker's
+// 2 ms cadence), far longer than any real 2 KiB Bulk transfer needs, so this
+// can only fire on a transfer that is genuinely lost.
+#define BULK_RETIRE_POLLS 32u
+
 // Polls an outstanding End Transfer may keep an endpoint out of service. The
 // command-complete event normally releases it within a few polls, but a lost
 // event must never be able to kill an endpoint for the rest of the boot: that
@@ -273,6 +282,24 @@ static int endpoint_usable(struct tb710fu_dwc3 *d, unsigned ep)
     return 1;
 }
 
+// Panic context only: hand an endpoint back without posting any command. The
+// core may still own the TRB (its completion then arrives for an endpoint
+// nobody owns and is dropped as an orphan), or may never have received it at
+// all because the CPU was halted inside transfer() before STARTTRANSFER ran.
+// The stale window covers both: a late completion is never credited to the
+// transfer the re-arm is about to start.
+static void retire_bulk_owned(struct tb710fu_dwc3 *d, unsigned ep)
+{
+    if (ep >= 6u || ep == 4u || !d->busy[ep]) return;
+    d->busy[ep] = 0;
+    d->requested[ep] = 0;
+    d->resource[ep] = 0;
+    d->armed_at[ep] = 0;
+    d->stale[ep] = 1;
+    d->stale_until[ep] = d->polls + STALE_POLLS;
+    ++d->abandoned_transfers;
+}
+
 static int command(struct tb710fu_dwc3 *d, unsigned ep, unsigned cmd,
                    uint32_t p0, uint32_t p1, uint32_t p2)
 {
@@ -356,6 +383,7 @@ static int transfer(struct tb710fu_dwc3 *d, unsigned ep, unsigned type,
     d->ops.sync_for_device(d->ops.context, off, TB710FU_DWC3_TRB_STRIDE);
     d->requested[ep] = bytes;
     d->busy[ep] = 1; // A timed-out command may still have started device DMA.
+    d->armed_at[ep] = d->polls;
     // A new transfer owns this endpoint from here on: any cancellation evidence
     // owed for the abandoned predecessor is no longer attributable to it.
     d->stale[ep] = 0;
@@ -754,6 +782,23 @@ static void tx_retire(struct tb710fu_dwc3 *d)
 
 static int pump(struct tb710fu_dwc3 *d)
 {
+    // The panic shell drives a controller whose worker is gone. A Bulk TRB the
+    // worker was halted on can never complete: busy[] stays set, every stage
+    // below waits on it, and COM5 answers nothing for the rest of the boot.
+    // Retire it after a bounded window and let the normal re-arm below serve
+    // the host again. No End Transfer is posted here: a command from panic
+    // context is exactly what may block, and the stale window covers the late
+    // completion the old TRB may still produce.
+    if (d->panic_mode) {
+        if (d->busy[EP_RX] && d->polls - d->armed_at[EP_RX] >= BULK_RETIRE_POLLS)
+            retire_bulk_owned(d, EP_RX);
+        if (d->busy[EP_TX] && d->polls - d->armed_at[EP_TX] >= BULK_RETIRE_POLLS) {
+            retire_bulk_owned(d, EP_TX);
+            d->tx_state = TX_IDLE;
+            d->tx_commit = 0;
+            d->tx_end = 0;
+        }
+    }
     // A control stage the host never finished: Windows can cancel the STATUS
     // stage of its close-time SET_CONTROL_LINE_STATE, and a panic can land
     // between a SETUP and its DATA/STATUS. EP0 is then left without an armed
@@ -1073,6 +1118,9 @@ int tb710fu_dwc3_start(struct tb710fu_dwc3 *d, const struct tb710fu_dwc3_ops *op
     write_reg(d, DCTL, (read_reg(d, DCTL) & ~(SOFT_RESET | DCTL_LPM_MASK)) | RUN_STOP);
     d->probe_trace[3] = read_reg(d, DSTS);
     d->running = 1;
+    // The controller is fully adopted only here: every earlier failure path
+    // leaves it configured halfway, and the panic shell must not touch that.
+    d->adopted = 1;
     return 1;
 }
 
@@ -1087,26 +1135,36 @@ void tb710fu_dwc3_panic_rearm(struct tb710fu_dwc3 *d)
 {
     if (d == NULL || d->dma == NULL || d->ops.read32 == NULL || d->ops.write32 == NULL)
         return;
-    /* Only a core that start() actually adopted is safe to touch here: probe_trace[1]
-     * is the DEVTEN readback recorded right before the pull-up was exposed, so an
-     * adoption that failed earlier leaves it zero and this does nothing at all. */
-    if (d->probe_trace[1] == 0u) return;
-    // A SETUP TRB the core already owns is the one transfer that must survive:
-    // re-arming it would hand the core a second TRB for one endpoint.
-    const int setup_armed = (d->phase == TB710FU_DWC3_SETUP_PHASE && d->busy[0]) ? 1 : 0;
+    /* Only a core that start() actually completed is safe to touch here. The
+     * previous gate read probe_trace[1], the DEVTEN readback, but RUN_STOP is
+     * raised after that readback and a transport failure clears it; a boot
+     * whose DEVTEN write never stuck therefore skipped the panic rearm on
+     * exactly the controller that needed it. adopted is a fact, not evidence. */
+    if (!d->adopted) return;
+    /* From here on nothing else drives this controller, so every endpoint is
+     * reclaimed unconditionally. A CPU halted inside transfer() can leave busy[]
+     * set for a TRB the core never received; keeping an armed EP0 SETUP or Bulk
+     * transfer "to be safe" then parks the shell forever. A TRB the core did
+     * receive still completes, and that completion arrives for an endpoint
+     * nobody owns and is dropped as an orphan, after which EP0 is re-armed
+     * below. Marking panic_mode makes pump() bound any Bulk ownership that is
+     * lost later. */
     for (unsigned ep = 0; ep < 6u; ++ep) {
-        if (ep == 4u || (ep == 0 && setup_armed)) continue;
+        if (ep == 4u) continue;
         if (d->busy[ep]) ++d->abandoned_transfers;
         d->busy[ep] = 0;
         d->requested[ep] = 0;
         d->resource[ep] = 0;
+        d->armed_at[ep] = 0;
         d->stale[ep] = 0;
         d->cancel_pending[ep] = 0;
         d->cancel_until[ep] = 0;
     }
+    d->panic_mode = 1;
     d->tx_state = TX_IDLE;
     d->tx_commit = 0;
     d->tx_end = 0;
+    d->zlp_armed = 0;
     d->phase = TB710FU_DWC3_SETUP_PHASE;
     d->data_in = d->control_bytes = d->setup_pending = d->set_line = 0;
     d->pending_address_valid = d->pending_configuration_valid = 0;
@@ -1117,10 +1175,10 @@ void tb710fu_dwc3_panic_rearm(struct tb710fu_dwc3 *d)
     d->control_polls = d->polls;
     write_reg(d, DALEPENA, d->configured ? ENABLED_ENDPOINTS : 3u);
     write_reg(d, DEVTEN, (1u << 11) | (1u << 9) | 7u);
-    // An already armed SETUP TRB is left where it is: re-arming it would hand the
-    // core a second TRB for one endpoint. As in start(), SETUP is posted before
-    // the pull-up is exposed so a host that arrives with the shell does not
-    // time out on its first request.
+    // SETUP is posted before the pull-up is exposed so a host that arrives with
+    // the shell does not time out on its first request. A core that still owns
+    // the abandoned SETUP refuses this start; transfer() defers it and the next
+    // poll retries, while the core's own TRB still answers the host's SETUP.
     if (!d->busy[0] && d->phase == TB710FU_DWC3_SETUP_PHASE) (void)setup_phase(d);
     write_reg(d, DCTL, (read_reg(d, DCTL) & ~(SOFT_RESET | DCTL_LPM_MASK)) | RUN_STOP);
 }

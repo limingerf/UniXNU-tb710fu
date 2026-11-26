@@ -27,18 +27,21 @@ Two independent failures followed from that, both seen in pl44 (run
      DWC3 poll loop, so the reset ended the boot first: COM5 saw no panic
      byte at all and the port was gone afterwards (reopen returned 31).
 
-This patch makes the panicking CPU hand the controller to the CDC shell
-before any reset can fire, on both terminal paths and on the
-kdp_machine_reboot_type() path used when panicDebugging is off:
+This patch hands the controller to the CDC shell at every terminal point,
+before anything can reset the SoC or park the CPU:
 
-  * panic_spin_forever(): drain the ring for 6 s, flush the ramoops zone (the
-    panic still survives to Android whenever the operator resets later) and
-    enter tb710fu_cdc_panic_loop(), which keeps polling DWC3 with interrupts
-    off and executes the hands-free 'reboot' / 'edl' commands. The existing
-    tb710fu_ramoops_panic_reset() stays as the no-CDC fallback.
-  * panic_spin_shmcon(): same hand-over, after the existing
-    PE_i_can_has_debugger()/handshake checks, so the astris spin can no longer
-    park the CPU on a board without astris.
+  * debugger_collect_diagnostics(): immediately after SavePanicInfo() has
+    written the panic log, and before on_device_corefile_enabled() can start
+    a disk coredump. Drain 6 s, flush the ramoops zone and enter
+    tb710fu_cdc_panic_loop(), which keeps polling DWC3 with interrupts off and
+    executes the hands-free 'reboot' / 'edl' / 'help' verbs. A boot that never
+    adopted a controller returns 0 here and every upstream path is unchanged.
+  * panic_spin_shmcon(): the hand-over is the first statement, before the
+    PE_i_can_has_debugger()/hwsd_info checks that return on this board before
+    the WFE loop, so the astris spin can no longer park the CPU on a board
+    without astris.
+  * panic_spin_forever(): the same hand-over at the top, before the ramoops
+    reset, so a path that reaches it without diagnostics still delivers.
   * kdp_machine_reboot_type(): drain 4 s before tb710fu_ramoops_panic_reset(),
     so a reset that is going to happen cannot preempt the log either.
   * Remove the nested assert(panic_info) in PE_update_panicheader_nestedpanic()
@@ -69,28 +72,37 @@ kdp_machine_reboot_type() path used when panicDebugging is off:
     one and never returned to panic_spin_forever(), so the drain/loop added
     here could not run.
 
-Source: pristine XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f with patches
-0001..0048 applied in series order; the pre-change source SHA-256 of each
-edited file is in that patch's own header (0004 owns the debug.c
-panic_spin_forever()/kdp_machine_reboot_type() hunk, 0010 owns the CDC tap,
-0045 owns the halt_all_cpus() hook). pe_init.c, model_dep.c and out_shmem.c
-are otherwise untouched by this series, debug.c is touched by 0004 only.
+Source: pristine XNU ac9718fb1af618d5ce8678d0dc6e8a58f252216f with the
+selected UniXNU arch/SoC/macOS series and patches 0001..0048 applied in series
+order; the pre-change source SHA-256 of each edited file is in that patch's own
+header (0004 owns the debug.c panic_spin_forever()/kdp_machine_reboot_type()
+hunk, 0010 owns the CDC tap, 0045 owns the halt_all_cpus() hook). pe_init.c,
+model_dep.c and out_shmem.c are otherwise untouched by this series, debug.c is
+touched by 0004 only.
 
 Reason: a debug boot must deliver its own panic text over the channel that is
 already open (COM5, dtr=1) and must keep the shell that can reset the device
 hands-free. A reset before the drain destroys both, and so does a data abort
 inside the panic path: it must not be possible to nest a panic on this board.
 
-Verification: git apply -v --check and a real apply pass for all hunks on the
-applied 0001..0048 fixture tree (.work/xnu-patch-lf-clean, XNU ac9718f); the
-tree is then byte-identical to the reviewed new sources. The drain provider is
-package/Tb710fuUsbCdc/CdcXnu.c tb710fu_cdc_panic_drain(),
-which uses the same ownership proof (dma != NULL && probe_trace[1] != 0) and
-the same DWC3 poll / rearm / pending-command step as the existing
-tb710fu_cdc_panic_loop(), so a boot without an adopted controller falls back
-to the previous reset behaviour instead of touching dead hardware. This is a
-source and patch-application check; hardware panic drain, COM5 reopen and
-hands-free 'reboot' still require a native run.
+The drain provider is package/Tb710fuUsbCdc/CdcXnu.c. It now proves ownership
+with the controller's adopted flag, set only at the end of a completed
+tb710fu_dwc3_start(), instead of probe_trace[1]: that value is the DEVTEN
+readback taken before RUN_STOP is raised and can be zero on an initialized
+controller, which skipped the panic loop exactly when it was needed. On
+hand-over tb710fu_dwc3_panic_rearm() is called unconditionally and reclaims
+every endpoint (EP0 SETUP, Bulk RX, Bulk TX) a halted worker may have left
+owned; pump() retires a Bulk transfer still owned after BULK_RETIRE_POLLS, so a
+frozen worker CPU can never deadlock COM5 in panic mode. The loop appends
+"TB710FU CDC: panic loop active (type edl/reboot)" to the CDC ring and executes
+the safe verbs (edl/reboot/bootloader/recovery/help).
+
+Verification: the debug.c and out_shmem.c hunks are generated from, and
+re-apply to, the exact ac9718f sources carrying patch 0004's debug.c changes;
+the other files' hunks are unchanged from the previously applied revision of
+this patch. git apply --stat parses the whole file. This is a source and
+patch-application check; hardware panic drain, COM5 reopen and hands-free
+'reboot' still require a native run.
 
 diff --git a/pexpert/arm/pe_init.c b/pexpert/arm/pe_init.c
 index fd449f7..20377d9 100644
@@ -107,22 +119,20 @@ index fd449f7..20377d9 100644
  	}
  
 diff --git a/osfmk/kern/debug.c b/osfmk/kern/debug.c
-index 6f2d4c1..b1e3a77 100644
 --- a/osfmk/kern/debug.c
 +++ b/osfmk/kern/debug.c
-@@ -1371,6 +1371,27 @@ panic_spin_forever(void)
+@@ -1371,6 +1371,26 @@ panic_trap_to_debugger(const char *panic_format_str, va_list *panic_args, unsign
  void __attribute__((noinline, optnone))
  panic_spin_forever(void)
  {
 +#if defined(XNU_TB710FU_CDC) && XNU_TB710FU_CDC
 +	/*
-+	 * debug=0x14e sets DB_NMI, which sets panicDebugging, so this function
-+	 * (and panic_spin_shmcon()) is where every panic terminates and the
-+	 * halt_all_cpus() hook of patch 0045 is never reached. Drain the console
-+	 * bytes this CPU already tapped before anything can reset the SoC, then
-+	 * stay in the shell: COM5 keeps the completion log and the hands-free
-+	 * 'reboot' / 'edl' commands still work. Without an adopted controller
-+	 * this returns 0 and the ramoops reset below is unchanged.
++	 * Every panic on this board terminates on this CPU: debug=0x14e sets DB_NMI,
++	 * which sets panicDebugging, so halt_all_cpus() - and its CDC hook - never
++	 * runs. Reclaim every endpoint a halted worker may have left owned, drain
++	 * the bytes already tapped and keep the shell: COM5 holds the panic log and
++	 * the hands-free 'reboot' / 'edl' commands still execute. Without an adopted
++	 * controller this returns 0 and the ramoops reset below is unchanged.
 +	 */
 +	{
 +		extern int  tb710fu_cdc_panic_drain(unsigned milliseconds);
@@ -138,42 +148,36 @@ index 6f2d4c1..b1e3a77 100644
  	/* TB710FU: flush the zone and reset, so the panic survives to Android. */
  	tb710fu_ramoops_panic_reset();
  	for (;;) {
-@@ -1393,7 +1414,18 @@ kdp_machine_reboot_type(unsigned int type, uint64_t debugger_flags)
+@@ -1393,6 +1413,17 @@ panic_stackshot_release_lock(void)
  static void
  kdp_machine_reboot_type(unsigned int type, uint64_t debugger_flags)
  {
- 	if (type == kPEPanicRestartCPU) {
 +#if defined(XNU_TB710FU_CDC) && XNU_TB710FU_CDC
-+		/*
-+		 * The reset below is what makes COM5 disappear. Give the bytes
-+		 * already sitting in the CDC ring to the host first.
-+		 */
-+		{
-+			extern int tb710fu_cdc_panic_drain(unsigned milliseconds);
++	/*
++	 * The reset below is what makes COM5 disappear. Give the bytes already
++	 * sitting in the CDC ring to the host first.
++	 */
++	{
++		extern int tb710fu_cdc_panic_drain(unsigned milliseconds);
 +
-+			(void)tb710fu_cdc_panic_drain(4000u);
-+		}
++		(void)tb710fu_cdc_panic_drain(4000u);
++	}
 +#endif
+ 	if (type == kPEPanicRestartCPU) {
  		tb710fu_ramoops_panic_reset();
  	}
- 	if ((type == kPEPanicRestartCPU) && (debugger_flags & DEBUGGER_OPTION_SKIP_PANICEND_CALLOUTS)) {
-diff --git a/osfmk/kdp/output_stages/out_shmem.c b/osfmk/kdp/output_stages/out_shmem.c
-index 9c2a5b0..e0d9f12 100644
---- a/osfmk/kdp/output_stages/out_shmem.c
-+++ b/osfmk/kdp/output_stages/out_shmem.c
-@@ -657,8 +657,28 @@ panic_spin_shmcon(void)
- 	if (hwsd_info == NULL) {
- 		kern_coredump_log(NULL, "handshake structure not initialized\n");
- 		return;
+@@ -1550,6 +1581,27 @@ debugger_collect_diagnostics(unsigned int exception, unsigned int code, unsigned
+ 		}
  	}
  
 +#if defined(XNU_TB710FU_CDC) && XNU_TB710FU_CDC
 +	/*
-+	 * This device has no astris and no hardware shared-memory debugger, so
-+	 * the for (;;) below would park the panicking CPU with no peer and COM5
-+	 * would never receive the panic text. Drain, persist and hand the CPU to
-+	 * the CDC shell instead; the astris handshake is left untouched for any
-+	 * boot that does have one.
++	 * The panic log and stackshot are already written (SavePanicInfo above).
++	 * On this board there is no local corefile to protect and every path below
++	 * only parks the CPU or resets the SoC: hand the controller to the CDC shell
++	 * here, before on_device_corefile_enabled() can start a disk coredump and
++	 * before panic_spin_shmcon() can park on WFE. The panic text then drains
++	 * over COM5 and 'edl' / 'reboot' stay live.
 +	 */
 +	{
 +		extern int  tb710fu_cdc_panic_drain(unsigned milliseconds);
@@ -187,9 +191,39 @@ index 9c2a5b0..e0d9f12 100644
 +	}
 +#endif
 +
- 	kern_coredump_log(NULL, "\nPlease go to https://panic.apple.com to report this panic\n");
- 	kern_coredump_log(NULL, "Waiting for hardware shared memory debugger, handshake structure is at virt: %p, phys %p\n",
- 	    hwsd_info, (void *)kvtophys((vm_offset_t)hwsd_info));
+ #if CONFIG_KDP_INTERACTIVE_DEBUGGING
+ 	/*
+ 	 * If reboot on panic is enabled and the caller of panic indicated that we should skip
+diff --git a/osfmk/kdp/output_stages/out_shmem.c b/osfmk/kdp/output_stages/out_shmem.c
+--- a/osfmk/kdp/output_stages/out_shmem.c
++++ b/osfmk/kdp/output_stages/out_shmem.c
+@@ -650,6 +650,26 @@ shmem_unmark_as_busy(void)
+ void
+ panic_spin_shmcon(void)
+ {
++#if defined(XNU_TB710FU_CDC) && XNU_TB710FU_CDC
++	/*
++	 * This device has no astris and no hardware shared-memory debugger:
++	 * hwsd_info is NULL, so the checks below return before the WFE loop and the
++	 * panicking CPU would park with nobody to talk to. Hand the CPU to the CDC
++	 * shell first. A boot that adopted no controller falls through and keeps
++	 * the handshake below untouched, as does any boot with a real debugger.
++	 */
++	{
++		extern int  tb710fu_cdc_panic_drain(unsigned milliseconds);
++		extern void tb710fu_ramoops_flush(void);
++		extern void tb710fu_cdc_panic_loop(void);
++
++		if (tb710fu_cdc_panic_drain(6000u)) {
++			tb710fu_ramoops_flush();
++			tb710fu_cdc_panic_loop();
++		}
++	}
++#endif
++
+ 	if (!PE_i_can_has_debugger(NULL)) {
+ 		return;
+ 	}
 diff --git a/osfmk/arm/model_dep.c b/osfmk/arm/model_dep.c
 index be2252c..ae3a147 100644
 --- a/osfmk/arm/model_dep.c

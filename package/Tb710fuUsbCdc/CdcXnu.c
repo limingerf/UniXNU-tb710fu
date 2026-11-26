@@ -1841,6 +1841,45 @@ int tb710fu_cdc_owns_display(void)
 }
 
 /*
+ * Panic hand-over.
+ *
+ * The controller is served by cdc_worker on another thread, and a panic halts
+ * that thread wherever it happens to be. The only proof that this boot owns a
+ * usable channel is that tb710fu_dwc3_start() completed: dma alone is assigned
+ * before the core is validated, and probe_trace[1] is the DEVTEN readback taken
+ * before RUN_STOP is raised, so a controller whose readback never stuck looked
+ * "not adopted" even though it was initialized. adopted is the state this path
+ * checks now.
+ */
+static int cdc_panic_channel_live(void)
+{
+    return gCdc.controller.dma != NULL && gCdc.controller.adopted &&
+           gCdc.controller.ops.read32 != NULL && gCdc.controller.ops.write32 != NULL;
+}
+
+/* Re-assert the controller exactly once per panic. The drain runs first and
+ * leaves a live EP0 SETUP, so the terminal loop must not abandon it again; a
+ * nested panic that re-enters either path inherits that channel. */
+static unsigned gPanicHandover;
+
+static void cdc_panic_handover(void)
+{
+    if (__atomic_exchange_n(&gPanicHandover, 1u, __ATOMIC_ACQ_REL)) return;
+    /* Unconditional, even when the controller looked healthy one instruction
+     * before the panic: the halted worker may have left an EP0 SETUP or a Bulk
+     * TRB owned that no completion can ever arrive for. */
+    tb710fu_dwc3_panic_rearm(&gCdc.controller);
+}
+
+/* Verbs the panic shell executes. 1..4 end in a PSCI reset, help only appends
+ * text; ps, ls, cat, stat, ioreg and disp reach BSD/IOKit state that a halted
+ * system must not be asked for. */
+static int cdc_panic_cmd_safe(unsigned cmd)
+{
+    return (cmd >= 1u && cmd <= 4u) || cmd == 6u;
+}
+
+/*
  * Bounded panic-context drain.
  *
  * Every panic terminates on the panicking CPU inside panic_spin_forever() or
@@ -1852,27 +1891,27 @@ int tb710fu_cdc_owns_display(void)
  * patch 0004's ramoops PSCI reset. That reset ends the boot before a single
  * byte of the ring reaches the host, and once it fires COM5 is gone.
  *
- * This drains the ring on the panicking CPU for a bounded time and keeps the
- * hands-free shell answering ('reboot'/'edl' still execute). It returns 1 when
- * this boot owns a live controller, i.e. when the caller may hand the CPU to
+ * This reclaims every endpoint the halted worker may have left owned, drains
+ * the ring on the panicking CPU for a bounded time and keeps the hands-free
+ * shell answering ('reboot'/'edl' still execute). It returns 1 when this boot
+ * owns a live controller, i.e. when the caller may hand the CPU to
  * tb710fu_cdc_panic_loop(); it returns 0 when there is no channel at all and
  * the caller must fall through to its own reset path.
  */
 int tb710fu_cdc_panic_drain(unsigned milliseconds)
 {
-    /* Same ownership proof as tb710fu_cdc_panic_loop(): without an adopted
-     * controller there is no event ring and no pull-up, and touching the core
+    /* Same ownership proof as tb710fu_cdc_panic_loop(): without a completed
+     * start() there is no event ring and no pull-up, and touching the core
      * from a panic context is the only risk left. */
-    if (gCdc.controller.dma == NULL || gCdc.controller.probe_trace[1] == 0u) return 0;
-    if (!gCdc.controller.running || gCdc.controller.failed)
-        tb710fu_dwc3_panic_rearm(&gCdc.controller);
+    if (!cdc_panic_channel_live()) return 0;
+    cdc_panic_handover();
     uint64_t deadline = 0;
     clock_interval_to_deadline(milliseconds ? milliseconds : 1u, NSEC_PER_MSEC, &deadline);
     for (;;) {
         tb710fu_dwc3_poll(&gCdc.controller);
         if (gCdc.controller.failed) tb710fu_dwc3_panic_rearm(&gCdc.controller);
         const unsigned cmd = gPendingCmd;
-        if (cmd >= 1u && cmd <= 4u) {
+        if (cdc_panic_cmd_safe(cmd)) {
             cdc_exec_pending_cmd();
         } else if (cmd != 0u) {
             gPendingCmd = 0u;
@@ -1888,25 +1927,26 @@ int tb710fu_cdc_panic_drain(unsigned milliseconds)
 // and hands-free "edl" / "reboot" commands stay live even after a fatal panic.
 void tb710fu_cdc_panic_loop(void)
 {
-    /* No worker ever adopted this controller: there is no event ring and no
-     * pull-up, so nothing here can be served and touching the core from a panic
-     * context would be the only risk left. Display bring-up is the path that used
-     * to panic in exactly this window, which is why it now runs after
-     * platform-up instead of before it. probe_trace[1] is the DEVTEN readback
-     * start() records just before exposing the pull-up. */
-    if (gCdc.controller.dma == NULL || gCdc.controller.probe_trace[1] == 0u) return;
-    /* A transport failure before the panic already cleared DEVTEN and dropped
-     * RUN_STOP. The shell still has to answer a host that opens COM5 AFTER the
-     * panic, so re-assert only what start()/stop() own and keep polling. */
-    if (!gCdc.controller.running || gCdc.controller.failed)
-        tb710fu_dwc3_panic_rearm(&gCdc.controller);
+    /* No worker ever completed start(): there is no event ring and no pull-up,
+     * so nothing here can be served and touching the core from a panic context
+     * would be the only risk left. Display bring-up is the path that used to
+     * panic in exactly this window, which is why it now runs after platform-up
+     * instead of before it. */
+    if (!cdc_panic_channel_live()) return;
+    /* Name the channel before touching the core: a register access that wedges
+     * in panic context must still leave this line in the ring for the host. */
+    {
+        static const char active[] = "\nTB710FU CDC: panic loop active (type edl/reboot)\n";
+        tb710fu_cdc_log_tap_append(active, sizeof(active) - 1u);
+    }
+    cdc_panic_handover();
     for (;;) {
         tb710fu_dwc3_poll(&gCdc.controller);
         /* A data-plane anomaly seen while the shell runs must not end the loop:
          * 'edl' is the only reason to be here. */
         if (gCdc.controller.failed) tb710fu_dwc3_panic_rearm(&gCdc.controller);
         const unsigned cmd = gPendingCmd;
-        if (cmd >= 1u && cmd <= 4u) {
+        if (cdc_panic_cmd_safe(cmd)) {
             cdc_exec_pending_cmd();
         } else if (cmd != 0u) {
             gPendingCmd = 0u;
