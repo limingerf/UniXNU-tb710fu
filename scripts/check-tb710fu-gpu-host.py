@@ -38,9 +38,9 @@ PACKAGE = ROOT / 'package/Tb710fuGpu'
 
 FIRMWARE = [
     ('gmu_gen70900.bin', 78588, '9685f62c42543befcaee68d25355e16bf55cdb0d573bddcc9f6633f59eec3f72'),
-    ('gen70900_sqe.fw', 85300, '8e2c5ce74140de7e161f14654b44de999855bce01b690fdd18c3358a73498cd1'),
+    ('gen70900_sqe.fw', 85364, 'f756bafe5f69a87161c7c53385386374a791861a574c244e845baba677993842'),
     ('gen70900_aqe.fw', 33176, '25237c161d727b8ea92b4beb837a31651b44ea78bfc34d95672af8f346a45825'),
-    ('gen70900_zap.mbn', 12088, '890f7e9da007890a40804d3110169ccc887e8a03bdf29e8b7bc3df0016bf9860'),
+    ('gen70900_zap.mbn', 12088, 'c4f086956467a8bc7a67c3cc5eb8edc17eee6fe9390b9f32dd6305d1e2f0f6cb'),
 ]
 # The windows this port maps, from docs/GPU_REFERENCE_A750.md (live ADT) and
 # gpucc-sm8650.c. Used only to prove the documentation and the census agree.

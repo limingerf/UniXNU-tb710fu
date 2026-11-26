@@ -19,9 +19,9 @@
     },
     {
       "name": "gen70900_sqe.fw",
-      "role": "SQE (shader queue) microcode",
-      "bytes": 85300,
-      "sha256": "8e2c5ce74140de7e161f14654b44de999855bce01b690fdd18c3358a73498cd1"
+      "role": "SQE (shader queue) microcode (TB710FU stock)",
+      "bytes": 85364,
+      "sha256": "f756bafe5f69a87161c7c53385386374a791861a574c244e845baba677993842"
     },
     {
       "name": "gen70900_aqe.fw",
@@ -31,9 +31,9 @@
     },
     {
       "name": "gen70900_zap.mbn",
-      "role": "ZAP shader (secure debug auth), signed as on the stock device",
+      "role": "ZAP shader (TB710FU Lenovo-signed stock)",
       "bytes": 12088,
-      "sha256": "890f7e9da007890a40804d3110169ccc887e8a03bdf29e8b7bc3df0016bf9860"
+      "sha256": "c4f086956467a8bc7a67c3cc5eb8edc17eee6fe9390b9f32dd6305d1e2f0f6cb"
     }
   ],
   "reference": {
