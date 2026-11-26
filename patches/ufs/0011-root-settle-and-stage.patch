@@ -9,7 +9,7 @@ settling device from a blocked attach or identity read.
 
 Add a bounded native-ufs-root-delay (milliseconds) before IOService::start and
 unconditional stage lines for service start, each attach and each identity
-read. The delay is zero unless the boot argument is present; no policy or
+read. The delay defaults to 200 ms and the boot argument overrides it; no policy or
 publication order changes.
 
 Verification: apply after 0010, compile the adapter and boot once with
@@ -23,7 +23,7 @@ diff --git a/NativeUfs.cpp b/NativeUfs.cpp
      return false;
    }
    ufsCheckpoint ("ufssuper");
-+  unsigned rootDelayMs = 0;
++  unsigned rootDelayMs = 200;
 +  if (PE_parse_boot_argn ("native-ufs-root-delay", &rootDelayMs, sizeof (rootDelayMs)) && rootDelayMs) {
 +    printf ("NativeUfs: root settle delay %u ms\n", rootDelayMs);
 +    IOSleep (rootDelayMs);
