@@ -274,11 +274,11 @@ jobs:
       - name: Tools
         run: |
           set -euo pipefail
-          brew install llvm lld cmake ninja dtc mtools glslang unifdef bison || true
+          brew install llvm lld cmake ninja dtc mtools glslang unifdef bison shaderc spirv-tools || true
           echo "/opt/homebrew/opt/bison/bin" >> "$GITHUB_PATH"
           echo "/opt/homebrew/opt/llvm/bin" >> "$GITHUB_PATH"
           export PATH="/opt/homebrew/opt/bison/bin:/opt/homebrew/opt/llvm/bin:$PATH"
-          for tool in glslangValidator cmake ninja dtc mtools bison llvm-as llvm-objcopy; do
+          for tool in glslangValidator glslc spirv-val cmake ninja dtc mtools bison llvm-as llvm-objcopy; do
             command -v "${tool}" >/dev/null || { echo "${tool} missing" >&2; exit 1; }
           done
           rustup toolchain install 1.98.0 --profile minimal --component rust-src
