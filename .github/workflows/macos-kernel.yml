@@ -55,6 +55,13 @@ jobs:
           python3 scripts/check_live_log_display.py --report .work/artifacts/live-display-check.json
           python3 scripts/check_live_log_protocol.py --output-dir .work/artifacts/live-protocol-check
           python3 scripts/check_live_xnu_adapter.py --cc clang --output-dir .work/artifacts/live-adapter-check
+      - name: Restore Homebrew bottle cache
+        id: restore-brew
+        continue-on-error: true
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # actions/cache v4.3.0
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-bottles-macos26-llvm-lld-mtools-dtc-unifdef-v1
       - name: Install the official host tools
         run: |
           set -euo pipefail
@@ -132,7 +139,7 @@ jobs:
       - name: Build and verify the native arm64e kernel
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          JOBS: '3'
+          JOBS: '4'
         run: python3 tools/ci_kernel.py native
       # Only a successful build may be cached, so the identity is recorded here and
       # never from a post-job hook.  record refuses to write the state when any
