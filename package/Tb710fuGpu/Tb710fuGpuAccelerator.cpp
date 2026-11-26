@@ -61,7 +61,16 @@ public:
     OSObject *copyProperty(const OSString *key) const TB710FU_OVERRIDE;
     OSObject *copyProperty(const char *key) const TB710FU_OVERRIDE;
 };
-OSDefineMetaClassAndStructors(Tb710fuGpuAccelerator, IOAccelerator)
+Tb710fuGpuAccelerator::MetaClass Tb710fuGpuAccelerator::gMetaClass;
+const OSMetaClass * const Tb710fuGpuAccelerator::metaClass = &Tb710fuGpuAccelerator::gMetaClass;
+const OSMetaClass * const Tb710fuGpuAccelerator::superClass = &IOService::gMetaClass;
+Tb710fuGpuAccelerator::Tb710fuGpuAccelerator(const OSMetaClass *meta) : IOAccelerator(meta) {}
+Tb710fuGpuAccelerator::~Tb710fuGpuAccelerator() {}
+const OSMetaClass *Tb710fuGpuAccelerator::getMetaClass() const { return &gMetaClass; }
+Tb710fuGpuAccelerator::MetaClass::MetaClass()
+    : OSMetaClass("Tb710fuGpuAccelerator", gBase ? gBase : &IOService::gMetaClass, sizeof(Tb710fuGpuAccelerator)) {}
+OSDefineBasicStructors(Tb710fuGpuAccelerator, IOAccelerator)
+OSDefineOperatorMethods(Tb710fuGpuAccelerator)
 
 /* Every open is refused for now: a request is evidence that a process found the
  * accelerator and asked for the GPU, and the answer says no work exists yet.

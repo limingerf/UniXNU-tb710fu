@@ -19,8 +19,10 @@
 
 #include <IOKit/IOService.h>
 
-class IOAccelerator : public IOService {
-    OSDeclareAbstractStructors(IOAccelerator)
+class __attribute__((visibility("hidden"))) IOAccelerator : public IOService {
+protected:
+    IOAccelerator(const OSMetaClass *meta) : IOService(meta) {}
+    ~IOAccelerator() override = default;
 public:
     /* The family adds no method slot of its own; nothing is declared here on
      * purpose, so this port can only override IOService's own slots. */

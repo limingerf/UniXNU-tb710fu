@@ -73,15 +73,15 @@ def main():
     header = read(PACKAGE / 'Tb710fuGpu.h')
 
     # --- ABI -----------------------------------------------------------------
-    body = abi.split('class IOAccelerator', 1)[1].split('};', 1)[0]
-    check('abi.inherits_ioservice', 'public IOService' in body)
-    check('abi.abstract_structors', 'OSDeclareAbstractStructors(IOAccelerator)' in body)
+    body = abi.split('IOAccelerator : public IOService', 1)[1].split('};', 1)[0]
+    check('abi.inherits_ioservice', 'IOAccelerator : public IOService' in abi)
+    check('abi.abstract_structors', 'IOAccelerator(const OSMetaClass *meta) : IOService(meta)' in body)
     check('abi.no_own_virtuals', 'virtual' not in body,
           'the declared base adds no virtual of its own; overrides land on IOService slots')
     check('abi.instance_extent',
           'static_assert(sizeof(IOService) == 136' in abi and 'static_assert(sizeof(IOAccelerator) == 136' in abi)
     check('abi.define_subclass',
-          'OSDefineMetaClassAndStructors(Tb710fuGpuAccelerator, IOAccelerator)' in accelerator)
+          'OSDefineBasicStructors(Tb710fuGpuAccelerator, IOAccelerator)' in accelerator)
     check('abi.deferred_constructor',
           '__GLOBAL__sub_I_Tb710fuGpuAccelerator.cpp' in accelerator)
 
