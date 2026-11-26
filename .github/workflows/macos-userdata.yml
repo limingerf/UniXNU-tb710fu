@@ -29,6 +29,11 @@ on:
         type: boolean
         required: false
         default: false
+      build_gpu_addon:
+        description: Build macOS 27 NativeAdrenoMetal.bundle + Turnip GPU addon (gpuaddon.bin + CDHashes)
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
   actions: read
@@ -42,7 +47,7 @@ defaults:
     shell: bash
 jobs:
   boot-shims:
-    if: ${{ !inputs.build_data_seed && !inputs.build_root_image }}
+    if: ${{ !inputs.build_data_seed && !inputs.build_root_image && !inputs.build_gpu_addon }}
     runs-on: macos-26
     timeout-minutes: 15
     steps:
@@ -243,3 +248,54 @@ jobs:
           path: .work/artifacts/
           if-no-files-found: error
           retention-days: 3
+
+  gpu-addon:
+    if: ${{ inputs.build_gpu_addon }}
+    name: macos27 GPU addon (NativeAdrenoMetal + Turnip)
+    runs-on: macos-26
+    timeout-minutes: 180
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
+      HOMEBREW_NO_ENV_HINTS: 1
+      UNIXNU_COMMIT: 0c1bac3d51a3009dca1708b15a5198f4b43d057a
+      ADRENO740_COMMIT: 6fa7bae2a5b3b523e790eb3e0348af4d98969e4d
+      GPU_ADDON_BUDGET: 7864320
+    steps:
+      - uses: actions/checkout@v4
+      - name: Framework at pinned revision
+        run: |
+          set -euo pipefail
+          mkdir -p .work
+          git clone --filter=blob:none https://github.com/UniXNU/UniXNU.git .work/UniXNU
+          git -C .work/UniXNU checkout "${UNIXNU_COMMIT}"
+          git clone --filter=blob:none https://github.com/UniXNU/Adreno740.git .work/UniXNU/drivers/Adreno740
+          git -C .work/UniXNU/drivers/Adreno740 checkout "${ADRENO740_COMMIT}"
+      - name: Tools
+        run: |
+          set -euo pipefail
+          brew install llvm lld cmake ninja dtc mtools glslang unifdef || true
+          for tool in glslangValidator cmake ninja dtc mtools; do
+            command -v "${tool}" >/dev/null || { echo "${tool} missing" >&2; exit 1; }
+          done
+          rustup toolchain install 1.98.0 --profile minimal --component rust-src
+          cargo +1.98.0 --version
+      - name: Build Turnip, NativeAdrenoMetal.bundle and gpuaddon.bin
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          python3 scripts/build-tb710fu-gpu-addon.py \
+            --framework .work/UniXNU \
+            --out build/tb710fu-gpu-addon \
+            --budget-bytes "${GPU_ADDON_BUDGET}" \
+            --publish
+      - name: Upload GPU addon artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tb710fu-gpu-addon-${{ github.run_id }}
+          path: |
+            build/tb710fu-gpu-addon/gpuaddon.bin
+            build/tb710fu-gpu-addon/report.json
+            build/tb710fu-gpu-addon/gpu-owner-trust.bundle
+          if-no-files-found: warn
+          retention-days: 7
