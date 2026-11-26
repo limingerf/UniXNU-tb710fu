@@ -261,6 +261,8 @@ jobs:
       UNIXNU_COMMIT: 0c1bac3d51a3009dca1708b15a5198f4b43d057a
       ADRENO740_COMMIT: 6fa7bae2a5b3b523e790eb3e0348af4d98969e4d
       GPU_ADDON_BUDGET: 16777216
+      CARGO_PROFILE_RELEASE_LTO: thin
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '4'
     steps:
       - uses: actions/checkout@v4
       - name: Framework at pinned revision
