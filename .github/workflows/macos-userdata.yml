@@ -269,8 +269,8 @@ jobs:
           mkdir -p .work
           git clone --filter=blob:none https://github.com/UniXNU/UniXNU.git .work/UniXNU
           git -C .work/UniXNU checkout "${UNIXNU_COMMIT}"
-          git clone --filter=blob:none https://github.com/UniXNU/Adreno740.git .work/UniXNU/drivers/Adreno740
-          git -C .work/UniXNU/drivers/Adreno740 checkout "${ADRENO740_COMMIT}"
+          git -C .work/UniXNU submodule update --init --depth 1 \
+            drivers/Adreno740 drivers/AdrenoMetal kits/AdrenoFirmware kits/AdrenoPM4
       - name: Tools
         run: |
           set -euo pipefail
