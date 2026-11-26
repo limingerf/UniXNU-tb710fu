@@ -269,8 +269,21 @@ jobs:
           mkdir -p .work
           git clone --filter=blob:none https://github.com/UniXNU/UniXNU.git .work/UniXNU
           git -C .work/UniXNU checkout "${UNIXNU_COMMIT}"
-          git -C .work/UniXNU submodule update --init --depth 1 \
-            drivers/Adreno740 drivers/AdrenoMetal kits/AdrenoFirmware kits/AdrenoPM4
+          git -C .work/UniXNU submodule update --init --depth 1
+      - name: Cache GPU addon build intermediates
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            ~/.cargo/registry
+            ~/.cargo/git
+            .work/UniXNU/build/mesa-tu-macos27
+            .work/UniXNU/build/adreno-metal-bridge
+            .work/UniXNU/build/m2v-target
+          key: gpu-addon-${{ runner.os }}-${{ env.UNIXNU_COMMIT }}-v1
+          restore-keys: |
+            gpu-addon-${{ runner.os }}-${{ env.UNIXNU_COMMIT }}-
+            gpu-addon-${{ runner.os }}-
       - name: Tools
         run: |
           set -euo pipefail
