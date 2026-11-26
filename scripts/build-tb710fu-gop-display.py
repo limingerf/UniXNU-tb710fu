@@ -436,6 +436,61 @@ OSDefineOperatorMethods(NativeLegacyDisplay)'''
          '            valid=width==video.v_width && height==video.v_height;\n'
          '            if(!valid)IOLog("TB710FU GopDisplay: dimensions %ux%u do not match console %ux%u\\n",\n'
          '                (unsigned)width,(unsigned)height,(unsigned)video.v_width,(unsigned)video.v_height);\n'),
+        # pl52: the six macOS IOMFB client entry points are the only way WindowServer gets
+        # a mode onto this display. Each one now records its first call and answer, so a
+        # pl53 boot names the exact call that was refused instead of only "no frames".
+        ('extern "C" void native_legacy_frame_colors_observed(const uint32_t *colors,const uint64_t *counts,uint64_t other);\n',
+         'extern "C" void native_legacy_frame_colors_observed(const uint32_t *colors,const uint64_t *counts,uint64_t other);\n'
+         '// 1 setDigitalOutMode, 2 setDisplayDevice, 3 setGammaTable, 4 setColorRemapMode,\n'
+         '// 5 getColorRemapMode, 6 swapSetColorMatrix; first call of each is logged once.\n'
+         'extern "C" void native_legacy_mode_observed(unsigned,uint32_t,uint32_t,IOReturn);\n'),
+        # pl52: IODisplay is OSDefineMetaClassAndAbstractStructors in 26C5035r
+        # (__ZNK9IODisplay9MetaClass5allocEv = movz x0,#0; ret), so pl51's
+        # allocClassWithName("IODisplay") could only answer null and the worker always
+        # logged "not attached". IODisplayConnect is the concrete IOGraphics nub whose
+        # metaclass alloc constructs a real instance; it derives from IODisplay, and no
+        # Mac can allocate the bare base class either, so CoreDisplay must accept the
+        # subclass. Each step is reported so a failure names itself.
+        ('        OSObject *object=(loaded==kOSReturnSuccess || loaded==kOSKextReturnStartStopError)?OSMetaClass::allocClassWithName("IODisplay"):nullptr;\n'
+         '        IOService *display=OSDynamicCast(IOService,object);\n'
+         '        OSData *edid=OSDynamicCast(OSData,self->getProperty("NativeDisplayEDID"));\n'
+         '        bool attached=false;\n'
+         '        if(display && edid && display->init()) {\n',
+         '        OSObject *object=(loaded==kOSReturnSuccess || loaded==kOSKextReturnStartStopError)?OSMetaClass::allocClassWithName("IODisplay"):nullptr;\n'
+         '        const bool abstractBase=(object==nullptr);\n'
+         '        if(!object && (loaded==kOSReturnSuccess || loaded==kOSKextReturnStartStopError))object=OSMetaClass::allocClassWithName("IODisplayConnect");\n'
+         '        IOService *display=OSDynamicCast(IOService,object);\n'
+         '        OSData *edid=OSDynamicCast(OSData,self->getProperty("NativeDisplayEDID"));\n'
+         '        bool attached=false;bool inited=false;\n'
+         '        if(display && edid && (inited=display->init())) {\n'),
+        ('        IOLog("NativeLegacyDisplay: display object %s (kext %d)\\n",attached?"attached":"not attached",(int)loaded);\n',
+         '        IOLog("NativeLegacyDisplay: display object %s (kext %d object %p display %p class %s abstract %d init %d attach %d edid %d)\\n",\n'
+         '            attached?"attached":"not attached",(int)loaded,(void *)object,(void *)display,\n'
+         '            display && display->getMetaClass()?display->getMetaClass()->getClassName():"none",\n'
+         '            (int)abstractBase,(int)inited,(int)attached,(int)(edid!=nullptr));\n'),
+        ('    IOReturn setDigitalOutMode(uint32_t colorID,uint32_t timingID) override {\n'
+         '        if(colorID!=kDisplayColorID || timingID!=kDisplayTimingID)return kIOReturnBadArgument;\n'
+         '        uint32_t width=0,height=0;getDisplayDimensions(&width,&height);\n'
+         '        setProperty("DisplayWidth",width,32);setProperty("DisplayHeight",height,32);setProperty("DPTimingModeId",timingID,32);\n'
+         '        return kIOReturnSuccess;\n'
+         '    }\n',
+         '    IOReturn setDigitalOutMode(uint32_t colorID,uint32_t timingID) override {\n'
+         '        if(colorID!=kDisplayColorID || timingID!=kDisplayTimingID){native_legacy_mode_observed(1,colorID,timingID,kIOReturnBadArgument);return kIOReturnBadArgument;}\n'
+         '        uint32_t width=0,height=0;getDisplayDimensions(&width,&height);\n'
+         '        setProperty("DisplayWidth",width,32);setProperty("DisplayHeight",height,32);setProperty("DPTimingModeId",timingID,32);\n'
+         '        native_legacy_mode_observed(1,colorID,timingID,kIOReturnSuccess);\n'
+         '        return kIOReturnSuccess;\n'
+         '    }\n'),
+        ('    IOReturn setDisplayDevice(uint32_t) override {return kIOReturnSuccess;}\n',
+         '    IOReturn setDisplayDevice(uint32_t device) override {native_legacy_mode_observed(2,device,0,kIOReturnSuccess);return kIOReturnSuccess;}\n'),
+        ('    IOReturn setGammaTable(void *) override {return kIOReturnSuccess;}\n',
+         '    IOReturn setGammaTable(void *) override {native_legacy_mode_observed(3,0,0,kIOReturnSuccess);return kIOReturnSuccess;}\n'),
+        ('    IOReturn setColorRemapMode(uint32_t mode) override {colorRemapMode=mode;return kIOReturnSuccess;}\n',
+         '    IOReturn setColorRemapMode(uint32_t mode) override {colorRemapMode=mode;native_legacy_mode_observed(4,mode,0,kIOReturnSuccess);return kIOReturnSuccess;}\n'),
+        ('    IOReturn getColorRemapMode(uint32_t *mode) override {if(!mode)return kIOReturnBadArgument;*mode=colorRemapMode;return kIOReturnSuccess;}\n',
+         '    IOReturn getColorRemapMode(uint32_t *mode) override {if(!mode){native_legacy_mode_observed(5,0,0,kIOReturnBadArgument);return kIOReturnBadArgument;}*mode=colorRemapMode;native_legacy_mode_observed(5,*mode,0,kIOReturnSuccess);return kIOReturnSuccess;}\n'),
+        ('    IOReturn swapSetColorMatrix(void *,uint32_t,uint32_t) override {return kIOReturnSuccess;}\n',
+         '    IOReturn swapSetColorMatrix(void *,uint32_t,uint32_t) override {native_legacy_mode_observed(6,0,0,kIOReturnSuccess);return kIOReturnSuccess;}\n'),
     )
     for before, after in patches:
         if text.count(before) != 1:

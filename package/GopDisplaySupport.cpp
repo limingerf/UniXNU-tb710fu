@@ -48,6 +48,40 @@ volatile uint64_t gRejectedSurfaces;
 volatile uint64_t gClientEntries;
 volatile uint64_t gGuardHits;
 
+/* pl52: one-shot latches. Every hook below fires hundreds of times per second
+ * once the compositor is live, so each of the first occurrences prints once and
+ * the totals are read back through the CDC "disp" verb instead. */
+bool gClientLogged;
+bool gClientObservedLogged;
+bool gModeLogged[7];
+bool gAcceptLogged;
+bool gRejectLogged;
+bool gSurfaceLogged;
+bool gTransferOkLogged;
+bool gTransferFailLogged;
+bool gFrameLogged;
+bool gRetireLogged;
+uint32_t gSwapStagesSeen;
+
+/* The swap lifecycle counters live in the generated NativeLegacyDisplay
+ * translation unit (extern "C" globals, so the same link unit resolves them):
+ *   native_legacy_swapstat[0..15]  validated, kicks, in-flight, not-ready,
+ *                                  no-head, latch-busy, fence waits, copies,
+ *                                  blank frames, flips, latches, retires,
+ *                                  slow (us), longest (us), total (us), depth
+ *   native_legacy_formats[0..9]    'BGRA', '&BGA', 'RGhA', refused, last refused
+ *                                  format, direct flips, GPU 8-bit, GPU half,
+ *                                  CPU 8-bit, CPU half
+ *   native_legacy_direct[0..13]    flips, mapped, map failures, slow latches,
+ *                                  longest (us), total (us), released, copies,
+ *                                  boot flips, GPU waits, wait total (us),
+ *                                  longest wait (us), waits >= 250 ms, >= 8 ms
+ *   native_legacy_surfaces[0..13]  distinct surfaces, swaps checked, then
+ *                                  allocation/segments/largest for the first four
+ * The definitions live in the generated NativeLegacyDisplay translation unit and
+ * are declared at file scope below, outside this unnamed namespace: an extern
+ * declaration inside an unnamed namespace would acquire internal linkage. */
+
 uintptr_t surfaceField(OSObject *surface, unsigned offset, unsigned width)
 {
     uintptr_t value = 0;
@@ -243,6 +277,16 @@ Fn legacyFamilyFunction(uintptr_t fixtureAddress)
 }
 }  // namespace
 
+/* Swap lifecycle counters owned by the generated NativeLegacyDisplay object.
+ * extern "C" at file scope, because the definitions are extern "C" globals in
+ * that translation unit. */
+extern "C" {
+extern volatile uint32_t native_legacy_swapstat[16];
+extern volatile uint32_t native_legacy_formats[10];
+extern volatile uint32_t native_legacy_direct[14];
+extern volatile uint32_t native_legacy_surfaces[14];
+}
+
 extern "C" __attribute__((noreturn)) void native_legacy_backend_guard(unsigned slot, void *object, void *returnAddress)
 {
     gGuardHits = gGuardHits + 1;
@@ -305,20 +349,46 @@ extern "C" void native_legacy_registration_observed(IOService *display)
 
 extern "C" void native_legacy_swap_stage(unsigned stage)
 {
-    (void)stage;
+    /* pl52: the display raises stage 1 on the flip and further stages on later
+     * paths; recording which ones were reached separates "the swap never got
+     * here" from "the swap got here and the scanout did not follow". */
+    if (stage < 32 && !(gSwapStagesSeen & (1u << stage))) {
+        gSwapStagesSeen |= 1u << stage;
+        printf("TB710FU GopDisplay: swap stage %u reached\n", stage);
+    }
 }
 
 extern "C" void native_legacy_client_enter(task_t task, uint32_t type)
 {
-    (void)task;
-    (void)type;
     gClientEntries = gClientEntries + 1;
+    if (!gClientLogged) {
+        gClientLogged = true;
+        printf("TB710FU GopDisplay: first user client entry type=%u task=%p\n",
+               (unsigned)type, (void *)task);
+    }
 }
 
 extern "C" void native_legacy_client_observed(IOReturn status, IOUserClient *client)
 {
-    (void)status;
-    (void)client;
+    if (!gClientObservedLogged) {
+        gClientObservedLogged = true;
+        printf("TB710FU GopDisplay: first user client status=%x client=%p entries=%llu\n",
+               (unsigned)status, (void *)client, (unsigned long long)gClientEntries);
+    }
+}
+
+extern "C" void native_legacy_mode_observed(unsigned which, uint32_t first, uint32_t second,
+                                            IOReturn status)
+{
+    /* The six macOS IOMFB display-client entry points, in the order
+     * setDigitalOutMode, setDisplayDevice, setGammaTable, setColorRemapMode,
+     * getColorRemapMode, swapSetColorMatrix. A first call that answers
+     * kIOReturnUnsupported here is the reason WindowServer never presents. */
+    if (which < 7 && !gModeLogged[which]) {
+        gModeLogged[which] = true;
+        printf("TB710FU GopDisplay: first mode call %u args=%08x/%08x status=%x\n",
+               which, (unsigned)first, (unsigned)second, (unsigned)status);
+    }
 }
 
 extern "C" void native_legacy_pm_observed(unsigned event, IOReturn status, unsigned long ordinal)
@@ -331,13 +401,13 @@ extern "C" void native_legacy_pm_observed(unsigned event, IOReturn status, unsig
 extern "C" void native_legacy_frame_observed(unsigned kind, uint64_t count, uint64_t minx,
                                              uint64_t miny, uint64_t maxx, uint64_t maxy)
 {
-    (void)kind;
-    (void)count;
-    (void)minx;
-    (void)miny;
-    (void)maxx;
-    (void)maxy;
     gFrames = gFrames + 1;
+    if (!gFrameLogged) {
+        gFrameLogged = true;
+        printf("TB710FU GopDisplay: first frame kind=%u count=%llu rect=%llu,%llu-%llu,%llu\n",
+               (unsigned)kind, (unsigned long long)count, (unsigned long long)minx,
+               (unsigned long long)miny, (unsigned long long)maxx, (unsigned long long)maxy);
+    }
 }
 
 extern "C" void native_legacy_frame_colors_observed(const uint32_t *colors, const uint64_t *counts, uint64_t other)
@@ -350,24 +420,43 @@ extern "C" void native_legacy_frame_colors_observed(const uint32_t *colors, cons
 extern "C" void native_legacy_swap_validation_observed(bool accepted, unsigned reason,
                                                        const void *request, const void *surface)
 {
-    (void)accepted;
-    (void)reason;
-    (void)request;
-    (void)surface;
+    /* Reasons: 1 gate off or no request, 2 no single surface, 3 layers/rects/
+     * options/dimensions refused, 4 surface format/geometry/backing refused,
+     * 5 accepted blank swap, 0 accepted. */
+    if (accepted) {
+        if (!gAcceptLogged) {
+            gAcceptLogged = true;
+            OSObject *object = (OSObject *)const_cast<void *>(surface);
+            printf("TB710FU GopDisplay: first swap accepted reason=%u request=%p surface=%p "
+                   "%llux%llu fmt=%08x planes=%u stride=%llu alloc=%llu\n",
+                   reason, request, surface,
+                   (unsigned long long)native_legacy_surface_width(object),
+                   (unsigned long long)native_legacy_surface_height(object),
+                   (unsigned)native_legacy_surface_format(object),
+                   (unsigned)native_legacy_surface_planes(object),
+                   (unsigned long long)native_legacy_surface_stride(object),
+                   (unsigned long long)native_legacy_surface_allocation(object));
+        }
+    } else if (!gRejectLogged) {
+        gRejectLogged = true;
+        printf("TB710FU GopDisplay: first swap rejected reason=%u request=%p surface=%p\n",
+               reason, request, surface);
+    }
 }
 
 extern "C" void native_legacy_surface_rejected(uint64_t width, uint64_t height, uint32_t format,
                                                uint32_t planes, uint64_t stride, uint64_t allocation,
                                                uint64_t length)
 {
-    (void)width;
-    (void)height;
-    (void)format;
-    (void)planes;
-    (void)stride;
-    (void)allocation;
-    (void)length;
     gRejectedSurfaces = gRejectedSurfaces + 1;
+    if (!gSurfaceLogged) {
+        gSurfaceLogged = true;
+        printf("TB710FU GopDisplay: first surface rejected %llux%llu fmt=%08x planes=%u "
+               "stride=%llu alloc=%llu length=%llu\n",
+               (unsigned long long)width, (unsigned long long)height, (unsigned)format,
+               (unsigned)planes, (unsigned long long)stride,
+               (unsigned long long)allocation, (unsigned long long)length);
+    }
 }
 
 extern "C" bool native_legacy_prepare_scanout(void)
@@ -378,10 +467,17 @@ extern "C" bool native_legacy_prepare_scanout(void)
 
 extern "C" void native_legacy_transfer_observed(IOReturn status, const void *request, uint64_t bytes)
 {
-    (void)request;
-    (void)bytes;
     if (status == kIOReturnSuccess) {
         gTransfers = gTransfers + 1;
+        if (!gTransferOkLogged) {
+            gTransferOkLogged = true;
+            printf("TB710FU GopDisplay: first transfer ok bytes=%llu request=%p transfers=%llu\n",
+                   (unsigned long long)bytes, request, (unsigned long long)gTransfers);
+        }
+    } else if (!gTransferFailLogged) {
+        gTransferFailLogged = true;
+        printf("TB710FU GopDisplay: first transfer failed status=%x request=%p\n",
+               (unsigned)status, request);
     }
 }
 
@@ -393,8 +489,51 @@ extern "C" void native_legacy_copy_timing_observed(uint64_t ticks, uint64_t byte
 
 extern "C" void native_legacy_retirement_observed(IOService *display)
 {
-    (void)display;
     gRetirements = gRetirements + 1;
+    if (!gRetireLogged) {
+        gRetireLogged = true;
+        printf("TB710FU GopDisplay: first retirement display=%p retires=%llu\n",
+               (void *)display, (unsigned long long)gRetirements);
+    }
+}
+
+extern "C" void tb710fu_gop_display_report(void)
+{
+    /* pl52: the CDC "disp" verb. Everything the pl51 log could not show: how many
+     * clients arrived, how many frames reached the scanout, and - the decisive
+     * one - where each submitted swap stopped inside the lifecycle below. */
+    printf("TB710FU GopDisplay: disp clients=%llu frames=%llu transfers=%llu retire=%llu "
+           "vsync_send=%llu vsync_deliv=%llu rejected=%llu hotplug=%llu swapinfo=%llu/%llu "
+           "guards=%llu\n",
+           (unsigned long long)gClientEntries, (unsigned long long)gFrames,
+           (unsigned long long)gTransfers, (unsigned long long)gRetirements,
+           (unsigned long long)gVsyncSends, (unsigned long long)gVsyncDelivered,
+           (unsigned long long)gRejectedSurfaces, (unsigned long long)gHotplugSends,
+           (unsigned long long)gSwapInfoSends, (unsigned long long)gSwapInfoDelivered,
+           (unsigned long long)gGuardHits);
+    printf("TB710FU GopDisplay: swap validated=%u kicks=%u inflight=%u notready=%u nohead=%u "
+           "latchbusy=%u fence=%u copy=%u blank=%u flips=%u latches=%u retires=%u slow=%u "
+           "maxus=%u totalus=%u depth=%u\n",
+           native_legacy_swapstat[0], native_legacy_swapstat[1], native_legacy_swapstat[2],
+           native_legacy_swapstat[3], native_legacy_swapstat[4], native_legacy_swapstat[5],
+           native_legacy_swapstat[6], native_legacy_swapstat[7], native_legacy_swapstat[8],
+           native_legacy_swapstat[9], native_legacy_swapstat[10], native_legacy_swapstat[11],
+           native_legacy_swapstat[12], native_legacy_swapstat[13], native_legacy_swapstat[14],
+           native_legacy_swapstat[15]);
+    printf("TB710FU GopDisplay: formats bgra=%u abgr=%u half=%u refused=%u lastfmt=%08x "
+           "direct=%u gpu8=%u gpu16=%u cpu8=%u cpu16=%u\n",
+           native_legacy_formats[0], native_legacy_formats[1], native_legacy_formats[2],
+           native_legacy_formats[3], native_legacy_formats[4], native_legacy_formats[5],
+           native_legacy_formats[6], native_legacy_formats[7], native_legacy_formats[8],
+           native_legacy_formats[9]);
+    printf("TB710FU GopDisplay: scanout flips=%u mapped=%u mapfail=%u released=%u copies=%u "
+           "bootflips=%u gpuwait=%u waitus=%u maxwait=%u long250=%u miss8=%u "
+           "surfaces=%u checked=%u\n",
+           native_legacy_direct[0], native_legacy_direct[1], native_legacy_direct[2],
+           native_legacy_direct[6], native_legacy_direct[7], native_legacy_direct[8],
+           native_legacy_direct[9], native_legacy_direct[5], native_legacy_direct[11],
+           native_legacy_direct[12], native_legacy_direct[13],
+           native_legacy_surfaces[0], native_legacy_surfaces[1]);
 }
 
 extern "C" bool native_legacy_gpu_offer(void *display, IOMemoryDescriptor *memory, uint64_t stride,

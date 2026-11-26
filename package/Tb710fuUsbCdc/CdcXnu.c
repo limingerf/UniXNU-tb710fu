@@ -52,6 +52,11 @@ extern void tb710fu_live_log_cdc_bytes(const char *bytes, unsigned long length)
     __attribute__((weak_import));
 extern void tb710fu_dump_procs(void)
     __attribute__((weak_import));
+/* IOKit side: the GopDisplay archive owns the framebuffer counters. Weak, so a
+ * kernel without that archive still answers "disp unavailable" and keeps the
+ * port alive. */
+extern void tb710fu_gop_display_report(void)
+    __attribute__((weak_import));
 /* Interactive shell verbs. They live in BootWatchdogPolicy.c, which is built
  * from a kern_exec.o.json record (BSD KPI, no IOKit). Keeping them weak means
  * CDC still links and enumerates if that archive is absent; the shell then
@@ -672,6 +677,7 @@ static void cdc_commit_log(void *context, uint64_t end)
  *   recovery   -> PMK8550 SDAM2 (SPMI v7, PPID 0x071, off 0x48, bits <1 7> = 0x01)
  *                 + PSCI SYSTEM_RESET
  *   ps         -> dump active BSD processes (pid 1..256) to console/COM5
+ *   disp       -> GopDisplay clients/frames/transfers/vsync/swap counters
  *   help       -> list the verbs below
  *   ls <path>  -> VFS readdir of a mounted APFS/devfs volume
  *   cat <path> -> up to 4096 bytes of a regular file
@@ -696,7 +702,7 @@ static unsigned cdc_verb(const char *verb)
 {
     static const char *const names[] = {
         NULL, "edl", "reboot", "bootloader", "recovery", "ps",
-        "help", "ls", "cat", "stat", "ioreg"
+        "help", "ls", "cat", "stat", "ioreg", "disp"
     };
     for (unsigned id = 1u; id < sizeof(names) / sizeof(names[0]); ++id) {
         const char *name = names[id];
@@ -876,6 +882,7 @@ static void cdc_shell_help(void)
     cdc_log("TB710FU SHELL:   stat <path>     size/mode/uid/gid/type\n");
     cdc_log("TB710FU SHELL:   ioreg <text>    IORegistry services matching text\n");
     cdc_log("TB710FU SHELL:   ps              dump BSD processes\n");
+    cdc_log("TB710FU SHELL:   disp            GopDisplay clients/frames/swap summary\n");
     cdc_log("TB710FU SHELL:   edl             3 s hands-free EDL reset\n");
     cdc_log("TB710FU SHELL:   reboot          PSCI SYSTEM_RESET\n");
     cdc_log("TB710FU SHELL:   bootloader      reboot into the bootloader\n");
@@ -906,6 +913,15 @@ static void cdc_exec_pending_cmd(void)
         return;
     } else if (cmd == 6u) {
         cdc_shell_help();
+        return;
+    } else if (cmd == 11u) {
+        /* pl52: one compact GopDisplay summary - clients, frames, transfers,
+         * retirements, vblank sends, rejects and the swap lifecycle counters.
+         * Unlike ps this is four lines, so it cannot itself trip the preemption
+         * disable timeout the ps dump sits next to. */
+        cdc_log("TB710FU CDC: cmd=disp\n");
+        if (tb710fu_gop_display_report) tb710fu_gop_display_report();
+        else cdc_log("TB710FU SHELL: disp unavailable\n");
         return;
     } else if (cmd >= 7u && cmd <= 10u) {
         const char *arg = gRxArg[0] != '\0' ? gRxArg : NULL;
