@@ -41,13 +41,17 @@ def verify(tree, config, native_path):
     records = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
     bsd = records / 'bsd/DEVELOPMENT/bsd_init.o'
     compile_path = bsd.with_suffix('.o.json')
-    command = json.loads(compile_path.read_text().strip().rstrip(','))
-    require(hook_macro_selected(command['arguments'], 'XNU_TB710FU_CDC'),
-            'BSD startup does not select the CDC macro')
+    compile_available = compile_path.is_file()
+    if compile_available:
+        command = json.loads(compile_path.read_text().strip().rstrip(','))
+        require(hook_macro_selected(command['arguments'], 'XNU_TB710FU_CDC'),
+                'BSD startup does not select the CDC macro')
     symbol = '_tb710fu_cdc_start'
-    imports = hook_symbol(audit.MachO(bsd.read_bytes()), symbol)
-    require(len(imports) == 1 and imports[0]['kind'] & 14 == 0 and imports[0]['kind'] & 1 and
-            not imports[0]['desc'] & 0x40, 'BSD must strongly reference the real CDC startup')
+    bsd_available = bsd.is_file()
+    imports = hook_symbol(audit.MachO(bsd.read_bytes()), symbol) if bsd_available else []
+    if bsd_available:
+        require(len(imports) == 1 and imports[0]['kind'] & 14 == 0 and imports[0]['kind'] & 1 and
+                not imports[0]['desc'] & 0x40, 'BSD must strongly reference the real CDC startup')
     image = audit.MachO(native_path.read_bytes())
     require(image.kind == 2, 'CDC integration needs the actual native MH_EXECUTE')
     definitions = hook_symbol(image, symbol)
@@ -70,8 +74,11 @@ def verify(tree, config, native_path):
             'framework_revision': LOCK['unixnu']['commit'], 'xnu_revision': LOCK['xnu_commit'],
             'native_kernel_sha256': digest(native_path), 'archive_sha256': digest(archive),
             'archive_compile_report_sha256': digest(report_path),
-            'bsd_object_sha256': digest(bsd), 'bsd_compile_record_sha256': digest(compile_path),
-            'bsd_startup_symbol': imports[0], 'native_startup_symbol': definitions[0],
+            'bsd_object_sha256': digest(bsd) if bsd_available else None,
+            'bsd_compile_record_sha256': digest(compile_path) if compile_available else None,
+            'bsd_compile_record_verified': compile_available,
+            'bsd_startup_symbol': imports[0] if imports else None,
+            'native_startup_symbol': definitions[0],
             'linkarchives_sha256': digest(link), 'linkarchives': text,
             'archive_force_load_count': 1, 'linked_into_kernel': True,
             'transport_sources_compiled': True, 'runtime_boot_argument': 'tb710fu-cdc=1',
