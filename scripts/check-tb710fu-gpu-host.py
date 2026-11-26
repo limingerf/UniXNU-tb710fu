@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
-"""Host checks for the TB710FU GPU/Metal milestone-1 wiring.
+"""Host checks for the TB710FU GPU/Metal milestone-2 wiring.
 
 None of this needs a Mac: the checks read the sources, the firmware manifest and
 the build/workflow wiring, and state the invariants the hardware run depends on.
 
   ABI      IOAccelerator is declared as a plain IOService subclass with the
-           reviewed 136-byte extent and no virtuals of its own.
-  Gating   gpu-metal/gpu-power are read before any object is made, so a default
-           boot reaches no new code.
+           reviewed 136-byte extent; the native wire ABI v2 keeps its exact
+           record sizes (Turnip and the Metal plugin pass them verbatim).
+  Gating   gpu-metal/gpu-power are read before any object is made; every stage of
+           the gpu-power chain sits behind its own level, and a default boot
+           reaches no new code and prints nothing.
   Metal    the two keys IOGPU's discovery reads carry this port's own plugin
            names, and the service is registered, not merely allocated.
-  No MMIO  the power translation unit maps no device memory and writes no
-           register in this milestone.
+  Power    the staged chain writes only the registers the pinned sources define
+           (CX GDSC, GPUCC/ GCC clocks, PLL1, RCGs); GX, the GPU window, the
+           SMMU context and the DDRSS AXI branch are never written, and the GMU
+           cold start / GX power stages refuse instead of guessing.
+  Client   newUserClient serves exactly type 0x4147 once the ABI is live, the
+           connection speaks the tunnel and the direct selectors, and every
+           method that needs a GPU address or ring refuses.
   Payload  the firmware manifest names the four gen70900 images with the
            reference project's sizes and digests, and the addon paths fit the
            160-byte NGPUADD2 entry limit.
@@ -35,12 +42,12 @@ FIRMWARE = [
     ('gen70900_aqe.fw', 33176, '25237c161d727b8ea92b4beb837a31651b44ea78bfc34d95672af8f346a45825'),
     ('gen70900_zap.mbn', 12088, '890f7e9da007890a40804d3110169ccc887e8a03bdf29e8b7bc3df0016bf9860'),
 ]
-# The address window the reference project records for this SoC. Used only to
-# prove the documentation and the census agree; nothing maps them here.
+# The windows this port maps, from docs/GPU_REFERENCE_A750.md (live ADT) and
+# gpucc-sm8650.c. Used only to prove the documentation and the census agree.
 SOC_WINDOWS = {
     'gpu': (0x3d00000, 0x40000),
     'gmu': (0x3d68000, 0x37000),
-    'gpucc': (0x3d90000, 0x1c000),
+    'gpucc': (0x3d90000, 0xa000),
     'kgsl_smmu': (0x3da0000, 0x40000),
 }
 
@@ -59,6 +66,13 @@ def read(path):
     return path.read_text(encoding='utf-8')
 
 
+def between(text, start, end):
+    if start not in text:
+        return ''
+    rest = text.split(start, 1)[1]
+    return rest.split(end, 1)[0] if end in rest else rest
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--report', type=Path, help='write a JSON report here')
@@ -71,6 +85,13 @@ def main():
     accelerator = read(PACKAGE / 'Tb710fuGpuAccelerator.cpp')
     power = read(PACKAGE / 'Tb710fuGpuPower.cpp')
     header = read(PACKAGE / 'Tb710fuGpu.h')
+    hw = read(PACKAGE / 'Tb710fuGpuHw.h')
+    mmio = read(PACKAGE / 'Tb710fuGpuMmio.cpp')
+    firmware = read(PACKAGE / 'Tb710fuGpuFirmware.cpp')
+    client = read(PACKAGE / 'Tb710fuGpuClient.cpp')
+    client_header = read(PACKAGE / 'Tb710fuGpuClient.h')
+    native_abi = read(PACKAGE / 'Tb710fuGpuNativeABI.h')
+    build = read(ROOT / 'scripts/build-tb710fu-gpu.py')
 
     # --- ABI -----------------------------------------------------------------
     body = abi.split('IOAccelerator : public IOService', 1)[1].split('};', 1)[0]
@@ -85,6 +106,24 @@ def main():
     check('abi.deferred_constructor',
           '__GLOBAL__sub_I_Tb710fuGpuAccelerator.cpp' in accelerator)
 
+    # --- Native wire ABI (must match Turnip/the plugin byte for byte) ---------
+    check('abi.native_version', 'NativeAdrenoAbiVersion = 2' in native_abi)
+    check('abi.native_methods',
+          all(name in native_abi for name in ('NativeAdrenoMethodQuery = 1', 'NativeAdrenoMethodBoAlloc = 2',
+                                              'NativeAdrenoMethodBoMap = 3', 'NativeAdrenoMethodBoFree = 4',
+                                              'NativeAdrenoMethodSubmit = 5', 'NativeAdrenoMethodWaitFence = 6',
+                                              'NativeAdrenoMethodGetTimestamp = 7', 'NativeAdrenoMethodGetStatus = 8',
+                                              'NativeAdrenoMethodSetMetadata = 9', 'NativeAdrenoMethodGetMetadata = 10',
+                                              'NativeAdrenoMethodCreateQueue = 11', 'NativeAdrenoMethodCloseQueue = 12',
+                                              'NativeAdrenoMethodBoCpuMap = 13', 'NativeAdrenoMethodBoCpuUnmap = 14',
+                                              'NativeAdrenoMethodGetDeviceInfo = 15', 'NativeAdrenoMethodBoImport = 16',
+                                              'NativeAdrenoMethodSetPriority = 17', 'NativeAdrenoMethodNote = 18')),
+          'selectors 1..18 are the ABI, not an invented numbering')
+    check('abi.native_submit_size',
+          'static_assert(sizeof(NativeAdrenoAbiSubmit) == 32 + 24 * NativeAdrenoAbiMaxBuffers' in native_abi)
+    check('abi.native_metadata_size', 'static_assert(sizeof(NativeAdrenoAbiMetadata) == 80' in native_abi)
+    check('abi.native_device_info_size', 'static_assert(sizeof(NativeAdrenoAbiDeviceInfo) == 64' in native_abi)
+
     # --- Gating --------------------------------------------------------------
     check('gate.metal_boot_arg', 'PE_parse_boot_argn("gpu-metal"' in accelerator)
     first_new = accelerator.find('new Tb710fuGpuAccelerator')
@@ -94,8 +133,14 @@ def main():
     check('gate.early_return', 'if (metal != 1)' in accelerator and 'accelerator not published' in accelerator)
     check('gate.power_boot_arg', 'PE_parse_boot_argn("gpu-power"' in power)
     check('gate.no_unconditional_start', 'if (!tb710fu_gpu_wanted())' in accelerator)
-    check('gate.silent_default', 'printf' not in power.split('extern "C" int tb710fu_gpu_wanted(void)')[1].split('}')[0],
+    check('gate.silent_default',
+          'printf' not in between(power, 'extern "C" int tb710fu_gpu_wanted(void)', '}'),
           'the wanted() gate prints nothing, so a default boot is unchanged')
+    check('gate.bringup_gated', 'if (level < 2)' in power and 'stage 2: map and read' in power,
+          'stage 2 is the first level that maps and touches a device window')
+    for level, next_level in ((3, 4), (4, 5), (5, 6), (6, 9)):
+        check(f'gate.stage_{level}', f'if (level < {next_level})' in power,
+              f'stage {level} work only runs when gpu-power >= {level}')
 
     # --- Metal discovery -----------------------------------------------------
     check('metal.plugin_name', 'setProperty("MetalPluginName", "NativeAdrenoMetal")' in accelerator)
@@ -104,19 +149,68 @@ def main():
     check('metal.registered', 'accelerator->registerService();' in accelerator)
     check('metal.attached_to_platform', 'IOService::getPlatform()' in accelerator and 'accelerator->attach(platform)' in accelerator)
     check('metal.no_start_override', '::start(' not in accelerator,
-          'the service is published with attach+registerService; no provider is started in milestone 1')
-    check('metal.no_user_client', 'return kIOReturnUnsupported;' in accelerator)
-    check('metal.no_console_write_in_open',
-          'printf' not in accelerator.split('Tb710fuGpuAccelerator::newUserClient')[1].split('return kIOReturnUnsupported')[0])
+          'the service is published with attach+registerService; no provider is started')
 
-    # --- No MMIO in the power milestone -------------------------------------
-    mmio_markers = ['IODeviceMemory', 'mapDeviceMemory', 'setMemory', 'IOMemoryMap', 'withRange',
-                    'read32(', 'write32(', 'IOPCIDevice', 'volatile uint32_t *', 'reg = base']
-    found = [marker for marker in mmio_markers if marker in power]
-    check('power.no_mmio', not found, 'markers: ' + (', '.join(found) if found else 'none'))
-    check('power.census_only', 'SecureDTLookupEntry' in power and 'SecureDTGetProperty' in power)
+    # --- User client ---------------------------------------------------------
+    check('client.open_type', 'type != 0x4147u' in accelerator,
+          'only the Metal plugin type (AG) reaches the ABI connection')
+    check('client.gated_by_abi', 'tb710fu_gpu_abi_ready()' in accelerator)
+    check('client.factory', 'tb710fu_gpu_client_create(' in accelerator and 'tb710fu_gpu_client_create(' in client)
+    check('client.deferred_install',
+          'tb710fu_gpu_client_static_init()' in accelerator and
+          '__GLOBAL__sub_I_Tb710fuGpuClient.cpp' in client_header)
+    check('client.metaclass_name', 'AGXDeviceUserClient' in client and 'OSDefineMetaClassAndStructors(AGXDeviceUserClient, IOUserClient)' in client,
+          'the sandbox profiles admit this user-client class name')
+    check('client.tunnel_magic', '0x4e544e4c' in client and '0xffffffffu' in client,
+          'NTNL tunnel and its admission probe')
+    check('client.selector_dispatch',
+          all(f'NativeAdrenoMethod{name}' in client for name in
+              ('Query', 'BoAlloc', 'BoFree', 'Submit', 'WaitFence', 'GetStatus', 'SetMetadata', 'GetMetadata',
+               'CreateQueue', 'CloseQueue', 'BoCpuMap', 'BoCpuUnmap', 'SetPriority', 'Note')),
+          'every v2 selector is answered, not silently dropped')
+    open_body = between(accelerator, 'Tb710fuGpuAccelerator::newUserClient', '\n}\n')
+    check('client.no_console_write_in_open', 'printf' not in open_body,
+          'newUserClient runs under the service lock with preemption off')
+    check('client.no_ring_claim',
+          'result = kIOReturnUnsupported' in client and
+          all(f'NativeAdrenoMethod{name}' in client for name in ('BoMap', 'Submit', 'GetTimestamp', 'BoImport', 'GetDeviceInfo')),
+          'GPU-address and ring methods refuse instead of returning zero-filled success')
+
+    # --- Power chain ---------------------------------------------------------
+    check('power.mmio_helper_only',
+          'IODeviceMemory' not in power and 'mapDeviceMemory' not in power and 'withRange(' not in power,
+          'Power.cpp reaches device memory only through Tb710fuGpuMmio.cpp')
+    check('power.mmio_mapping',
+          'IODeviceMemory::withRange' in mmio and 'kIOMapInhibitCache' in mmio and 'volatile uint32_t *' in mmio)
+    check('power.mmio_barrier', 'dsb sy' in mmio)
+    check('power.census_only_reads', 'SecureDTLookupEntry' in power and 'SecureDTGetProperty' in power)
     check('power.addon_census', 'native_ram_block_gpu_addon' in power and 'tb710fu_addon_find' in power)
     check('power.domain_gated', 'tb710fu_gpu_stats[TB710FU_GPU_POWER_LEVEL] < 2' in power)
+    check('power.cx_gdsc', 'TBGPU_CC_CX_GDSCR' in power and 'TBGPU_GDSC_SW_COLLAPSE' in power and
+          'TBGPU_CC_CX_GDS_HW_CTRL' in power and 'TBGPU_GDSC_RETAIN_FF' in power)
+    check('power.cx_clocks', 'TBGPU_CC_AHB_CLK' in power and 'TBGPU_CC_SMMU_VOTE_CLK' in power)
+    check('power.smmu_read_only', 'wr(gSmmu' not in power and 'TBGPU_SMMU_SMR' in power and 'TBGPU_SMMU_GFSR' in power,
+          'the SMMU inventory reads global space 0 and programs no context')
+    check('power.gx_untouched', 'wr(gGpucc, TBGPU_CC_GX' not in power and 'wr(gGpu, ' not in power,
+          'GX and the GPU window belong to the GMU, which this milestone does not boot')
+    check('power.ddrs_axi_read_only', 'wr(gGcc, TBGPU_GCC_DDRSS_GPU_AXI' not in power,
+          'the SM8650 DDRSS AXI offset is not verified, so the branch is read and reported only')
+    check('power.gmu_clock_steps', all(marker in power for marker in
+                                       ('TBGPU_GCC_PLL_VOTE', 'TBGPU_CC_PLL1', 'TBGPU_CC_HUB_RCGR',
+                                        'TBGPU_CC_GMU_RCGR', 'TBGPU_CC_CXO_AON_CLK', 'TBGPU_CC_HUB_CX_INT_CLK')))
+    check('power.gmu_stage_refuses',
+          'stage7 skipped' in power and 'stage8 skipped' in power,
+          'the GMU cold start and GX power state their missing pinned prerequisites')
+    check('power.firmware_pins',
+          all(name in power and digest in power for name, _, digest in FIRMWARE),
+          'stage 6 verifies the four gen70900 images against the manifest pins')
+    check('power.abi_stage', 'TB710FU_GPU_ABI] = 1' in power and 'TB710FU_GPU_RING_READY] = 0' in power)
+    check('power.windows',
+          all(re.search(pattern, hw) for pattern in
+              (r'TBGPU_GPU_BASE\s+0x03d00000ull', r'TBGPU_GMU_BASE\s+0x03d68000ull',
+               r'TBGPU_GPUCC_BASE\s+0x03d90000ull', r'TBGPU_SMMU_BASE\s+0x03da0000ull',
+               r'TBGPU_CC_CX_GDS_HW_CTRL\s+0x9168')),
+          'SM8650 windows and the 0x9168 hw-ctrl offset, not SM8550 values')
 
     # --- Firmware manifest ---------------------------------------------------
     manifest = json.loads(read(ROOT / 'scripts/data/tb710fu-gpu-firmware.json'))
@@ -130,6 +224,16 @@ def main():
     check('firmware.not_loaded_in_m1', manifest['loads_in_milestone_1'] is False)
     longest = max(len(manifest['addon_prefix']) + 1 + len(item['name']) for item in manifest['files'])
     check('firmware.path_limit', longest < 160, f'longest addon path {longest} bytes')
+
+    # --- Build ---------------------------------------------------------
+    for name in ('Tb710fuGpuAccelerator.cpp', 'Tb710fuGpuPower.cpp', 'Tb710fuGpuMmio.cpp',
+                 'Tb710fuGpuFirmware.cpp', 'Tb710fuGpuClient.cpp'):
+        check(f'build.source.{name}', f"PACKAGE / '{name}'" in build)
+    check('build.optional_deferral', 'if not renamed' in build and 'return False' in build,
+          'a translation unit without a static initialiser is copied unchanged')
+    check('build.headers', all(f"'{name}'" in build for name in
+                               ('Tb710fuGpuHw.h', 'Tb710fuGpuMmio.h', 'Tb710fuGpuFirmware.h',
+                                'Tb710fuGpuClient.h', 'Tb710fuGpuNativeABI.h')))
 
     # --- Wiring --------------------------------------------------------------
     defconfig = read(ROOT / 'configs/tb710fu_macos_defconfig')
@@ -176,19 +280,23 @@ def main():
         check('wiring.workflow_publish_input', 'inputs.publish' in text)
         check('wiring.workflow_artifact', 'upload-artifact' in text)
 
-    docs = ROOT / 'docs/GPU_METAL_M1.md'
-    check('docs.present', docs.is_file())
-    if docs.is_file():
-        text = read(docs)
-        for arg in ('gpu-metal=1', 'gpu-power=', 'gpu-addon=1', 'gpu-bundle-system=1'):
-            check(f'docs.boot_arg.{arg}', arg in text)
-        check('docs.payload_flag', '--gpu-addon' in text)
-        check('docs.no_desktop_claim', 'WindowServer' in text)
+    for docs_name, args_expected in (('docs/GPU_METAL_M1.md', ('gpu-metal=1', 'gpu-power=', 'gpu-addon=1', 'gpu-bundle-system=1')),
+                                     ('docs/GPU_METAL_M2.md', ('gpu-metal=1', 'gpu-power=1', 'gpu-power=9', 'stage 7', 'stage 8', 'ring=0'))):
+        docs = ROOT / docs_name
+        check(f'docs.present.{Path(docs_name).stem}', docs.is_file())
+        if docs.is_file():
+            text = read(docs)
+            for arg in args_expected:
+                check(f'docs.{Path(docs_name).stem}.{arg}', arg in text)
+            check(f'docs.{Path(docs_name).stem}.no_desktop_claim', 'WindowServer' in text)
+    check('docs.m2.user_client', (ROOT / 'docs/GPU_METAL_M2.md').is_file() and
+          'AGXDeviceUserClient' in read(ROOT / 'docs/GPU_METAL_M2.md'))
 
     failed = [item for item in results if item['result'] == 'FAIL']
-    report = {'schema': 'tb710fu-gpu-host-checks-v1', 'results': results,
+    report = {'schema': 'tb710fu-gpu-host-checks-v2', 'results': results,
               'summary': {'passed': len(results) - len(failed), 'failed': len(failed)},
-              'soc_windows': {name: list(value) for name, value in SOC_WINDOWS.items()}}
+              'soc_windows': {name: list(value) for name, value in SOC_WINDOWS.items()},
+              'milestone': 2}
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, indent=2) + '\n')

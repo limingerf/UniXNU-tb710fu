@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Build the TB710FU GPU archive (Milestone 1: IOAccelerator publication + GpuPower census).
+"""Build the TB710FU GPU archive (Milestone 2: IOAccelerator + ABI user client + staged gpu-power).
 
-Same schema as the board's other archives: both translation units are compiled with the actual IOKit C++ record
-(arm64e-apple-ios27.0), the metaclass constructor of each is moved out of __mod_init_func so Macos27Services.cpp can
-install it exactly once between preModLoad and postModLoad, the objects are PAC/vtable checked with the framework's
-kernel_target helper, and the XNU link target is invalidated when the archive changes.
+Same schema as the board's other archives: every translation unit is compiled with the actual IOKit C++ record
+(arm64e-apple-ios27.0), the metaclass constructor of each unit that has one is moved out of __mod_init_func so
+Macos27Services.cpp can install it exactly once between preModLoad and postModLoad, the objects are PAC/vtable
+checked with the framework's kernel_target helper, and the XNU link target is invalidated when the archive changes.
+
+A translation unit without a C++ static initialiser (the MMIO and firmware helpers) simply has no __mod_init_func
+and is not deferred; the two with metaclasses (accelerator and power domain) and the user client are.
 
 The archive publishes nothing unless gpu-metal=1 or gpu-power=<n>: the default boot path stays identical to the
 zero-wobble baseline. Host-side source checks run separately (scripts/check-tb710fu-gpu-host.py).
@@ -26,8 +29,16 @@ ADSP_PACKAGE = DEVICE / 'package/Tb710fuAdsp'
 OUT = ROOT / 'build/tb710fu-gpu'
 
 RECORD_CPP = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/iokit/DEVELOPMENT/IOPlatformExpert.cpo.json'
-CPP_SOURCES = [PACKAGE / 'Tb710fuGpuAccelerator.cpp', PACKAGE / 'Tb710fuGpuPower.cpp']
-HEADERS = [PACKAGE / name for name in ('Tb710fuGpu.h', 'Tb710fuGpuABI.h')] + [ADSP_PACKAGE / 'Tb710fuAddon.h']
+CPP_SOURCES = [
+    PACKAGE / 'Tb710fuGpuAccelerator.cpp',
+    PACKAGE / 'Tb710fuGpuPower.cpp',
+    PACKAGE / 'Tb710fuGpuMmio.cpp',
+    PACKAGE / 'Tb710fuGpuFirmware.cpp',
+    PACKAGE / 'Tb710fuGpuClient.cpp',
+]
+HEADERS = [PACKAGE / name for name in (
+    'Tb710fuGpu.h', 'Tb710fuGpuABI.h', 'Tb710fuGpuHw.h', 'Tb710fuGpuMmio.h', 'Tb710fuGpuFirmware.h',
+    'Tb710fuGpuClient.h', 'Tb710fuGpuNativeABI.h')] + [ADSP_PACKAGE / 'Tb710fuAddon.h']
 TARGET = 'arm64e-apple-ios27.0'
 
 
@@ -56,7 +67,10 @@ def defer_constructor(obj, late, init):
 
     preModLoad then runs it on request; left in __mod_init_func it would run at
     kernel entry, before IOGraphicsFamily exists (the parent metaclass is null at
-    that point and OSMetaClass would fault on the superclass pointer)."""
+    that point and OSMetaClass would fault on the superclass pointer).
+
+    A source with no dynamic initialiser (no metaclass, no runtime globals) has no
+    __mod_init_func at all; it is copied unchanged instead of failing the build."""
     data = bytearray(obj.read_bytes())
     if struct.unpack_from('<I', data)[0] != 0xfeedfacf:
         raise SystemExit(f'{obj}: not a 64-bit Mach-O object')
@@ -77,7 +91,8 @@ def defer_constructor(obj, late, init):
             symtab = struct.unpack_from('<IIII', data, offset + 8)
         offset += size
     if not renamed:
-        raise SystemExit(f'{obj}: expected eager metaclass constructor section missing')
+        late.write_bytes(bytes(data))
+        return False
     if symtab is None:
         raise SystemExit(f'{obj}: no symbol table')
     symoff, nsyms, stroff, _ = symtab
@@ -92,6 +107,7 @@ def defer_constructor(obj, late, init):
     if not external:
         raise SystemExit(f'{obj}: expected deferred constructor {init} missing from symbols')
     late.write_bytes(bytes(data))
+    return True
 
 
 def invalidate_link(digest):
@@ -146,9 +162,11 @@ def main():
             raise SystemExit(f'{source.name}:\n{result.stdout[-6000:]}')
         target.check_object(output.read_bytes(), source.name)
         late = output.with_suffix('.late.o')
-        defer_constructor(output, late, '__GLOBAL__sub_I_' + source.name)
+        deferred = defer_constructor(output, late, '__GLOBAL__sub_I_' + source.name)
         target.check_object(late.read_bytes(), source.name + ' deferred')
         objects.append(late)
+        if deferred:
+            print(f'{source.name}: metaclass constructor deferred to preModLoad')
 
     subprocess.run(['xcrun', 'ar', 'rcs', str(archive), *map(str, objects)], check=True)
     digest = sha(archive)
@@ -161,8 +179,10 @@ def main():
         'compile_commands_sha256': {name: hashlib.sha256(json.dumps(cmd).encode()).hexdigest()
                                     for name, cmd in commands.items()},
         'host_checks': 'scripts/check-tb710fu-gpu-host.py',
-        'boot_arguments': {'metal': 'gpu-metal=1', 'power': 'gpu-power=<1|2>', 'addon': 'gpu-addon=1'},
-        'metal_device': False,  # milestone 1 publishes discovery; a device needs the GMU/SMMU/Turnip stages
+        'boot_arguments': {'metal': 'gpu-metal=1', 'power': 'gpu-power=<1..9>', 'addon': 'gpu-addon=1'},
+        'metal_device': False,  # discovery + user-client ABI; the device still needs the GMU cold start and GX
+        'user_client': 'AGXDeviceUserClient (type 0x4147, NativeAdrenoABI v2)',
+        'staged_power': [f'gpu-power={level}' for level in range(1, 10)],
     }
     (OUT / 'build-report.json').write_text(json.dumps(report, indent=2) + '\n')
     if invalidate_link(digest):

@@ -48,6 +48,7 @@ struct tb710fu_fw {
 
 int tb710fu_fw_open(const char *path, void **handle, uint64_t *size);
 int tb710fu_fw_open_addon(const char *name, void **handle, uint64_t *size);
+int tb710fu_fw_open_addon_path(const char *path, void **handle, uint64_t *size);
 int tb710fu_fw_read(void *handle, uint64_t offset, void *to, size_t length);
 void tb710fu_fw_close(void *handle);
 
@@ -112,21 +113,22 @@ static int inflateImage(uint8_t *to, uint64_t to_bytes, const uint8_t *from, uin
     return ok ? 0 : EIO;
 }
 
-int tb710fu_fw_open_addon(const char *name, void **handle, uint64_t *size)
+/* Opens any addon entry at `path` (the full container path, no directory added).
+ * `name` is only used for the two fixed ADSP images' size pin; NULL skips that
+ * check (the GPU archive pins its own images by SHA-256 after this returns). */
+static int tb710fu_fw_open_addon_at(const char *path, const char *name, void **handle, uint64_t *size)
 {
+    if (!path || !handle || !size) return EINVAL;
     if (!native_ram_block_gpu_addon) return ENOENT;
     const uint8_t *addon = NULL;
     uint64_t bytes = 0;
     if (!native_ram_block_gpu_addon(&addon, &bytes) || !addon || bytes < TB710FU_ADDON_HEADER) return ENOENT;
-    char path[TB710FU_ADDON_PATH_MAX];
-    const int length = snprintf(path, sizeof path, "%s%s", kAddonPrefix, name);
-    if (length <= 0 || (size_t)length >= sizeof path) return ENAMETOOLONG;
     Tb710fuAddonEntry entry;
     const int found = tb710fu_addon_find(addon, bytes, path, &entry);
     if (found == TB710FU_ADDON_NOT_FOUND) return ENOENT;
     if (found != TB710FU_ADDON_OK || !entry.size || entry.size > TB710FU_ADDON_MAX_BYTES) return EFTYPE;
-    const uint64_t expected = strcmp(name, "adsp.mbn") == 0 ? kAdspBytes
-                            : strcmp(name, "adsp_dtb.mbn") == 0 ? kAdspDtbBytes : 0;
+    const uint64_t expected = name && strcmp(name, "adsp.mbn") == 0 ? kAdspBytes
+                            : name && strcmp(name, "adsp_dtb.mbn") == 0 ? kAdspDtbBytes : 0;
     if (expected && entry.size != expected) return EFTYPE;
     const uint8_t *image = NULL;
     int error = allocImage(entry.size, &image, handle);
@@ -138,6 +140,23 @@ int tb710fu_fw_open_addon(const char *name, void **handle, uint64_t *size)
     }
     *size = entry.size;
     return 0;
+}
+
+/* The GPU archive's entry point: it names its own directory (Gpu/Firmware/) and
+ * verifies the four gen70900 images by digest, so only the container path is
+ * shared. The ADSP entry point below keeps its exact previous path and pins. */
+int tb710fu_fw_open_addon_path(const char *path, void **handle, uint64_t *size)
+{
+    return tb710fu_fw_open_addon_at(path, NULL, handle, size);
+}
+
+int tb710fu_fw_open_addon(const char *name, void **handle, uint64_t *size)
+{
+    if (!name) return EINVAL;
+    char path[TB710FU_ADDON_PATH_MAX];
+    const int length = snprintf(path, sizeof path, "%s%s", kAddonPrefix, name);
+    if (length <= 0 || (size_t)length >= sizeof path) return ENAMETOOLONG;
+    return tb710fu_fw_open_addon_at(path, name, handle, size);
 }
 
 int tb710fu_fw_open(const char *path, void **handle, uint64_t *size)

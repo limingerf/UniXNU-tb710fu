@@ -5,21 +5,21 @@
 // up with IOServiceMatching("IOAccelerator") and loads
 // <MetalPluginName>.bundle from libsystem_sandbox's trusted bundle directories
 // (/Library/GPUBundles first, /System/Library/Extensions second). This file
-// supplies that service and nothing else: it maps no device memory, starts no
-// engine and answers no user-client request. Its purpose is the first milestone
-// the reference SM8650 project's stage A names - WindowServer's discovery must
-// reach a Metal device source before any GPU work can be qualified - plus the
-// evidence that it did: property reads, open attempts and the accelerator's
-// registry identity are all counted.
+// supplies that service. Since milestone 2 it also serves the GPU user client:
+// an open with type 0x4147 is handed to Tb710fuGpuClient.cpp's ABI connection
+// once gpu-power=9 has published it; every other open, and every open on a boot
+// whose bring-up stopped earlier, is refused with kIOReturnUnsupported exactly
+// as milestone 1 did.
 //
 // The base declaration and its 136-byte extent live in Tb710fuGpuABI.h. The
 // parent metaclass is resolved before the module's metaclass window opens
-// (tb710fu_gpu_probe), the class is installed inside that window
+// (tb710fu_gpu_probe), the classes are installed inside that window
 // (tb710fu_gpu_meta_init) and every object is made after postModLoad
 // (tb710fu_gpu_start), because the parent does not exist before IOGraphicsFamily
 // is in the kernel.
 #include "Tb710fuGpu.h"
 #include "Tb710fuGpuABI.h"
+#include "Tb710fuGpuClient.h"
 #include <IOKit/IOLib.h>
 #include <IOKit/IOPlatformExpert.h>
 #include <IOKit/IOUserClient.h>
@@ -72,23 +72,38 @@ Tb710fuGpuAccelerator::MetaClass::MetaClass()
 OSDefineBasicStructors(Tb710fuGpuAccelerator, IOAccelerator)
 OSDefineOperatorMethods(Tb710fuGpuAccelerator)
 
-/* Every open is refused for now: a request is evidence that a process found the
- * accelerator and asked for the GPU, and the answer says no work exists yet.
- * Nothing is printed here - newUserClient runs with preemption disabled while
- * IOKit holds the service lock, and a console write at that point has already
- * stopped this board's boot once (see the pl49 note in GopDisplayStart.cpp). */
+/* An open is served only for the plugin's type and only once milestone 2 has
+ * published the ABI; both conditions are read without printing - newUserClient
+ * runs with preemption disabled while IOKit holds the service lock, and a
+ * console write at that point has already stopped this board's boot once (see
+ * the pl49 note in GopDisplayStart.cpp). The printed handshake happens in the
+ * client's externalMethod instead. */
 IOReturn Tb710fuGpuAccelerator::newUserClient(task_t owningTask, void *securityID, UInt32 type,
                                               OSDictionary *properties, IOUserClient **handler)
 {
-    (void)owningTask;
-    (void)securityID;
-    (void)properties;
     if (handler) {
         *handler = nullptr;
     }
     tb710fu_gpu_stats[TB710FU_GPU_OPENS] = tb710fu_gpu_stats[TB710FU_GPU_OPENS] + 1;
     tb710fu_gpu_stats[TB710FU_GPU_OPEN_TYPE] = type;
-    return kIOReturnUnsupported;
+    if (!handler) {
+        return kIOReturnBadArgument;
+    }
+    /* 0x4147 is the type the Metal plugin passes (NativeAdrenoPluginOpenType in
+     * the reference driver); any other type is an original IOGPU/AGX caller that
+     * this driver does not serve. */
+    if (type != 0x4147u) {
+        return kIOReturnUnsupported;
+    }
+    if (!tb710fu_gpu_abi_ready()) {
+        return kIOReturnUnsupported;
+    }
+    IOUserClient *client = tb710fu_gpu_client_create(owningTask, securityID, type, properties);
+    if (!client) {
+        return kIOReturnNoResources;
+    }
+    *handler = client;
+    return kIOReturnSuccess;
 }
 
 /* Diagnostic counting only: the value is the base class's own. The first read of
@@ -193,9 +208,12 @@ extern "C" void tb710fu_gpu_meta_init(void)
     }
     /* The constructor this alias names is the one clang emitted for this
      * translation unit; build-tb710fu-gpu.py moves it out of __mod_init_func
-     * (`__mod_deferred`) so preModLoad runs it here, after the parent exists. */
+     * (`__mod_deferred`) so preModLoad runs it here, after the parent exists.
+     * The user client's metaclass joins it here too: it derives from the
+     * prelinked IOUserClient, so it must not be constructed at kernel entry. */
     tb710fu_gpu_accelerator_static_init();
-    printf("TB710FU GPU: Tb710fuGpuAccelerator metaclass installed\n");
+    tb710fu_gpu_client_static_init();
+    printf("TB710FU GPU: Tb710fuGpuAccelerator metaclass installed (client AGXDeviceUserClient)\n");
 }
 
 extern "C" void tb710fu_gpu_start(void)
@@ -205,10 +223,12 @@ extern "C" void tb710fu_gpu_start(void)
     }
     /* Census first: it is read-only and its result is published on the
      * accelerator, so a boot that fails before Metal gets that far still shows
-     * what the payload carried. */
+     * what the payload carried. The staged bring-up then runs exactly as far as
+     * gpu-power asked (stage 1 only when the argument is absent). */
     tb710fu_gpu_power_survey();
     Tb710fuGpuCensus census = {};
     tb710fu_gpu_census_read(&census);
+    tb710fu_gpu_bring_up();
     tb710fu_gpu_power_publish(&census);
 
     uint32_t metal = 0;
@@ -245,8 +265,15 @@ extern "C" void tb710fu_gpu_start(void)
      * WindowServer itself is not a sandboxed client, and a series that adds the
      * grant later must find the property already correct. */
     accelerator->setProperty("NativeSandboxGrantProcess", "*");
-    setNumber(accelerator, "Tb710fuGpuMilestone", 1);
+    setNumber(accelerator, "Tb710fuGpuMilestone", tb710fu_gpu_abi_ready() ? 2 : 1);
     setNumber(accelerator, "Tb710fuGpuPowerLevel", tb710fu_gpu_stats[TB710FU_GPU_POWER_LEVEL]);
+    setNumber(accelerator, "Tb710fuGpuBringUpStage", tb710fu_gpu_stats[TB710FU_GPU_BRINGUP]);
+    setNumber(accelerator, "Tb710fuGpuCxOn", tb710fu_gpu_stats[TB710FU_GPU_CX]);
+    setNumber(accelerator, "Tb710fuGpuRingReady", tb710fu_gpu_stats[TB710FU_GPU_RING_READY]);
+    setNumber(accelerator, "Tb710fuGpuAbiVersion", tb710fu_gpu_abi_ready() ? 2 : 0);
+    setNumber(accelerator, "Tb710fuGpuSmmuSmrs", tb710fu_gpu_stats[TB710FU_GPU_SMMU_SMRS]);
+    setNumber(accelerator, "Tb710fuGpuGmuClocks", tb710fu_gpu_stats[TB710FU_GPU_GMU_CLOCKS]);
+    setNumber(accelerator, "Tb710fuGpuFirmwareVerified", tb710fu_gpu_stats[TB710FU_GPU_FIRMWARE_VERIFIED]);
     setNumber(accelerator, "Tb710fuGpuBundle", census.bundle);
     setNumber(accelerator, "Tb710fuGpuFirmware", census.firmware);
     OSNumber *chipid = OSNumber::withNumber(0x43051401ULL, 32);
@@ -275,6 +302,9 @@ extern "C" void tb710fu_gpu_start(void)
     tb710fu_gpu_stats[TB710FU_GPU_REGISTERED] = 1;
     tb710fu_gpu_stats[TB710FU_GPU_STAGE] = 5;
     printf("TB710FU GPU: accelerator registered plugin=NativeAdrenoMetal class=NativeAdrenoMetalDevice "
-           "bundle=%u firmware=%u (%u)\n", census.bundle, census.firmware, census.announced);
+           "bundle=%u firmware=%u (%u) bringup=%u ring=%u abi=%u\n",
+           census.bundle, census.firmware, census.announced,
+           tb710fu_gpu_stats[TB710FU_GPU_BRINGUP], tb710fu_gpu_stats[TB710FU_GPU_RING_READY],
+           tb710fu_gpu_abi_ready() ? 2u : 0u);
     accelerator->release();
 }
