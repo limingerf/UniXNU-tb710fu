@@ -45,8 +45,8 @@ extern "C" {
 /* The loader driver and the kernel's gpu-addon mount counters (weak: a kernel
  * built without that driver has no addon). */
 int native_ram_block_gpu_addon(const uint8_t **data, uint64_t *bytes) __attribute__((weak_import));
-volatile int native_gpu_addon_stage __attribute__((weak_import));
-volatile int native_gpu_addon_status __attribute__((weak_import));
+extern volatile int native_gpu_addon_stage __attribute__((weak_import));
+extern volatile int native_gpu_addon_status __attribute__((weak_import));
 /* Called only from tb710fu_gpu_power_meta_init, never from __mod_init_func. */
 void tb710fu_gpu_power_static_init(void) __asm__("__GLOBAL__sub_I_Tb710fuGpuPower.cpp");
 }
