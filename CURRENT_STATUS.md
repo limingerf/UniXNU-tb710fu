@@ -1,4 +1,36 @@
-# Current status · 2026-11-25
+# Current status · 2026-11-26
+
+## 🔋🏆 重大里程碑：`pl55` 实机一次拉起 **SM8650 ADSP + PMIC GLINK + `qcom_battmgr` + `IOPMPowerSource`**，在 5 GiB 零摇摆零 panic 基线上成功发布真实电量 **`16% 3647 mV -494 mA`**！ · 2026-11-26
+
+- **`pl55`（commit `98fcdad`，run [45839746246](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45839746246)，`kernel.macho` `142,999,552` B，SHA-256 `61054568...`，镜像 `out/pl16-45839746246-pl55-adsp5g-signed/`，日志 `scratch/com5_pl55_adsp5g.log`）**：
+  - 根因与修复：`pl54c-adsp5g` 实机首次抓出 `adsp=2` 拷贝 `adsp_dtb.mbn` 到 `0x9de80000`（`kIOMapWriteCombineCache` Device-GRE 映射）时因 `memcpy/bzero` 触发 `Unaligned kernel data abort (ESR 0x96000061)`；`package/Tb710fuAdsp/Tb710fuAdsp.cpp` 改用 8 字节对齐 `volatile mmioCopy/mmioZero` 后一枪根除。
+  - **实机验证结果（`scratch/com5_pl55_adsp5g.log`，104,089 字符）**：
+    1. **5 GiB + 78 MiB 载荷 + 22.3 MB `boot-shims.bin` ADSP 固件零摇摆一把开机**（`+19.3s` 打开 `COM5`，`ufs-start-done`，`en0` 注册，123 进程存活，**零 panic**）；
+    2. **SM8650 ADSP + SMEM + SMP2P + IPCC + PMIC GLINK 全通**：
+       - `TB710FU battery: channel up`
+       - **`TB710FU battery: published 16% 3647 mV -494 mA charging=0`**（macOS `IOPMPowerSource` 首次拿到真实电量/电压/电流！）；
+    3. `WindowServer` 仍稳定复现唯一剩余阻塞：`No suitable Metal devices present after 30 seconds.`。
+
+---
+
+## 🏆 重大里程碑：`pl51`–`pl54c` 彻底根除摇摆 bug 与 5 ms 抢占超时 panic；`en0` + `IOTimeSync` + `IODisplayConnect` + `DisplayAttributes` 全线跑通，一枪捕获 `WindowServer` 唯一剩余阻塞：`No suitable Metal devices present after 30 seconds.` · 2026-11-26
+
+- **根除“摇摆 bug”与 5 ms 抢占超时 panic**：
+  - 原因确认：此前 `out/charge-battery-*` 打包时把 `darwinboot-memory-size` 从 `0x140000000`（5 GiB）回退到 `0x80000000`（2 GiB），并叠开了 `tb710fu-live-log=1 tb710fu-live-checkpoints=1 -enable_kprintf_spam startup_debug=1`；恢复 `pl46` 的 5 GiB 干净 ADT（`16,868 B`，`dram-base=0x8c0000000`, `dram-size=0x140000000`）+ 关闭 `live-log`/`kprintf_spam` 后，**`pl51` / `pl52` / `pl53b` / `pl54c` 连续 4/4 次一把开机直通（0 摇摆）**。
+  - `sched_preemption_disable_debug_mode=0` 在 `pl54c` 实机验证 **100% 消除** `preemption disable timeout exceeded (5.0 ms)` panic。
+- **`pl52`（commit `b185865`，run [45811235981](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45811235981)，`kernel.macho` `3263e582...`，日志 `scratch/com5_pl52_clean5g.log`）**：
+  - 修复 `IODisplay` 抽象类 `alloc()==NULL` 问题，回退挂载具体子类 `IODisplayConnect`（实机证实 `display object attached ... class IODisplayConnect abstract 1 init 1 attach 1 edid 1`）；新增 `COM5 -> disp` 统计命令与一次性 mode/swap 日志。
+- **`pl53b`（commit `ea28e33`，run [45824340183](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45824340183)，`kernel.macho` `660c3600...`，日志 `scratch/com5_pl53b_en0.log`）**：
+  - 新增 `package/Tb710fuEthernet.cpp` + `scripts/net-ether-26C5035r.json`（运行时收养 26C5035r `IOEthernetController` 400 槽活 vtable，零 `IONetworkingFamily` 链接符号）。
+  - **实机验证**：`TB710FU Ethernet: en0 interface attached & registered`（MAC `be:bb:e9:49:e9:d1`）→ `IOTimeSyncTimeSyncTimePort(0xbebbe9ac786f0008): Created general notifier ...` → **`WindowServer` 立刻解除 `clocksyncd` 死等**，首次调用 `getColorRemapMode` / `setDisplayDevice` / `request_power_change(powerstate=1)`，`disp` 显示 `clients=10, kicks=1`。
+- **`pl54c`（commit `104ca89`，run [45829717501](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45829717501)，`kernel.macho` `800a5965...`，镜像 `out/pl16-45829717501-pl54b-clean5g-desktop-signed/`，日志 `scratch/com5_pl54b_wsdiag.log`）**：
+  - 新增 `patches/xnu/0051-tb710fu-windowserver-abort-diag.patch`；零摇摆、零 panic、124 进程存活，`COM5` 保持在线。
+  - **一枪捕获 `WindowServer`（PID 167 / 320）退出明文断言**：
+    `TB710FU WSEXIT STK[+144] STR: No suitable Metal devices present after 30 seconds.`
+- **5 GiB 窗口与 ADSP 物理地址核实**：`pl54c` ADT `dram-base=0x8c0000000`、`dram-size=0x140000000`（35–40 GiB），与 ADSP/SMEM/cmd-db（`0x81c60000..0xa1f80000`）**零重叠**，可直接在 5 GiB 稳态基线上安全验证 `adsp=2 battery=1` 充电。
+- **当前精确阶段**：TB710FU 实机已零摇摆、零 panic 跑稳 macOS 27.3 完整多守护进程用户态（124 进程）+ 苹果进度条 + `IOMobileFramebuffer` / `IODisplayConnect` / `DisplayAttributes` / `hotplug` / `IOMFBDisplayRefresh` + `en0` / `IOTimeSync`；距离 `WindowServer` 渲染出桌面仅差提供 Metal 设备（`IOAccelerator` + `/Library/GPUBundles/NativeAdrenoMetal.bundle`）。
+
+---
 
 ## 🖥️ 显示 kext 阻塞 + UFS 根卷“摇摆”修复已编绿签名；`out/charge-battery-gopfix-wobble-signed/` 待实机刷入验证 · 2026-11-25
 
