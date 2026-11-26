@@ -48,3 +48,4 @@
 0048-tb710fu-macos-desiredvnodes.patch
 0049-tb710fu-panic-cdc-persist.patch
 0050-tb710fu-watchdogd-critical-exit.patch
+0051-tb710fu-windowserver-abort-diag.patch

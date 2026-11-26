@@ -1,0 +1,81 @@
+Dump WindowServer non-zero exit registers, user stack/register ASCII strings, and 12-frame user backtrace to COM5.
+diff --git a/bsd/kern/kern_exit.c b/bsd/kern/kern_exit.c
+--- a/bsd/kern/kern_exit.c
++++ b/bsd/kern/kern_exit.c
+@@ -2410,6 +2410,75 @@
+ 			}
+ 		}
+ 	}
++#if (DEVELOPMENT || DEBUG) && defined(__arm64__)
++	if (exitval != 0 && strcmp(p->p_comm, "WindowServer") == 0) {
++		static int ws_exit_logged = 0;
++		if (ws_exit_logged < 2) {
++			ws_exit_logged++;
++			arm_thread_state64_t ts;
++			mach_msg_type_number_t cnt = ARM_THREAD_STATE64_COUNT;
++			extern kern_return_t thread_getstatus(thread_t, int, thread_state_t, mach_msg_type_number_t *);
++			if (thread_getstatus(current_thread(), ARM_THREAD_STATE64, (thread_state_t)&ts, &cnt) == KERN_SUCCESS) {
++				uint64_t pc = ts.pc, lr = ts.lr, fp = ts.fp, sp = ts.sp;
++				printf("TB710FU WSEXIT[%d] pid=%d status=%#x pc=0x%llx lr=0x%llx fp=0x%llx sp=0x%llx x0=0x%llx x1=0x%llx\n",
++				    ws_exit_logged, pid, exitval,
++				    (unsigned long long)pc, (unsigned long long)lr,
++				    (unsigned long long)fp, (unsigned long long)sp,
++				    (unsigned long long)ts.x[0], (unsigned long long)ts.x[1]);
++				const int regs[] = { 0, 1, 2, 3, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28 };
++				for (unsigned ri = 0; ri < sizeof(regs) / sizeof(regs[0]); ri++) {
++					int r = regs[ri];
++					uint64_t va = ts.x[r] & 0x00007fffffffffffULL;
++					if (va >= 0x100000000ULL) {
++						char sbuf[112];
++						size_t done = 0;
++						if (copyinstr((user_addr_t)va, sbuf, sizeof(sbuf), &done) == 0 && done >= 6) {
++							int ok = 1;
++							for (size_t k = 0; k + 1 < done && k < 16; k++) {
++								unsigned char ch = (unsigned char)sbuf[k];
++								if (ch < 0x20 || ch > 0x7e) { ok = 0; break; }
++							}
++							if (ok) {
++								sbuf[sizeof(sbuf) - 1] = '\0';
++								printf("TB710FU WSEXIT X[%d] STR: %s\n", r, sbuf);
++							}
++						}
++					}
++				}
++				uint64_t stk[96];
++				if (sp >= 0x100000000ULL && (sp & 7ULL) == 0 && copyin((user_addr_t)sp, stk, sizeof(stk)) == 0) {
++					int printed = 0;
++					for (int i = 0; i < 96 && printed < 20; i++) {
++						uint64_t va = stk[i] & 0x00007fffffffffffULL;
++						if (va >= 0x100000000ULL && (va < sp || va >= sp + 0x4000ULL)) {
++							char sbuf[112];
++							size_t done = 0;
++							if (copyinstr((user_addr_t)va, sbuf, sizeof(sbuf), &done) == 0 && done >= 8) {
++								int ok = 1;
++								for (size_t k = 0; k + 1 < done && k < 16; k++) {
++									unsigned char ch = (unsigned char)sbuf[k];
++									if (ch < 0x20 || ch > 0x7e) { ok = 0; break; }
++								}
++								if (ok) {
++									sbuf[sizeof(sbuf) - 1] = '\0';
++									printf("TB710FU WSEXIT STK[+%d] STR: %s\n", i * 8, sbuf);
++									printed++;
++								}
++							}
++						}
++					}
++				}
++				for (int f = 0; f < 12 && fp >= 0x100000000ULL && (fp & 7ULL) == 0; f++) {
++					uint64_t pair[2] = { 0, 0 };
++					if (copyin((user_addr_t)fp, pair, sizeof(pair)) != 0) break;
++					printf("TB710FU WSEXIT BT[%d]: fp=0x%llx lr=0x%llx\n",
++					    f, (unsigned long long)pair[0], (unsigned long long)pair[1]);
++					if (pair[0] <= fp) break;
++					fp = pair[0];
++				}
++			}
++		}
++	}
++#endif /* (DEVELOPMENT || DEBUG) && __arm64__ */
+ 	KERNEL_DEBUG_CONSTANT_IST(KDEBUG_COMMON,
+ 	    BSDDBG_CODE(DBG_BSD_PROC, BSD_PROC_EXIT) | DBG_FUNC_START,
+ 	    pid, exitval, 0, 0, 0);
