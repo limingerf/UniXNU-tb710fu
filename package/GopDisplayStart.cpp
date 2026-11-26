@@ -516,11 +516,23 @@ extern "C" void native_tb710fu_gop_display_start(void)
     }
     printf("TB710FU GopDisplay: start entry\n");
 
-    printf("TB710FU GopDisplay: loading com.apple.iokit.IOMobileGraphicsFamily\n");
-    OSReturn loaded = OSKextLoadKextWithIdentifier("com.apple.iokit.IOMobileGraphicsFamily");
-    printf("TB710FU GopDisplay: kext load=%x\n", loaded);
+    /* The prelinked kernel already registers IOMobileFramebufferLegacy. Calling
+     * OSKextLoadKextWithIdentifier here was blocking before it returned (the log
+     * stopped at "loading" and neither kext load= nor meta= followed), which kept
+     * the class from ever being adopted and prevented WindowServer from starting.
+     * Resolve the prelinked class first and only ask kextd to load it when the
+     * class is genuinely absent. */
     const OSSymbol *name = OSSymbol::withCString("IOMobileFramebufferLegacy");
     const OSMetaClass *meta = name ? OSMetaClass::getMetaClassWithName(name) : nullptr;
+    OSReturn loaded = kOSReturnSuccess;
+    if (!meta) {
+        printf("TB710FU GopDisplay: prelinked class absent, loading com.apple.iokit.IOMobileGraphicsFamily\n");
+        loaded = OSKextLoadKextWithIdentifier("com.apple.iokit.IOMobileGraphicsFamily");
+        printf("TB710FU GopDisplay: kext load=%x\n", loaded);
+        meta = name ? OSMetaClass::getMetaClassWithName(name) : nullptr;
+    } else {
+        printf("TB710FU GopDisplay: using prelinked IOMobileGraphicsFamily (OSKextLoad skipped)\n");
+    }
     if (name) {
         name->release();
     }
