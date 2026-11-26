@@ -8,6 +8,7 @@ import hashlib
 import json
 import lzma
 from pathlib import Path
+import shlex
 import struct
 import subprocess
 import sys
@@ -23,6 +24,21 @@ SOURCE_VENDOR_SHA256S = {
     '15846226236b56bd3abb104ae57f45e23307f3ea52321fd03ed153fd2e4e0718',
     # Retained signed UFS-integrated baseline used by the verified live-log bundles.
     'a07f25494968562b8d34a26bf3591b267956959a17850dff68d38e9f440790f2',
+    # Run 448831 CDC baseline with the verified GIC ADT and root selector.
+    '9cf7c3213af4b641f37708093219d1440a71f94a732b0518afceb9c24f19e7ef',
+    # Full ADSP + battery live-log image built from the same fixed ADT; used as
+    # the packaging source when replacing only its kernel.
+    '48f83f7db20ef251884b909b528bb35e682a21940e99263b8cee37dc87dfe5de',
+}
+
+CDC_GIC_VENDOR_SHA256 = '9cf7c3213af4b641f37708093219d1440a71f94a732b0518afceb9c24f19e7ef'
+CDC_GIC_ADT_SHA256 = 'f9b955bad7f9d6b3831d95cb70aa03cd44205c8e30f647e5e5e4f0a1708dca3b'
+CDC_REQUIRED_BOOT_ARGS = {
+    'tb710fu-cdc=1',
+    'tb710fu-live-log=1',
+    'tb710fu-live-checkpoints=1',
+    'kc-segment-release=0',
+    'tb710fu-root-partition=unixnu',
 }
 
 
@@ -32,6 +48,8 @@ def main():
     p.add_argument('--kernel-sha256', required=True)
     p.add_argument('--source-vendor', type=Path, required=True)
     p.add_argument('--output-dir', type=Path, required=True)
+    p.add_argument('--require-cdc-platform', action='store_true',
+                   help='Require the verified GIC ADT and CDC/root/log boot arguments')
     p.add_argument('--add-reporter-selftest', action='store_true', help='Append explicit report-only test menu; preserve original entries/default')
     p.add_argument('--add-report-export', action='store_true', help='Append explicit animated VM checkpoint export; intentionally pauses before TTBR1')
     args = p.parse_args()
@@ -60,6 +78,28 @@ def main():
         return subprocess.check_output(['mtype', '-i', str(payload), '::/EFI/UniXNU/' + name])
     kept = {name: sha(read(name)) for name in ['unixnu.toml', 'Payloads/kernel.macho.adt']}
     expected = dict(kept)
+    cdc_platform_check = None
+    if args.require_cdc_platform:
+        if sha(original) != CDC_GIC_VENDOR_SHA256:
+            raise SystemExit('CDC packaging requires the verified GIC-enabled vendor baseline')
+        if kept['Payloads/kernel.macho.adt'] != CDC_GIC_ADT_SHA256:
+            raise SystemExit('CDC packaging baseline is missing the verified GIC ADT')
+        configuration = tomllib.loads(read('unixnu.toml').decode('utf-8'))
+        xnu_entries = [entry for entry in configuration['entry']
+                       if entry.get('id') == 'xnu' and entry.get('type') == 'xnu']
+        if len(xnu_entries) != 1:
+            raise SystemExit('Unexpected CDC baseline menu; refuse to guess an XNU entry')
+        boot_args = set(shlex.split(xnu_entries[0].get('args', '')))
+        missing_args = sorted(CDC_REQUIRED_BOOT_ARGS - boot_args)
+        if missing_args:
+            raise SystemExit('CDC baseline is missing required boot arguments: ' +
+                             ', '.join(missing_args))
+        cdc_platform_check = {
+            'result': 'PASS',
+            'vendor_boot_sha256': sha(original),
+            'adt_sha256': kept['Payloads/kernel.macho.adt'],
+            'boot_args': xnu_entries[0].get('args', ''),
+        }
     # Packaging copies the ADT forward verbatim, so a sidecar that identifies as
     # the hardware DTS rather than as a Mac would be carried into every later
     # delivery unnoticed. The earlier gates compared the ADT against its own
@@ -115,7 +155,9 @@ def main():
               'reporter_selftest_appended': args.add_reporter_selftest,
               'reporter_animated_export_appended': args.add_report_export,
               'original_entries_and_default_preserved': True,
-              'source_vendor_sha256': sha(original), 'device_operations': False}
+              'source_vendor_sha256': sha(original),
+              'cdc_platform_check': cdc_platform_check,
+              'device_operations': False}
     (args.output_dir / 'packaging-report.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))
 
