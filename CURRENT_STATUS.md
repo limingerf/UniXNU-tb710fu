@@ -4713,3 +4713,32 @@ panic原始PACIBSP保留。artifact SHA/digest匹配，LZMA原始流读回一致
 vbmeta.img（89243b22…）沿用已有本地签名授权生成；签名和引用通过，
 其他22描述符/header/公钥不变。FAT32 66512簇，原ADT和默认菜单哈希
 均未变，没有导出暂停参数或新探针。未操作设备，原故障实机待验。
+
+## GPU/Metal 里程碑 1：IOAccelerator + GpuPower + bundle 接线 · 2026-11-26
+
+原因：TB710FU 已稳定进 macOS 27.3 用户态（IOMobileFramebuffer + IOAV + en0 + IOTimeSync，
+124 进程、0 抖动），唯一的桌面阻塞是 WindowServer 的
+`STR: No suitable Metal devices present after 30 seconds`。同 SoC 参考项目
+（UniXNU-zorn，SM8650/K80）把 GPU 分内核 Adreno740、电源 GpuPowerProbe、用户态
+NativeAdrenoMetal.bundle 三层，且自述尚未闭环 GMU 固件与 Metal 设备。故本板第一里程碑
+只做“发现与接线”：发布可被 `IOServiceMatching("IOAccelerator")` 匹配、带
+`MetalPluginName=NativeAdrenoMetal` 的服务，并复用官方 macOS GPU addon 路径
+（`gpu-addon=1` 把 `GPUBundles/*` 写进 Data 的 `/Library/GPUBundles` 并加 rootless 保护）。
+
+新增：`package/Tb710fuGpu/`（ABI 头 136 字节断言、accelerator 发布、GpuPower 只读普查）、
+`scripts/build-tb710fu-gpu.py`、`scripts/check-tb710fu-gpu-host.py`、
+`scripts/build-tb710fu-gpu-addon.py`、`scripts/data/tb710fu-gpu-firmware.json`、
+`.github/workflows/macos-gpu-addon.yml`（仅 workflow_dispatch）、`docs/GPU_METAL_M1.md`。
+改动：defconfig 加 `libTb710fuGpu.a` 与 `-DXNU_TB710FU_GPU=1`；board.toml archives 加构建脚本；
+`Macos27Services.cpp` 在 preModLoad 前 probe、窗口内装两个 metaclass、postModLoad 后 start。
+
+门控：`gpu-metal=1` 才发布 accelerator，`gpu-power=1|2` 才做普查/电源域节点；两者都不给时
+probe 直接返回、start 不打印不注册，默认启动与零抖动基线一致。本里程碑不写 GPUCC/GX/CX
+GDSC、不投 RPMh、不启 GMU、不建 SMMU、不加载四件 gen70900 固件，也不实现
+newUserClient（返回 kIOReturnUnsupported），因此**不会**让 WindowServer 出桌面，只把
+“30 秒无设备”变成可定位的发现结果。
+
+验证：`scripts/check-tb710fu-gpu-host.py` 61 项全通过（含与参考项目 firmware-pins 的四件
+固件大小/SHA-256 交叉核对）；三个 Python 脚本 `py_compile` 通过；workflow YAML 可解析。
+未在本机编译 Mach-O（本机无 macOS 工具链），未做 native/prelink、未做真机运行；
+内核归档与 bundle 的通过性由下一次 macOS CI 判定。

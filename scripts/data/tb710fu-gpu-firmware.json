@@ -1,0 +1,45 @@
+{
+  "schema": "tb710fu-gpu-firmware-v1",
+  "gpu": "Adreno 750 (gen70900, gen7-9-1)",
+  "soc": "SM8650Q-AB",
+  "addon_prefix": "Gpu/Firmware",
+  "loads_in_milestone_1": false,
+  "stock_paths": {
+    "gmu_gen70900.bin": "/vendor/firmware/gmu_gen70900.bin",
+    "gen70900_sqe.fw": "/vendor/firmware/gen70900_sqe.fw",
+    "gen70900_aqe.fw": "/vendor/firmware/gen70900_aqe.fw",
+    "gen70900_zap.mbn": "/odm/firmware/gen70900_zap.mbn"
+  },
+  "files": [
+    {
+      "name": "gmu_gen70900.bin",
+      "role": "GMU firmware image (gen70900), loaded by the GMU boot stage, not by milestone 1",
+      "bytes": 78588,
+      "sha256": "9685f62c42543befcaee68d25355e16bf55cdb0d573bddcc9f6633f59eec3f72"
+    },
+    {
+      "name": "gen70900_sqe.fw",
+      "role": "SQE (shader queue) microcode",
+      "bytes": 85300,
+      "sha256": "8e2c5ce74140de7e161f14654b44de999855bce01b690fdd18c3358a73498cd1"
+    },
+    {
+      "name": "gen70900_aqe.fw",
+      "role": "AQE (async queue) microcode",
+      "bytes": 33176,
+      "sha256": "25237c161d727b8ea92b4beb837a31651b44ea78bfc34d95672af8f346a45825"
+    },
+    {
+      "name": "gen70900_zap.mbn",
+      "role": "ZAP shader (secure debug auth), signed as on the stock device",
+      "bytes": 12088,
+      "sha256": "890f7e9da007890a40804d3110169ccc887e8a03bdf29e8b7bc3df0016bf9860"
+    }
+  ],
+  "reference": {
+    "project": "UniXNU-zorn (SM8650 / K80, same Adreno 750 gen70900 GPU family)",
+    "pins": "native/gpu-owned/firmware-pins.json",
+    "discovered": "gpu-discovery-20261030",
+    "why_same_blobs": "The reference project pins these four gen70900 images for the SM8650 GPU this board also carries (qcom,kgsl-3d0 chipid 0x43051401, GPU 0x3d00000, GMU 0x3d68000). The sizes and digests below are its recorded values; TB710FU's own copies come from the stock vendor/odm partitions named in stock_paths."
+  }
+}

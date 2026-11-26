@@ -33,6 +33,7 @@ archives = [
   "build-tb710fu-gop-display.py",
   "build-tb710fu-power.py",
   "build-tb710fu-adsp.py",
+  "build-tb710fu-gpu.py",
   "build-tb710fu-source-storage-archive.py",
 ]
 

@@ -24,6 +24,15 @@ extern "C" void native_tb710fu_gop_display_start(void);
  * start the display itself once its platform is live. Weak, so a build without
  * that archive keeps the unconditional start below. */
 extern "C" int tb710fu_cdc_owns_display(void) __attribute__((weak_import));
+/* GPU/Metal milestone 1 (package/Tb710fuGpu). Weak, so a kernel built without
+ * that archive keeps the same boot: probe resolves IOGraphicsFamily's
+ * IOAccelerator before the metaclass window, meta_init installs the two
+ * metaclasses inside it, and start publishes the accelerator only when
+ * gpu-metal=1 (it reads the argument itself). */
+extern "C" int tb710fu_gpu_probe(void) __attribute__((weak_import));
+extern "C" void tb710fu_gpu_meta_init(void) __attribute__((weak_import));
+extern "C" void tb710fu_gpu_power_meta_init(void) __attribute__((weak_import));
+extern "C" void tb710fu_gpu_start(void) __attribute__((weak_import));
 extern "C" volatile uint32_t native_aes_kat_status;
 extern "C" volatile uint32_t native_aes_registered;
 extern "C" volatile uint32_t native_aes_interface_status;
@@ -62,6 +71,14 @@ extern "C" void native_tb710fu_services_start(void)
         gAesParent = aesMeta;
     }
 
+    /* GPU: the accelerator's parent is a prelinked IOGraphicsFamily class, so it
+     * is resolved first, while the kernel still blocks on this boot thread; its
+     * metaclass is then installed inside the window with every other
+     * constructor of the module. Both calls read gpu-metal/gpu-power and stay
+     * silent when neither is asked. */
+    if (tb710fu_gpu_probe) {
+        tb710fu_gpu_probe();
+    }
     void *handle = OSMetaClass::preModLoad(g_kernel_kmod_info.name);
     if (!handle) {
         printf("TB710FU Services: preModLoad failed\n");
@@ -70,6 +87,12 @@ extern "C" void native_tb710fu_services_start(void)
     tb710fu_aks_meta_init();
     if (aesParentOk) {
         tb710fu_aes_meta_init();
+    }
+    if (tb710fu_gpu_meta_init) {
+        tb710fu_gpu_meta_init();
+    }
+    if (tb710fu_gpu_power_meta_init) {
+        tb710fu_gpu_power_meta_init();
     }
     /* The battery's IOKit metaclass lives in its own archive; installing it before postModLoad keeps every
      * constructor of this module in the same registration pass. Weak, so a kernel without that archive still
@@ -125,6 +148,15 @@ extern "C" void native_tb710fu_services_start(void)
      * when the PMIC GLINK transport (the ADSP archive) is not part of this kernel. */
     if (tb710fu_battery_start) {
         tb710fu_battery_start();
+    }
+
+    /* GPU/Metal: reads gpu-power/gpu-metal itself. With gpu-power it surveys the
+     * ADT and the payload addon and, at level 2, publishes the power-domain node;
+     * with gpu-metal=1 it publishes the IOAccelerator service that IOGPU's
+     * discovery matches. Without either argument it returns before touching the
+     * registry, so the default boot is byte-for-byte the baseline one. */
+    if (tb710fu_gpu_start) {
+        tb710fu_gpu_start();
     }
 
     /* Ethernet (en0): macOS IOTimeSyncFamily derives the TimeSync clock ID from an

@@ -1,0 +1,121 @@
+name: macos-gpu-addon
+
+# Manual only: this builds the macOS 27 Adreno 750 userspace (Turnip + the
+# NativeAdrenoMetal plugin bundle) and packs it as the NGPUADD2 GPU addon the
+# kernel writes to /Library/GPUBundles when gpu-addon=1. It never runs on push,
+# so the zero-wobble kernel baseline and its five-minute run stay untouched.
+#
+# The kernel side is the separately built libTb710fuGpu.a (scripts/build-tb710fu-gpu.py):
+# it publishes the IOAccelerator service only under gpu-metal=1.
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Add GPUBundles/NativeAdrenoMetal.publish (the plugin publishes a real device)'
+        type: boolean
+        default: false
+      firmware_url:
+        description: 'Optional tarball/zip with gmu_gen70900.bin, gen70900_sqe.fw, gen70900_aqe.fw, gen70900_zap.mbn'
+        type: string
+      trust_cache_url:
+        description: 'Optional owner trust bundle to append the addon CDHashes to'
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  UNIXNU_COMMIT: 0c1bac3d51a3009dca1708b15a5198f4b43d057a
+  ADRENO740_COMMIT: 6fa7bae2a5b3b523e790eb3e0348af4d98969e4d
+  # The payload is 78 MiB inside an 85,024,768-byte cap; the GPU addon's
+  # headroom is about 7.4 MiB. scripts/check_payload_fat.py stays the gate.
+  GPU_ADDON_BUDGET: 7864320
+
+jobs:
+  gpu-addon:
+    name: macos27 GPU addon
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Framework at the pinned revision
+        run: |
+          set -euo pipefail
+          mkdir -p .work
+          git clone --filter=blob:none https://github.com/UniXNU/UniXNU.git .work/UniXNU
+          git -C .work/UniXNU checkout "${UNIXNU_COMMIT}"
+
+      - name: Adreno driver headers the userspace build reads
+        run: |
+          set -euo pipefail
+          # build-turnip-darwin.py passes ROOT/drivers/Adreno740 as the Darwin ABI
+          # include dir and build-adreno-metal-plugin.py includes it too; neither
+          # script is edited, the pinned source is checked out where they look.
+          git clone --filter=blob:none https://github.com/UniXNU/Adreno740.git .work/UniXNU/drivers/Adreno740
+          git -C .work/UniXNU/drivers/Adreno740 checkout "${ADRENO740_COMMIT}"
+
+      - name: Tools
+        run: |
+          set -euo pipefail
+          brew install llvm lld cmake dtc mtools glslang unifdef || true
+          for tool in glslangValidator cmake dtc mtools ninja; do
+            command -v "${tool}" >/dev/null || { echo "${tool} missing" >&2; exit 1; }
+          done
+          rustup toolchain install 1.98.0 --profile minimal --component rust-src
+          cargo +1.98.0 --version
+
+      - name: Optional GPU firmware
+        if: inputs.firmware_url != ''
+        run: |
+          set -euo pipefail
+          mkdir -p firmware/gpu
+          curl -fsSL "${FIRMWARE_URL}" -o /tmp/gpu-firmware
+          case "${FIRMWARE_URL}" in
+            *.zip) unzip -o /tmp/gpu-firmware -d firmware/gpu ;;
+            *) tar -xf /tmp/gpu-firmware -C firmware/gpu ;;
+          esac
+          # verify_firmware() in the build script rejects any size or digest mismatch
+        env:
+          FIRMWARE_URL: ${{ inputs.firmware_url }}
+
+      - name: Build Turnip, the plugin bundle and the addon
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          args=(--framework .work/UniXNU --out build/tb710fu-gpu-addon --budget-bytes "${GPU_ADDON_BUDGET}")
+          if [ -d firmware/gpu ]; then args+=(--firmware firmware/gpu); fi
+          if [ "${{ inputs.publish }}" = "true" ]; then args+=(--publish); fi
+          if [ -n "${{ inputs.trust_cache_url }}" ]; then
+            curl -fsSL "${{ inputs.trust_cache_url }}" -o build/owner-trust.bundle
+            args+=(--trust-cache build/owner-trust.bundle)
+          fi
+          python3 scripts/build-tb710fu-gpu-addon.py "${args[@]}"
+
+      - name: Host wiring checks
+        run: python3 scripts/check-tb710fu-gpu-host.py --report build/tb710fu-gpu-host.json
+
+      - name: Summary
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          report = json.loads(pathlib.Path('build/tb710fu-gpu-addon/report.json').read_text())
+          print('## GPU addon')
+          print(f"- addon: `{report['addon']}` ({report['addon_bytes']} bytes, budget {report['budget_bytes']})")
+          print(f"- publish marker: {report['publish']}")
+          print(f"- entries: {len(report['entries'])}, executables: {len(report['cdhashes'])}")
+          print(f"- firmware: {', '.join(report['firmware']) or 'not carried'}")
+          print(f"- boot: `{' '.join(report['boot_arguments'])}`")
+          for digest in report['cdhashes']:
+              print(f"  - trust CDHash `{digest}`")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tb710fu-gpu-addon
+          path: |
+            build/tb710fu-gpu-addon/gpuaddon.bin
+            build/tb710fu-gpu-addon/report.json
+            build/tb710fu-gpu-addon/gpu-owner-trust.bundle
+          if-no-files-found: warn
