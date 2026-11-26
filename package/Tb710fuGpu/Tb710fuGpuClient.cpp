@@ -227,7 +227,8 @@ IOReturn AGXDeviceUserClient::allocBo(const NativeAdrenoAbiBoAlloc &request, uin
     if (slot < 0) {
         return kIOReturnNoResources;
     }
-    IOOptionBits options = kIOMemoryKernelUserShared | kIODirectionInOut;
+    IOOptionBits options = static_cast<IOOptionBits>(kIOMemoryKernelUserShared) |
+                           static_cast<IOOptionBits>(kIODirectionInOut);
     if (request.contiguous) {
         options |= kIOMemoryPhysicallyContiguous;
     }
@@ -540,7 +541,8 @@ IOReturn AGXDeviceUserClient::clientMemoryForType(UInt32 type, IOOptionBits *opt
     IOBufferMemoryDescriptor *descriptor =
         (fBo[slot].used && fBo[slot].memory) ? fBo[slot].memory : nullptr;
     if (descriptor) {
-        *memory = descriptor->retain();
+        descriptor->retain();
+        *memory = descriptor;
     }
     IOLockUnlock(fLock);
     return descriptor ? kIOReturnSuccess : kIOReturnUnsupported;
