@@ -1,7 +1,7 @@
 Dump WindowServer non-zero exit registers, user stack/register ASCII strings, and 12-frame user backtrace to COM5.
 diff --git a/bsd/kern/kern_exit.c b/bsd/kern/kern_exit.c
 --- a/bsd/kern/kern_exit.c
-+++ b/bsd/kern/kern_exit.c
+@@ -2410,6 +2410,76 @@
 @@ -2410,6 +2410,75 @@
  			}
  		}
