@@ -1,5 +1,17 @@
 # Current status · 2026-11-25
 
+## 🖥️ 显示 kext 阻塞 + UFS 根卷“摇摆”修复已编绿签名；`out/charge-battery-gopfix-wobble-signed/` 待实机刷入验证 · 2026-11-25
+
+- **根卷已进来一次**：用户刷 `out/charge-battery-rootdelay` 后重启五六次，串口/屏幕已跑过 `root prepare-done phase=0 window=3`、`ufs-start-done`、`published SystemOS`、`ramdisk-start-done`、`macos27-services started`、`proc-policy done`，证明 `IOService::start(provider)`/attach/identity 在成功那次都能返回。失败样本停在 `root layout-done` 后、`ufs-start-done` 前，属于间歇时序窗口。
+- **UFS 摇摆的真实缺陷**：`patches/ufs/0011-root-settle-and-stage.patch` 原来把 `IOSleep(rootDelayMs)` 放在 `PE_parse_boot_argn(...) && rootDelayMs` 里；boot args 没有 `native-ufs-root-delay` 时默认 200 ms 从未执行，日志也没有 `root settle delay` 行。现改为默认 **1000 ms 且无条件执行**，boot arg 只做覆盖，并打印 `root settle delay 1000 ms (default)`。`scripts/build-tb710fu-ufs-adapter.py` 同步更新注释。
+- **显示卡点**：`package/GopDisplayStart.cpp` 原顺序是先 `OSKextLoadKextWithIdentifier("com.apple.iokit.IOMobileGraphicsFamily")` 再查 `IOMobileFramebufferLegacy`；实机日志停在 `loading ...`，`kext load=` 不返回。现改为先 `OSMetaClass::getMetaClassWithName("IOMobileFramebufferLegacy")`，类已存在就打印 `using prelinked IOMobileGraphicsFamily (OSKextLoad skipped)` 并继续 `startDisplay`；只有类缺失才走 kext load。
+- **构建**：native run `45778307864` 成功，artifact `15096878897`；prelink run `45779852463` 成功，artifact `15098450487`。prelink kernel `142,999,552 B`，SHA-256 `9064c2ca37fdaac0f4f92a2bc9ffb3cbb07971928d9ab39771fb0ad0cfaed3a7`；LZMA `24,177,865 B`，SHA-256 `6f7d5cf4d7a05b8c65601f085252b25be624db06998ea1010ea85af8fbd86e9a`。两条新字符串均已在 `kernel.macho` 中检出。
+- **镜像**：基于 `out/charge-battery-livelog` 的完整 ADSP+battery 载荷，仅替换 LZMA 内核；ADT/Data seed/boot args/payload 布局不变。新目录 `out/charge-battery-gopfix-wobble-signed/`：
+  - `vendor_boot.img` `100,663,296 B`，SHA-256 `2b10002ef7aff1c663312f3e723f67217e3287034825ef87a3fa0d01c6a68168`
+  - `vbmeta.img` `8,000 B`，SHA-256 `806701d6cc79e6093ab15c76c93735468ecb0ccf3cb9fe127f0dba4aea501495`
+  - unsigned `85,045,248 B`，SHA-256 `ae86c544753318f33b54d8725bdc16d625df1edd5fa1b44c0d2ff8b8d30abd25`
+- **下一步**：刷入新 `vendor_boot` + 匹配 `vbmeta`，确认 `root settle delay 1000 ms (default)` 出现且连续多次重启都能过 `ufs-start-done`；显示侧确认 `using prelinked ...` 后出现 `IOMobileFramebufferLegacy meta=`、`startDisplay 1/4`，再看 `WindowServer` 是否切进桌面。`hardware_verified=false` 直到实机结果落地。
+
 ## 🔋 充电/电池：电池软件层 + ADSP/PMIC GLINK 传输层 + 固件 addon 均已落地；macOS native/prelink 已编绿，78 MiB payload 与签名 vendor_boot 已生成；待实机 `adsp=1`/`adsp=2 battery=1` 验收 · 2026-11-25
 
 - **盘点**：D 盘唯一“写好的”电池驱动在 `.work/UniXNU-sheng`（`ShengBattery.cpp` + `ShengBattmgr.c`，SM8550 小米平板 6 Pro，ADSP 路径实机验证过），不是本机 SoC/板子，且 clean 工程里没有任何 battery/power 源码。同类上游参考为 `UniXNU-xiaomipad8pro/package/PianoPower`（SM8750，BSD-2，含完整 ADSP 传输，但电池协议是小米 MCA，不是本机的高通 battmgr）。
