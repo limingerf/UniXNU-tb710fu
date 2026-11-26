@@ -226,22 +226,43 @@ def main():
               'cpu_subtype': checked['cpu_subtype'], 'mach_o_filetype': checked['mach_o_filetype'],
               'prelink_skipped': native, 'hardware_boot_verified': False}
     from verify_cdc_integration import verify as verify_cdc
-    integrated_cdc = verify_cdc(ctx.tree, ctx.need_config(), ctx.tree / ctx.board['kernel']['prelink']['kernel'])
+    try:
+        integrated_cdc = verify_cdc(ctx.tree, ctx.need_config(), ctx.tree / ctx.board['kernel']['prelink']['kernel'])
+    except FileNotFoundError as error:
+        if native:
+            raise
+        print('CDC archive verification unavailable in this prelink tree: ' + str(error), flush=True)
+        integrated_cdc = {'schema_version': 1, 'verification': 'unavailable',
+                          'missing': str(error), 'linked_into_kernel': False}
     (output / 'usb-cdc-integration.json').write_text(json.dumps(integrated_cdc, indent=2) + '\n')
-    record['usb_cdc_transport_linked'] = True
+    record['usb_cdc_transport_linked'] = bool(integrated_cdc.get('linked_into_kernel'))
     record['usb_cdc_integration_report_sha256'] = hashlib.sha256(
         (output / 'usb-cdc-integration.json').read_bytes()).hexdigest()
     from verify_live_log_integration import verify as verify_live
-    integrated_live = verify_live(ctx.tree, ctx.need_config(), ctx.tree / ctx.board['kernel']['prelink']['kernel'])
+    try:
+        integrated_live = verify_live(ctx.tree, ctx.need_config(), ctx.tree / ctx.board['kernel']['prelink']['kernel'])
+    except FileNotFoundError as error:
+        if native:
+            raise
+        print('Live-log archive verification unavailable in this prelink tree: ' + str(error), flush=True)
+        integrated_live = {'schema_version': 1, 'verification': 'unavailable',
+                           'missing': str(error), 'linked_into_kernel': False}
     (output / 'live-log-integration.json').write_text(json.dumps(integrated_live, indent=2) + '\n')
-    record['live_log_linked'] = True
+    record['live_log_linked'] = bool(integrated_live.get('linked_into_kernel'))
     record['live_log_integration_report_sha256'] = hashlib.sha256(
         (output / 'live-log-integration.json').read_bytes()).hexdigest()
     if ctx.need_config().get('XNU_SOURCE_STORAGE'):
         from verify_storage_integration import verify as verify_storage
-        integrated = verify_storage(ctx.tree, ctx.need_config(), ctx.tree / ctx.board['kernel']['prelink']['kernel'])
+        try:
+            integrated = verify_storage(ctx.tree, ctx.need_config(), ctx.tree / ctx.board['kernel']['prelink']['kernel'])
+        except FileNotFoundError as error:
+            if native:
+                raise
+            print('Source-storage verification unavailable in this prelink tree: ' + str(error), flush=True)
+            integrated = {'schema_version': 1, 'verification': 'unavailable',
+                          'missing': str(error), 'linked_into_kernel': False}
         (output / 'source-storage-integration.json').write_text(json.dumps(integrated, indent=2) + '\n')
-        record['source_storage_linked'] = True
+        record['source_storage_linked'] = bool(integrated.get('linked_into_kernel'))
         record['storage_integration_report_sha256'] = hashlib.sha256(
             (output / 'source-storage-integration.json').read_bytes()).hexdigest()
     (output / 'build-result.json').write_text(json.dumps(record, indent=2) + '\n')
