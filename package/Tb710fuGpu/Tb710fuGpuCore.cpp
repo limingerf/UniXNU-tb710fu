@@ -37,7 +37,8 @@ namespace {
 /* ---- small helpers ---------------------------------------------------- */
 
 const uint32_t kPageBytes = 4096;
-const uint32_t kSmmuPoolBytes = 512u * 1024u;
+const uint32_t kSmmuPoolBytes = 2u * 1024u * 1024u;
+IOLock *gCoreLock = nullptr;
 
 const uint32_t kPdcEnableValue = 0x80000001u;
 const uint32_t kGmuFenceRange = (1u << 31) | (0x32u << 18) | 0x8a0u;
@@ -1357,6 +1358,9 @@ int tb710fu_gpu_core_start(const Tb710fuGpuCoreWindows *windows, uint32_t level,
         return -1;
     }
     bzero(report, sizeof(*report));
+    if (!gCoreLock) {
+        gCoreLock = IOLockAlloc();
+    }
     gCore.report = report;
     gCore.windows = *windows;
     gCore.windowsBound = true;
@@ -1421,11 +1425,17 @@ int tb710fu_gpu_core_map_bo(IOMemoryDescriptor *memory, uint64_t iova, uint64_t 
     if (iova < TBGPU_CLIENT_VA_START || iova + bytes > TBGPU_CLIENT_VA_START + TBGPU_CLIENT_VA_SIZE) {
         return -1;
     }
-    if (tb710fu_gpu_smmu_map(&gCore.smmu, 0, iova, memory, bytes, flags) != 0) {
-        return -1;
+    if (gCoreLock) {
+        IOLockLock(gCoreLock);
     }
-    gCore.report->boMapped++;
-    return 0;
+    int rc = tb710fu_gpu_smmu_map(&gCore.smmu, 0, iova, memory, bytes, flags);
+    if (rc == 0) {
+        gCore.report->boMapped++;
+    }
+    if (gCoreLock) {
+        IOLockUnlock(gCoreLock);
+    }
+    return rc == 0 ? 0 : -1;
 }
 
 int tb710fu_gpu_core_unmap_bo(uint64_t iova, uint64_t bytes)
@@ -1433,13 +1443,17 @@ int tb710fu_gpu_core_unmap_bo(uint64_t iova, uint64_t bytes)
     if (!gCore.smmuReady || !gCore.report || !iova || !bytes) {
         return -1;
     }
-    if (tb710fu_gpu_smmu_unmap(&gCore.smmu, 0, iova, bytes) != 0) {
-        return -1;
+    if (gCoreLock) {
+        IOLockLock(gCoreLock);
     }
-    if (gCore.report->boMapped) {
+    int rc = tb710fu_gpu_smmu_unmap(&gCore.smmu, 0, iova, bytes);
+    if (rc == 0 && gCore.report->boMapped) {
         gCore.report->boMapped--;
     }
-    return 0;
+    if (gCoreLock) {
+        IOLockUnlock(gCoreLock);
+    }
+    return rc == 0 ? 0 : -1;
 }
 
 int tb710fu_gpu_core_wait_fence(uint64_t fence, uint64_t timeoutNs, uint32_t *observed)
@@ -1454,10 +1468,12 @@ int tb710fu_gpu_core_wait_fence(uint64_t fence, uint64_t timeoutNs, uint32_t *ob
     if (tries == 0) {
         tries = 1;   /* ABI: timeout 0 polls once */
     }
+    uint32_t lastValue = 0;
     for (uint64_t i = 0; i < tries; ++i) {
         uint32_t value = 0;
         cpuInvalidate(gCore.fence.cpu, 64);
         memcpy(&value, gCore.fence.cpu + 4, sizeof(value));
+        lastValue = value;
         if (observed) {
             *observed = value;
         }
@@ -1468,6 +1484,23 @@ int tb710fu_gpu_core_wait_fence(uint64_t fence, uint64_t timeoutNs, uint32_t *ob
             return -1;
         }
         tb710fu_gpu_delay_us(100);
+    }
+    if (timeoutNs >= 10000000ull) {
+        static volatile uint32_t gTimeoutLogged = 0;
+        if (__atomic_fetch_add(&gTimeoutLogged, 1u, __ATOMIC_RELAXED) < 4u) {
+            uint32_t rbbm = 0, cpInt = 0, cb0Fsr = 0, farLo = 0, farHi = 0;
+            gpuRead(TBGPU_RBBM_STATUS, &rbbm);
+            gpuRead(TBGPU_CP_INTERRUPT_STATUS, &cpInt);
+            if (gCore.windows.smmu) {
+                const uintptr_t cb0 = gCore.windows.smmu + 0x10000u;
+                tb710fu_gpu_read32(cb0 + 0x58u, &cb0Fsr);
+                tb710fu_gpu_read32(cb0 + 0x60u, &farLo);
+                tb710fu_gpu_read32(cb0 + 0x64u, &farHi);
+            }
+            IOLog("TB710FU GPU: wait_fence timeout want=%llu obs=%u rbbm=0x%x cp_int=0x%x cb0fsr=0x%x far=0x%llx\n",
+                  (unsigned long long)fence, lastValue, rbbm, cpInt, cb0Fsr,
+                  ((unsigned long long)farHi << 32) | farLo);
+        }
     }
     return -1;
 }
@@ -1483,6 +1516,9 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
     }
     if (waitFence && tb710fu_gpu_core_wait_fence(waitFence, timeoutNs, nullptr) != 0) {
         return -1;
+    }
+    if (gCoreLock) {
+        IOLockLock(gCoreLock);
     }
 
     /* A7xx framed submission (matching NativeAdrenoRing.cpp / a7xx_submit()):
@@ -1501,6 +1537,9 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
         at = 0;
     }
     if (ringDwords - used < needed + pad + margin) {
+        if (gCoreLock) {
+            IOLockUnlock(gCoreLock);
+        }
         return -1;
     }
     if (pad) {
@@ -1524,16 +1563,26 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
         emit7(&writer, 0x26, nullptr, 0) != 0 ||
         emit7(&writer, 0x17, &both, 1) != 0 ||
         emit7(&writer, 0x65, &markerOn, 1) != 0) {
+        if (gCoreLock) {
+            IOLockUnlock(gCoreLock);
+        }
         return -1;
     }
     for (uint32_t i = 0; i < count; ++i) {
-        if (bytes[i] == 0 || (iovas[i] & 3ull) || bytes[i] > 0xffffffffull) {
+        if (bytes[i] == 0 || (bytes[i] & 3ull) || (iovas[i] & 3ull) ||
+            (bytes[i] / 4ull) > 0xfffffull) {
+            if (gCoreLock) {
+                IOLockUnlock(gCoreLock);
+            }
             return -1;
         }
         const uint32_t packet[3] = {static_cast<uint32_t>(iovas[i]),
                                     static_cast<uint32_t>(iovas[i] >> 32),
-                                    static_cast<uint32_t>(bytes[i])};
+                                    static_cast<uint32_t>(bytes[i] / 4ull)};
         if (emit7(&writer, 0x3f, packet, 3) != 0) {   /* CP_INDIRECT_BUFFER */
+            if (gCoreLock) {
+                IOLockUnlock(gCoreLock);
+            }
             return -1;
         }
     }
@@ -1563,15 +1612,24 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
         emit7(&writer, 0x46, fenceWrite, 4) != 0 ||
         emit7(&writer, 0x17, &both, 1) != 0 ||
         emit7(&writer, 0x65, &markerOff, 1) != 0) {
+        if (gCoreLock) {
+            IOLockUnlock(gCoreLock);
+        }
         return -1;
     }
     if (writer.dwords != at + needed) {
+        if (gCoreLock) {
+            IOLockUnlock(gCoreLock);
+        }
         return -1;
     }
     gCore.ringWptr = writer.dwords & (ringDwords - 1);
     gCore.ringSeq = seq;
     ringKick(gCore.ringWptr);
     gCore.report->submitCount++;
+    if (gCoreLock) {
+        IOLockUnlock(gCoreLock);
+    }
     if (fence) {
         *fence = seq;
     }

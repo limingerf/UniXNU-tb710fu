@@ -39,10 +39,10 @@
 namespace {
 const uint32_t kTunnelMagic = 0x4e544e4c;  /* 'NTNL' */
 const uint32_t kProbeMethod = 0xffffffffu;
-const uint64_t kMaxBoBytes = 64ull * 1024 * 1024;
-const unsigned kMaxBo = 64;
-const unsigned kMaxMetadata = 32;
-const unsigned kMaxQueues = 32;
+const uint64_t kMaxBoBytes = 128ull * 1024 * 1024;
+const unsigned kMaxBo = 512;
+const unsigned kMaxMetadata = 128;
+const unsigned kMaxQueues = 64;
 }
 
 /* The connection class. The constructor receives the metaclass pointer from
@@ -239,7 +239,8 @@ int AGXDeviceUserClient::freeSlot(void) const
 IOReturn AGXDeviceUserClient::allocBo(const NativeAdrenoAbiBoAlloc &request, uint8_t *out)
 {
     if (request.bytes == 0 || request.bytes > kMaxBoBytes || (request.bytes & 0xfffu) != 0 ||
-        request.align_log2 > 12 || request.contiguous > 1) {
+        (request.align_log2 != 0 && (request.align_log2 < 12 || request.align_log2 > 24)) ||
+        request.contiguous > 1) {
         return kIOReturnBadArgument;
     }
     const int slot = freeSlot();
@@ -256,7 +257,7 @@ IOReturn AGXDeviceUserClient::allocBo(const NativeAdrenoAbiBoAlloc &request, uin
     if (!memory) {
         return kIOReturnNoMemory;
     }
-    uint64_t handle = ((fSequence + 1) << 8) | (uint64_t)(slot + 1);
+    uint64_t handle = ((fSequence + 1) << 12) | (uint64_t)(slot + 1);
     fSequence = fSequence + 1;
     fBo[slot].memory = memory;
     fBo[slot].handle = handle;
@@ -448,7 +449,7 @@ IOReturn AGXDeviceUserClient::importBo(const NativeAdrenoAbiBoImport &request, u
         memory->release();
         return kIOReturnNoResources;
     }
-    uint64_t handle = ((fSequence + 1) << 8) | (uint64_t)(slot + 1);
+    uint64_t handle = ((fSequence + 1) << 12) | (uint64_t)(slot + 1);
     fSequence = fSequence + 1;
     fBo[slot].memory = memory;
     fBo[slot].handle = handle;
@@ -473,8 +474,8 @@ IOReturn AGXDeviceUserClient::submit(const NativeAdrenoAbiSubmit &request, uint8
     if (!tb710fu_gpu_core_ring_ready()) {
         return kIOReturnNotReady;
     }
-    bool queueFound = false;
-    for (unsigned i = 0; i < kMaxQueues; ++i) {
+    bool queueFound = (request.queue == 0);
+    for (unsigned i = 0; !queueFound && i < kMaxQueues; ++i) {
         if (fQueue[i] && fQueue[i] == request.queue) {
             queueFound = true;
             break;
@@ -489,8 +490,11 @@ IOReturn AGXDeviceUserClient::submit(const NativeAdrenoAbiSubmit &request, uint8
     for (uint32_t i = 0; i < request.buffer_count; ++i) {
         const NativeAdrenoAbiSubmitBuffer &buffer = request.buffers[i];
         const int slot = slotFor(buffer.handle);
-        if (slot < 0 || !fBo[slot].mapped || fBo[slot].iova != buffer.iova ||
-            buffer.bytes == 0 || (buffer.bytes & 3ull) != 0 || buffer.bytes > fBo[slot].bytes) {
+        if (slot < 0 || !fBo[slot].mapped ||
+            buffer.bytes == 0 || (buffer.bytes & 3ull) != 0 ||
+            buffer.iova < fBo[slot].iova ||
+            (buffer.iova - fBo[slot].iova) > fBo[slot].bytes ||
+            buffer.bytes > fBo[slot].bytes - (buffer.iova - fBo[slot].iova)) {
             return kIOReturnBadArgument;
         }
         iovas[i] = buffer.iova;
@@ -629,7 +633,7 @@ IOReturn AGXDeviceUserClient::run(uint32_t method, const uint8_t *in, uint32_t i
         reply.abi_version = NativeAdrenoAbiVersion;
         reply.input_bits = 32;  /* the SMMU walks 32-bit input addresses */
         reply.output_bits = 40; /* OAS from the SMMU ID registers */
-        reply.flags = NativeAdrenoParamsHostImport | NativeAdrenoParamsOwnedCoherent;
+        reply.flags = NativeAdrenoParamsHostImport;
         reply.max_bo_bytes = kMaxBoBytes;
         copyOut(out, outSize, &reply, sizeof(reply));
         break;
@@ -770,7 +774,7 @@ IOReturn AGXDeviceUserClient::clientMemoryForType(UInt32 type, IOOptionBits *opt
         *memory = nullptr;
     }
     if (options) {
-        *options = kIOMapAnywhere;
+        *options = kIOMapAnywhere | kIOMapWriteCombineCache;
     }
     if (!memory || type == 0 || type > kMaxBo || !fLock) {
         return kIOReturnUnsupported;
