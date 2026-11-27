@@ -23,7 +23,6 @@
 #include <IOKit/IOLib.h>
 #include <IOKit/IOPlatformExpert.h>
 #include <IOKit/IOUserClient.h>
-#include <kern/thread.h>
 #include <libkern/c++/OSDictionary.h>
 #include <libkern/c++/OSMetaClass.h>
 #include <libkern/c++/OSNumber.h>
@@ -53,55 +52,6 @@ volatile uint32_t gMetalPluginNameReads = 0;
 const uint32_t kMarkerRingSize = 512;
 volatile uint16_t gMarkerRing[kMarkerRingSize];
 volatile uint32_t gMarkerWrite = 0;
-volatile uint32_t gMarkerRead = 0;
-
-static void gpuMarkerDrainThread(void *, wait_result_t)
-{
-    char text[96];
-    uint32_t textLen = 0;
-    uint32_t lastOpens = 0;
-    for (uint32_t tick = 0; tick < 90; ++tick) {
-        IOSleep(1000);
-        uint32_t opens = tb710fu_gpu_stats[TB710FU_GPU_OPENS];
-        uint32_t wr = __atomic_load_n(&gMarkerWrite, __ATOMIC_ACQUIRE);
-        uint32_t rd = gMarkerRead;
-        if (opens != lastOpens && rd == wr) {
-            printf("TB710FU GPU: userclient opens=%u last_type=0x%x\n",
-                   opens, tb710fu_gpu_stats[TB710FU_GPU_OPEN_TYPE]);
-            lastOpens = opens;
-        }
-        while (rd != wr) {
-            uint16_t m = gMarkerRing[rd & (kMarkerRingSize - 1u)];
-            rd++;
-            if (m == 0x7fffu || m == 0x7ffeu) {
-                if (textLen > 0) {
-                    text[textLen] = '\0';
-                    printf("TB710FU GPU: plugin text: %s\n", text);
-                    textLen = 0;
-                }
-            } else if ((m & 0xff00u) == 0x7000u) {
-                char c = static_cast<char>(m & 0xffu);
-                if (c >= 0x20 && c < 0x7f && textLen + 1 < sizeof(text)) {
-                    text[textLen++] = c;
-                }
-            } else {
-                if (textLen > 0) {
-                    text[textLen] = '\0';
-                    printf("TB710FU GPU: plugin text: %s\n", text);
-                    textLen = 0;
-                }
-                printf("TB710FU GPU: plugin marker=0x%04x (opens=%u)\n", m, opens);
-            }
-        }
-        if (textLen > 0) {
-            text[textLen] = '\0';
-            printf("TB710FU GPU: plugin text: %s\n", text);
-            textLen = 0;
-        }
-        gMarkerRead = rd;
-        lastOpens = opens;
-    }
-}
 }  // namespace
 
 extern "C" volatile uint32_t tb710fu_gpu_stats[TB710FU_GPU_STAT_COUNT] = {};
@@ -161,6 +111,16 @@ IOReturn Tb710fuGpuAccelerator::newUserClient(task_t owningTask, void *securityI
     if (!client) {
         return kIOReturnNoResources;
     }
+    if (!client->attach(this)) {
+        client->release();
+        return kIOReturnNoResources;
+    }
+    if (!client->start(this)) {
+        client->detach(this);
+        client->release();
+        return kIOReturnNoResources;
+    }
+    client->setProperty("NativeSandboxGrant", kOSBooleanTrue);
     *handler = client;
     return kIOReturnSuccess;
 }
@@ -323,7 +283,12 @@ extern "C" void tb710fu_gpu_start(void)
      * which this macOS series does not apply. It is published anyway because
      * WindowServer itself is not a sandboxed client, and a series that adds the
      * grant later must find the property already correct. */
-    accelerator->setProperty("NativeSandboxGrantProcess", "*");
+    accelerator->setProperty(
+        "NativeSandboxGrantProcess",
+        "WindowServer,loginwindow,Dock,Finder,ControlCenter,SystemUIServer,"
+        "NotificationCent,WallpaperAgent,WallpaperVideoEx,WallpaperImageEx,"
+        "Spotlight,Setup Assistant,corebrightnessd,colorsync.displa,colorsyncd,"
+        "CoreServicesUIAg,Terminal,Safari,TextEdit,System Settings");
     setNumber(accelerator, "Tb710fuGpuMilestone", tb710fu_gpu_abi_ready() ? 2 : 1);
     setNumber(accelerator, "Tb710fuGpuPowerLevel", tb710fu_gpu_stats[TB710FU_GPU_POWER_LEVEL]);
     setNumber(accelerator, "Tb710fuGpuBringUpStage", tb710fu_gpu_stats[TB710FU_GPU_BRINGUP]);
@@ -358,12 +323,6 @@ extern "C" void tb710fu_gpu_start(void)
     /* registerService is the step WindowServer's 30-second wait observes: from
      * here IOServiceMatching("IOAccelerator") can find the service. */
     accelerator->registerService();
-    {
-        thread_t t = THREAD_NULL;
-        if (kernel_thread_start(gpuMarkerDrainThread, nullptr, &t) == KERN_SUCCESS && t != THREAD_NULL) {
-            thread_deallocate(t);
-        }
-    }
     tb710fu_gpu_stats[TB710FU_GPU_REGISTERED] = 1;
     tb710fu_gpu_stats[TB710FU_GPU_STAGE] = 5;
     printf("TB710FU GPU: accelerator registered plugin=NativeAdrenoMetal class=NativeAdrenoMetalDevice "
