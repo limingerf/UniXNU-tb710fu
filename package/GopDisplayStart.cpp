@@ -475,32 +475,51 @@ static void attach_gop_device_tree(IOService *provider)
  * is its class, IOSurfaceRoot. IONameMatch accepts either
  * (LegacyDisplayProbe.cpp 643-655). CoreDisplay creates its framebuffer
  * surfaces through this root, so the display publishes attributes only once
- * it exists. */
-static void wait_for_surface_root(void)
+ * it exists.
+ *
+ * pl95: a single 5 s wait used to give up silently and start() ran with
+ * IOSurfaceRoot=0 whenever the display thread won the race against root mount
+ * / kextd (early COM5 drain). Retry the load+match cleanly instead: every
+ * attempt builds and releases its own matching objects, and the caller aborts
+ * registration rather than proceeding without a surface root. */
+static bool wait_for_surface_root(void)
 {
-    OSReturn loaded = OSKextLoadKextWithIdentifier("com.apple.iokit.IOSurface");
-    printf("TB710FU GopDisplay: IOSurface load=%x\n", loaded);
-    OSDictionary *matching = OSDictionary::withCapacity(1);
-    OSString *core = OSString::withCString("IOCoreSurfaceRoot");
-    OSString *root = OSString::withCString("IOSurfaceRoot");
-    const OSObject *names[2] = { core, root };
-    OSArray *list = (core && root) ? OSArray::withObjects(names, 2) : nullptr;
-    IOService *surface = nullptr;
-    if (matching && list && matching->setObject(gIONameMatchKey, list)) {
-        surface = IOService::waitForMatchingService(matching, 5000000000ULL);
+    const unsigned attempts = 6;   /* 6 x (5 s match + 1 s pause) ~= 35 s max */
+    for (unsigned attempt = 1; attempt <= attempts; attempt++) {
+        /* Idempotent once the kext is loaded; re-requested each attempt so a
+         * load issued before kextd was up is retried too. */
+        OSReturn loaded = OSKextLoadKextWithIdentifier("com.apple.iokit.IOSurface");
+        printf("TB710FU GopDisplay: IOSurface load=%x (attempt %u/%u)\n",
+               loaded, attempt, attempts);
+        OSDictionary *matching = OSDictionary::withCapacity(1);
+        OSString *core = OSString::withCString("IOCoreSurfaceRoot");
+        OSString *root = OSString::withCString("IOSurfaceRoot");
+        const OSObject *names[2] = { core, root };
+        OSArray *list = (core && root) ? OSArray::withObjects(names, 2) : nullptr;
+        IOService *surface = nullptr;
+        if (matching && list && matching->setObject(gIONameMatchKey, list)) {
+            surface = IOService::waitForMatchingService(matching, 5000000000ULL);
+        }
+        printf("TB710FU GopDisplay: IOSurfaceRoot=%p\n", (void *)surface);
+        if (surface) {
+            surface->release();
+        }
+        OSSafeReleaseNULL(list);
+        OSSafeReleaseNULL(matching);
+        if (core) {
+            core->release();
+        }
+        if (root) {
+            root->release();
+        }
+        if (surface) {
+            return true;
+        }
+        if (attempt < attempts) {
+            IOSleep(1000);
+        }
     }
-    printf("TB710FU GopDisplay: IOSurfaceRoot=%p\n", (void *)surface);
-    if (surface) {
-        surface->release();
-    }
-    OSSafeReleaseNULL(list);
-    OSSafeReleaseNULL(matching);
-    if (core) {
-        core->release();
-    }
-    if (root) {
-        root->release();
-    }
+    return false;
 }
 
 extern "C" void native_tb710fu_gop_display_start(void)
@@ -680,7 +699,16 @@ extern "C" void native_tb710fu_gop_display_start(void)
     }
 
     printf("TB710FU GopDisplay: waiting for IOSurfaceRoot\n");
-    wait_for_surface_root();
+    if (!wait_for_surface_root()) {
+        /* pl95: never start()/registerService() with IOSurfaceRoot=0 - the
+         * display would publish attributes CoreDisplay cannot back with
+         * surfaces. Leave the provider attached (as every other failure path
+         * here does) and the display unregistered. */
+        printf("TB710FU GopDisplay: IOSurfaceRoot unavailable after retries, display not registered\n");
+        display->release();
+        resources->release();
+        return;
+    }
 
     printf("TB710FU GopDisplay: start\n");
     bool started = display->start(provider);

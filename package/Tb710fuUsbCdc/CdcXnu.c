@@ -73,9 +73,11 @@ extern void tb710fu_ioreg_dump(const char *filter)
 /* Display bring-up lives in the GopDisplay archive. It never runs on the poll
  * thread: the worker spawns a separate thread for it only once the host has
  * opened the CDC port (configured && dtr) and that port has streamed live log
- * bytes for 500 ms - or after an 8 s fallback when no host ever opens it. COM5
- * is therefore not just enumerated but streaming before any display code
- * executes, and tb710fu_cdc_panic_loop() always has a live channel. */
+ * bytes for 500 ms - or after an 8 s fallback when no host ever opens it. That
+ * thread then still holds the start until the post-root settle deadline
+ * (gDisplaySafeStart, >=10 s after CDC start by default). COM5 is therefore
+ * not just enumerated but streaming before any display code executes, and
+ * tb710fu_cdc_panic_loop() always has a live channel. */
 extern void native_tb710fu_gop_display_start(void)
     __attribute__((weak_import));
 extern volatile uint32_t armcpu_gic_ready;
@@ -1478,6 +1480,17 @@ static int cdc_prepare(struct tb710fu_cdc_xnu *x)
  */
 static unsigned gDisplayThreadStarted;
 
+/* pl95: earliest safe GopDisplay start, armed once in tb710fu_cdc_start().
+ * The drain/fallback gate below only proves COM5 is live; it says nothing
+ * about boot progress. Starting IOMobileGraphicsFamily/IOSurface before root
+ * mount and launchd's dyld shared-cache pager window left IOSurfaceRoot=0 and
+ * perturbed early launchd (intermittent stall/reboot right after "ASP: AMFI
+ * pointer initialized"); every successful boot started the display late.
+ * The display thread therefore also waits for this deadline (default 10 s
+ * after CDC start, tb710fu-gop-settle=<ms> overrides) before calling
+ * native_tb710fu_gop_display_start(). 0 means "not armed yet". */
+static uint64_t gDisplaySafeStart;
+
 static void cdc_display_thread(void *argument, wait_result_t wait_result)
 {
     (void)argument;
@@ -1487,6 +1500,19 @@ static void cdc_display_thread(void *argument, wait_result_t wait_result)
            (unsigned)gCdc.controller.configured, (unsigned)gCdc.controller.dtr,
            (unsigned long long)gCdc.controller.setup_requests,
            (unsigned long long)gCdc.controller.transmitted);
+    /* Sleepable hold on this low-priority thread only: the poll loop keeps
+     * answering EP0 and streaming COM5 while the settle window runs out. */
+    if (gDisplaySafeStart != 0) {
+        const uint64_t now = mach_absolute_time();
+        if (now < gDisplaySafeStart) {
+            uint64_t remaining_ns = 0;
+            absolutetime_to_nanoseconds(gDisplaySafeStart - now, &remaining_ns);
+            cdc_log("TB710FU CDC: GopDisplay holding %llu ms for the post-root settle window\n",
+                   (unsigned long long)(remaining_ns / NSEC_PER_MSEC));
+            (void)assert_wait_deadline((event_t)&gDisplaySafeStart, THREAD_UNINT, gDisplaySafeStart);
+            thread_block(THREAD_CONTINUE_NULL);
+        }
+    }
     if (!native_tb710fu_gop_display_start) {
         cdc_log("TB710FU CDC: GopDisplay start is not linked\n");
     } else {
@@ -1531,6 +1557,10 @@ static int cdc_queue_display_thread(const char *reason)
  *   3. no host: every USB event re-arms an 8 s fallback, so a static
  *      enumeration (Windows takes ~20 s on this board) is never preempted,
  *      while a truly headless boot still gets the display after 8 s.
+ * Passing this gate only queues the thread; cdc_display_thread() then still
+ * waits for gDisplaySafeStart (the post-AMFI/post-root settle window), so an
+ * early host drain can no longer start the display before launchd's dyld
+ * shared-cache pager window is past.
  */
 static uint64_t gDisplayFallback;
 static uint64_t gDisplayProgress;
@@ -1561,13 +1591,13 @@ static void cdc_display_gate(void)
             return;
         }
         if (c->transmitted != gDisplayDrainBaseline && now >= gDisplayDrainDeadline) {
-            cdc_log("TB710FU CDC: COM5 drained %llu live bytes, starting GopDisplay\n",
+            cdc_log("TB710FU CDC: COM5 drained %llu live bytes, queueing GopDisplay (settle window applies)\n",
                    (unsigned long long)(c->transmitted - gDisplayDrainBaseline));
             cdc_queue_display_thread("dtr-drain");
             return;
         }
         if (now >= gDisplayDrainStalled) {
-            cdc_log("TB710FU CDC: COM5 has not drained a byte in 3 s, starting GopDisplay\n");
+            cdc_log("TB710FU CDC: COM5 has not drained a byte in 3 s, queueing GopDisplay (settle window applies)\n");
             cdc_queue_display_thread("dtr-nodrain");
         }
         return;
@@ -1685,9 +1715,10 @@ static void cdc_worker(void *argument, wait_result_t wait_result)
          * owns a live COM5. The poll loop below starts first and answers EP0,
          * so COM5 enumerates on the host; cdc_display_gate() hands the display
          * to cdc_display_thread only after the port is open (configured &&
-         * dtr) and has streamed live log bytes for 500 ms. Anything that
-         * stops inside GopDisplay after that point is visible on an already
-         * streaming COM5 and through tb710fu_cdc_panic_loop(). */
+         * dtr) and has streamed live log bytes for 500 ms, and that thread
+         * still waits out gDisplaySafeStart before any display code runs.
+         * Anything that stops inside GopDisplay after that point is visible
+         * on an already streaming COM5 and through tb710fu_cdc_panic_loop(). */
         clock_interval_to_deadline(8000u, NSEC_PER_MSEC, &gDisplayFallback);
         gDisplayProgress = gCdc.controller.events + gCdc.controller.setup_requests;
         unsigned previous = 0;
@@ -1807,6 +1838,14 @@ void tb710fu_cdc_start(void)
         return;
     }
     if (__atomic_exchange_n(&gAttempted, 1u, __ATOMIC_ACQ_REL)) return;
+    /* pl95: arm the post-root settle deadline from the actual CDC start,
+     * before the worker exists, so even an instant host drain (or the
+     * platform-failed path) cannot start GopDisplay before root mount and
+     * launchd's dyld shared-cache pager window (see gDisplaySafeStart).
+     * tb710fu-gop-settle=<ms> overrides the 10 s default for debugging. */
+    uint32_t settle_ms = 10000u;
+    PE_parse_boot_argn("tb710fu-gop-settle", &settle_ms, sizeof(settle_ms));
+    clock_interval_to_deadline(settle_ms, NSEC_PER_MSEC, &gDisplaySafeStart);
     thread_t worker = THREAD_NULL;
     // Match the bootstrap thread's priority so USB can receive an early
     // scheduling quantum without a wait or hardware access in the BSD hook.

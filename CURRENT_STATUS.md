@@ -1,3 +1,18 @@
+# Current status · 2026-11-28
+
+## 🩹 pl95 间歇性早期 `launchd` 停摆/重启修复（分支 `doubao/fix-reboot-pl95`，仅源码 + 主机验证，未编译/未刷机/未派发 CI）
+
+- **根因回顾**：`COM5 drained ... starting GopDisplay` 在 DTR 排空后立即启动显示，`IOMobileGraphicsFamily`/`IOSurface` 在根卷挂载与 `launchd` dyld 共享缓存分页窗口之前加载（`IOSurfaceRoot=0`）；成功启动样本全部是 10 s fallback 之后（`ASP: AMFI pointer initialized` 之后）才启动显示。另一风险：官方 `native-4k-shared-region-slide.patch` 的 16 KiB→4 KiB 分片 slide 在多线程并发解析同一 16 KiB 页时，`shared_region_pager_peek()` 与 APFS 整块校验 UPL 互相等待对方 busy 的文件页（跨线程死锁）。
+- **修复 1（显示时序）**：`package/Tb710fuUsbCdc/CdcXnu.c` 新增 `gDisplaySafeStart`（`tb710fu_cdc_start()` 在创建 worker 前武装，默认 CDC 启动后 10 s，`tb710fu-gop-settle=<ms>` 可覆盖，见 `docs/BOOT_ARGS.md`）；`cdc_display_thread()` 在调用 `native_tb710fu_gop_display_start()` 前可睡眠地等到该期限（排空/fallback 门与 settle 门两者都满足才启动；platform-failed 路径同样受控）。`package/GopDisplayStart.cpp` `wait_for_surface_root()` 改为最多 6 轮（每轮 5 s 匹配 + 1 s 间歇）干净重试并返回 bool；仍拿不到 `IOSurfaceRoot` 时释放对象并放弃注册，绝不以 `IOSurfaceRoot=0` 继续 `start()`。
+- **修复 2（XNU 补丁）**：新增 `patches/xnu/0052-tb710fu-shared-region-slide-serialize.patch`（已登记 `series`）：每 pager 一个可睡眠 `lck_mtx_t srp_slide_lock`（复用 `shared_region_pager_lck_grp`，create 时 `lck_mtx_init`、deallocate 释放前 `lck_mtx_destroy`），在 `shared_region_pager_data_request()` 中 `src_page`/`top_page` 释放之后、最外层 `shared_region_pager_slide_part()` 调用两侧加锁/解锁，覆盖全部返回路径；`slide_part()` 不会递归进入本 pager（peek 走 backing vnode 对象），无递归加锁。
+- **验证（全部主机侧，`hardware_verified=false`）**：
+  - 0052 补丁基线 = 纯净 pinned XNU `ac9718fb1af618d5ce8678d0dc6e8a58f252216f` + 官方 `native-4k-shared-region-slide.patch`（与既有 `xnu-patch-lf-clean` 预置文件逐字节一致，SHA-256 `3d658d57695f7e59b73b822c4b513cc8b2129f296c84eb2fde056e6ab9d42d6b`）；`git apply --check` + 实际套用往返逐字节一致（结果 SHA-256 `91de8f2ebd36499d3147781c1dc15ffce12a3cba05776305b07cc0adc52a345c`）。设备补丁 0001–0051 均不触及该文件。
+  - WSL Debian（gcc 14.2 / clang 19.1）：修改后的 `cdc_display_thread`/`tb710fu_cdc_start`/`wait_for_surface_root` 逐字提取 + 钉住头文件原型的桩编译 `-Wall -Wextra -Werror -pedantic -Wformat=2 -fsyntax-only` 全过（语法/类型检查，非内核编译）。
+  - `scripts/check_usb_cdc_protocol.py`、`check_usb_cdc_hardware.py`、`check_usb_cdc_transport.py`（gcc，ASan+UBSan）与 `check-gop-display-abi.py`（结构校验）全过。
+- **下一步**：按常规流程派发一次有界 native/prelink 构建，实机确认早排空样本出现 `GopDisplay holding ... ms for the post-root settle window` 且 `IOSurfaceRoot` 非 0、连续重启不再停在 `AMFI pointer initialized` 后 ~33 KB 处。本条目不代表已编译或实机验证。
+
+---
+
 # Current status · 2026-11-27
 
 ## 🖥️🏆 重大里程碑：`pl93-5g-srgb` 实机成功进入 **macOS 27.3 图形桌面**（5 GiB 内存 + Adreno 750 多客户端渲染 + 8-bit `'&BGA'` 送显 583 帧 0 拒帧）；`pl94-5g-srgb-input`（导入 IOSurface 缓存刷新 + 触控/按键开启）已编绿刷机验证 · 2026-11-27

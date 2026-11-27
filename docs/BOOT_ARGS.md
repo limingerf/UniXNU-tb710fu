@@ -52,6 +52,7 @@ tb710fu-touch=3 tb710fu-keys=1
 | Argument | Value | Purpose |
 |---|---|---|
 | `tb710fu-gop=1` | `1` | Starts TB710FU `IOMobileFramebuffer` GOP display adapter (also disables `vc-text=1` console overwrite). |
+| `tb710fu-gop-settle=<ms>` | `10000` | pl95: minimum delay from CDC start before the display thread may call `native_tb710fu_gop_display_start()`, on top of the COM5 drain/fallback gate. Keeps `IOMobileGraphicsFamily`/`IOSurface` load out of the pre-root / early `launchd` dyld shared-cache window. Debug override only; `0` disables the hold. |
 | `offline-legacy-gop=1 offline-legacy-validate=1 offline-legacy-transfer=1 offline-legacy-pm=1 offline-legacy-phase=4 offline-legacy-register=1 offline-legacy-cpu-present=1` | `1 / 4` | Enables the full `NativeLegacyDisplay` lifecycle (GOP mapping, swap validation, CPU scanout copy, power management, registration). |
 | `vsync=120 vsync-fixed=1` | `120 / 1` | Publishes 120 Hz display timing and fixed refresh cadence. |
 | `fb-half=2` | `2` | Encoded half-float LUT mode (fallback if any half-float `'RGhA'` frame is presented). |
