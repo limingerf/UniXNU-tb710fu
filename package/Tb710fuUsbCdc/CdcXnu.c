@@ -1501,17 +1501,33 @@ static void cdc_display_thread(void *argument, wait_result_t wait_result)
            (unsigned long long)gCdc.controller.setup_requests,
            (unsigned long long)gCdc.controller.transmitted);
     /* Sleepable hold on this low-priority thread only: the poll loop keeps
-     * answering EP0 and streaming COM5 while the settle window runs out. */
-    if (gDisplaySafeStart != 0) {
-        const uint64_t now = mach_absolute_time();
-        if (now < gDisplaySafeStart) {
-            uint64_t remaining_ns = 0;
-            absolutetime_to_nanoseconds(gDisplaySafeStart - now, &remaining_ns);
-            cdc_log("TB710FU CDC: GopDisplay holding %llu ms for the post-root settle window\n",
-                   (unsigned long long)(remaining_ns / NSEC_PER_MSEC));
-            (void)assert_wait_deadline((event_t)&gDisplaySafeStart, THREAD_UNINT, gDisplaySafeStart);
-            thread_block(THREAD_CONTINUE_NULL);
-        }
+     * answering EP0 and streaming COM5 while the settle window runs out.
+     *
+     * The window is measured from *now*, not from the absolute gDisplaySafeStart
+     * deadline armed at CDC start. That absolute deadline could already be in
+     * the past -- a host that opens COM5 late, or a boot slow enough to cross
+     * it, made this hold a no-op and started GopDisplay immediately. Hardware
+     * (pl97b, 492-line log) shows what that does: GopDisplay ran right after
+     * "ASP: AMFI pointer initialized" while launchd was still inside
+     * vm_shared_region_start_address(), printed "GopDisplay: registered" and
+     * the boot never advanced again. Every boot that reached userspace had
+     * finished GopDisplay before launchd started.
+     *
+     * So always hold for the full settle interval from queue time. The poll
+     * loop keeps answering EP0/COM5 meanwhile, so a late host open still gets
+     * its log. tb710fu-gop-settle=<ms> overrides the interval. */
+    {
+        uint32_t settle_ms = 10000u;
+        uint64_t until = 0;
+        uint64_t remaining_ns = 0;
+
+        PE_parse_boot_argn("tb710fu-gop-settle", &settle_ms, sizeof(settle_ms));
+        clock_interval_to_deadline(settle_ms, NSEC_PER_MSEC, &until);
+        absolutetime_to_nanoseconds(until - mach_absolute_time(), &remaining_ns);
+        cdc_log("TB710FU CDC: GopDisplay holding %llu ms from queue time (settle=%u)\n",
+                (unsigned long long)(remaining_ns / NSEC_PER_MSEC), (unsigned)settle_ms);
+        (void)assert_wait_deadline((event_t)&gDisplaySafeStart, THREAD_UNINT, until);
+        thread_block(THREAD_CONTINUE_NULL);
     }
     if (!native_tb710fu_gop_display_start) {
         cdc_log("TB710FU CDC: GopDisplay start is not linked\n");
