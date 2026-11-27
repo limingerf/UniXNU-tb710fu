@@ -1503,13 +1503,14 @@ int tb710fu_gpu_core_wait_fence(uint64_t fence, uint64_t timeoutNs, uint32_t *ob
     if (timeoutNs >= 10000000ull) {
         static volatile uint32_t gTimeoutLogged = 0;
         if (__atomic_fetch_add(&gTimeoutLogged, 1u, __ATOMIC_RELAXED) < 4u) {
-            uint32_t rbbm = 0, cpInt = 0, rptr = 0, bvRptr = 0, hwf = 0, int0 = 0, bvVal = 0, cb0Fsr = 0, farLo = 0, farHi = 0;
+            uint32_t rbbm = 0, cpInt = 0, rptr = 0, bvRptr = 0, hwf = 0, int0 = 0, ib1Rem = 0, bvVal = 0, cb0Fsr = 0, farLo = 0, farHi = 0;
             gpuRead(TBGPU_RBBM_STATUS_BYTES, &rbbm);
             gpuRead(0x0803u * 4u, &cpInt);
             gpuRead(TBGPU_CP_RB_RPTR, &rptr);
             gpuRead(0x0a66u * 4u, &bvRptr);
             gpuRead(0x0821u * 4u, &hwf);
             gpuRead(0x0201u * 4u, &int0);
+            gpuRead(0x092au * 4u, &ib1Rem);
             memcpy(&bvVal, gCore.fence.cpu + 12, sizeof(bvVal));
             if (gCore.windows.smmu && gCore.smmu.bankOffset[0]) {
                 const uint32_t cb0 = gCore.smmu.bankOffset[0];
@@ -1517,9 +1518,9 @@ int tb710fu_gpu_core_wait_fence(uint64_t fence, uint64_t timeoutNs, uint32_t *ob
                 tb710fu_gpu_read32(gCore.windows.smmu, cb0 + 0x60u, &farLo);
                 tb710fu_gpu_read32(gCore.windows.smmu, cb0 + 0x64u, &farHi);
             }
-            IOLog("TB710FU GPU: wait_fence timeout want=%llu obs=%u bv=%u rptr=0x%x bv_rptr=0x%x wptr=0x%x rbbm=0x%x int0=0x%x hwf=0x%x cp_int=0x%x cb0fsr=0x%x far=0x%llx\n",
+            IOLog("TB710FU GPU: wait_fence timeout want=%llu obs=%u bv=%u rptr=0x%x bv_rptr=0x%x wptr=0x%x ib1rem=0x%x rbbm=0x%x int0=0x%x hwf=0x%x cp_int=0x%x cb0fsr=0x%x far=0x%llx\n",
                   (unsigned long long)fence, lastValue, bvVal, rptr, bvRptr, gCore.ringWptr,
-                  rbbm, int0, hwf, cpInt, cb0Fsr, ((unsigned long long)farHi << 32) | farLo);
+                  ib1Rem, rbbm, int0, hwf, cpInt, cb0Fsr, ((unsigned long long)farHi << 32) | farLo);
         }
     }
     return -1;
@@ -1541,14 +1542,14 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
         IOLockLock(gCoreLock);
     }
 
-    /* A7xx framed submission (matching Linux a6xx_gpu.c a7xx_submit()):
-     * prologue = 6 dwords, count * 4 IB dwords, framed fence = 31 dwords. */
+    /* A7xx framed submission:
+     * prologue = 4 dwords (BOTH + SET_MARKER), count * 4 IB dwords, framed fence = 31 dwords. */
     const uint32_t ringDwords = gCore.ring.bytes / 4;
     const uint32_t margin = 0x400;
     uint32_t at = gCore.ringWptr & (ringDwords - 1);
     const uint32_t rptr = ringRptr() & (ringDwords - 1);
     const uint32_t used = (gCore.ringWptr + ringDwords - rptr) & (ringDwords - 1);
-    const uint32_t prologueDwords = 6u;
+    const uint32_t prologueDwords = 4u;
     const uint32_t framedFenceDwords = 31u;
     uint32_t needed = prologueDwords + count * 4u + framedFenceDwords;
     uint32_t pad = 0;
@@ -1570,13 +1571,11 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
     }
 
     RingWriter writer = {reinterpret_cast<uint32_t *>(gCore.ring.cpu), ringDwords, at};
-    /* A7xx prologue (6 dwords): SYNC|BR, BOTH threads, SET_MARKER(0x101 IFPC off).
-     * Omit CACHE_FLUSH7/CACHE_INVALIDATE7 (0x32/0x33) which stalled BR at rptr=0x13 on A750. */
-    const uint32_t brSync = (1u << 31) | 1u;
+    /* A7xx prologue (4 dwords): BOTH threads (clears CONCURRENT_BIN_DISABLE without
+     * deadlocking BR on SYNC_THREADS), SET_MARKER(0x101 IFPC off). */
     const uint32_t both = 3u;
     const uint32_t markerOn = 0x101u;
-    if (emit7(&writer, 0x17, &brSync, 1) != 0 ||
-        emit7(&writer, 0x17, &both, 1) != 0 ||
+    if (emit7(&writer, 0x17, &both, 1) != 0 ||
         emit7(&writer, 0x65, &markerOn, 1) != 0) {
         if (gCoreLock) {
             IOLockUnlock(gCoreLock);
