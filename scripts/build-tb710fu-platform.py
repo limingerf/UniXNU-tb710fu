@@ -217,7 +217,7 @@ def main():
 
     for source in CPP_SOURCES:
         output = OUT / (source.stem + '.o')
-        command = adapter.compile_command(cpp_record, source, output, includes, [])
+        command = adapter.compile_command(cpp_record, source, output, includes, ['-Wno-unused-variable'])
         command = ['--target=' + TARGET if value.startswith('--target=') else value for value in command]
         commands[source.name] = command
         result = subprocess.run(command, cwd=cpp_record['directory'], text=True,
