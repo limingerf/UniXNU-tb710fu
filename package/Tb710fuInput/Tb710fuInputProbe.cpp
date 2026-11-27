@@ -39,6 +39,7 @@
 #include <libkern/c++/OSBoolean.h>
 #include <libkern/c++/OSMetaClass.h>
 #include <libkern/c++/OSSymbol.h>
+#include <mach/kmod.h>
 #include <pexpert/pexpert.h>
 #include <string.h>
 
@@ -201,6 +202,11 @@ bool is_kernel_pointer(const void *pointer)
 
 IOReturn hid_new_report_descriptor(const void *self, IOMemoryDescriptor **out);
 
+/* Defined further down with the rest of the family plumbing; the runtime
+ * metaclass needs both before then. */
+const OSMetaClass *find_meta_class(const char *name);
+bool ensure_hid_family(void);
+
 bool adopt_vtable(::IOService *device, uint64_t *table, bool touch)
 {
     /* The live object's vptr is signed with the C++ vtable key; strip it before
@@ -293,23 +299,111 @@ IOReturn hid_new_report_descriptor(const void *self, IOMemoryDescriptor **out)
 
 /* ---- HID device construction ---- */
 
+/* 26C5035r facts, read out of .local/prelink-kernel.macho and asserted by
+ * scripts/build-tb710fu-input.py: IOHIDDevice is abstract (its metaclass
+ * reports instanceSize 0xd0 but alloc() is absent), so allocClassWithName()
+ * returns NULL. The same problem Tb710fuEthernet.cpp solved for
+ * IOEthernetController applies here: register a runtime OSMetaClass derived
+ * from the *live* IOHIDDevice metaclass, then run the family's real C2 with
+ * that metaclass so the object's vptr is the family's own table. */
+constexpr uintptr_t kIohidDeviceMetaClassVA = 0xfffffff00cc24958ULL; /* __ZN11IOHIDDevice10gMetaClassE */
+constexpr uintptr_t kIohidDeviceC2VA = 0xfffffff00ab353f0ULL;        /* __ZN11IOHIDDeviceC2EPK11OSMetaClass */
+constexpr unsigned kIohidDeviceInstanceBytes = TB710FU_HID_INSTANCE_BYTES; /* 0xd0 */
+
+/* The probe's storage is exactly the family instance: IOHIDDevice's
+ * instanceSize is 0xd0 on 26C5035r and its state lives inside it. */
+struct Tb710fuHidObj {
+    uint8_t familyStorage[kIohidDeviceInstanceBytes];
+};
+
+static_assert(sizeof(Tb710fuHidObj) == kIohidDeviceInstanceBytes,
+              "HID storage must match the 26C5035r IOHIDDevice instance size");
+
+class Tb710fuHidMetaClass final : public OSMetaClass {
+public:
+    static void *operator new(size_t, void *p) noexcept { return p; }
+    Tb710fuHidMetaClass(const char *name, const OSMetaClass *superClass, unsigned int size)
+        : OSMetaClass(name, superClass, size) {}
+    /* Allocation stays with the probe so the object is zeroed and the vtable
+     * is adopted before any family code runs. */
+    OSObject *alloc() const override { return nullptr; }
+};
+
+alignas(Tb710fuHidMetaClass) unsigned char gHidMetaStorage[sizeof(Tb710fuHidMetaClass)];
+const OSMetaClass *gHidMetaClass = nullptr;
+
+extern kmod_info_t g_kernel_kmod_info;
+
+uintptr_t kernel_slide()
+{
+    const uintptr_t metaAddr = (uintptr_t)find_meta_class("IOHIDDevice");
+
+    return metaAddr ? (metaAddr - kIohidDeviceMetaClassVA) : 0;
+}
+
+/* Register the runtime subclass exactly once; both the touch and the key
+ * device share it. Returns NULL when the family is absent or the slide is not
+ * page aligned, which means the pinned profile no longer matches. */
+const OSMetaClass *ensure_hid_metaclass()
+{
+    if (gHidMetaClass) return gHidMetaClass;
+
+    const OSMetaClass *super = find_meta_class("IOHIDDevice");
+    if (!super) {
+        TB710FU_LOG("hid: IOHIDDevice metaclass absent\n");
+        return nullptr;
+    }
+    if (super->getClassSize() != kIohidDeviceInstanceBytes) {
+        TB710FU_LOG("hid: IOHIDDevice extent 0x%x, expected 0x%x\n",
+                    (unsigned)super->getClassSize(), (unsigned)kIohidDeviceInstanceBytes);
+        return nullptr;
+    }
+    if ((kernel_slide() & 0x3fffull) != 0) {
+        TB710FU_LOG("hid: unaligned kernel slide, refusing the runtime metaclass\n");
+        return nullptr;
+    }
+    void *modHandle = OSMetaClass::preModLoad(g_kernel_kmod_info.name);
+    Tb710fuHidMetaClass *meta = new (gHidMetaStorage) Tb710fuHidMetaClass(
+        "Tb710fuHidDevice", super, (unsigned int)sizeof(Tb710fuHidObj));
+    const OSReturn status = OSMetaClass::postModLoad(modHandle);
+    gHidMetaClass = meta;
+    /* Logged, not gated: the object is still constructed against `meta`, and
+     * the class-size check above already proved the family matches. */
+    TB710FU_LOG("hid: runtime metaclass=%p super=%p size=0x%x postModLoad=%x\n",
+                (const void *)meta, (const void *)super,
+                (unsigned)sizeof(Tb710fuHidObj), (unsigned)status);
+    return meta;
+}
+
 ::IOService *create_hid_device(const char *product, unsigned usage_page, unsigned usage,
                                unsigned vendor, unsigned product_id, uint64_t *table, bool touch)
 {
-    ::IOService *device = (::IOService *)OSMetaClass::allocClassWithName("IOHIDDevice");
     const OSMetaClass *meta;
+    ::IOService *device;
 
-    if (!device) {
-        TB710FU_LOG("hid: IOHIDDevice allocation failed (%s)\n", product);
+    if (!ensure_hid_family()) return nullptr;
+    meta = ensure_hid_metaclass();
+    if (!meta) return nullptr;
+
+    /* The family constructor, not OSObject::operator new + init(): C2 installs
+     * the IOHIDDevice vptr and the metaclass back-pointer the family's own
+     * methods authenticate against. */
+    Tb710fuHidObj *object = (Tb710fuHidObj *)OSObject::operator new(sizeof(Tb710fuHidObj));
+    if (!object) {
+        TB710FU_LOG("hid: allocation failed (%s)\n", product);
         return nullptr;
     }
-    meta = device->getMetaClass();
-    if (!meta || meta->getClassSize() != TB710FU_HID_INSTANCE_BYTES) {
-        TB710FU_LOG("hid: IOHIDDevice extent is not 0x%x (%s)\n", TB710FU_HID_INSTANCE_BYTES,
-                    product);
-        device->release();
-        return nullptr;
+    memset(object, 0, sizeof(Tb710fuHidObj));
+
+    {
+        const uintptr_t c2Addr = kIohidDeviceC2VA + kernel_slide();
+        typedef void (*C2Fn)(void *, const OSMetaClass *);
+        C2Fn c2 = reinterpret_cast<C2Fn>(ptrauth_sign_unauthenticated(
+            (void *)c2Addr, ptrauth_key_function_pointer, 0));
+
+        c2(object, meta);
     }
+    device = reinterpret_cast<::IOService *>(object);
     if (!adopt_vtable(device, table, touch)) {
         device->release();
         return nullptr;
@@ -319,6 +413,7 @@ IOReturn hid_new_report_descriptor(const void *self, IOMemoryDescriptor **out)
         device->release();
         return nullptr;
     }
+
     /* Property keys are the literal HID property names; the family's own
      * constants live in headers this fileset does not export. */
     device->setProperty("Product", product);
