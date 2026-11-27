@@ -1486,13 +1486,16 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
         return -1;
     }
 
-    /* Space: keep one 4 KiB "rptr may catch up" margin, measured in dwords. */
+    /* A7xx framed submission (matching NativeAdrenoRing.cpp / a7xx_submit()):
+     * prologue = 11 dwords, count * 4 IB dwords, framed fence = 31 dwords. */
     const uint32_t ringDwords = gCore.ring.bytes / 4;
     const uint32_t margin = 0x400;
     uint32_t at = gCore.ringWptr & (ringDwords - 1);
     const uint32_t rptr = ringRptr() & (ringDwords - 1);
     const uint32_t used = (gCore.ringWptr + ringDwords - rptr) & (ringDwords - 1);
-    uint32_t needed = count * 4 + 7;
+    const uint32_t prologueDwords = 11u;
+    const uint32_t framedFenceDwords = 31u;
+    uint32_t needed = prologueDwords + count * 4u + framedFenceDwords;
     uint32_t pad = 0;
     if (at + needed > ringDwords) {
         pad = ringDwords - at;   /* CP_NOP fill to the end, then wrap to 0 */
@@ -1509,6 +1512,21 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
     }
 
     RingWriter writer = {reinterpret_cast<uint32_t *>(gCore.ring.cpu), ringDwords, at};
+    /* A7xx prologue (11 dwords): SYNC|BR, CACHE_FLUSH7, CACHE_INVALIDATE7,
+     * WAIT_FOR_IDLE, BOTH threads, SET_MARKER(0x101 IFPC off). */
+    const uint32_t brSync = (1u << 31) | 1u;
+    const uint32_t flush7 = 0x32u;
+    const uint32_t inv7 = 0x33u;
+    const uint32_t both = 3u;
+    const uint32_t markerOn = 0x101u;
+    if (emit7(&writer, 0x17, &brSync, 1) != 0 ||
+        emit7(&writer, 0x46, &flush7, 1) != 0 ||
+        emit7(&writer, 0x46, &inv7, 1) != 0 ||
+        emit7(&writer, 0x26, nullptr, 0) != 0 ||
+        emit7(&writer, 0x17, &both, 1) != 0 ||
+        emit7(&writer, 0x65, &markerOn, 1) != 0) {
+        return -1;
+    }
     for (uint32_t i = 0; i < count; ++i) {
         if (bytes[i] == 0 || (iovas[i] & 3ull) || bytes[i] > 0xffffffffull) {
             return -1;
@@ -1521,7 +1539,31 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
         }
     }
     const uint32_t seq = gCore.ringSeq + 1;
-    if (emitFence(&writer, seq) != 0) {
+    /* A7xx framed fence (31 dwords): CP_SCRATCH(2), BR CCU depth/color inv,
+     * BV timestamp @ +12, BR wait on BV timestamp, BR fence @ +4, BOTH,
+     * SET_MARKER(0x100 IFPC on). */
+    const uint32_t scratch[1] = {seq};
+    const uint32_t br = 1u, bv = 2u, ccuDepth = 0x18u, ccuColor = 0x19u, markerOff = 0x100u;
+    const uint64_t bvAt = TBGPU_FENCE_IOVA + 12u;
+    const uint64_t fenceAt = TBGPU_FENCE_IOVA + 4u;
+    const uint32_t bvWrite[4] = {0x31u | (1u << 27), static_cast<uint32_t>(bvAt),
+                                 static_cast<uint32_t>(bvAt >> 32), seq};
+    const uint32_t bvWait[4] = {0u, static_cast<uint32_t>(bvAt),
+                                static_cast<uint32_t>(bvAt >> 32), seq};
+    const uint32_t fenceWrite[4] = {0x31u | (1u << 27) | (1u << 31),
+                                    static_cast<uint32_t>(fenceAt),
+                                    static_cast<uint32_t>(fenceAt >> 32), seq};
+    if (emit4(&writer, TBGPU_CP_SCRATCH(2) / 4u, scratch, 1) != 0 ||
+        emit7(&writer, 0x17, &br, 1) != 0 ||
+        emit7(&writer, 0x46, &ccuDepth, 1) != 0 ||
+        emit7(&writer, 0x46, &ccuColor, 1) != 0 ||
+        emit7(&writer, 0x17, &bv, 1) != 0 ||
+        emit7(&writer, 0x46, bvWrite, 4) != 0 ||
+        emit7(&writer, 0x17, &br, 1) != 0 ||
+        emit7(&writer, 0x14, bvWait, 4) != 0 ||
+        emit7(&writer, 0x46, fenceWrite, 4) != 0 ||
+        emit7(&writer, 0x17, &both, 1) != 0 ||
+        emit7(&writer, 0x65, &markerOff, 1) != 0) {
         return -1;
     }
     if (writer.dwords != at + needed) {
@@ -1560,9 +1602,9 @@ void tb710fu_gpu_core_device_info(Tb710fuGpuCoreDeviceInfo *info)
     info->ucheTrapBase = 0;
     info->vaStart = TBGPU_CLIENT_VA_START;
     info->vaSize = TBGPU_CLIENT_VA_SIZE;
-    info->highestBankBit = 0;
-    info->ubwcSwizzle = 0;
-    info->macrotileMode = 0;
+    info->highestBankBit = 16;
+    info->ubwcSwizzle = 6;
+    info->macrotileMode = 1;
     info->ubwcVersion = 4;
     info->flags = gCore.ringReady ? 1u : 0u;   /* bits: ringReady */
 }

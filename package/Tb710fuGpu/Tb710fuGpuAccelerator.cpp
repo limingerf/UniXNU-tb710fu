@@ -68,7 +68,7 @@ Tb710fuGpuAccelerator::Tb710fuGpuAccelerator(const OSMetaClass *meta) : IOAccele
 Tb710fuGpuAccelerator::~Tb710fuGpuAccelerator() {}
 const OSMetaClass *Tb710fuGpuAccelerator::getMetaClass() const { return &gMetaClass; }
 Tb710fuGpuAccelerator::MetaClass::MetaClass()
-    : OSMetaClass("Tb710fuGpuAccelerator", gBase ? gBase : &IOService::gMetaClass, sizeof(Tb710fuGpuAccelerator)) {}
+    : OSMetaClass("AGXAccelerator", gBase ? gBase : &IOService::gMetaClass, sizeof(Tb710fuGpuAccelerator)) {}
 OSDefineBasicStructors(Tb710fuGpuAccelerator, IOAccelerator)
 OSDefineOperatorMethods(Tb710fuGpuAccelerator)
 
@@ -281,7 +281,7 @@ extern "C" void tb710fu_gpu_start(void)
         accelerator->setProperty("Tb710fuGpuChipId", chipid);
         chipid->release();
     }
-    accelerator->setName("Tb710fuGpuAccelerator");
+    accelerator->setName("AGXAccelerator");
     IOService *platform = IOService::getPlatform();
     if (!platform) {
         accelerator->release();

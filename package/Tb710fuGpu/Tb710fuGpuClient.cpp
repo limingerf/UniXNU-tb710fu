@@ -60,6 +60,7 @@ public:
         uint8_t mapped;
         uint8_t imported;
         uint8_t prepared;
+        uint8_t readOnly;
     };
     struct Meta {
         uint64_t handle;
@@ -284,6 +285,9 @@ IOReturn AGXDeviceUserClient::cpuMap(const NativeAdrenoAbiBoCpuMap &request, uin
     if (slot < 0) {
         return kIOReturnBadArgument;
     }
+    if (fBo[slot].imported) {
+        return kIOReturnUnsupported;
+    }
     NativeAdrenoAbiBoCpuMapReply reply = {};
     reply.token = (uint32_t)(slot + 1);
     reply.bytes = fBo[slot].bytes;
@@ -378,8 +382,12 @@ IOReturn AGXDeviceUserClient::mapBo(const NativeAdrenoAbiBoMap &request, uint8_t
     if (fBo[slot].mapped) {
         return kIOReturnBusy;
     }
+    uint32_t permissions = request.permissions;
+    if (fBo[slot].readOnly) {
+        permissions &= ~2u;
+    }
     IOReturn result = (IOReturn)tb710fu_gpu_core_map_bo(fBo[slot].memory, request.iova,
-                                                        fBo[slot].bytes, request.permissions,
+                                                        fBo[slot].bytes, permissions,
                                                         request.writeback, request.shareability);
     if (result != kIOReturnSuccess) {
         return result;
@@ -402,25 +410,41 @@ IOReturn AGXDeviceUserClient::importBo(const NativeAdrenoAbiBoImport &request, u
     if (slot < 0) {
         return kIOReturnNoResources;
     }
-    IOOptionBits options = static_cast<IOOptionBits>(kIODirectionInOut) |
-                           static_cast<IOOptionBits>(kIOMemoryPersistent);
-    IOOptionBits direction = static_cast<IOOptionBits>(kIODirectionInOut);
+    const IOOptionBits base = static_cast<IOOptionBits>(kIODirectionInOut) |
+                              static_cast<IOOptionBits>(kIOMemoryMapperNone);
+    const IOOptionBits inoutPersistent =
+        base | static_cast<IOOptionBits>(kIOMemoryPersistent);
+    const IOOptionBits outBase = static_cast<IOOptionBits>(kIODirectionOut) |
+                                 static_cast<IOOptionBits>(kIOMemoryMapperNone);
+    const IOOptionBits outPersistent =
+        outBase | static_cast<IOOptionBits>(kIOMemoryPersistent);
     IOMemoryDescriptor *memory = IOMemoryDescriptor::withAddressRange(
-        request.address, request.bytes, options, fTask);
+        request.address, request.bytes, inoutPersistent, fTask);
     if (!memory) {
-        direction = static_cast<IOOptionBits>(kIODirectionInOut);
-        memory = IOMemoryDescriptor::withAddressRange(request.address, request.bytes, direction, fTask);
-    }
-    if (!memory) {
-        /* A read-only surface cannot satisfy InOut; retry with the matching direction. */
-        direction = static_cast<IOOptionBits>(kIODirectionOut);
-        memory = IOMemoryDescriptor::withAddressRange(request.address, request.bytes,
-                                                      direction, fTask);
+        memory = IOMemoryDescriptor::withAddressRange(request.address, request.bytes, base, fTask);
     }
     if (!memory) {
         return kIOReturnNoMemory;
     }
-    if (memory->prepare(direction) != kIOReturnSuccess) {
+    bool readOnly = false;
+    IOReturn status = memory->prepare(static_cast<IODirection>(kIODirectionInOut));
+    if (status != kIOReturnSuccess) {
+        memory->release();
+        memory = IOMemoryDescriptor::withAddressRange(request.address, request.bytes,
+                                                      outPersistent, fTask);
+        if (!memory) {
+            memory = IOMemoryDescriptor::withAddressRange(request.address, request.bytes,
+                                                          outBase, fTask);
+        }
+        if (!memory) {
+            return kIOReturnNoMemory;
+        }
+        status = memory->prepare(static_cast<IODirection>(kIODirectionOut));
+        if (status == kIOReturnSuccess) {
+            readOnly = true;
+        }
+    }
+    if (status != kIOReturnSuccess) {
         memory->release();
         return kIOReturnNoResources;
     }
@@ -432,6 +456,7 @@ IOReturn AGXDeviceUserClient::importBo(const NativeAdrenoAbiBoImport &request, u
     fBo[slot].used = 1;
     fBo[slot].imported = 1;
     fBo[slot].prepared = 1;
+    fBo[slot].readOnly = readOnly ? 1 : 0;
     NativeAdrenoAbiBoAllocReply reply = {};
     reply.handle = handle;
     copyOut(out, sizeof(reply), &reply, sizeof(reply));
@@ -511,9 +536,12 @@ IOReturn AGXDeviceUserClient::deviceInfo(uint8_t *out)
     reply.ubwc_swizzle = info.ubwcSwizzle;
     reply.macrotile_mode = info.macrotileMode;
     reply.ubwc_version = info.ubwcVersion;
-    reply.flags = NativeAdrenoDeviceClientIova;
-    if (tb710fu_gpu_core_ring_ready()) {
-        reply.flags |= NativeAdrenoDeviceCachedCoherent;
+    reply.flags = static_cast<uint32_t>(NativeAdrenoDeviceClientIova);
+    static volatile uint32_t gInfoLogged = 0;
+    if (__atomic_exchange_n(&gInfoLogged, 1u, __ATOMIC_ACQ_REL) == 0) {
+        IOLog("TB710FU GPU: client GetDeviceInfo chip=0x%x gmem=%u hbb=%u va=[0x%llx,+0x%llx)\n",
+              reply.chip_id, reply.gmem_bytes, reply.highest_bank_bit,
+              (unsigned long long)reply.va_start, (unsigned long long)reply.va_size);
     }
     copyOut(out, sizeof(reply), &reply, sizeof(reply));
     return kIOReturnSuccess;
@@ -558,8 +586,23 @@ IOReturn AGXDeviceUserClient::externalMethod(uint32_t selector, IOExternalMethod
             payload = 8;
         }
     }
-    return run(method, input ? input + payload : nullptr, inputSize - payload,
-               output, outputSize);
+    IOReturn ret = run(method, input ? input + payload : nullptr, inputSize - payload,
+                       output, outputSize);
+    if (ret != kIOReturnSuccess) {
+        static volatile uint32_t gErrLogs = 0;
+        uint32_t n = __atomic_fetch_add(&gErrLogs, 1u, __ATOMIC_RELAXED);
+        if (n < 16u) {
+            IOLog("TB710FU GPU: client method=%u err=0x%x in=%u out=%u\n",
+                  method, (unsigned)ret, inputSize - payload, outputSize);
+        }
+    } else if (method == NativeAdrenoMethodSubmit) {
+        static volatile uint32_t gSubLogs = 0;
+        uint32_t n = __atomic_fetch_add(&gSubLogs, 1u, __ATOMIC_RELAXED);
+        if (n < 5u) {
+            IOLog("TB710FU GPU: client Submit #%u ok\n", n + 1u);
+        }
+    }
+    return ret;
 }
 
 IOReturn AGXDeviceUserClient::run(uint32_t method, const uint8_t *in, uint32_t inSize,
