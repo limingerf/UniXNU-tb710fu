@@ -439,3 +439,38 @@ SystemUIServer，也就是停在登录窗口，而不是完整图形桌面。**
 pl49 的 `ps` 能列出 117 个进程、`launchd` `thr=9 fp=11564736`，
 说明那一次 `dyld` 成功建立了共享缓存（否则 launchd 起不来，
 更不可能 fork 出 117 个进程）。这一点没变。
+
+## 第 16 轮：unnest 日志的真实含义（源码级）
+
+`launchd[1] triggered unnest of range ... DYLD shared region` 来自
+`bsd/vm/vm_unix.c:856` 的 `log_unnest_badness()`，它的触发条件是：
+
+- `shared_region_unnest_logging != 0`（默认 1）
+- 且**不是**「嵌套 map 且在 lowest_unnestable_addr 之上的可写条目」
+- 且受 1 秒节流（`vm_shared_region_unnest_log_interval`）
+
+关键：它是 **map 操作发生时**才被调用（`vm_shared_region.c` 的 map 路径里
+调用，注释在 L1918 亦提到 `sr_mapping_in_progress` 保护），**不是映射完成后的
+通知**。
+
+### 因果链（现在有代码依据）
+
+```
+dyld 调 shared_region_map_and_slide_2_np
+  -> vm_shared_region_map_file_setup 建好映射
+     -> 期间触发 log_unnest_badness（因为 launchd 的 map 与既有子映射重叠）
+        -> 打印 "launchd[1] triggered unnest of range ..."
+  -> 返回后 dyld 打印 "dyld cache mapped system-wide: mapped"
+```
+
+失败时 `sr_first_mapping` 始终是 -1，map 从未成功，所以：
+- 没有 unnest（map 根本没进行到那一步）
+- 没有 `dyld cache mapped`
+
+这与第 3 轮的观察一致，但此前只是相关性，现在有调用链支撑。
+
+### 仍不知道的
+
+`shared_region_map_and_slide_2_np` 是**没被调用**还是**调用后失败**——
+这正是补丁 0052 要回答的。在拿到 `TB710FU SRMAP[...]` 那一行之前，
+不要再基于 unnest 反推。
