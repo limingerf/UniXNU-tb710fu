@@ -40,7 +40,7 @@ namespace {
 const uint32_t kTunnelMagic = 0x4e544e4c;  /* 'NTNL' */
 const uint32_t kProbeMethod = 0xffffffffu;
 const uint64_t kMaxBoBytes = 128ull * 1024 * 1024;
-const unsigned kMaxBo = 4096;
+const unsigned kMaxBo = 32768;
 const unsigned kMaxMetadata = 64;
 const unsigned kMaxQueues = 32;
 }

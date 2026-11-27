@@ -312,7 +312,34 @@ extern "C" uint64_t native_legacy_surface_height(OSObject *surface)
 
 extern "C" uint64_t native_legacy_surface_stride(OSObject *surface)
 {
-    return surfaceField(surface, TB710FU_GOP_SURFACE_STRIDE, TB710FU_GOP_SURFACE_STRIDE_WIDTH);
+    uint64_t stride = surfaceField(surface, TB710FU_GOP_SURFACE_STRIDE, TB710FU_GOP_SURFACE_STRIDE_WIDTH);
+    uint32_t planeCount = (uint32_t)surfaceField(surface, TB710FU_GOP_SURFACE_PLANES, TB710FU_GOP_SURFACE_PLANES_WIDTH);
+    if (surface && planeCount >= 1) {
+        /* 26C5035r IOSurface::getBytesPerRowOfPlane (0xfffffff00aee2da4):
+         * for one-plane lossless-compressed BGRA ('&BGA', planes=1), +0x68
+         * holds the pixel width (3200) while the real plane-0 bytesPerRow
+         * (12800) lives in the plane table at +0x180 (count at +0x188),
+         * entry +0x20 (baseOffset at +0x28). */
+        uintptr_t planes = surfaceField(surface, 0x180u, 8u);
+        uint32_t allocCount = (uint32_t)surfaceField(surface, 0x188u, 4u);
+        if (planes && (planes >> 48) == 0xffffull && allocCount >= 1) {
+            uint64_t planeStride = 0;
+            uint64_t planeOffset = 0;
+            memcpy(&planeStride, (const unsigned char *)planes + 0x20u, sizeof(planeStride));
+            memcpy(&planeOffset, (const unsigned char *)planes + 0x28u, sizeof(planeOffset));
+            static bool logged = false;
+            if (!logged) {
+                logged = true;
+                printf("TB710FU GopDisplay: planar stride raw=%llu plane0_stride=%llu plane0_offset=%llu\n",
+                       (unsigned long long)stride, (unsigned long long)planeStride,
+                       (unsigned long long)planeOffset);
+            }
+            if (planeStride > stride) {
+                stride = planeStride;
+            }
+        }
+    }
+    return stride;
 }
 
 extern "C" uint64_t native_legacy_surface_allocation(OSObject *surface)
