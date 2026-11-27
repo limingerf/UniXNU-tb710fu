@@ -86,6 +86,8 @@ extern "C" int tb710fu_backlight_probe(unsigned *dev_id, unsigned *dev_ctl,
                                        unsigned *read_level);
 extern "C" int tb710fu_backlight_start(void);
 extern "C" int tb710fu_thermal_start(void);
+extern "C" vm_offset_t ml_io_map(vm_offset_t phys_addr, vm_size_t size);
+extern "C" int tb710fu_platform_power_action(int action);
 
 namespace {
 
