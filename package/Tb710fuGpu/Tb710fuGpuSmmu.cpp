@@ -168,7 +168,7 @@ int tb710fu_gpu_smmu_init(Tb710fuGpuSmmu *smmu, Tb710fuGpuWindow *window, uint32
     smmu->banks = smmu->id1 & 0xffu;
     smmu->pages = 1u << (((smmu->id1 >> 28) & 7u) + 1u);
     smmu->stride = (smmu->id1 & (1u << 31)) ? 0x10000u : 0x1000u;
-    if (smmu->banks < 2 || smmu->pages > 4 || smmu->banks > smmu->pages) {
+    if (smmu->banks < 2 || smmu->pages > 128 || smmu->banks > smmu->pages) {
         return -1;
     }
     if (2u * smmu->pages * smmu->stride > window->bytes) {
