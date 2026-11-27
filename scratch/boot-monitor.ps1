@@ -173,8 +173,13 @@ while ((Get-Date) -lt $deadline -and $boots -lt $MaxBoots) {
             if (-not (Port-Present $Port)) { break }
             Send-Verb $sp 'ps' 2200 $raw
             if ($raw.ToString() -match 'WindowServer') { $desktop = $true; Log "  ps: WindowServer PRESENT"; break }
-            if ($raw.ToString() -match 'TB710FU SHELL: ps unavailable' -or $raw.ToString() -match '^.*\bps\b.*pid.*') { }
-            if ($raw.ToString() -match 'uid\s+pid' -or $raw.ToString() -match 'PID\s+COMMAND') { $psAnswered = $true }
+            # The kernel dump format is: "TB710FU PS: pid=1 ppid=0 name=launchd thr=9 fp=11564736"
+            # (package/BootWatchdogPolicy.c). The old check for "uid pid" could
+            # never match, so psAnswered stayed false and every stalled boot was
+            # misclassified as STUCK instead of BSD.
+            if ($raw.ToString() -match 'TB710FU PS: pid=') { $psAnswered = $true }
+            $mEnd = [regex]::Match($raw.ToString(), 'TB710FU PS: end count=(\d+)')
+            if ($mEnd.Success) { Log "  ps: $($mEnd.Groups[1].Value) processes" }
             Send-Verb $sp 'disp' 1600 $raw
             $m = [regex]::Match($raw.ToString(), 'transfers=(\d+)')
             if ($m.Success -and [int]$m.Groups[1].Value -gt 0) {
@@ -186,7 +191,16 @@ while ((Get-Date) -lt $deadline -and $boots -lt $MaxBoots) {
         }
 
         $rawText = $raw.ToString()
-        if (-not $psAnswered -and $rawText -match '\bps\b') { $psAnswered = $true }
+        if ($rawText -match 'TB710FU PS: pid=') { $psAnswered = $true }
+        # Record launchd's footprint: the pl49 boot that reached WindowServer had
+        # launchd thr=9 fp=11564736. A much smaller fp in a stalled boot means
+        # launchd never finished its own initialisation.
+        $mLaunchd = [regex]::Match($rawText, 'name=launchd\s+thr=(-?\d+)\s+fp=(\d+)')
+        if ($mLaunchd.Success) {
+            Log "  launchd: thr=$($mLaunchd.Groups[1].Value) fp=$($mLaunchd.Groups[2].Value)"
+        } elseif ($psAnswered) {
+            Log "  launchd: NOT IN PROCESS TABLE"
+        }
         if ($desktop) { $verdict = 'DESKTOP' }
         elseif ($psAnswered) { $verdict = 'BSD' }
         elseif ($rawText.Length -eq 0) { $verdict = 'NOSHELL' }
