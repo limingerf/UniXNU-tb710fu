@@ -195,3 +195,47 @@ c2e2654 pl54:  dump WindowServer SIGABRT
 
 `scratch/classify-boot.ps1` 用 `unnest of range` + `dyld cache mapped` 判定每次启动
 是否真正进入用户空间（已在 20 份历史捕获上验证：5 份成功全 >0，4 份失败全为 0）。
+
+## 第 4 轮：补丁集不是变量，boot-args 是
+
+用两份**权威构建记录**对比（不是推断）：
+
+- `out/artifacts/tb710fu-prelink-45623265343/xnu-patches.list`（pl49，成功）
+  176 个补丁
+- `out/artifacts/tb710fu-pl55-45839746246/xnu-patches.list`（pl55）
+  177 个补丁
+
+`Compare-Object` 结果：**只差 `0051-tb710fu-windowserver-abort-diag.patch`**
+（一个只在 WindowServer 非零退出时打印的诊断补丁，无行为影响）。
+
+结论：**pl49 与 pl55 的 XNU 补丁集实质相同**，4K slide 链
+（`native-4k-shared-region-slide`、`native-4k-block-split`、
+`native-4k-signature-hash-cache`、`cshash-native4k-{parallel,lazy}`）两侧都在。
+所以"4K slide 补丁漂移"不成立。
+
+真正的差异在 **boot-args**。pl49 成功时比当前少 12 个参数：
+
+```
+ml-timeout-sched-preemption=0
+sched_preemption_disable_debug_mode=0
+adsp=2  battery=1  usb-sdp-ma=2000
+gpu-metal=1  gpu-power=9  gpu-addon=1  fb-half=2
+text-fixup0=dyld_shared_cache_arm64e.03,5de1134,08060037,1f2003d5
+tb710fu-keys=1
+```
+
+其中前两个名字直指**调度抢占**：
+
+- `ml-timeout-sched-preemption=0`
+- `sched_preemption_disable_debug_mode=0`
+
+而 launchd 卡在 dyld 的分页等待，正是抢占被禁用的典型受害场景。
+`git log -S` 显示这两个参数只出现在文档提交，是手工加的调优项，不是构建产物。
+
+## 下一步实验（单变量，明确）
+
+刷一版**去掉这两个抢占参数**的镜像（其余照旧），看 `unnest` 是否出现。
+这是目前唯一有强证据支持、且可一次证伪的假设。
+
+若去掉后仍卡住，再把 `gpu-*` 与 `text-fixup0` 一并去掉（回到 pl49 参数集），
+二分定位。
