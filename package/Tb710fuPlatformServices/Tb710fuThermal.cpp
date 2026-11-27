@@ -262,7 +262,7 @@ void Tb710fuThermal::publishReadings()
 
 bool Tb710fuThermal::start(IOService *provider)
 {
-    if (!super::start(provider)) {
+    if (!IOService::start(provider)) {
         return false;
     }
     if (!sample()) {

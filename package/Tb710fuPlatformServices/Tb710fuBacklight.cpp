@@ -763,7 +763,7 @@ void Tb710fuBacklight::publishFirst()
 
 bool Tb710fuBacklight::start(IOService *provider)
 {
-    if (!super::start(provider)) {
+    if (!IOService::start(provider)) {
         return false;
     }
     if (!gEngine.open(kEngineBase, kEngineSize)) {
@@ -828,7 +828,7 @@ void Tb710fuBacklight::stop(IOService *provider)
     /* The window and the service stay: the display server holds a reference to
      * the registered service, and a released object would leave it dangling
      * (the sheng board's rule). */
-    super::stop(provider);
+    IOService::stop(provider);
 }
 
 IOReturn Tb710fuBacklight::setProperties(OSObject *properties)

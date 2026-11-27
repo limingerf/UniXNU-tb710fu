@@ -36,14 +36,14 @@ OSDefineMetaClassAndStructors(Tb710fuAudioUserClient, IOUserClient)
 bool Tb710fuAudioUserClient::initWithTask(task_t owningTask, void *securityID, UInt32 type,
                                           OSDictionary *properties)
 {
-    if (!super::initWithTask(owningTask, securityID, type, properties)) return false;
+    if (!IOUserClient::initWithTask(owningTask, securityID, type, properties)) return false;
     owner = owningTask;
     return true;
 }
 
 bool Tb710fuAudioUserClient::start(IOService *provider)
 {
-    if (!super::start(provider)) return false;
+    if (!IOUserClient::start(provider)) return false;
     device = OSDynamicCast(Tb710fuAudioDevice, provider);
     return device != nullptr;
 }
@@ -51,7 +51,7 @@ bool Tb710fuAudioUserClient::start(IOService *provider)
 void Tb710fuAudioUserClient::stop(IOService *provider)
 {
     device = nullptr;
-    super::stop(provider);
+    IOUserClient::stop(provider);
 }
 
 IOReturn Tb710fuAudioUserClient::clientClose()
@@ -256,7 +256,7 @@ int Tb710fuAudioDevice::commitPlayback(uint32_t chunk)
     if (tb710fu_graph_write(&graph, offset, TB710FU_AUDIO_CHUNK_BYTES, nowUs())) {
         rc = -1;
     } else {
-        sharedHeader->produced++;
+        sharedHeader->produced = sharedHeader->produced + 1u;
         native_tb710fu_audio_stats[13] = (int32_t)graph.write_done;
     }
     IOLockUnlock(stateLock);
