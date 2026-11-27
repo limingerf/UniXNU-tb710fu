@@ -40,6 +40,7 @@
 #include <kern/clock.h>
 #include <mach/mach_time.h>
 #include <mach/vm_param.h>
+#include <pexpert/device_tree.h>
 #include <pexpert/pexpert.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -364,22 +365,24 @@ bool Tb710fuAudioDevice::bringUpGraph()
 bool Tb710fuAudioDevice::mapBuffer()
 {
     const uint32_t bytes = TB710FU_AUDIO_SHARED_HEADER + TB710FU_AUDIO_SHARED_BYTES;
-    shared = IOBufferMemoryDescriptor::withOptions(kIODirectionOutIn | kIOMemoryPhysicallyContiguous,
-                                                  (vm_size_t)bytes, (vm_size_t)PAGE_SIZE);
-    if (!shared) {
+    IOBufferMemoryDescriptor *buf = IOBufferMemoryDescriptor::withOptions(
+        static_cast<IOOptionBits>(kIODirectionOutIn) | static_cast<IOOptionBits>(kIOMemoryPhysicallyContiguous),
+        (vm_size_t)bytes, (vm_size_t)PAGE_SIZE);
+    shared = buf;
+    if (!buf) {
         tb710fu_audio_note("buffer: no contiguous %u bytes\n", bytes);
         lastError = Tb710fuAudioErrorBuffer;
         return false;
     }
     IOPhysicalAddress physical = 0;
-    if (shared->getPhysicalSegment(0, &physical, 0) != (IOByteCount)bytes) {
+    if (buf->getPhysicalSegment(0, &physical, 0) != (IOByteCount)bytes) {
         tb710fu_audio_note("buffer: the region is not contiguous\n");
         lastError = Tb710fuAudioErrorBuffer;
         return false;
     }
     sharedBytes = bytes;
     sharedPhysical = (uint64_t)physical;
-    sharedHeader = (Tb710fuAudioSharedHeader *)shared->getBytesNoCopy();
+    sharedHeader = (Tb710fuAudioSharedHeader *)buf->getBytesNoCopy();
     memset(sharedHeader, 0, sizeof *sharedHeader);
     char *data = (char *)sharedHeader + TB710FU_AUDIO_SHARED_HEADER;
     memset(data, 0, TB710FU_AUDIO_SHARED_BYTES);
@@ -578,7 +581,7 @@ bool Tb710fuAudioDevice::setup()
     {
         // Is IOAudioFamily in this kernel? A name lookup, not a symbol: this archive stays free of
         // the family's link symbols either way, and a HAL plugin can read the answer from status.
-        OSSymbol *name = OSSymbol::withCString("IOAudioDevice");
+        const OSSymbol *name = OSSymbol::withCString("IOAudioDevice");
         if (name) {
             ioAudioFamily = OSMetaClass::getMetaClassWithName(name) != nullptr;
             name->release();
