@@ -1,3 +1,13 @@
+﻿# SUPERSEDED by scratch/boot-monitor.ps1 (2026-11-28).
+#
+# Kept only as evidence. Two defects make it unsafe to trust:
+#   1. It prints "ps: answered" whenever ANY non-empty reply arrives, even
+#      "TB710FU SHELL: ps unavailable". That produced a false conclusion that
+#      the process table is readable during a stall.
+#   2. It never saves the raw serial bytes, so every claim it makes is
+#      unverifiable after the fact.
+# Use boot-monitor.ps1 (saves -raw/genNN-*.log) or capture-stall-procs.ps1
+# (saves ps/disp/help replies to separate files) instead.
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
@@ -203,3 +213,4 @@ if ($sawDesktop) {
     Log "VERDICT: SILENT (never got a usable shell)"
 }
 Write-Host "`nlog: $Out"
+
