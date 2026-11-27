@@ -239,3 +239,37 @@ tb710fu-keys=1
 
 若去掉后仍卡住，再把 `gpu-*` 与 `text-fixup0` 一并去掉（回到 pl49 参数集），
 二分定位。
+
+## 第 4 轮补充：调度参数假设也已被证伪
+
+`ml-timeout-sched-preemption=0` / `sched_preemption_disable_debug_mode=0`
+**不是**判别因素：
+
+| 镜像 | 带这两个参数 | 结果 |
+|---|---|---|
+| pl49 | 否 | 成功（WindowServer 跑起来，117 进程） |
+| pl93 | **是** | 成功（583 帧 0 拒帧） |
+| pl94 / pl95 / pl97b / pl96-rollback | 是 | 卡住 |
+
+数据卷参数同样无差异：所有镜像都是 `no-reset`、
+`sheng-data-persist=2`、`data-persist=2`。
+
+## 第 4 轮净结果（诚实记录）
+
+已系统排除：**补丁集、调度参数、数据卷参数、text-fixup0、errno 12、
+pid1 init exit、内存、GPU**。
+
+剩下的唯一判别信号是运行时的：成功的启动里 `launchd` 建起了共享缓存
+（`dyld cache mapped` + `unnest`），失败的没有。静态条件全部重叠，
+因此**必须靠运行时观测**，也就是补丁 0052 的 `TB710FU SRMAP` 打印。
+
+结论：在拿到那条打印之前，继续做静态推断只会重复本轮的错误
+（提出一个看似有力的假设，随后被历史数据证伪）。
+
+## 待办（设备恢复后立即执行）
+
+1. 刷 `pl100-srmap`（含 0052），抓第一次启动日志
+2. 看是否有 `TB710FU SRMAP[1]: enter`：
+   - 有 → 看 `exit kr=0x..`，直接定位失败码
+   - 无 → dyld 根本没走到 syscall 536，问题在更早的缓存解析
+3. 用 `scratch/classify-boot.ps1` 判定是否进用户空间
