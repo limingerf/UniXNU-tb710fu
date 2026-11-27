@@ -49,4 +49,3 @@
 0049-tb710fu-panic-cdc-persist.patch
 0050-tb710fu-watchdogd-critical-exit.patch
 0051-tb710fu-windowserver-abort-diag.patch
-0052-tb710fu-shared-region-slide-serialize.patch
