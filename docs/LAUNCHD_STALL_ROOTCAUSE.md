@@ -273,3 +273,37 @@ pid1 init exit、内存、GPU**。
    - 有 → 看 `exit kr=0x..`，直接定位失败码
    - 无 → dyld 根本没走到 syscall 536，问题在更早的缓存解析
 3. 用 `scratch/classify-boot.ps1` 判定是否进用户空间
+
+## 第 5 轮：日志层面已无判别因素，停止静态推断
+
+本轮做的对比（全部基于**从开机捕获的完整日志**，含 `pmap_startup`）：
+
+| 日志 | AMFI 行号 | 首个 unnest 行号 | GopDisplay 是否跑完 |
+|---|---|---|---|
+| pl86b（成功） | 529 | **530** | —（启动早期无该段） |
+| pl93（成功） | 470 | 529（中间 59 行是 GopDisplay） | 是 |
+| pl94（失败） | 532 | **无** | **是**（kext load=0 → registered） |
+| pl97b（失败） | 426 | **无** | **是**（kext load=0 → registered） |
+
+假设「GopDisplay 的 kext 加载为 dyld 铺路」被证伪：失败案例里 GopDisplay
+同样完整跑完（`kext load=0` → `waiting for IOResources` → `registered`）。
+
+同时确认：失败日志**没有被截断**（以完整换行结尾），492 行就是全部内容。
+
+**结论：在日志层面，成功与失败的所有可比条件都已重叠。**
+继续做静态推断只会重复「提假设 → 被历史数据推翻」的循环。本轮已连错三次
+（调度参数、数据卷、GopDisplay 铺路）。
+
+唯一能改变信息状态的动作是拿到补丁 0052 的运行时打印。已独立复核
+`out/pl100/kernel.macho` 确实含两条 `TB710FU SRMAP[%d]: ...` 格式串。
+
+## 新增：恢复镜像 pl102-minimal
+
+`out/tb710fu-pl16-46058104010-pl102-minimal-signed.zip`
+
+内核与 pl100 相同（0052 打印仍在），但 boot-args **去掉全部可选子系统**
+（无 gpu-*、无 adsp/battery、无 text-fixup0、无 tb710fu-keys）。
+用途：区分「设备停在 UEFI 菜单」与「内核在 USB init 前就挂死」。
+
+- 刷入后若 COM5 出现 → 说明问题出在某个可选子系统，且 SRMAP 打印可读
+- 若仍无任何枚举 → 需要人工看屏幕，软件已无法推进
