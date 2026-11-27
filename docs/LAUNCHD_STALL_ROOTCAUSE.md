@@ -361,3 +361,45 @@ GopDisplay 在两边都完整跑完（各约 51-52 行），**不是差异点**�
 然后跑这个脚本，就能看到 launchd 到底还有几个线程、footprint 多少、
 有没有子进程被创建。这直接区分「launchd 完全卡死」与
 「launchd 活着但某个子进程失败」。
+
+## 第 9 轮：推翻第 7 轮的「进程表可读」结论
+
+第 7 轮我写道「卡住时 `ps` 能应答，进程表可读」。**这个结论不成立。**
+
+`scratch/watch-com5.ps1` 产生那句日志的代码是：
+
+```powershell
+if ($ps -match 'WindowServer') { ... }
+elseif ($ps.Length -gt 0) { Log "  ps: answered, no WindowServer" }
+```
+
+**只要收到任何非空回复就打印 `ps: answered`**，哪怕内容是
+`TB710FU SHELL: ps unavailable`。而该脚本**不保存 raw**（那次运行
+`no raw dir`），原始内容已永久丢失。
+
+### 反证：六份真实 `ps` 输出全部来自正常运行的桌面系统
+
+| 日志 | launchd thr | launchd fp | WindowServer | loginwindow | ps count |
+|---|---|---|---|---|---|
+| com5_20261125-184300 | 7 | 13,449,024 | YES | YES | 136 |
+| com5_pl49_ps | 7 | 11,638,336 | YES | YES | 119 |
+| com5_pl49_ps2 | 8 | 11,728,512 | YES | YES | 118 |
+| com5_pl49_ps3 | 9 | 11,564,736 | YES | YES | 117 |
+| com5_tc1_ps | 4 | 7,799,616 | YES | YES | 1（截断） |
+| com5_tc1_ps2 | 9 | 10,794,752 | YES | YES | 124 |
+
+**六份全都有 WindowServer 和 loginwindow。**
+
+也就是说：能成功执行 `ps` 的历史时刻，系统都是正常运行进了桌面的。
+**我从未捕获过一次「卡住状态下的 ps 输出」。**
+
+### 因此仍然未知
+
+卡住时 `launchd` 到底是：
+- 完全卡死（不占 CPU）
+- 活着但阻塞在某个等待（占 CPU 或睡眠）
+- 已退出但没触发 INITEXIT（不太可能，0046 会打印）
+
+要回答这个，必须在下一次卡住时**真实采集 `ps` 并保存原始字节**。
+`boot-monitor.ps1` 已修好判据（第 8 轮，`54abad9`）并会保存 `-raw/genNN-*.log`，
+`capture-stall-procs.ps1` 会分文件保存 `ps`/`disp`/`help` 的完整回复。
