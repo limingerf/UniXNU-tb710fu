@@ -9,7 +9,6 @@
 #include <stdint.h>
 
 #include <IOKit/IOMemoryDescriptor.h>
-#include <IOKit/IOMemoryMap.h>
 
 struct Tb710fuWifiPcie {
     IOMemoryMap *gccMap, *tlmmMap, *tcsrMap, *parfMap, *dbiMap, *atuMap, *cfgMap, *phyMap, *barMap;
