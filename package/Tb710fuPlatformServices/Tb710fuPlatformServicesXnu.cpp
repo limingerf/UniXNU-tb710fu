@@ -417,6 +417,8 @@ extern "C" int peHaltRestart(unsigned int type)
     }
 }
 
+}  // namespace
+
 #if TB710FU_HAS_IORTC
 class Tb710fuRtcController : public IORTCController {
     OSDeclareDefaultStructors(Tb710fuRtcController)
@@ -622,8 +624,6 @@ int serve()
 #endif
     return 0;
 }
-
-}  // namespace
 
 /* The exported power entry: 0 off, 1 restart, 2 recovery, 3 bootloader, 4 EDL.
  * Anything else is refused before a register is touched. */
