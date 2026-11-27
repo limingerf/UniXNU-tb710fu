@@ -50,23 +50,24 @@ RM gmem <passes> <Mpx> | sys auto <passes> <Mpx> other <passes> <Mpx> | exact <n
 
 **前提未解决：目前没有已知的 env 注入通路。**
 
-已核实的事实：
+已核实的事实（逐条查过，不是推测）：
 
-- `package_pl16_data.py` 只写 `unixnu.toml` 的 boot-args，**不支持环境变量**
-- 全仓库 `docs/` 与 `CURRENT_STATUS.md` 中**没有任何** `WindowServer` 环境变量
-  注入的记录（`grep 'EnvironmentVariables|setenv|WindowServer.*env'` 零命中）
-- `package/BootWatchdogPolicy.c` 已有完整的「写 launchd plist」机制
-  （`mkdir` → `open` → 分块 `copyout`+`write` → `fchown`，L117-159），
-  但它写的是 `/private/var/db/com.apple.xpc.launchd/disabled.plist`，
-  那是「禁用哪些 job」的清单，**不是** job 的环境变量定义
+| 候选路径 | 核查结果 |
+|---|---|
+| `package_pl16_data.py` | 只写 `unixnu.toml` 的 boot-args，无环境变量能力 |
+| `docs/` + `CURRENT_STATUS.md` | `grep 'EnvironmentVariables\|setenv\|WindowServer.*env'` **零命中** |
+| `scripts/` + `tools/` | `grep 'LaunchDaemons\|LaunchAgents\|\.plist'` **零命中**，构建链从不处理 plist |
+| `BootWatchdogPolicy.c` | 有完整 plist 写入例程（L117-159：mkdir→open→分块 copyout+write→fchown），但目标是 `disabled.plist`（禁用 job 清单），**不是** job 环境 |
+| `GPUBundles`（`Tb710fuGpu.h:85`、`Tb710fuGpuPower.cpp:57`） | 是 **NGPUADD2 addon 容器内路径**，不是写到 Data 卷 |
+| `GPUBundles stage 5, status 0`（启动日志里那行） | 来自上游 `owner Data` 的 firmlink 机制（`zzy-native-gpu-addon-mount.patch`），不在本仓库 |
 
-所以真正要做的第一件事是**找到 `WindowServer` 的 job 定义位置**并确认能否
-往里加 `EnvironmentVariables`：
+所以真正要做的第一件事是**建立一个能写 job 环境的通路**，三条候选：
 
-- 候选一：`/System/Library/LaunchDaemons/com.apple.WindowServer.plist`
-  （只读系统卷，需要在 payload 里用 overlay 或 shim 覆盖）
-- 候选二：`/Library/LaunchDaemons/` 下的同名覆盖（Data 卷可写）
-- 候选三：`launchctl setenv`（需要登录会话，bring-up 阶段可能不可用）
+- 候选一：`/Library/LaunchDaemons/com.apple.WindowServer.plist` 覆盖
+  （Data 卷可写，但需要 launchd 在 WindowServer 之前读到它）
+- 候选二：`launchctl setenv`（需登录会话，bring-up 阶段可能不可用）
+- 候选三：在 `Tb710fuUsbCdc` 的 CDC 动词里加一个「写文件」能力，
+  由主机在启动后注入——但 WindowServer 那时早已启动，时序不对
 
 在这三条里任一条被实机证实可用之前，**不要花构建额度去试环境变量**。
 
