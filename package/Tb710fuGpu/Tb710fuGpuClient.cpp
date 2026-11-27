@@ -500,6 +500,27 @@ IOReturn AGXDeviceUserClient::submit(const NativeAdrenoAbiSubmit &request, uint8
         iovas[i] = buffer.iova;
         bytes[i] = buffer.bytes;
     }
+    /* Clean CPU dcache on mapped owned BOs (Normal Cacheable user mappings ->
+     * non-coherent A750 SMMU) so IBs, shaders, and descriptors are visible to GPU. */
+    for (unsigned s = 0; s < kMaxBo; ++s) {
+        if (!fBo[s].used || !fBo[s].mapped || fBo[s].imported || !fBo[s].memory) {
+            continue;
+        }
+        IOBufferMemoryDescriptor *buf = OSDynamicCast(IOBufferMemoryDescriptor, fBo[s].memory);
+        if (!buf) {
+            continue;
+        }
+        const uint8_t *base = static_cast<const uint8_t *>(buf->getBytesNoCopy());
+        const uint64_t len = fBo[s].bytes;
+        if (base && len) {
+            const uintptr_t start = reinterpret_cast<uintptr_t>(base) & ~63ull;
+            const uintptr_t end = (reinterpret_cast<uintptr_t>(base) + len + 63ull) & ~63ull;
+            for (uintptr_t a = start; a < end; a += 64) {
+                __asm__ volatile("dc cvac, %0" :: "r"(a) : "memory");
+            }
+        }
+    }
+    __asm__ volatile("dsb sy" ::: "memory");
     uint64_t fence = 0;
     if (tb710fu_gpu_core_submit(iovas, bytes, request.buffer_count, request.wait_fence,
                                 request.wait_timeout_ns, &fence) != 0) {
@@ -774,7 +795,7 @@ IOReturn AGXDeviceUserClient::clientMemoryForType(UInt32 type, IOOptionBits *opt
         *memory = nullptr;
     }
     if (options) {
-        *options = kIOMapAnywhere | kIOMapWriteCombineCache;
+        *options = kIOMapAnywhere;
     }
     if (!memory || type == 0 || type > kMaxBo || !fLock) {
         return kIOReturnUnsupported;
