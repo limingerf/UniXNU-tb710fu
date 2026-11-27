@@ -40,8 +40,8 @@ namespace {
 const uint32_t kTunnelMagic = 0x4e544e4c;  /* 'NTNL' */
 const uint32_t kProbeMethod = 0xffffffffu;
 const uint64_t kMaxBoBytes = 128ull * 1024 * 1024;
-const unsigned kMaxBo = 256;
-const unsigned kMaxMetadata = 32;
+const unsigned kMaxBo = 4096;
+const unsigned kMaxMetadata = 64;
 const unsigned kMaxQueues = 32;
 }
 
@@ -101,7 +101,7 @@ private:
 
     IOLock *fLock = nullptr;
     task_t fTask = nullptr;
-    Bo fBo[kMaxBo] = {};
+    Bo *fBo = nullptr;
     Meta fMetadata[kMaxMetadata] = {};
     uint64_t fQueue[kMaxQueues] = {};
     uint64_t fSequence = 0;
@@ -203,12 +203,22 @@ bool AGXDeviceUserClient::initWithTask(task_t owningTask, void *securityID, UInt
     fTask = owningTask;
     (void)type;
     fLock = IOLockAlloc();
-    return fLock != nullptr;
+    if (!fLock) {
+        return false;
+    }
+    fBo = static_cast<Bo *>(IOMallocData(sizeof(Bo) * kMaxBo));
+    if (!fBo) {
+        IOLockFree(fLock);
+        fLock = nullptr;
+        return false;
+    }
+    memset(fBo, 0, sizeof(Bo) * kMaxBo);
+    return true;
 }
 
 void AGXDeviceUserClient::releaseBo(int slot)
 {
-    if (slot < 0 || slot >= (int)kMaxBo) {
+    if (!fBo || slot < 0 || slot >= (int)kMaxBo) {
         return;
     }
     if (fBo[slot].mapped && fBo[slot].iova) {
@@ -247,6 +257,10 @@ IOReturn AGXDeviceUserClient::clientClose(void)
 void AGXDeviceUserClient::free(void)
 {
     releaseAll();
+    if (fBo) {
+        IOFreeData(fBo, sizeof(Bo) * kMaxBo);
+        fBo = nullptr;
+    }
     if (fLock) {
         IOLockFree(fLock);
         fLock = nullptr;
@@ -256,19 +270,24 @@ void AGXDeviceUserClient::free(void)
 
 int AGXDeviceUserClient::slotFor(uint64_t handle) const
 {
-    if (!handle) {
+    if (!fBo || !handle) {
         return -1;
     }
-    for (unsigned i = 0; i < kMaxBo; ++i) {
-        if (fBo[i].used && fBo[i].handle == handle) {
-            return (int)i;
-        }
+    const uint32_t idx = static_cast<uint32_t>(handle & 0xffffu);
+    if (idx == 0 || idx > kMaxBo) {
+        return -1;
+    }
+    if (fBo[idx - 1].used && fBo[idx - 1].handle == handle) {
+        return static_cast<int>(idx - 1);
     }
     return -1;
 }
 
 int AGXDeviceUserClient::freeSlot(void) const
 {
+    if (!fBo) {
+        return -1;
+    }
     for (unsigned i = 0; i < kMaxBo; ++i) {
         if (!fBo[i].used) {
             return (int)i;
@@ -311,7 +330,7 @@ IOReturn AGXDeviceUserClient::allocBo(const NativeAdrenoAbiBoAlloc &request, uin
         }
         __asm__ volatile("dsb sy" ::: "memory");
     }
-    uint64_t handle = ((fSequence + 1) << 12) | (uint64_t)(slot + 1);
+    uint64_t handle = ((fSequence + 1) << 16) | (uint64_t)(slot + 1);
     fSequence = fSequence + 1;
     fBo[slot].memory = memory;
     fBo[slot].handle = handle;
@@ -510,7 +529,7 @@ IOReturn AGXDeviceUserClient::importBo(const NativeAdrenoAbiBoImport &request, u
         memory->release();
         return kIOReturnNoResources;
     }
-    uint64_t handle = ((fSequence + 1) << 12) | (uint64_t)(slot + 1);
+    uint64_t handle = ((fSequence + 1) << 16) | (uint64_t)(slot + 1);
     fSequence = fSequence + 1;
     fBo[slot].memory = memory;
     fBo[slot].handle = handle;
@@ -678,7 +697,7 @@ IOReturn AGXDeviceUserClient::externalMethod(uint32_t selector, IOExternalMethod
     }
     IOReturn ret = run(method, input ? input + payload : nullptr, inputSize - payload,
                        output, outputSize);
-    if (ret != kIOReturnSuccess) {
+    if (ret != kIOReturnSuccess && !(method == NativeAdrenoMethodWaitFence && ret == kIOReturnTimeout)) {
         static volatile uint32_t gErrLogs = 0;
         uint32_t n = __atomic_fetch_add(&gErrLogs, 1u, __ATOMIC_RELAXED);
         if (n < 16u) {
@@ -818,8 +837,8 @@ IOReturn AGXDeviceUserClient::run(uint32_t method, const uint8_t *in, uint32_t i
     case NativeAdrenoMethodWaitFence: {
         NativeAdrenoAbiWaitFence request = {};
         memcpy(&request, in, sizeof(request));
-        result = waitFence(request);
-        break;
+        IOLockUnlock(fLock);
+        return waitFence(request);
     }
     case NativeAdrenoMethodBoMap: {
         NativeAdrenoAbiBoMap request = {};
@@ -862,7 +881,7 @@ IOReturn AGXDeviceUserClient::clientMemoryForType(UInt32 type, IOOptionBits *opt
     if (options) {
         *options = kIOMapAnywhere;
     }
-    if (!memory || type == 0 || type > kMaxBo || !fLock) {
+    if (!memory || type == 0 || type > kMaxBo || !fLock || !fBo) {
         return kIOReturnUnsupported;
     }
     const unsigned slot = type - 1;
