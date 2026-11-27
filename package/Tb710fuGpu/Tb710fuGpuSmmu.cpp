@@ -16,7 +16,7 @@ const uint32_t kSctlrEnable = 0x1067;    // M | A | C | ASIDPNE (ArmSmmu4K kit)
 const uint32_t kCbar = 0x1f300;          // stage-1 translation, stage-2 bypass
 const uint32_t kCba2r = 1;
 const uint32_t kMair0 = 0xff44;
-const uint32_t kS2crFault = 2u << 16;
+__attribute__((unused)) const uint32_t kS2crFault = 2u << 16;
 
 void cleanRange(const void *base, uint32_t bytes)
 {
