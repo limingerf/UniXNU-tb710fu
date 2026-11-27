@@ -35,7 +35,7 @@
 #include <IOKit/IORegistryEntry.h>
 #include <IOKit/IOService.h>
 #include <kern/thread.h>
-#include <libkern/OSKext.h>
+#include <libkern/OSKextLib.h>
 #include <libkern/c++/OSBoolean.h>
 #include <libkern/c++/OSMetaClass.h>
 #include <libkern/c++/OSSymbol.h>
