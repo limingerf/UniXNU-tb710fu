@@ -66,6 +66,11 @@ extern "C" {
 
 #define TB710FU_LOG(fmt, ...) IOLog("TB710FU input: " fmt, ##__VA_ARGS__)
 
+/* Must have external linkage: it is the kernel's own kmod_info, resolved at
+ * link time against the fileset. Declaring it inside the anonymous namespace
+ * below gives it internal linkage and fails -Wundefined-internal. */
+extern kmod_info_t g_kernel_kmod_info;
+
 namespace {
 
 /* ---- mapping ---- */
@@ -331,8 +336,6 @@ public:
 
 alignas(Tb710fuHidMetaClass) unsigned char gHidMetaStorage[sizeof(Tb710fuHidMetaClass)];
 const OSMetaClass *gHidMetaClass = nullptr;
-
-extern kmod_info_t g_kernel_kmod_info;
 
 uintptr_t kernel_slide()
 {
