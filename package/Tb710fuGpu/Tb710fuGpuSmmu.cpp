@@ -345,7 +345,14 @@ int tb710fu_gpu_smmu_attach(Tb710fuGpuSmmu *smmu, uint32_t bank, const uint32_t 
                 break;
             }
             if (!live || (s2cr & (3u << 16)) != 0) {
-                if (chosen == smrCount) {
+                bool reserved = false;
+                for (uint32_t j = 0; j < i; ++j) {
+                    if (slots[j] == slot) {
+                        reserved = true;
+                        break;
+                    }
+                }
+                if (!reserved && chosen == smrCount) {
                     chosen = slot;   // free or FAULT: reusable
                 }
             }

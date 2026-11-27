@@ -1122,16 +1122,28 @@ struct RingWriter {
     uint32_t dwords;
 };
 
+uint32_t pm4OddParity(uint32_t val)
+{
+    val ^= val >> 16;
+    val ^= val >> 8;
+    val ^= val >> 4;
+    return (0x9669u >> (val & 0xfu)) & 1u;
+}
+
 uint32_t type7Header(uint32_t opcode, uint32_t count)
 {
-    return 0x70000000u | (count & 0x3fffu) | (((count & 1u) ? 1u : 0u) << 15) |
-           ((opcode & 0x7fu) << 16) | (((opcode & 1u) ? 1u : 0u) << 23);
+    const uint32_t c = count & 0x3fffu;
+    const uint32_t op = opcode & 0x7fu;
+    return 0x70000000u | c | (pm4OddParity(c) << 15) |
+           (op << 16) | (pm4OddParity(op) << 23);
 }
 
 uint32_t type4Header(uint32_t reg, uint32_t count)
 {
-    return 0x40000000u | (count & 0x3fffu) | (((count & 1u) ? 1u : 0u) << 7) |
-           ((reg & 0x3ffffu) << 8) | (((reg & 1u) ? 1u : 0u) << 27);
+    const uint32_t c = count & 0x7fu;
+    const uint32_t r = reg & 0x3ffffu;
+    return 0x40000000u | c | (pm4OddParity(c) << 7) |
+           (r << 8) | (pm4OddParity(r) << 27);
 }
 
 /* Appends one TYPE7 packet; pads with CP_NOP if the packet would straddle the
