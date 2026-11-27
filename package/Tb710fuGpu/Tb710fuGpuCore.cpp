@@ -1489,13 +1489,12 @@ int tb710fu_gpu_core_wait_fence(uint64_t fence, uint64_t timeoutNs, uint32_t *ob
         static volatile uint32_t gTimeoutLogged = 0;
         if (__atomic_fetch_add(&gTimeoutLogged, 1u, __ATOMIC_RELAXED) < 4u) {
             uint32_t rbbm = 0, cpInt = 0, cb0Fsr = 0, farLo = 0, farHi = 0;
-            gpuRead(TBGPU_RBBM_STATUS, &rbbm);
-            gpuRead(TBGPU_CP_INTERRUPT_STATUS, &cpInt);
+            gpuRead(TBGPU_RBBM_STATUS_BYTES, &rbbm);
+            gpuRead(0x0803u * 4u, &cpInt);
             if (gCore.windows.smmu) {
-                const uintptr_t cb0 = gCore.windows.smmu + 0x10000u;
-                tb710fu_gpu_read32(cb0 + 0x58u, &cb0Fsr);
-                tb710fu_gpu_read32(cb0 + 0x60u, &farLo);
-                tb710fu_gpu_read32(cb0 + 0x64u, &farHi);
+                tb710fu_gpu_read32(gCore.windows.smmu, 0x10058u, &cb0Fsr);
+                tb710fu_gpu_read32(gCore.windows.smmu, 0x10060u, &farLo);
+                tb710fu_gpu_read32(gCore.windows.smmu, 0x10064u, &farHi);
             }
             IOLog("TB710FU GPU: wait_fence timeout want=%llu obs=%u rbbm=0x%x cp_int=0x%x cb0fsr=0x%x far=0x%llx\n",
                   (unsigned long long)fence, lastValue, rbbm, cpInt, cb0Fsr,
