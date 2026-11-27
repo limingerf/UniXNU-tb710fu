@@ -105,7 +105,12 @@ private:
     Meta fMetadata[kMaxMetadata] = {};
     uint64_t fQueue[kMaxQueues] = {};
     uint64_t fSequence = 0;
+    uint64_t fVaStart = 0;
+    uint64_t fVaSize = 0;
+    int32_t fVaSlot = -1;
     uint32_t fNotesPrinted = 0;
+    bool ensureVaSlice(void);
+    void releaseVaSlice(void);
 };
 OSDefineMetaClassAndStructors(AGXDeviceUserClient, IOUserClient)
 
@@ -148,6 +153,42 @@ void copyOut(uint8_t *out, uint32_t outSize, const void *reply, uint32_t bytes)
         memcpy(out, reply, bytes);
     }
 }
+
+volatile uint32_t gClientVaBitmap = 0;
+const int32_t kMaxVaSlots = 25; /* slot 0: [0x10000000,+512M), slots 1..24: [0x30000000,+128M each) -> 0xF0000000 */
+}
+
+bool AGXDeviceUserClient::ensureVaSlice(void)
+{
+    if (fVaSlot >= 0) {
+        return true;
+    }
+    for (int32_t s = 0; s < kMaxVaSlots; ++s) {
+        const uint32_t bit = 1u << static_cast<uint32_t>(s);
+        if ((__atomic_fetch_or(&gClientVaBitmap, bit, __ATOMIC_ACQ_REL) & bit) == 0) {
+            fVaSlot = s;
+            if (s == 0) {
+                fVaStart = 0x10000000ull;
+                fVaSize = 0x20000000ull;
+            } else {
+                fVaStart = 0x30000000ull + static_cast<uint64_t>(s - 1) * 0x08000000ull;
+                fVaSize = 0x08000000ull;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+void AGXDeviceUserClient::releaseVaSlice(void)
+{
+    if (fVaSlot >= 0) {
+        const uint32_t bit = 1u << static_cast<uint32_t>(fVaSlot);
+        __atomic_fetch_and(&gClientVaBitmap, ~bit, __ATOMIC_ACQ_REL);
+        fVaSlot = -1;
+        fVaStart = 0;
+        fVaSize = 0;
+    }
 }
 
 bool AGXDeviceUserClient::initWithTask(task_t owningTask, void *securityID, UInt32 type,
@@ -184,6 +225,7 @@ void AGXDeviceUserClient::releaseAll(void)
     for (unsigned i = 0; i < kMaxBo; ++i) {
         releaseBo((int)i);
     }
+    releaseVaSlice();
 }
 
 IOReturn AGXDeviceUserClient::clientClose(void)
@@ -392,6 +434,13 @@ IOReturn AGXDeviceUserClient::mapBo(const NativeAdrenoAbiBoMap &request, uint8_t
     if (fBo[slot].mapped) {
         return kIOReturnBusy;
     }
+    if (!ensureVaSlice()) {
+        return kIOReturnNoResources;
+    }
+    if (request.iova < fVaStart || request.iova + fBo[slot].bytes > fVaStart + fVaSize ||
+        request.iova + fBo[slot].bytes < request.iova) {
+        return kIOReturnBadArgument;
+    }
     uint32_t permissions = request.permissions;
     if (fBo[slot].readOnly) {
         permissions &= ~2u;
@@ -565,17 +614,20 @@ IOReturn AGXDeviceUserClient::deviceInfo(uint8_t *out)
     reply.gmem_bytes = info.gmemBytes;
     reply.gmem_base = info.gmemBase;
     reply.uche_trap_base = info.ucheTrapBase;
-    reply.va_start = info.vaStart;
-    reply.va_size = info.vaSize;
+    if (!ensureVaSlice()) {
+        return kIOReturnNoResources;
+    }
+    reply.va_start = fVaStart;
+    reply.va_size = fVaSize;
     reply.highest_bank_bit = info.highestBankBit;
     reply.ubwc_swizzle = info.ubwcSwizzle;
     reply.macrotile_mode = info.macrotileMode;
     reply.ubwc_version = info.ubwcVersion;
     reply.flags = static_cast<uint32_t>(NativeAdrenoDeviceClientIova);
     static volatile uint32_t gInfoLogged = 0;
-    if (__atomic_exchange_n(&gInfoLogged, 1u, __ATOMIC_ACQ_REL) == 0) {
-        IOLog("TB710FU GPU: client GetDeviceInfo chip=0x%x gmem=%u hbb=%u va=[0x%llx,+0x%llx)\n",
-              reply.chip_id, reply.gmem_bytes, reply.highest_bank_bit,
+    if (__atomic_fetch_add(&gInfoLogged, 1u, __ATOMIC_RELAXED) < 4u) {
+        IOLog("TB710FU GPU: client[%d] GetDeviceInfo chip=0x%x gmem=%u hbb=%u va=[0x%llx,+0x%llx)\n",
+              fVaSlot, reply.chip_id, reply.gmem_bytes, reply.highest_bank_bit,
               (unsigned long long)reply.va_start, (unsigned long long)reply.va_size);
     }
     copyOut(out, sizeof(reply), &reply, sizeof(reply));

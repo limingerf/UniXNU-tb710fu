@@ -39,7 +39,7 @@ namespace {
 /* ---- small helpers ---------------------------------------------------- */
 
 const uint32_t kPageBytes = 4096;
-const uint32_t kSmmuPoolBytes = 2u * 1024u * 1024u;
+const uint32_t kSmmuPoolBytes = 4u * 1024u * 1024u;
 IOLock *gCoreLock = nullptr;
 bool gZapReady = false;
 uint64_t gLastContextId = 0;
@@ -1641,7 +1641,7 @@ int tb710fu_gpu_core_map_bo(IOMemoryDescriptor *memory, uint64_t iova, uint64_t 
         flags |= Tb710fuGpuMapWriteback;
     }
     flags |= (shareability & 3u) << Tb710fuGpuMapShareShift;
-    if (iova < TBGPU_CLIENT_VA_START || iova + bytes > TBGPU_CLIENT_VA_START + TBGPU_CLIENT_VA_SIZE) {
+    if (iova < TBGPU_CLIENT_VA_START || iova + bytes > 0xF0000000ull || iova + bytes < iova) {
         return -1;
     }
     if (gCoreLock) {

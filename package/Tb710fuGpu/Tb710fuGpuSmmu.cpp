@@ -133,7 +133,7 @@ int mapPage(Tb710fuGpuSmmu *smmu, uint32_t bank, uint64_t iova, uint64_t pa, uin
     }
     const uint32_t share = (flags & Tb710fuGpuMapShareMask) >> Tb710fuGpuMapShareShift;
     uint64_t leaf = pa | kAfNgn | 3u;
-    if (bank == 0 && iova >= 0x10000000ull && iova < 0x50000000ull) {
+    if (bank == 0 && iova >= 0x10000000ull && iova < 0xF0000000ull) {
         leaf |= (1u << 6);   // AP[1]=1: unprivileged access for user client BOs only (keep GMU/kernel privileged)
     }
     leaf |= uint64_t(share & 3u) << 8;
@@ -259,6 +259,19 @@ int tb710fu_gpu_smmu_map(Tb710fuGpuSmmu *smmu, uint32_t bank, uint64_t iova,
         offset += kPageBytes;
     }
     tb710fu_gpu_barrier();
+    if (bank == 0 && iova >= 0x10000000ull && smmu->bankOffset[0]) {
+        const uint32_t cb = smmu->bankOffset[0];
+        if (tb710fu_gpu_write32(smmu->window, cb + 0x618, 0) == 0 &&
+            tb710fu_gpu_write32(smmu->window, cb + 0x7f0, 0xffffffffu) == 0) {
+            tb710fu_gpu_barrier();
+            uint32_t sync = 0;
+            for (unsigned i = 0; i < 100; ++i) {
+                if (tb710fu_gpu_read32(smmu->window, cb + 0x7f4, &sync) != 0 || (sync & 1u) == 0) {
+                    break;
+                }
+            }
+        }
+    }
     return 0;
 }
 
