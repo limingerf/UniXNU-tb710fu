@@ -338,27 +338,24 @@ IOReturn hid_new_report_descriptor(const void *self, IOMemoryDescriptor **out)
 
 ::IOService *wait_for_hid_resource(unsigned timeout_ms)
 {
-    unsigned waited = 0u;
+    ::IOService *resource = ::IOService::getResourceService();
 
-    while (waited < timeout_ms && !gStop) {
-        OSDictionary *matching = ::IOService::serviceMatching("IOHIDResource");
-        ::IOService *resource = matching
-                                    ? ::IOService::waitForMatchingService(matching, 1000000000ULL)
-                                    : nullptr;
-
-        if (matching) matching->release();
-        if (resource) return resource;
-        waited += 1000u;
-        IOSleep(1000);
+    /* macOS 27.3: IOHIDResource is gated by IOResourceMatch=IOBSD and is only
+     * the virtual-HID nub; kernel transport IOHIDDevices attach to IOResources
+     * directly (as AppleKeyStore and SoftwareAES do in the same boot list). */
+    while (!resource && !gStop && timeout_ms >= 10u) {
+        IOSleep(10);
+        timeout_ms -= 10u;
+        resource = ::IOService::getResourceService();
     }
-    return nullptr;
+    return resource;
 }
 
 bool start_hid_device(::IOService *device, const char *product)
 {
     if (!device) return false;
     if (!gHidResource) {
-        TB710FU_LOG("hid: no IOHIDResource provider (%s)\n", product);
+        TB710FU_LOG("hid: no IOResources provider (%s)\n", product);
         return false;
     }
     if (!device->attach(gHidResource)) {
@@ -609,7 +606,7 @@ void touch_start(void)
     if (!ensure_hid_family()) return;
     gHidResource = wait_for_hid_resource(5000u);
     if (!gHidResource) {
-        TB710FU_LOG("touch: IOHIDResource absent after 5 s\n");
+        TB710FU_LOG("touch: IOResources absent\n");
         return;
     }
     gTouchDevice = create_hid_device("TB710FU Touchscreen", 0x0Du, 0x04u, 0x17EFu, 0x0001u,
@@ -715,7 +712,7 @@ void keys_start(void)
     if (!ensure_hid_family()) return;
     if (!gHidResource) gHidResource = wait_for_hid_resource(5000u);
     if (!gHidResource) {
-        TB710FU_LOG("keys: IOHIDResource absent\n");
+        TB710FU_LOG("keys: IOResources absent\n");
         return;
     }
     gKeysDevice = create_hid_device("TB710FU Keys", 0x0Cu, 0x01u, 0x17EFu, 0x0002u, gBuf->keysVtable,

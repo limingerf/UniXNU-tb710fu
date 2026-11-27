@@ -4,6 +4,7 @@
 #include "Tb710fuInputConfig.h"
 
 #include <stddef.h>
+#include <string.h>
 
 static int is_space(char c)
 {
@@ -134,6 +135,7 @@ int tb710fu_input_bootargs(const char *arguments,
         const char *value = NULL;
         const char *error = NULL;
         unsigned name_len;
+        char value_text[16];
 
         while (*cursor && is_space(*cursor)) ++cursor;
         if (!*cursor) break;
@@ -144,7 +146,15 @@ int tb710fu_input_bootargs(const char *arguments,
         }
         end = cursor;
         if (equals) {
-            value = equals + 1;
+            unsigned value_len = (unsigned)(end - (equals + 1));
+
+            /* Copy the token value into a bounded NUL-terminated buffer so
+             * parse_level() and frame-count checks see token end, not the
+             * trailing space of the full boot-args string. */
+            if (value_len >= sizeof(value_text)) value_len = 0u;
+            memcpy(value_text, equals + 1, value_len);
+            value_text[value_len] = '\0';
+            value = value_text;
             name_len = (unsigned)(equals - start);
         } else {
             name_len = (unsigned)(end - start);
