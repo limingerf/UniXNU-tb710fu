@@ -1541,14 +1541,14 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
         IOLockLock(gCoreLock);
     }
 
-    /* A7xx framed submission (matching NativeAdrenoRing.cpp / a7xx_submit()):
-     * prologue = 11 dwords, count * 4 IB dwords, framed fence = 31 dwords. */
+    /* A7xx framed submission (matching Linux a6xx_gpu.c a7xx_submit()):
+     * prologue = 6 dwords, count * 4 IB dwords, framed fence = 31 dwords. */
     const uint32_t ringDwords = gCore.ring.bytes / 4;
     const uint32_t margin = 0x400;
     uint32_t at = gCore.ringWptr & (ringDwords - 1);
     const uint32_t rptr = ringRptr() & (ringDwords - 1);
     const uint32_t used = (gCore.ringWptr + ringDwords - rptr) & (ringDwords - 1);
-    const uint32_t prologueDwords = 11u;
+    const uint32_t prologueDwords = 6u;
     const uint32_t framedFenceDwords = 31u;
     uint32_t needed = prologueDwords + count * 4u + framedFenceDwords;
     uint32_t pad = 0;
@@ -1570,17 +1570,12 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
     }
 
     RingWriter writer = {reinterpret_cast<uint32_t *>(gCore.ring.cpu), ringDwords, at};
-    /* A7xx prologue (11 dwords): SYNC|BR, CACHE_FLUSH7, CACHE_INVALIDATE7,
-     * WAIT_FOR_IDLE, BOTH threads, SET_MARKER(0x101 IFPC off). */
+    /* A7xx prologue (6 dwords): SYNC|BR, BOTH threads, SET_MARKER(0x101 IFPC off).
+     * Omit CACHE_FLUSH7/CACHE_INVALIDATE7 (0x32/0x33) which stalled BR at rptr=0x13 on A750. */
     const uint32_t brSync = (1u << 31) | 1u;
-    const uint32_t flush7 = 0x32u;
-    const uint32_t inv7 = 0x33u;
     const uint32_t both = 3u;
     const uint32_t markerOn = 0x101u;
     if (emit7(&writer, 0x17, &brSync, 1) != 0 ||
-        emit7(&writer, 0x46, &flush7, 1) != 0 ||
-        emit7(&writer, 0x46, &inv7, 1) != 0 ||
-        emit7(&writer, 0x26, nullptr, 0) != 0 ||
         emit7(&writer, 0x17, &both, 1) != 0 ||
         emit7(&writer, 0x65, &markerOn, 1) != 0) {
         if (gCoreLock) {
