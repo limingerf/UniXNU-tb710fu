@@ -1060,19 +1060,33 @@ int stage8()
     gCore.rbbmStatus = rbbm;
     report->rbbmStatus = rbbm;
 
-    /* 8.3 UCHE/GMEM range, A7xx APRIV/CP prep, and secure-video door. */
+    /* 8.3 UCHE/GMEM range, A750 UCHE/UBWC/APRIV/CP prep, and secure-video door. */
     if (gpuWrite64(TBGPU_UCHE_GMEM_RANGE_MIN, TBGPU_GMEM_BASE) != 0 ||
         gpuWrite64(TBGPU_UCHE_GMEM_RANGE_MAX, TBGPU_GMEM_BASE + TBGPU_GMEM_BYTES - 1) != 0 ||
-        gpuWrite(TBGPU_UCHE_CACHE_WAYS, 1u << 23) != 0) {
+        gpuWrite64(0x00e09u * 4u, TBGPU_UCHE_TRAP_BASE) != 0 ||       /* UCHE_TRAP_BASE */
+        gpuWrite64(0x00e07u * 4u, TBGPU_UCHE_TRAP_BASE) != 0 ||       /* UCHE_WRITE_THRU_BASE */
+        gpuWrite(TBGPU_UCHE_CACHE_WAYS, 1u << 23) != 0 ||
+        gpuWrite(0x00e19u * 4u, (1u << 7) | 1u) != 0 ||               /* UCHE_CLIENT_PF */
+        gpuWrite(0x00e3cu * 4u, 0x0006690eu) != 0) {                  /* UCHE_CMDQ_CONFIG (A7xx) */
         return -9;
     }
     gpuWrite(0x00500u * 4u, 1u);       /* RBBM_PERFCTR_CNTL: enable counters */
-    gpuWrite(0x0098du * 4u, 0u);       /* CP_AHB_CNTL */
+    gpuWrite(0x008d0u * 4u, 0u);       /* CP_PERFCTR_CP_SEL(0): PERF_CP_ALWAYS_COUNT */
+    gpuWrite(0x0098du * 4u, 1u);       /* CP_AHB_CNTL: ERROR on default slave */
     gpuWrite(0x0084fu * 4u, 0u);       /* CP_PROTECT_CNTL: off during bring-up */
-    gpuWrite(0x00844u * 4u, 0x7fu);    /* CP_APRIV_CNTL: privileged ring/IB/RPTR */
-    gpuWrite(0x00ad0u * 4u, 0x7fu);    /* CP_BV_APRIV_CNTL */
-    gpuWrite(0x00b31u * 4u, 0x7fu);    /* CP_LPAC_APRIV_CNTL */
+    gpuWrite(0x00844u * 4u, 0x6fu);    /* CP_APRIV_CNTL: A7XX_BR_APRIVMASK */
+    gpuWrite(0x00ad0u * 4u, 0x6au);    /* CP_BV_APRIV_CNTL: A7XX_APRIV_MASK */
+    gpuWrite(0x00b31u * 4u, 0x6au);    /* CP_LPAC_APRIV_CNTL: A7XX_APRIV_MASK */
     gpuWrite(0x00a00u * 4u, 0u);       /* CP_APERTURE_CNTL_HOST */
+    /* A750 UBWC 4.0 / hbb=16 / amsbc=1 NC_MODE_CNTL & A750 ECO bits (a6xx_gpu.c) */
+    gpuWrite(0x08e08u * 4u, 0x816u);   /* RB_NC_MODE_CNTL */
+    gpuWrite(0x0b604u * 4u, 0x6u);     /* TPL1_NC_MODE_CNTL */
+    gpuWrite(0x0ae02u * 4u, 0x26u);    /* SP_NC_MODE_CNTL */
+    uint32_t rbCmpEco = 0;
+    if (gpuRead(0x08e28u * 4u, &rbCmpEco) == 0) {
+        gpuWrite(0x08e28u * 4u, rbCmpEco | (1u << 19)); /* RB_CMP_DBG_ECO_CNTL (A750) */
+    }
+    gpuWrite(0x0b602u * 4u, 0xc0700u); /* TPL1_DBG_ECO_CNTL1 (A750) */
     gpuWrite(TBGPU_SECVID_TSB_BASE, 0);
     gpuWrite(TBGPU_SECVID_TSB_BASE + 4, 0);
     gpuWrite(TBGPU_SECVID_TSB_SIZE, 0);
@@ -1488,10 +1502,13 @@ int tb710fu_gpu_core_wait_fence(uint64_t fence, uint64_t timeoutNs, uint32_t *ob
     if (timeoutNs >= 10000000ull) {
         static volatile uint32_t gTimeoutLogged = 0;
         if (__atomic_fetch_add(&gTimeoutLogged, 1u, __ATOMIC_RELAXED) < 4u) {
-            uint32_t rbbm = 0, cpInt = 0, rptr = 0, bvVal = 0, cb0Fsr = 0, farLo = 0, farHi = 0;
+            uint32_t rbbm = 0, cpInt = 0, rptr = 0, bvRptr = 0, hwf = 0, int0 = 0, bvVal = 0, cb0Fsr = 0, farLo = 0, farHi = 0;
             gpuRead(TBGPU_RBBM_STATUS_BYTES, &rbbm);
             gpuRead(0x0803u * 4u, &cpInt);
             gpuRead(TBGPU_CP_RB_RPTR, &rptr);
+            gpuRead(0x0a66u * 4u, &bvRptr);
+            gpuRead(0x0821u * 4u, &hwf);
+            gpuRead(0x0201u * 4u, &int0);
             memcpy(&bvVal, gCore.fence.cpu + 12, sizeof(bvVal));
             if (gCore.windows.smmu && gCore.smmu.bankOffset[0]) {
                 const uint32_t cb0 = gCore.smmu.bankOffset[0];
@@ -1499,9 +1516,9 @@ int tb710fu_gpu_core_wait_fence(uint64_t fence, uint64_t timeoutNs, uint32_t *ob
                 tb710fu_gpu_read32(gCore.windows.smmu, cb0 + 0x60u, &farLo);
                 tb710fu_gpu_read32(gCore.windows.smmu, cb0 + 0x64u, &farHi);
             }
-            IOLog("TB710FU GPU: wait_fence timeout want=%llu obs=%u bv=%u rptr=0x%x wptr=0x%x rbbm=0x%x cp_int=0x%x cb0fsr=0x%x far=0x%llx\n",
-                  (unsigned long long)fence, lastValue, bvVal, rptr, gCore.ringWptr,
-                  rbbm, cpInt, cb0Fsr, ((unsigned long long)farHi << 32) | farLo);
+            IOLog("TB710FU GPU: wait_fence timeout want=%llu obs=%u bv=%u rptr=0x%x bv_rptr=0x%x wptr=0x%x rbbm=0x%x int0=0x%x hwf=0x%x cp_int=0x%x cb0fsr=0x%x far=0x%llx\n",
+                  (unsigned long long)fence, lastValue, bvVal, rptr, bvRptr, gCore.ringWptr,
+                  rbbm, int0, hwf, cpInt, cb0Fsr, ((unsigned long long)farHi << 32) | farLo);
         }
     }
     return -1;
