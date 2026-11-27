@@ -1,0 +1,45 @@
+Log every shared_region_map_and_slide_2_np call and result to COM5.
+
+A stalled boot shows launchd reaching dyld, getting
+"result from check_np(): -1, errno 12" (the documented normal
+"shared region is empty" response, also present in every successful
+boot), and then never logging "dyld cache mapped system-wide".
+
+The syscall that would establish the mapping is
+shared_region_map_and_slide_2_np() (536). Its tracing is behind
+SHARED_REGION_TRACE_DEBUG/_ERROR, which the release kernel does not
+emit, so the log cannot distinguish "never called" from "called and
+failed". This prints once on entry and once on exit, including the
+failure return code. Side-effect free: printf only, no state.
+diff --git a/bsd/vm/vm_unix.c b/bsd/vm/vm_unix.c
+index 64d187a..d4fa5dc 100644
+--- a/bsd/vm/vm_unix.c
++++ b/bsd/vm/vm_unix.c
+@@ -2186,6 +2186,14 @@ shared_region_map_and_slide_2_np(
+ 	struct shared_file_mapping_slide_np *mappings = NULL;
+ 	kern_return_t                 kr = KERN_SUCCESS;
+ 
++#if defined(__arm64__)
++	/* TB710FU: unconditional trace. The release kernel does not emit
++	 * SHARED_REGION_TRACE_*, so a stalled boot cannot otherwise tell
++	 * "dyld never called map_and_slide" from "it was called and failed". */
++	printf("TB710FU SRMAP[%d]: enter files=%u mappings=%u\n",
++	    proc_getpid(p), uap->files_count, uap->mappings_count);
++#endif
++
+ 	files_count = uap->files_count;
+ 	mappings_count = uap->mappings_count;
+ 
+@@ -2345,6 +2353,12 @@ done:
+ 		proc_getpid(p), p->p_comm,
+ 		(uint64_t)uap->mappings_u, kr));
+ 
++#if defined(__arm64__)
++	/* TB710FU: one line per call, covering every failure path above. */
++	printf("TB710FU SRMAP[%d]: exit kr=0x%x files=%u mappings=%u\n",
++	    proc_getpid(p), kr, files_count, mappings_count);
++#endif
++
+ 	return kr;
+ }
+ 
