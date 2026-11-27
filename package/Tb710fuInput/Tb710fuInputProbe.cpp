@@ -294,7 +294,7 @@ IOReturn hid_new_report_descriptor(const void *self, IOMemoryDescriptor **out)
                                unsigned vendor, unsigned product_id, uint64_t *table, bool touch)
 {
     ::IOService *device = (::IOService *)OSMetaClass::allocClassWithName("IOHIDDevice");
-    OSMetaClass *meta;
+    const OSMetaClass *meta;
 
     if (!device) {
         TB710FU_LOG("hid: IOHIDDevice allocation failed (%s)\n", product);
