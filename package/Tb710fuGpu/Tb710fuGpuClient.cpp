@@ -36,6 +36,8 @@
 #include <libkern/libkern.h>
 #include <string.h>
 
+extern "C" void flush_dcache64(addr64_t addr, unsigned count, int phys);
+
 namespace {
 const uint32_t kTunnelMagic = 0x4e544e4c;  /* 'NTNL' */
 const uint32_t kProbeMethod = 0xffffffffu;
@@ -577,10 +579,32 @@ IOReturn AGXDeviceUserClient::submit(const NativeAdrenoAbiSubmit &request, uint8
         iovas[i] = buffer.iova;
         bytes[i] = buffer.bytes;
     }
-    /* Clean CPU dcache on mapped owned BOs (Normal Cacheable user mappings ->
-     * non-coherent A750 SMMU) so IBs, shaders, and descriptors are visible to GPU. */
+    /* Clean+invalidate CPU dcache on mapped BOs (including imported IOSurfaces
+     * drawn by CPU/CoreGraphics into cacheable pages -> non-coherent A750 SMMU). */
     for (unsigned s = 0; s < kMaxBo; ++s) {
-        if (!fBo[s].used || !fBo[s].mapped || fBo[s].imported || !fBo[s].memory) {
+        if (!fBo[s].used || !fBo[s].mapped || !fBo[s].memory) {
+            continue;
+        }
+        if (fBo[s].imported) {
+            const uint64_t total = fBo[s].bytes;
+            for (IOByteCount off = 0; off < total; ) {
+                IOByteCount segLen = 0;
+                addr64_t phys = fBo[s].memory->getPhysicalSegment(off, &segLen, kIOMemoryMapperNone);
+                if (!phys || !segLen) {
+                    break;
+                }
+                IOByteCount chunk = segLen;
+                if (chunk > total - off) {
+                    chunk = total - off;
+                }
+                while (chunk > 0) {
+                    const unsigned step = chunk > 0x40000000u ? 0x40000000u : static_cast<unsigned>(chunk);
+                    flush_dcache64(phys, step, 1);
+                    phys += step;
+                    chunk -= step;
+                }
+                off += segLen;
+            }
             continue;
         }
         IOBufferMemoryDescriptor *buf = OSDynamicCast(IOBufferMemoryDescriptor, fBo[s].memory);
