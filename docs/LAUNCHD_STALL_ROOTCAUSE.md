@@ -159,3 +159,39 @@ TB710FU PS: pid=166 ppid=1 name=loginwindow  thr=2 fp=1655808
 
 下一步该做的是**逐步二分 pl49→当前**在 shared-region 链上的改动，而不是继续在
 launchd 之后找原因。
+
+## 第 3 轮结论：pl49 是已知良好基线，回归区间只有 7 个提交
+
+`git log 7052c68..HEAD -- patches/xnu`（pl49 之后的 XNU 补丁层改动）：
+
+```
+e3d5018 pl100: trace shared_region_map_and_slide_2_np
+73f47dc pl96:  revert 0052 shared-region slide lock
+1d13d08 pl95:  display settle gate + IOSurfaceRoot retry + 4k slide serialization
+7ccfae7 pl56:  CDC panic handover gate
+104ca89 pl54c: restore 0051 header
+6dc7865 pl54b: fix 0051 hunk count
+c2e2654 pl54:  dump WindowServer SIGABRT
+```
+
+其中只有 `1d13d08` 触碰 shared-region slide 链（新增 0052，后被 `73f47dc` 回滚）。
+其余均与共享缓存无关（CDC panic / WindowServer 诊断打印）。
+
+## 下一步（明确、可执行）
+
+1. **以 pl49 为对照做二分**：在当前树上只回退 0051/0049/0050 等诊断补丁不必要，
+   真正要验的是 `native-4k-shared-region-slide.patch` 及其同族
+   （`native-4k-block-split.patch`、`native-4k-signature-hash-cache.patch`、
+   `native-4k-user-abi.patch`、`native-4k-bootstrap-capacity.patch`，
+   均在 `.work/UniXNU/patches/xnu-12377/`）在 pl49 与当前之间是否有版本漂移。
+2. 若官方这几个补丁**内容未变**，则问题在 0052 回滚得不彻底或
+   `67c5b5a`/`1d13d08` 残留（`GopDisplayStart.cpp` 的 IOSurfaceRoot 重试、
+   `CdcXnu.c` 的 settle gate）改变了时序。
+3. 届时用补丁 0052 的 `TB710FU SRMAP` 打印确认 `map_and_slide` 是否被调用。
+
+**不要再做**：在 launchd 之后找原因、加固定延时、猜 GPU。
+
+## 工具
+
+`scratch/classify-boot.ps1` 用 `unnest of range` + `dyld cache mapped` 判定每次启动
+是否真正进入用户空间（已在 20 份历史捕获上验证：5 份成功全 >0，4 份失败全为 0）。
