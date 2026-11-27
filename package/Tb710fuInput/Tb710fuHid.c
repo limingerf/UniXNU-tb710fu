@@ -27,6 +27,7 @@
 #define DIGITIZER_CONTACT_COUNT 0x54u
 #define DESKTOP_X               0x30u
 #define DESKTOP_Y               0x31u
+#define DESKTOP_KEYBOARD        0x06u
 #define CONSUMER_CONTROL        0x01u
 #define CONSUMER_POWER          0x30u
 #define CONSUMER_VOLUME_UP      0xE9u
@@ -96,9 +97,15 @@ const uint8_t tb710fu_hid_touch_descriptor[] = {
     HID_END_COLLECTION,
 };
 const uint8_t tb710fu_hid_keys_descriptor[] = {
+    /* Primary usage must be Keyboard (1,6): on 26C5035r the only personality
+     * declaring (0x0C,0x01) is "Peppy Touch Display" gated on Transport=FIFO.
+     * "HID Keyboard Driver" matches (1,6) and handles Consumer-page media keys. */
+    HID_USAGE_PAGE, HID_PAGE_DESKTOP,
+    HID_USAGE, DESKTOP_KEYBOARD,
+    HID_COLLECTION, 0x01,                        /* Application */
     HID_USAGE_PAGE, HID_PAGE_CONSUMER,
     HID_USAGE, CONSUMER_CONTROL,
-    HID_COLLECTION, 0x01,                        /* Application */
+    HID_COLLECTION, 0x02,                        /* Logical */
     HID_USAGE, CONSUMER_POWER,
     HID_USAGE, CONSUMER_VOLUME_UP,
     HID_USAGE, CONSUMER_VOLUME_DOWN,
@@ -110,6 +117,7 @@ const uint8_t tb710fu_hid_keys_descriptor[] = {
     HID_REPORT_SIZE, 5,
     HID_REPORT_COUNT, 1,
     HID_INPUT, INPUT_CONST_VAR_ABS,
+    HID_END_COLLECTION,                          /* Logical, consumer */
     HID_END_COLLECTION,
 };
 

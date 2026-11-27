@@ -326,6 +326,11 @@ IOReturn hid_new_report_descriptor(const void *self, IOMemoryDescriptor **out)
     device->setProperty("ProductID", product_id, 32);
     device->setProperty("VersionNumber", 0x0100, 32);
     device->setProperty("Transport", "SPI");
+    if (touch) {
+        /* AppleMultitouchHIDService's personality carries a hard
+         * Manufacturer=Apple match key on 26C5035r (IOHIDFamilyPrivate.cpp:404). */
+        device->setProperty("Manufacturer", "Apple");
+    }
     device->setProperty("PrimaryUsagePage", usage_page, 32);
     device->setProperty("PrimaryUsage", usage, 32);
     device->setProperty("Built-In", kOSBooleanTrue);
@@ -368,14 +373,6 @@ bool start_hid_device(::IOService *device, const char *product)
         return false;
     }
     device->registerService();
-    /* backboardd reads Built-In, DisplayIntegrated and the usage pair from the
-     * event service it opens, which is the device's parent after start. */
-    if (IORegistryEntry *service = device->getParentEntry(gIOServicePlane)) {
-        service->setProperty("Built-In", kOSBooleanTrue);
-        service->setProperty("DisplayIntegrated", kOSBooleanTrue);
-        service->setProperty("PrimaryUsagePage", device->getProperty("PrimaryUsagePage"));
-        service->setProperty("PrimaryUsage", device->getProperty("PrimaryUsage"));
-    }
     TB710FU_LOG("%s started\n", product);
     return true;
 }
@@ -715,7 +712,7 @@ void keys_start(void)
         TB710FU_LOG("keys: IOResources absent\n");
         return;
     }
-    gKeysDevice = create_hid_device("TB710FU Keys", 0x0Cu, 0x01u, 0x17EFu, 0x0002u, gBuf->keysVtable,
+    gKeysDevice = create_hid_device("TB710FU Keys", 0x01u, 0x06u, 0x17EFu, 0x0002u, gBuf->keysVtable,
                                     false);
     if (!gKeysDevice) return;
     if (!start_hid_device(gKeysDevice, "TB710FU Keys")) {
