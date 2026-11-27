@@ -40,9 +40,9 @@ namespace {
 const uint32_t kTunnelMagic = 0x4e544e4c;  /* 'NTNL' */
 const uint32_t kProbeMethod = 0xffffffffu;
 const uint64_t kMaxBoBytes = 128ull * 1024 * 1024;
-const unsigned kMaxBo = 512;
-const unsigned kMaxMetadata = 128;
-const unsigned kMaxQueues = 64;
+const unsigned kMaxBo = 256;
+const unsigned kMaxMetadata = 32;
+const unsigned kMaxQueues = 32;
 }
 
 /* The connection class. The constructor receives the metaclass pointer from
