@@ -300,7 +300,7 @@ int tb710fu_gpu_smmu_program(Tb710fuGpuSmmu *smmu, uint32_t bank, uint32_t asid)
         tb710fu_gpu_read32(smmu->window, gr1 + bank * 4u, &readCbar) != 0) {
         return -1;
     }
-    if ((sctlr & 1u) != 0 || readTcr != tcr || readTcr2 != tcr2 || readTtbr != ttbr0 || readCbar != kCbar) {
+    if ((sctlr & 1u) != 0 || readTcr != tcr || (readTcr2 & ~0x60u) != tcr2 || readTtbr != ttbr0 || readCbar != kCbar) {
         IOLog("TB710FU GPU: smmu program bank %u mismatch sctlr=0x%x tcr=0x%x(want 0x%x) tcr2=0x%x(want 0x%x) ttbr=0x%llx(want 0x%llx) cbar=0x%x(want 0x%x)\n",
               bank, sctlr, readTcr, tcr, readTcr2, tcr2, (unsigned long long)readTtbr, (unsigned long long)ttbr0, readCbar, kCbar);
         return -1;
@@ -369,13 +369,18 @@ int tb710fu_gpu_smmu_attach(Tb710fuGpuSmmu *smmu, uint32_t bank, const uint32_t 
             return -1;
         }
         tb710fu_gpu_barrier();
-        if (tb710fu_gpu_read32(smmu->window, s2cr, &value) != 0 || value != bank ||
-            tb710fu_gpu_write32(smmu->window, smr, validSmr(smmu->id0) | sids[i]) != 0) {
+        if (tb710fu_gpu_read32(smmu->window, s2cr, &value) != 0 || (value & 0x300ffu) != bank) {
+            IOLog("TB710FU GPU: smmu attach bank %u slot %u s2cr=0x%x(want 0x%x)\n", bank, slot, value, bank);
+            return -1;
+        }
+        const uint32_t wantSmr = validSmr(smmu->id0) | sids[i];
+        if (tb710fu_gpu_write32(smmu->window, smr, wantSmr) != 0) {
             return -1;
         }
         tb710fu_gpu_barrier();
         if (tb710fu_gpu_read32(smmu->window, smr, &value) != 0 ||
-            value != (validSmr(smmu->id0) | sids[i])) {
+            (value & (validSmr(smmu->id0) | 0xffffu)) != wantSmr) {
+            IOLog("TB710FU GPU: smmu attach bank %u slot %u smr=0x%x(want 0x%x)\n", bank, slot, value, wantSmr);
             return -1;
         }
         if (exids(smmu->id0)) {
