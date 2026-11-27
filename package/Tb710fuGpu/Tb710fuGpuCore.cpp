@@ -144,7 +144,7 @@ int bufferAlloc(Buffer *buffer, uint32_t bytes)
     return 0;
 }
 
-void bufferFree(Buffer *buffer)
+__attribute__((unused)) void bufferFree(Buffer *buffer)
 {
     if (buffer && buffer->memory) {
         buffer->memory->release();

@@ -260,7 +260,7 @@ def main():
           'QTBL and its queues are coherent before CM3 release, and only initialized once')
     check('core.gbif_halt',
           all(marker in core for marker in ('TBGPU_GBIF_HALT, 0', 'TBGPU_RBBM_GBIF_HALT, 0',
-                                            'TBGPU_RBBM_SECVID_TSB_CNTL, 0')),
+                                            'TBGPU_SECVID_TSB_CNTL, 0')),
           'a7xx hw_init clears both GBIF halts and the SECVID TSB before CP starts')
     check('core.wptr_fence',
           all(marker in core for marker in ('TBGPU_GMU_AHB_FENCE_STATUS', 'TBGPU_GMU_AHB_FENCE_STATUS_CLR',
