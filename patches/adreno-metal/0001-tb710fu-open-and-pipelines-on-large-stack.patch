@@ -1,0 +1,86 @@
+TB710FU macOS 27.3: run nmb_device_open and pipeline creation on a 16 MiB stack
+when called from a thread with less than 2 MiB of stack (e.g. WindowServer's
+512 KiB pthread_create secondary thread).
+
+Hardware evidence (pl85 com5_pl85_live.log, pl86 com5_pl86_live.log):
+- WindowServer calls MTLCopyAllDevices -> NativeAdrenoMetalPlugin ->
+  native_bridge_metal_open -> nmb_device_open -> Device::system_default_with on
+  a 512 KiB pthread_create thread.
+- Rust's inline stack probe at NativeAdrenoMetal+0xe809b8 (352 KiB frame, total
+  stack depth 515.6 KiB > 512 KiB) hits the 4 KiB VM_PROT_NONE stack guard page
+  and terminates WindowServer with SIGBUS (status=0xa, reason 2:10).
+- onSufficientStack runs inline with zero overhead on >=2 MiB stacks and uses
+  the existing 16 MiB onLargeStack helper on smaller secondary threads.
+
+diff --git a/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm b/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm
+--- a/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm
++++ b/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm
+@@ -666,6 +666,10 @@
+  pthread_attr_destroy(&attr);
+  if(made)pthread_join(thread,nullptr);else body();
+ }
++static void onSufficientStack(void (^body)(void)) {
++ if(pthread_get_stacksize_np(pthread_self())>=(2u<<20)){body();return;}
++ onLargeStack(body);
++}
+ // A request's reply depends only on its bytes and the compiler, so writable same-user caches share it
+ // (native-metal-shaders/SHA256.reply, SHA-256 of MTLCompiler's LC_UUID, the request type and its bytes): an
+ // app that compiles its shaders from source at every launch (GFXBench spends minutes of Clang and LLVM loading a test)
+@@ -4642,10 +4646,11 @@
+  if(![(id)function isKindOfClass:[NBFunction class]] || ![(NBFunction *)function handle]){if(error)*error=nbError(@"foreign function");return nil;}
+  const NmbPipelineOptions creation={(uint64_t)options,nullptr,0};
+  const uint64_t pipelineBegan=nowUs();
+- NmbComputePipeline *handle=nmb_compute_pipeline_new_with_options(gDevice,[(NBFunction *)function handle],&creation);
++ __block NmbComputePipeline *handle=nullptr;const auto *cp=&creation;
++ onSufficientStack(^{handle=nmb_compute_pipeline_new_with_options(gDevice,[(NBFunction *)function handle],cp);});
+  NBFunction *built=(NBFunction *)function;
+  if(!handle)if(NBFunction *rebuilt=zeroRestFunction((NBFunction *)function)) {
+-  handle=nmb_compute_pipeline_new_with_options(gDevice,rebuilt.handle,&creation);if(handle)built=rebuilt;
++  onSufficientStack(^{handle=nmb_compute_pipeline_new_with_options(gDevice,rebuilt.handle,cp);});if(handle)built=rebuilt;
+  }
+  gTimePipeline.add(pipelineBegan);
+  if(!handle) {
+@@ -4668,11 +4673,12 @@
+  if(!pipelineArchives(d.binaryArchives,archives,error))return nil;
+  const NmbPipelineOptions creation={(uint64_t)options,archives.data(),archives.size()};
+  const uint64_t pipelineBegan=nowUs();
+- NmbComputePipeline *handle=nmb_compute_pipeline_new_with_descriptor(gDevice,&p,&creation);
++ __block NmbComputePipeline *handle=nullptr;auto *pp=&p;const auto *cp=&creation;
++ onSufficientStack(^{handle=nmb_compute_pipeline_new_with_descriptor(gDevice,pp,cp);});
+  // Metal builds a kernel that reads a constant nobody set; the runtime refuses it: once more with those constants zero.
+  if(!handle) {
+   NBFunction *rebuilt=zeroRestFunction((NBFunction *)d.computeFunction);
+-  if(rebuilt){p.function=rebuilt.handle;handle=nmb_compute_pipeline_new_with_descriptor(gDevice,&p,&creation);}
++  if(rebuilt){p.function=rebuilt.handle;onSufficientStack(^{handle=nmb_compute_pipeline_new_with_descriptor(gDevice,pp,cp);});}
+  }
+  gTimePipeline.add(pipelineBegan);
+  if(!handle) {
+@@ -4718,7 +4724,8 @@
+  const NmbPipelineOptions creation={(uint64_t)options,archives.data(),archives.size()};
+  const uint64_t pipelineBegan=nowUs();const NBCost costBegan=NBCost::now();
+  uint64_t cacheBefore[10]={};if(!gJournalPath.empty())nmb_device_work_stats(gDevice,cacheBefore);
+- NmbRenderPipeline *handle=nmb_render_pipeline_new_with_options(gDevice,p,&creation);gTimePipeline.add(pipelineBegan);
++ __block NmbRenderPipeline *handle=nullptr;const auto *cp=&creation;
++ onSufficientStack(^{handle=nmb_render_pipeline_new_with_options(gDevice,p,cp);});gTimePipeline.add(pipelineBegan);
+  // With diagnostics on: which Metal functions the program Turnip just built for this pipeline belongs to (tu_darwin_last_program gives
+  // the vertex and fragment shader hashes of the last program this thread built; the pass records of the frame trace name a pass's
+  // heaviest fragment shader by the same hash). One line per fragment hash, at most 512.
+@@ -4788,7 +4795,8 @@
+  if(!pipelineArchives(d.binaryArchives,archives,error))return nil;
+  const NmbPipelineOptions creation={(uint64_t)options,archives.data(),archives.size()};
+  const uint64_t began=nowUs();
+- NmbRenderPipeline *handle=nmb_tile_pipeline_new(gDevice,&p,&creation);gTimePipeline.add(began);
++ __block NmbRenderPipeline *handle=nullptr;auto *pp=&p;const auto *cp=&creation;
++ onSufficientStack(^{handle=nmb_tile_pipeline_new(gDevice,pp,cp);});gTimePipeline.add(began);
+  if(!handle) {
+   NSString *why=[NSString stringWithFormat:@"%@ | tile %@",lastError(),tile.name];
+   static std::atomic<int> told{0};
+@@ -5083,7 +5091,7 @@
+  if(gDeviceObject)return gDeviceObject;
+  gMissing=missing;gInFlight=[NSMutableSet set];
+  if(cache && *cache){configureShaderDiskCache(cache);gCacheRoot=cache;}
+- gDevice=nmb_device_open(loader,cache);
++ onSufficientStack(^{gDevice=nmb_device_open(loader,cache);});
+  if(loader)gLoaderPath=loader;
+  if(diagOn() && loader) {
+   if(gpuTraceOn())if(void *library=dlopen(loader,RTLD_NOW|RTLD_NOLOAD))

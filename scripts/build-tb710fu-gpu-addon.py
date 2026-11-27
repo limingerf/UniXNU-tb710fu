@@ -124,6 +124,14 @@ def main():
 
     args.out.mkdir(parents=True, exist_ok=True)
     if not args.skip_build:
+        if not (framework / 'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').is_file():
+            run(['git', '-C', framework, 'submodule', 'update', '--init', 'drivers/AdrenoMetal'])
+        patch_dir = ROOT / 'patches/adreno-metal'
+        if patch_dir.is_dir():
+            for patch in sorted(patch_dir.glob('*.patch')):
+                if subprocess.run(['git', '-C', str(framework), 'apply', '--reverse', '--check', str(patch)],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+                    run(['git', '-C', framework, 'apply', patch])
         run([sys.executable, framework / 'scripts/build-turnip-darwin.py', '--target', 'macos27'])
         run([sys.executable, framework / 'scripts/build-adreno-metal-plugin.py', '--target', 'macos27', '--no-replay'])
     plugin = args.plugin_dir or framework / 'build/adreno-metal-plugin-macos27'
