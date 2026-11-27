@@ -523,7 +523,8 @@ IOReturn AGXDeviceUserClient::submit(const NativeAdrenoAbiSubmit &request, uint8
     __asm__ volatile("dsb sy" ::: "memory");
     uint64_t fence = 0;
     if (tb710fu_gpu_core_submit(iovas, bytes, request.buffer_count, request.wait_fence,
-                                request.wait_timeout_ns, &fence) != 0) {
+                                request.wait_timeout_ns, &fence,
+                                reinterpret_cast<uint64_t>(this)) != 0) {
         return kIOReturnError;
     }
     NativeAdrenoAbiSubmitReply reply = {};

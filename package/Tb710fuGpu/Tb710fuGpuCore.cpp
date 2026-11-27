@@ -42,6 +42,7 @@ const uint32_t kPageBytes = 4096;
 const uint32_t kSmmuPoolBytes = 2u * 1024u * 1024u;
 IOLock *gCoreLock = nullptr;
 bool gZapReady = false;
+uint64_t gLastContextId = 0;
 
 struct ZapScmResult { int64_t x0; uint64_t x1; };
 ZapScmResult zapScmCall(uint32_t command, uint32_t arginfo, uint64_t a, uint64_t b, uint64_t c)
@@ -1371,6 +1372,7 @@ int issueFenceSelfTest(uint32_t *observed)
      * CP_SET_SECURE_MODE(0), and run K80's verified 25-dword first-context
      * prefix (ZornGen7HostRing26.cpp + ZornGen7HostGpuTables26.cpp). */
     gZapReady = false;
+    gLastContextId = 0;
     {
         const uint32_t kPasGpu = 13u;
         const uint64_t kZapBase = 0x9b09a000ull;
@@ -1729,7 +1731,8 @@ int tb710fu_gpu_core_wait_fence(uint64_t fence, uint64_t timeoutNs, uint32_t *ob
 }
 
 int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32_t count,
-                            uint64_t waitFence, uint64_t timeoutNs, uint64_t *fence)
+                            uint64_t waitFence, uint64_t timeoutNs, uint64_t *fence,
+                            uint64_t contextId)
 {
     if (fence) {
         *fence = 0;
@@ -1744,14 +1747,17 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
         IOLockLock(gCoreLock);
     }
 
-    /* When ZAP + secure-exit + first-context succeeded (K80 path), emit full
-     * A7xx framed submit (6-dword prologue + IBs + 31-dword BV/BR fence). */
+    /* When ZAP + secure-exit + first-context succeeded (K80/Adreno740 path), emit
+     * full A7xx framed submit: 11-dword prologue (+26-dword context reset when
+     * switching clients so Turnip BR/BV on-chip counters never deadlock) + IBs +
+     * 31-dword BV/BR fence. */
     const uint32_t ringDwords = gCore.ring.bytes / 4;
     const uint32_t margin = 0x400;
     uint32_t at = gCore.ringWptr & (ringDwords - 1);
     const uint32_t rptr = ringRptr() & (ringDwords - 1);
     const uint32_t used = (gCore.ringWptr + ringDwords - rptr) & (ringDwords - 1);
-    const uint32_t prologueDwords = gZapReady ? 6u : 0u;
+    const bool needReset = gZapReady && (contextId != gLastContextId);
+    const uint32_t prologueDwords = gZapReady ? (11u + (needReset ? 26u : 0u)) : 0u;
     const uint32_t fenceDwords = gZapReady ? 31u : 7u;
     uint32_t needed = prologueDwords + count * 4u + fenceDwords;
     uint32_t pad = 0;
@@ -1774,8 +1780,39 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
 
     RingWriter writer = {reinterpret_cast<uint32_t *>(gCore.ring.cpu), ringDwords, at};
     if (gZapReady) {
-        const uint32_t brSync = 0x80000001u, both = 3u, markerOn = 0x101u;
-        if (emit7(&writer, 0x17, &brSync, 1) != 0 ||
+        const uint32_t brSync = 0x80000001u, syncBoth = 0x80000003u, both = 3u, markerOn = 0x101u;
+        const uint32_t flush7 = 0x32u, inv7 = 0x33u;
+        if (emit7(&writer, 0x17, &brSync, 1) != 0) {
+            if (gCoreLock) {
+                IOLockUnlock(gCoreLock);
+            }
+            return -1;
+        }
+        if (needReset) {
+            const uint64_t fenceAt = TBGPU_FENCE_IOVA + 4u;
+            const uint32_t waitPrev[4] = {0u, static_cast<uint32_t>(fenceAt),
+                                          static_cast<uint32_t>(fenceAt >> 32), gCore.ringSeq};
+            const uint32_t resetAll = 0xfu, lrz = 0x26u, one = 1u, cacheInv = 0x31u;
+            const uint32_t sramWait[6] = {3u, 0x050fu, 0u, 1u, 1u, 0u};
+            if (emit7(&writer, 0x14, waitPrev, 4) != 0 ||
+                emit7(&writer, 0x17, &syncBoth, 1) != 0 ||
+                emit7(&writer, 0x1f, &resetAll, 1) != 0 ||
+                emit7(&writer, 0x17, &syncBoth, 1) != 0 ||
+                emit7(&writer, 0x46, &lrz, 1) != 0 ||
+                emit7(&writer, 0x17, &brSync, 1) != 0 ||
+                emit4(&writer, 0x050eu, &one, 1) != 0 ||
+                emit7(&writer, 0x46, &cacheInv, 1) != 0 ||
+                emit7(&writer, 0x3c, sramWait, 6) != 0) {
+                if (gCoreLock) {
+                    IOLockUnlock(gCoreLock);
+                }
+                return -1;
+            }
+            gLastContextId = contextId;
+        }
+        if (emit7(&writer, 0x46, &flush7, 1) != 0 ||
+            emit7(&writer, 0x46, &inv7, 1) != 0 ||
+            emit7(&writer, 0x26, nullptr, 0) != 0 ||
             emit7(&writer, 0x17, &both, 1) != 0 ||
             emit7(&writer, 0x65, &markerOn, 1) != 0) {
             if (gCoreLock) {

@@ -83,7 +83,8 @@ int tb710fu_gpu_core_unmap_bo(uint64_t iova, uint64_t bytes);
  * buffers must already be mapped in bank 0. Returns the fence sequence in
  * *fence (nonzero) and waits for any earlier `waitFence` first. */
 int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32_t count,
-                            uint64_t waitFence, uint64_t timeoutNs, uint64_t *fence);
+                            uint64_t waitFence, uint64_t timeoutNs, uint64_t *fence,
+                            uint64_t contextId = 0);
 int tb710fu_gpu_core_wait_fence(uint64_t fence, uint64_t timeoutNs, uint32_t *observed);
 uint64_t tb710fu_gpu_core_timestamp(void);
 void tb710fu_gpu_core_device_info(Tb710fuGpuCoreDeviceInfo *info);
