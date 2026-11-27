@@ -106,8 +106,15 @@ lba_bytes = 4096
 # same inputs with them yields model='Mac17,11', /product with 35 properties and
 # /chosen osenvironment + boot-uuid + root-matching.
 #   chip_id          -- Mac17,11 / T6050 identity, confirmed by the user
-#   owned_memory_size -- the DarwinBoot window this board asks for (2 GiB)
-# Evidence: docs/evidence/greenbar-audit.json, docs/GREENBAR_AUDIT.md
+#   owned_memory_size -- the DarwinBoot window this board asks for. 5 GiB is the
+#                       largest contiguous System RAM run in the live TB710FU
+#                       device tree (0x8C0000000 + 0x140000000). The rest of
+#                       the 8 GiB is firmware-held, absent from the UEFI map,
+#                       or in the low bank this span cannot manage.
+#   owned_memory_excluded_ranges -- let DarwinBoot describe non-free pages inside
+#                       that window (a firmware allocation, an undescribed gap)
+#                       instead of requiring one 5 GiB free run.
+# Evidence: docs/MEMORY_MAP_8GB.md, scripts/check-tb710fu-memory-map.py
 [payload]
 # The FatFs volume DarwinBoot mounts from vendor_boot. 56 MiB held the LZMA kernel, the Data seed, the TrustCache and the
 # boot-shim addon with ~10 MiB left; the ADSP firmware addon adds 22.3 MB (zlib of adsp.mbn 34.8 MB + adsp_dtb.mbn 64 KB).
@@ -116,4 +123,5 @@ size_mib = 78
 
 [payload.adt]
 chip_id = "0x6050"
-owned_memory_size = "0x80000000"
+owned_memory_size = "0x140000000"
+owned_memory_excluded_ranges = 64

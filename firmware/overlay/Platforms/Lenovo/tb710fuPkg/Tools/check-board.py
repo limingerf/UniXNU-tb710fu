@@ -44,7 +44,7 @@ def main():
         'UEFI_FD': (0xA7100000, 0x300000),
         'Display_Demura': (0xA3600000, 0x2B00000),
         'Display_Reserved': (0xD5100000, 0x2B00000),
-        'RAM_High': (0x8C0000000, 0xC0000000),
+        'RAM_High': (0x8C0000000, 0x140000000),
     }
     for name, pair in expected.items():
         require((by_name[name]['base'], by_name[name]['size']) == pair, 'Critical region changed: ' + name)

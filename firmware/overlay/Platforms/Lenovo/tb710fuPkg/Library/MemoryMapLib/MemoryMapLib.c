@@ -39,11 +39,14 @@ gMemoryDescriptor[] = {
   {"Display_Reserved",    0xD5100000, 0x02B00000, AddMem, MEM_RES, SYS_MEM_CAP, Reserv, WRITE_THROUGH_XN},
   {"TZApps_Reserved",     0xD8800000, 0x1B000000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
   // ref23235249 author observation: a live FDT on that reference device reported
-  // DDR at 0x8C0000000 + 0x140000000. That author selected this 3 GiB subset
+  // DDR at 0x8C0000000 + 0x140000000. That author selected a 3 GiB subset
   // for an aligned 2 GiB DarwinBoot owned window without vendor RamManagerDxe.
-  // This clean project has no independently qualified live FDT or physical RAM
-  // range evidence for this entry. Preserve it as reference policy pending proof.
-  {"RAM_High",            0x8C0000000, 0xC0000000, AddMem, SYS_MEM, SYS_MEM_CAP, Conv,   WRITE_BACK_XN},
+  // The TB710FU live and TWRP trees captured for this board both report the same
+  // single 5 GiB System RAM run at 0x8C0000000 + 0x140000000, with no
+  // /reserved-memory child inside it. DarwinBoot now asks for the whole run, so
+  // describe all of it as conventional memory. Proof and exclusions:
+  // docs/MEMORY_MAP_8GB.md, scripts/check-tb710fu-memory-map.py.
+  {"RAM_High",            0x8C0000000, 0x140000000, AddMem, SYS_MEM, SYS_MEM_CAP, Conv,   WRITE_BACK_XN},
 
   // Other Memory Regions
   {"IMEM_Base",           0x14680000, 0x0002A000, NoHob,  MMAP_IO, INITIALIZED, Conv,   NS_DEVICE},
