@@ -121,3 +121,41 @@ mount[4] / seputil[5] / xpcproxy[88..90] ...
 
 注意：`check_np` 返回 `0x1 / errno 12` 在**所有**案例（含成功）都一样，
 所以它不是判据；`unnest` 与 `dyld cache mapped` 才是。
+
+## 第 3 轮：pl49 一度成功跑起过 WindowServer
+
+用 `scratch/classify-boot.ps1` 对全部历史捕获分类（判据：`unnest of range ... DYLD
+shared region` 与 `dyld cache mapped system-wide`），发现 `scratch/com5_pl49_ps3.log`
+里有：
+
+```
+TB710FU PS: pid=164 ppid=1 name=WindowServer thr=2 fp=2237632
+TB710FU PS: pid=166 ppid=1 name=loginwindow  thr=2 fp=1655808
+```
+
+即 **pl49 时代 WindowServer 与 loginwindow 都已启动**，且该日志有 31 行 `unnest`、
+大量 `xpcproxy` 正常 exec。这远好于当前状态（当前连 `dyld cache mapped` 都没有）。
+
+判据分布（无例外）：
+
+| 日志 | unnest | mapped | 结论 |
+|---|---|---|---|
+| pl86b | 35 | 1 | 用户空间 |
+| pl89 | 42 | 1 | 用户空间 |
+| pl92 | 28 | 1 | 用户空间 |
+| pl93 | 50 | 1 | 用户空间 |
+| pl96(02:06) | 28 | 1 | 用户空间 |
+| pl49_ps3 | 31 | 0 | 用户空间（WindowServer 在跑） |
+| pl94 | 0 | 0 | 卡住 |
+| pl95 | 0 | 0 | 卡住 |
+| pl97b | 0 | 0 | 卡住 |
+| pl96-rollback | 0 | 0 | 卡住 |
+
+**因此这是 pl49 之后引入的回归，不是板子固有缺陷。** pl95/pl96 之间折腾的正是
+`shared_region_slide_part` 那条链：
+- 官方 `native-4k-shared-region-slide.patch`（`.work/UniXNU/patches/xnu-12377/`）
+- pl95 在其上加了 0052 串行化锁 → 100% AMFI 死锁
+- pl96 回滚 0052，但整条 4K slide 路径仍在
+
+下一步该做的是**逐步二分 pl49→当前**在 shared-region 链上的改动，而不是继续在
+launchd 之后找原因。
