@@ -248,7 +248,8 @@ IOReturn AGXDeviceUserClient::allocBo(const NativeAdrenoAbiBoAlloc &request, uin
         return kIOReturnNoResources;
     }
     IOOptionBits options = static_cast<IOOptionBits>(kIOMemoryKernelUserShared) |
-                           static_cast<IOOptionBits>(kIODirectionInOut);
+                           static_cast<IOOptionBits>(kIODirectionInOut) |
+                           static_cast<IOOptionBits>(kIOMapWriteCombineCache);
     if (request.contiguous) {
         options |= kIOMemoryPhysicallyContiguous;
     }
@@ -256,6 +257,14 @@ IOReturn AGXDeviceUserClient::allocBo(const NativeAdrenoAbiBoAlloc &request, uin
         options, (vm_size_t)request.bytes, 1);
     if (!memory) {
         return kIOReturnNoMemory;
+    }
+    if (void *base = memory->getBytesNoCopy()) {
+        const uintptr_t start = reinterpret_cast<uintptr_t>(base) & ~63ull;
+        const uintptr_t end = (reinterpret_cast<uintptr_t>(base) + (size_t)request.bytes + 63ull) & ~63ull;
+        for (uintptr_t a = start; a < end; a += 64) {
+            __asm__ volatile("dc civac, %0" :: "r"(a) : "memory");
+        }
+        __asm__ volatile("dsb sy" ::: "memory");
     }
     uint64_t handle = ((fSequence + 1) << 12) | (uint64_t)(slot + 1);
     fSequence = fSequence + 1;
