@@ -255,6 +255,7 @@ int tb710fu_gpu_smmu_map(Tb710fuGpuSmmu *smmu, uint32_t bank, uint64_t iova,
         }
         offset += kPageBytes;
     }
+    tb710fu_gpu_barrier();
     return 0;
 }
 
