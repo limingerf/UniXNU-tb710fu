@@ -213,6 +213,14 @@ int gpuWrite(uint32_t offset, uint32_t value)
     return tb710fu_gpu_write32(gCore.windows.gpu, offset, value);
 }
 
+int gpuWrite64(uint32_t offset, uint64_t value)
+{
+    if (gpuWrite(offset, static_cast<uint32_t>(value)) != 0) {
+        return -1;
+    }
+    return gpuWrite(offset + 4u, static_cast<uint32_t>(value >> 32));
+}
+
 int gpuRead(uint32_t offset, uint32_t *value)
 {
     return tb710fu_gpu_read32(gCore.windows.gpu, offset, value);
@@ -1053,9 +1061,8 @@ int stage8()
     report->rbbmStatus = rbbm;
 
     /* 8.3 UCHE/GMEM range and the secure-video door (may be blocked by TZ). */
-    if (tb710fu_gpu_write64(gCore.windows.gpu, TBGPU_UCHE_GMEM_RANGE_MIN, TBGPU_GMEM_BASE) != 0 ||
-        tb710fu_gpu_write64(gCore.windows.gpu, TBGPU_UCHE_GMEM_RANGE_MAX,
-                            TBGPU_GMEM_BASE + TBGPU_GMEM_BYTES - 1) != 0 ||
+    if (gpuWrite64(TBGPU_UCHE_GMEM_RANGE_MIN, TBGPU_GMEM_BASE) != 0 ||
+        gpuWrite64(TBGPU_UCHE_GMEM_RANGE_MAX, TBGPU_GMEM_BASE + TBGPU_GMEM_BYTES - 1) != 0 ||
         gpuWrite(TBGPU_UCHE_CACHE_WAYS, 1u << 23) != 0) {
         return -9;
     }
@@ -1074,8 +1081,8 @@ int stage8()
             &gCore.aqe) != 0) {
         return -10;
     }
-    if (tb710fu_gpu_write64(gCore.windows.gpu, TBGPU_CP_SQE_INSTR_BASE, TBGPU_SQE_IOVA) != 0 ||
-        tb710fu_gpu_write64(gCore.windows.gpu, TBGPU_CP_AQE_INSTR_BASE_0, TBGPU_AQE_IOVA) != 0) {
+    if (gpuWrite64(TBGPU_CP_SQE_INSTR_BASE, TBGPU_SQE_IOVA) != 0 ||
+        gpuWrite64(TBGPU_CP_AQE_INSTR_BASE_0, TBGPU_AQE_IOVA) != 0) {
         return -11;
     }
     report->stage8Step = 4;
@@ -1083,9 +1090,9 @@ int stage8()
     /* 8.5 RB0. */
     const uint32_t ringControl = static_cast<uint32_t>(ilog2u(gCore.ring.bytes / 8) & 0x3f) |
                                  (ilog2u(32 / 8) << 8);
-    if (tb710fu_gpu_write64(gCore.windows.gpu, TBGPU_CP_RB_BASE, TBGPU_RING_IOVA) != 0 ||
+    if (gpuWrite64(TBGPU_CP_RB_BASE, TBGPU_RING_IOVA) != 0 ||
         gpuWrite(TBGPU_CP_RB_CNTL, ringControl != 0 ? ringControl : kMsmRbCntl) != 0 ||
-        tb710fu_gpu_write64(gCore.windows.gpu, TBGPU_CP_RB_RPTR_ADDR, TBGPU_FENCE_IOVA) != 0 ||
+        gpuWrite64(TBGPU_CP_RB_RPTR_ADDR, TBGPU_FENCE_IOVA) != 0 ||
         gpuWrite(TBGPU_CP_RB_WPTR, 0) != 0) {
         return -12;
     }
