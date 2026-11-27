@@ -391,16 +391,21 @@ int hfiSend(uint32_t messageId, uint32_t dwords, const uint32_t *payload)
         queue[write] = 0xfafafafau;
         write = (write + 1) % kHfiQueueWords;
     }
+    cpuClean(gCore.hfi.cpu + kPageBytes, kPageBytes);
     table[at + 11] = write;
-    cpuClean(gCore.hfi.cpu, 4u * kPageBytes);
+    cpuClean(gCore.hfi.cpu, kPageBytes);
+    tb710fu_gpu_barrier();
     if (gmuWrite(TBGPU_GMU_HOST2GMU_INTR_SET, 1u << 0) != 0) {
         return -1;
     }
 
-    /* Wait for the matching ACK on queue 1; an ERROR packet stops the boot. */
+    /* Wait for the matching ACK on queue 1; match by echoed sequence number
+     * just like AdrenoHfi.c (A7xx GMU ACKs carry type=1 / echoed seq rather
+     * than always id==126). */
     const uint32_t ackAt = 6 + 12;
     uint32_t *ackQueue = hfiQueue(1);
-    for (uint32_t i = 0; i < 1000; ++i) {
+    uint32_t lastRespHdr = 0, lastRespRet = 0, lastRespErr = 0;
+    for (uint32_t i = 0; i < 2000; ++i) {
         cpuInvalidate(gCore.hfi.cpu, kPageBytes);
         cpuInvalidate(gCore.hfi.cpu + 2u * kPageBytes, kPageBytes);
         uint32_t *t = hfiTable();
@@ -410,23 +415,25 @@ int hfiSend(uint32_t messageId, uint32_t dwords, const uint32_t *payload)
             const uint32_t response = ackQueue[read];
             const uint32_t id = response & 0xffu;
             const uint32_t words = (response >> 8) & 0xffu;
+            const uint32_t retHeader = ackQueue[(read + 1) % kHfiQueueWords];
+            const uint32_t ackError = ackQueue[(read + 2) % kHfiQueueWords];
+            lastRespHdr = response;
+            lastRespRet = retHeader;
+            lastRespErr = ackError;
             if (id == TBGPU_HFI_MSG_ERROR) {
-                /* struct a6xx_hfi_msg_error { header; code; } - log it, an
-                 * ACK for the request itself may still follow. */
-                gCore.hfiError = ackQueue[(read + 1) % kHfiQueueWords];
+                gCore.hfiError = retHeader;
                 gCore.report->hfiError = gCore.hfiError;
                 const uint32_t advance = (words < 2u) ? 2u : words;
                 const uint32_t next = (read + advance + 3u) & ~3u;
                 t[ackAt + 10] = next % kHfiQueueWords;
                 cpuClean(gCore.hfi.cpu, kPageBytes);
                 gmuWrite(TBGPU_GMU_GMU2HOST_INTR_CLR, 1u);
+                IOLog("TB710FU GPU: HFI F2H_ERROR msg=%u seq=%u hdr=0x%x code=0x%x\n",
+                      messageId, seq, response, retHeader);
                 continue;
             }
-            if (id == TBGPU_HFI_MSG_ACK) {
-                /* struct a6xx_hfi_msg_response { header; ret_header; error; ... } */
-                const uint32_t retHeader = ackQueue[(read + 1) % kHfiQueueWords];
-                const uint32_t ackError = ackQueue[(read + 2) % kHfiQueueWords];
-                const uint32_t ackSeq = (retHeader >> 20) & 0xfffu;
+            const uint32_t ackSeq = (retHeader >> 20) & 0xfffu;
+            if (words >= 3u && (id == TBGPU_HFI_MSG_ACK || ackSeq == seq)) {
                 const uint32_t advance = (words < 3u) ? 3u : words;
                 const uint32_t next = (read + advance + 3u) & ~3u;
                 t[ackAt + 10] = next % kHfiQueueWords;
@@ -435,11 +442,12 @@ int hfiSend(uint32_t messageId, uint32_t dwords, const uint32_t *payload)
                     gCore.hfiError = ackError;
                     gCore.report->hfiError = ackError;
                     gmuWrite(TBGPU_GMU_GMU2HOST_INTR_CLR, 1u);
+                    IOLog("TB710FU GPU: HFI ACK error msg=%u seq=%u hdr=0x%x ret=0x%x err=0x%x\n",
+                          messageId, seq, response, retHeader, ackError);
                     return -1;
                 }
                 if (ackSeq == seq) {
                     gCore.report->hfiSeq = seq;
-                    /* Deassert MSGQ so the next response raises a fresh IRQ. */
                     gmuWrite(TBGPU_GMU_GMU2HOST_INTR_CLR, 1u);
                     return 0;
                 }
@@ -450,10 +458,17 @@ int hfiSend(uint32_t messageId, uint32_t dwords, const uint32_t *payload)
             const uint32_t next = (read + advance + 3u) & ~3u;
             t[ackAt + 10] = next % kHfiQueueWords;
             cpuClean(gCore.hfi.cpu, kPageBytes);
-            cpuClean(gCore.hfi.cpu + 2u * kPageBytes, kPageBytes);
         }
         tb710fu_gpu_delay_us(100);
     }
+    uint32_t gmuIntr = 0;
+    gmuRead(TBGPU_GMU_GMU2HOST_INTR_INFO, &gmuIntr);
+    cpuInvalidate(gCore.hfi.cpu, kPageBytes);
+    uint32_t *t = hfiTable();
+    IOLog("TB710FU GPU: HFI timeout msg=%u seq=%u cmd=%u/%u ack=%u/%u intr=0x%x gfsr=0x%x cb1fsr=0x%x last=0x%x/0x%x/0x%x\n",
+          messageId, seq, t[at + 10], t[at + 11], t[ackAt + 10], t[ackAt + 11], gmuIntr,
+          tb710fu_gpu_smmu_global_fault(&gCore.smmu), tb710fu_gpu_smmu_bank_fault(&gCore.smmu, 1),
+          lastRespHdr, lastRespRet, lastRespErr);
     gCore.hfiError = 0xffffffffu;
     gCore.report->hfiError = gCore.hfiError;
     return -1;
