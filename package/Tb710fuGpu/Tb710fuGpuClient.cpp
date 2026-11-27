@@ -155,7 +155,7 @@ void copyOut(uint8_t *out, uint32_t outSize, const void *reply, uint32_t bytes)
 }
 
 volatile uint32_t gClientVaBitmap = 0;
-const int32_t kMaxVaSlots = 23; /* slot 0: [0x10000000,+512M), slots 1..8: [0x30000000,+64M), slots 9..22: [0x80000000,+128M) (skips kernel 0x70000000) */
+const int32_t kMaxVaSlots = 9; /* slot 0 (WindowServer): [0x80000000,+1.75G), slots 1..8: [0x10000000,+128M each) (skips kernel 0x70000000) */
 }
 
 bool AGXDeviceUserClient::ensureVaSlice(void)
@@ -168,13 +168,10 @@ bool AGXDeviceUserClient::ensureVaSlice(void)
         if ((__atomic_fetch_or(&gClientVaBitmap, bit, __ATOMIC_ACQ_REL) & bit) == 0) {
             fVaSlot = s;
             if (s == 0) {
-                fVaStart = 0x10000000ull;
-                fVaSize = 0x20000000ull;
-            } else if (s <= 8) {
-                fVaStart = 0x30000000ull + static_cast<uint64_t>(s - 1) * 0x04000000ull;
-                fVaSize = 0x04000000ull;
+                fVaStart = 0x80000000ull;
+                fVaSize = 0x70000000ull;
             } else {
-                fVaStart = 0x80000000ull + static_cast<uint64_t>(s - 9) * 0x08000000ull;
+                fVaStart = 0x10000000ull + static_cast<uint64_t>(s - 1) * 0x08000000ull;
                 fVaSize = 0x08000000ull;
             }
             return true;
