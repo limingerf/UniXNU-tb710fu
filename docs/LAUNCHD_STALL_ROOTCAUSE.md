@@ -99,3 +99,25 @@ GopDisplay 先）**不构成因果**：pl93 里 GopDisplay 在 launchd 之后启
 
 需要人工看一眼屏幕并按确认键，之后 8 小时监视器（`boot_monitor_20261128-035303.log`）
 会接管：抓到日志、判读、并强制回到 EDL。
+
+## 第 2 轮关键发现：unnest 标记
+
+成功案例在 `dyld cache mapped` 之后立刻出现（pl93:471-）：
+```
+launchd[1] triggered unnest of range 0x1e5200000->0x1ec400000 of DYLD shared region in VM map 0x417ffead11428f0d
+fsck[2] triggered unnest of range ... (同范围)
+fsck_apfs[3] triggered unnest of range ...
+mount[4] / seputil[5] / xpcproxy[88..90] ...
+```
+`unnest of ... DYLD shared region` 是 dyld 把共享缓存从嵌套子映射提升进任务主映射的
+动作，**只会在共享缓存成功建立后发生**。
+
+失败案例（pl97b）**一次都没有**这行，也没有任何后续进程的 `check_np`：
+- pl93 还有 `257(com.apple.Driver) check_np(...) returned 0x1` 两次（后续进程正常走到）
+- pl97b 只有 `1(launchd)` 的两次，之后再无任何进程
+
+这把结论钉死：失败时 launchd **没有**建成共享缓存映射，停在
+`check_np` 返回空 与 `map_and_slide` 完成 之间。
+
+注意：`check_np` 返回 `0x1 / errno 12` 在**所有**案例（含成功）都一样，
+所以它不是判据；`unnest` 与 `dyld cache mapped` 才是。
