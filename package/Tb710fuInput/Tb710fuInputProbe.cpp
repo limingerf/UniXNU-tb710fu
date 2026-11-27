@@ -108,23 +108,26 @@ Region gSpmiCnfg;
 
 struct tb710fu_geni_spi gGeni;
 struct tb710fu_nvt_chip gChip;
-struct tb710fu_nvt_core gCore;
 struct tb710fu_tracker gTracker;
 struct tb710fu_spmi gSpmi;
 struct tb710fu_keys gKeys;
 struct tb710fu_key_filter gKeyFilter;
 struct tb710fu_input_options gOptions;
 
-uint8_t gScratch[TB710FU_NVT_READ_MAX];
-uint8_t gRx[TB710FU_NVT_READ_MAX];
-uint8_t gFrame[TB710FU_NVT_READ_BYTES];
+struct InputBuffers {
+    struct tb710fu_nvt_core core;
+    uint8_t scratch[TB710FU_NVT_READ_MAX];
+    uint8_t rx[TB710FU_NVT_READ_MAX];
+    uint8_t frame[TB710FU_NVT_READ_BYTES];
+    uint64_t touchVtable[TB710FU_HID_VTABLE_SLOTS];
+    uint64_t keysVtable[TB710FU_HID_VTABLE_SLOTS];
+};
+InputBuffers *gBuf = nullptr;
 
 ::IOService *gTouchDevice = nullptr;
 ::IOService *gKeysDevice = nullptr;
 ::IOService *gHidResource = nullptr;
 
-uint64_t gTouchVtable[TB710FU_HID_VTABLE_SLOTS];
-uint64_t gKeysVtable[TB710FU_HID_VTABLE_SLOTS];
 bool gTouchVtableReady = false;
 bool gKeysVtableReady = false;
 
@@ -521,7 +524,7 @@ void touch_submit(const struct tb710fu_track_point *points, int count)
     if (length == 0u) return;
     if (memcmp(report, gLastTouch, length) == 0) return;
     memcpy(gLastTouch, report, length);
-    if (submit_report(gTouchDevice, gTouchVtable, gTouchReport, report, length) != kIOReturnSuccess)
+    if (submit_report(gTouchDevice, gBuf->touchVtable, gTouchReport, report, length) != kIOReturnSuccess)
         TB710FU_LOG("touch: report rejected\n");
 }
 
@@ -537,7 +540,7 @@ void touch_loop(void)
         int blobs_count;
         int i;
 
-        if (tb710fu_nvt_read_frame(&gChip, gFrame) != TB710FU_NVT_OK) {
+        if (tb710fu_nvt_read_frame(&gChip, gBuf->frame) != TB710FU_NVT_OK) {
             errors++;
             if (errors == 1u || (errors % 100u) == 0u)
                 TB710FU_LOG("touch: frame read failed (%u)\n", errors);
@@ -545,7 +548,7 @@ void touch_loop(void)
             IOSleep(20);
             continue;
         }
-        blobs_count = tb710fu_nvt_core_process(&gCore, gFrame, (int32_t)TB710FU_PANEL_WIDTH,
+        blobs_count = tb710fu_nvt_core_process(&gBuf->core, gBuf->frame, (int32_t)TB710FU_PANEL_WIDTH,
                                                (int32_t)TB710FU_PANEL_HEIGHT, blobs,
                                                (int)TB710FU_NVT_MAX_CONTACTS);
         if (blobs_count == TB710FU_NVT_ERR_FRAME) {
@@ -572,7 +575,7 @@ void touch_loop(void)
         if (gOptions.verbose) {
             struct tb710fu_nvt_peek peek;
 
-            if (tb710fu_nvt_frame_parse(gFrame, TB710FU_NVT_READ_BYTES, &peek) == 1)
+            if (tb710fu_nvt_frame_parse(gBuf->frame, TB710FU_NVT_READ_BYTES, &peek) == 1)
                 TB710FU_LOG("touch: frame %u counter=%u type=%u blobs=%d\n", frames,
                             peek.counter, peek.type, blobs_count);
         }
@@ -589,7 +592,7 @@ void touch_start(void)
     bus.xfer = nvt_bus_xfer;
     bus.delay_ms = nullptr;
     bus.ctx = nullptr;
-    if (tb710fu_nvt_chip_init(&gChip, &bus, gScratch, sizeof(gScratch), gRx, sizeof(gRx)) !=
+    if (tb710fu_nvt_chip_init(&gChip, &bus, gBuf->scratch, sizeof(gBuf->scratch), gBuf->rx, sizeof(gBuf->rx)) !=
         TB710FU_NVT_OK) {
         TB710FU_LOG("touch: chip context rejected\n");
         return;
@@ -610,7 +613,7 @@ void touch_start(void)
         return;
     }
     gTouchDevice = create_hid_device("TB710FU Touchscreen", 0x0Du, 0x04u, 0x17EFu, 0x0001u,
-                                     gTouchVtable, true);
+                                     gBuf->touchVtable, true);
     if (!gTouchDevice) return;
     if (!start_hid_device(gTouchDevice, "TB710FU Touchscreen")) {
         gTouchDevice->release();
@@ -623,7 +626,7 @@ void touch_start(void)
         TB710FU_LOG("touch: report buffer allocation failed\n");
         return;
     }
-    tb710fu_nvt_core_reset(&gCore);
+    tb710fu_nvt_core_reset(&gBuf->core);
     tb710fu_tracker_init(&gTracker, (int32_t)TB710FU_HID_TOUCH_LOGICAL_X,
                          (int32_t)TB710FU_HID_TOUCH_LOGICAL_Y);
     memset(gLastTouch, 0, sizeof(gLastTouch));
@@ -659,7 +662,7 @@ void keys_submit(unsigned keys)
     if (tb710fu_hid_key_report(keys, report, sizeof(report)) == 0u) return;
     if (memcmp(report, gLastKeys, sizeof(gLastKeys)) == 0) return;
     memcpy(gLastKeys, report, sizeof(gLastKeys));
-    if (submit_report(gKeysDevice, gKeysVtable, gKeysReport, report, sizeof(report)) !=
+    if (submit_report(gKeysDevice, gBuf->keysVtable, gKeysReport, report, sizeof(report)) !=
         kIOReturnSuccess)
         TB710FU_LOG("keys: report rejected\n");
 }
@@ -715,7 +718,7 @@ void keys_start(void)
         TB710FU_LOG("keys: IOHIDResource absent\n");
         return;
     }
-    gKeysDevice = create_hid_device("TB710FU Keys", 0x0Cu, 0x01u, 0x17EFu, 0x0002u, gKeysVtable,
+    gKeysDevice = create_hid_device("TB710FU Keys", 0x0Cu, 0x01u, 0x17EFu, 0x0002u, gBuf->keysVtable,
                                     false);
     if (!gKeysDevice) return;
     if (!start_hid_device(gKeysDevice, "TB710FU Keys")) {
@@ -777,6 +780,15 @@ extern "C" int tb710fu_input_start(void)
         gOptions.keys_stage == (int)TB710FU_KEYS_OFF) {
         TB710FU_LOG("disabled (boot with tb710fu-touch=1..3 / tb710fu-keys=1)\n");
         return 0;
+    }
+
+    if (!gBuf) {
+        gBuf = (InputBuffers *)IOMallocData(sizeof(InputBuffers));
+        if (!gBuf) {
+            TB710FU_LOG("input: failed to allocate InputBuffers (%zu bytes)\n", sizeof(InputBuffers));
+            return -1;
+        }
+        memset(gBuf, 0, sizeof(InputBuffers));
     }
 
     if (gOptions.touch_stage != (int)TB710FU_TOUCH_OFF) {
