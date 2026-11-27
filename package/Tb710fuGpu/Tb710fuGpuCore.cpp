@@ -998,9 +998,8 @@ int stage8()
     Tb710fuGpuCoreReport *report = gCore.report;
 
     /* 8.1 GX vote and the GPU_SET OOB handshake that keeps GX up. */
-    /* Highest GX perf level (index 11 = 834 MHz), matching Linux
-     * current_perf_index = nr_gpu_freqs - 1 at first boot. */
-    if (sendGxVote(11, a750InitialBwVote()) != 0) {
+    /* Boot GX at mid-low OPP (index 3 = 366 MHz) to avoid excessive boot current draw. */
+    if (sendGxVote(3, a750InitialBwVote()) != 0) {
         return -1;
     }
     const int oobStatus = gmuSetOob(30, 31);   /* GMU_OOB_GPU_SET new bits: set 30, ack 31 */

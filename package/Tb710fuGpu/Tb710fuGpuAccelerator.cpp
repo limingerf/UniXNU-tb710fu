@@ -48,6 +48,16 @@ const OSMetaClass *gBase = nullptr;
 volatile uint32_t gMetalAsked = 0;
 volatile uint32_t gMetaInstalled = 0;
 volatile uint32_t gMetalPluginNameReads = 0;
+volatile uint32_t gPropTraceCount = 0;
+
+void tracePropRead(const char *name)
+{
+    if (!name) return;
+    uint32_t idx = __atomic_fetch_add(&gPropTraceCount, 1u, __ATOMIC_RELAXED);
+    if (idx < 25u) {
+        printf("TB710FU GPU: prop[%u]=%s\n", idx, name);
+    }
+}
 
 const uint32_t kMarkerRingSize = 512;
 volatile uint16_t gMarkerRing[kMarkerRingSize];
@@ -176,6 +186,7 @@ OSObject *Tb710fuGpuAccelerator::copyProperty(const OSSymbol *key) const
 {
     const char *name = key ? key->getCStringNoCopy() : nullptr;
     tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] = tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] + 1;
+    tracePropRead(name);
     if (name && strcmp(name, "MetalPluginName") == 0) {
         uint32_t seq = __atomic_fetch_add(&gMetalPluginNameReads, 1u, __ATOMIC_ACQ_REL);
         if (seq < 4u) {
@@ -189,6 +200,7 @@ OSObject *Tb710fuGpuAccelerator::copyProperty(const OSString *key) const
 {
     const char *name = key ? key->getCStringNoCopy() : nullptr;
     tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] = tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] + 1;
+    tracePropRead(name);
     if (name && strcmp(name, "MetalPluginName") == 0) {
         uint32_t seq = __atomic_fetch_add(&gMetalPluginNameReads, 1u, __ATOMIC_ACQ_REL);
         if (seq < 4u) {
@@ -201,6 +213,7 @@ OSObject *Tb710fuGpuAccelerator::copyProperty(const OSString *key) const
 OSObject *Tb710fuGpuAccelerator::copyProperty(const char *key) const
 {
     tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] = tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] + 1;
+    tracePropRead(key);
     if (key && strcmp(key, "MetalPluginName") == 0) {
         uint32_t seq = __atomic_fetch_add(&gMetalPluginNameReads, 1u, __ATOMIC_ACQ_REL);
         if (seq < 4u) {
