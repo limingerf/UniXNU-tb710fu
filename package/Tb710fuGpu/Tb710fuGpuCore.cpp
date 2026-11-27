@@ -1004,7 +1004,7 @@ int stage8()
         gpuWrite(TBGPU_RBBM_GBIF_CLIENT_QOS_CNTL, 0x02120212u) != 0 ||
         gpuWrite(TBGPU_UCHE_GBIF_GX_CONFIG, 0x10240e0u) != 0 ||
         gpuWrite(TBGPU_RBBM_PERFCTR_GPU_BUSY_MASKED, 0xffffffffu) != 0 ||
-        gpuWrite(TBGPU_RBBM_SECVID_TSB_CNTL, 0) != 0) {
+        gpuWrite(TBGPU_SECVID_TSB_CNTL, 0) != 0) {
         return -40;
     }
 

@@ -23,6 +23,7 @@
 #ifndef TB710FU_GPU_SMMU_H
 #define TB710FU_GPU_SMMU_H
 #include "Tb710fuGpuMmio.h"
+#include <IOKit/IOBufferMemoryDescriptor.h>
 #include <IOKit/IOMemoryDescriptor.h>
 #include <stdint.h>
 
