@@ -74,3 +74,28 @@ GopDisplay 先）**不构成因果**：pl93 里 GopDisplay 在 launchd 之后启
 - 桌面久留会导致背光黑屏 + COM5 仍枚举但不响应，会永久失去串口。
 - 监控脚本 `scratch/boot-monitor.ps1` 负责：记录每次启动、判读状态、
   **检测到桌面或超时立即回 EDL**。
+
+## 追加排除（第 2 轮）
+
+5. **`text-fixup0` 不是原因。** 对照六个镜像：pl86b/pl89/pl92 **没有**该参数但
+   `dyld cache mapped` 成功；pl93 **有**该参数也成功；pl94/pl95 没有却失败。
+   正交，无相关性。
+
+6. **`exit: pid 1 init status 0` 不是崩溃点。** 四个成功案例（pl86b/pl89/pl92/pl93）
+   与两个失败案例**都各有 2 次**该日志，位置均在 `exec: pid 1 launchd` 前后，
+   属于内核临时 init 退出的正常记录。
+
+7. **失败模式已统一。** pl94、pl95、pl97b、pl96-rollback 四份失败日志全部停在
+   `check_np -> errno 12 -> ASP: AMFI pointer initialized` 之后，**都没有**
+   `dyld cache mapped system-wide`。四个成功案例都有这一行。
+   因此分界点精确落在「`check_np` 返回空」到「`map_and_slide` 成功」之间，
+   即补丁 0052 所打印的那段。
+
+## 第 2 轮阻塞
+
+`pl100-srmap`（含 0052）刷入后，平板**从未枚举 USB**：无 COM5、无 9008、
+无任何 `VID_05C6/1209/18D1`，持续 5 分钟以上。与「卡初始化后自行重启」不同：
+重启循环至少会短暂出现 COM5 或 9008。最可能停在 UEFI 菜单等待选择。
+
+需要人工看一眼屏幕并按确认键，之后 8 小时监视器（`boot_monitor_20261128-035303.log`）
+会接管：抓到日志、判读、并强制回到 EDL。
