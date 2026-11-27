@@ -1267,7 +1267,7 @@ int issueFenceSelfTest(uint32_t *observed)
         return -1;
     }
     const uint32_t meInit[7] = {
-        (1u << 0) | (1u << 1) | (1u << 3) | (1u << 6) | (1u << 8),
+        (1u << 0) | (1u << 1) | (1u << 3) | (1u << 6) | (1u << 8) | (1u << 11),
         0x00000003u, 0x20000000u, 0x00000002u,
         static_cast<uint32_t>(TBGPU_PWRUP_IOVA), static_cast<uint32_t>(TBGPU_PWRUP_IOVA >> 32),
         1u << 31

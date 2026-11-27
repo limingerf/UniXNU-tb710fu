@@ -132,7 +132,7 @@ int mapPage(Tb710fuGpuSmmu *smmu, uint32_t bank, uint64_t iova, uint64_t pa, uin
         l3 = tableAt(smmu, index);
     }
     const uint32_t share = (flags & Tb710fuGpuMapShareMask) >> Tb710fuGpuMapShareShift;
-    uint64_t leaf = pa | kAfNgn | 3u;
+    uint64_t leaf = pa | kAfNgn | (1u << 6) | 3u;   // AP[1]=1: unprivileged + privileged access
     leaf |= uint64_t(share & 3u) << 8;
     if (flags & Tb710fuGpuMapWriteback) {
         leaf |= 1u << 2;   // AttrIndx 1: MAIR attribute 1 (write-back)
