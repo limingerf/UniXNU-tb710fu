@@ -474,3 +474,40 @@ dyld 调 shared_region_map_and_slide_2_np
 `shared_region_map_and_slide_2_np` 是**没被调用**还是**调用后失败**——
 这正是补丁 0052 要回答的。在拿到 `TB710FU SRMAP[...]` 那一行之前，
 不要再基于 unnest 反推。
+
+## 第 18 轮：刷机流程与镜像完整性均已核实无误
+
+### 镜像完整性
+
+`out/pl16-46058104010-pl100-srmap-signed/` 的 `signing-report.json`：
+
+```
+signature_checks      : PASS
+public_key_unchanged  : true
+vendor_boot_sha256    : 5bf81eab8de968a4407717451162475c1335ff9cd912a33556cc7bb456403cb1
+vbmeta_sha256         : ecac2cc7e0c54c657000db531d4e04efb04aede07ccc41b0fb5aa82ef2de6631
+```
+
+与打包输出逐字一致。**打包和签名没有问题。**
+
+### boot.img 与 boot_b 的关系（此前的疑惑已澄清）
+
+打包目录里的 `boot.img`（`a3236acc...`，`ANDROID!` 格式）**与 `boot_b` 上
+实际运行的 UEFI 5G 镜像（`988dace74...`）不是同一个文件**。
+
+原因：`edl_flash_b.ps1` 的 `-BootPath` 是**可选参数**（第 4 行），只有显式传入
+才刷 `boot_b`（第 225-227 行）。刷 pl100 时没有传，所以 `boot_b` 保持不变——
+这正是期望行为，因为 `boot_b` 承载的是 UEFI，不该被内核镜像覆盖。
+
+已确认 `out/uefi-5g-45995333298/boot.img` 的 SHA-256 正是
+`988dace74ecd78dbdc3795a03524d50eeaa7c8b487845601d84e548d123f7aa2`，
+与交接文档记录的一致。
+
+### 因此
+
+- 镜像正确
+- 刷入目标（`vbmeta_b` + `vendor_boot_b`）正确
+- `boot_b` 未被误覆盖
+
+**设备不启动不能归因于刷机或打包错误。** 剩下三种可能仍未排除且无法远程区分：
+UEFI 菜单等待 / 电池耗尽 / reset 后未启动。
