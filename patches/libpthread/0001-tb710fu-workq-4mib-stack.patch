@@ -1,0 +1,54 @@
+TB710FU macOS 27.3: increase workqueue thread stack size from 512 KiB to 4 MiB.
+
+Hardware evidence (pl85, com5_pl85_live.log):
+- WindowServer pid=302 completed Submit #1..#5 on Adreno 750 hardware, then died
+  with SIGBUS (status=0xa, reason 2:10) at NativeAdrenoMetal+0xe809b8 (inline
+  Rust stack probe `ldr xzr, [sp]`) inside native_bridge_metal_open ->
+  nmb_device_open -> metal2vulkan_runtime::device::create::Device::system_default_with.
+- Crash registers: fp=0x16f229ce0, sp=0x16f1d3d80 (352 KiB frame), BT[11]
+  fp=0x16f254be0, total stack depth 0x80e60 (515.6 KiB > 512 KiB). The final
+  probe at 0x16f1d3d80 hit the 4 KiB VM_PROT_NONE workq stack guard page
+  [0x16f1d3000..0x16f1d4000).
+- Userspace _pthread_wqthread_setup computes stacksize dynamically from the
+  kernel-supplied (self - stacklowaddr), and virtual stack pages are demand-paged
+  and marked VM_BEHAVIOR_REUSABLE in workq_markfree_threadstack.
+
+diff --git a/kern/kern_support.c b/kern/kern_support.c
+--- a/kern/kern_support.c
++++ b/kern/kern_support.c
+@@ -686,6 +686,8 @@
+ 
+ #pragma mark - Workqueue Thread Support
+ 
++#define WORKQ_DEFAULT_STACKSIZE (4 * 1024 * 1024)
++
+ static mach_vm_size_t
+ workq_thread_allocsize(proc_t p, vm_map_t wq_map,
+ 		mach_vm_size_t *guardsize_out)
+@@ -695,7 +697,7 @@
+ 			pthread_kern->proc_get_pthsize(p) + PTHREAD_T_OFFSET,
+ 			vm_map_page_mask(wq_map));
+ 	if (guardsize_out) *guardsize_out = guardsize;
+-	return guardsize + PTH_DEFAULT_STACKSIZE + pthread_size;
++	return guardsize + WORKQ_DEFAULT_STACKSIZE + pthread_size;
+ }
+ 
+ int
+@@ -754,7 +756,7 @@
+ 	const vm_size_t       guardsize = vm_map_page_size(vmap);
+ 	const user_addr_t     freeaddr = (user_addr_t)stackaddr + guardsize;
+ 	const vm_map_offset_t freesize = vm_map_trunc_page_mask(
+-			(PTH_DEFAULT_STACKSIZE + guardsize + PTHREAD_T_OFFSET) - 1,
++			(WORKQ_DEFAULT_STACKSIZE + guardsize + PTHREAD_T_OFFSET) - 1,
+ 			vm_map_page_mask(vmap)) - guardsize;
+ 
+ 	__assert_only kern_return_t kr = mach_vm_behavior_set(vmap, freeaddr,
+@@ -784,7 +786,7 @@
+ {
+ 	const vm_size_t guardsize = vm_map_page_size(map);
+ 
+-	th_addrs->self = (user_addr_t)(stackaddr + PTH_DEFAULT_STACKSIZE +
++	th_addrs->self = (user_addr_t)(stackaddr + WORKQ_DEFAULT_STACKSIZE +
+ 			guardsize + PTHREAD_T_OFFSET);
+ 	workq_thread_set_top_addr(th_addrs, th_addrs->self);
+ 	th_addrs->stack_bottom = (user_addr_t)(stackaddr + guardsize);
