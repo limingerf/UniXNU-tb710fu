@@ -70,9 +70,11 @@
 #include <libkern/c++/OSSymbol.h>
 #include <pexpert/pexpert.h>
 
+extern "C" {
 #include "GeniI2c.h"
 #include "Tb710fuBacklightCore.h"
 #include "Tb710fuPlatformStage.h"
+}
 
 namespace {
 

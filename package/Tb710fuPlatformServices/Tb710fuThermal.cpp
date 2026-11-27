@@ -42,8 +42,10 @@
 #include <libkern/libkern.h>
 #include <pexpert/pexpert.h>
 
+extern "C" {
 #include "Tb710fuPlatformStage.h"
 #include "Tb710fuThermalCore.h"
+}
 
 namespace {
 

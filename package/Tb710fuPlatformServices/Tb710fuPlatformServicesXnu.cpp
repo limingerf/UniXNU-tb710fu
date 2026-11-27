@@ -65,14 +65,10 @@ extern "C" {
 #include "Tb710fuSpmiMmio.h"
 }
 
-#if __has_include(<IOKit/rtc/IORTCController.h>)
-#include <IOKit/rtc/IORTCController.h>
-#define TB710FU_HAS_IORTC 1
-#else
-/* A kernel build without the IORTC ABI keeps the clock hook and the
- * diagnostic service below, and says so once instead of failing to build. */
+/* IORTCController lives in an external Apple kext (not linked into the static
+ * XNU image), so keep TB710FU_HAS_IORTC=0 and use the armdt_platform_clock_register
+ * RTC clock hook directly with zero undefined kext link symbols. */
 #define TB710FU_HAS_IORTC 0
-#endif
 
 /* UniXNU's ArmDTPlatform hook (see the file comment). Weak: absent is a
  * supported build. */
@@ -637,8 +633,10 @@ extern "C" int tb710fu_platform_power_action(int action)
  * classes. The three deferred constructors belong to this package's three
  * translation units; the build script renames their __mod_init_func sections
  * and exports their symbols for exactly this call. */
+#if TB710FU_HAS_IORTC
 extern "C" void tb710fu_platform_meta_init(void)
     __asm__("__GLOBAL__sub_I_Tb710fuPlatformServicesXnu.cpp");
+#endif
 
 extern "C" void tb710fu_backlight_meta_init(void)
     __asm__("__GLOBAL__sub_I_Tb710fuBacklight.cpp");
@@ -651,7 +649,9 @@ extern "C" void tb710fu_platform_meta_all(void)
     /* The backlight metaclass hangs from the live AppleARMBacklight metaclass,
      * which has to be resolved before the class is registered. */
     tb710fu_backlight_resolve_parent();
+#if TB710FU_HAS_IORTC
     tb710fu_platform_meta_init();
+#endif
     tb710fu_backlight_meta_init();
     tb710fu_thermal_meta_init();
 }

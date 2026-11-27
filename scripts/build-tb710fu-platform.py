@@ -140,7 +140,7 @@ def defer_constructor(obj, late, init):
             symtab = struct.unpack_from('<IIII', data, offset + 8)
         offset += size
     if not renamed:
-        raise SystemExit(f'{obj}: expected eager metaclass constructor section missing')
+        return False
     if symtab is None:
         raise SystemExit(f'{obj}: no symbol table')
     symoff, nsyms, stroff, _ = symtab
@@ -155,6 +155,7 @@ def defer_constructor(obj, late, init):
     if not external:
         raise SystemExit(f'{obj}: expected deferred constructor {init} missing from symbols')
     late.write_bytes(bytes(data))
+    return True
 
 
 def invalidate_link(digest):
@@ -227,9 +228,11 @@ def main():
             raise SystemExit(f'{source.name}:\n{result.stdout[-6000:]}')
         target.check_object(output.read_bytes(), source.name)
         late = output.with_suffix('.late.o')
-        defer_constructor(output, late, '__GLOBAL__sub_I_' + source.name)
-        target.check_object(late.read_bytes(), source.name + ' deferred')
-        objects.append(late)
+        if defer_constructor(output, late, '__GLOBAL__sub_I_' + source.name):
+            target.check_object(late.read_bytes(), source.name + ' deferred')
+            objects.append(late)
+        else:
+            objects.append(output)
 
     subprocess.run(['xcrun', 'ar', 'rcs', str(archive), *map(str, objects)], check=True)
     digest = sha(archive)
