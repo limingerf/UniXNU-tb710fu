@@ -307,3 +307,57 @@ pid1 init exit、内存、GPU**。
 
 - 刷入后若 COM5 出现 → 说明问题出在某个可选子系统，且 SRMAP 打印可读
 - 若仍无任何枚举 → 需要人工看屏幕，软件已无法推进
+
+## 第 7 轮：卡住时内核仍活着，进程表可读
+
+从 `scratch/com5_pl97b_20261128-023120.log` 最后几行：
+
+```
+483| TB710FU GopDisplay: registered
+484| TB710FU CDC: GopDisplay start returned
+485| NativeLegacyDisplay: display object attached ...
+486| TB710FU CDC: configured=1 dtr=1
+488| TB710FU CDC: cmd=disp          <- 主机发的命令被响应了
+```
+
+以及 `scratch/com5_watch_20261128-032323.log`：
+
+```
+[03:23:31.770]   ps: answered, no WindowServer
+[03:24:41.561]   ps: answered, no WindowServer
+```
+
+**结论：卡住时内核、调度、CDC、`proc_find`/`proc_name` 全部正常工作。**
+卡住的只是 `launchd` 这一个用户态进程的前进。这排除了「内核挂死」，
+也说明**进程表在卡住状态下完全可读**——这是无需调试器就能看到
+launchd 真实状态的唯一窗口。
+
+### 逐里程碑对比（pl93 成功 vs pl97b 失败，均为完整日志）
+
+| 事件 | pl93 | pl97b |
+|---|---|---|
+| `exec: pid 1 launchd` | 465 | 422 |
+| `check_np` | 467 | 423 |
+| `dyld[1]: result from check_np` | 469 | 425 |
+| `AMFI pointer initialized` | 470 | 426 |
+| `GopDisplay: start entry` | 475 | 432 |
+| `GopDisplay: registered` | 527 | 483 |
+| `dyld cache mapped` | **530** | **缺** |
+| `unnest of range` | **529** | **缺** |
+
+GopDisplay 在两边都完整跑完（各约 51-52 行），**不是差异点**。
+唯一差异就是 `mapped`/`unnest` 这一对事件在失败时根本没发生。
+
+## 新增工具：scratch/capture-stall-procs.ps1
+
+卡住时抓 `ps` / `disp` / `help` 的**完整原始回复**到独立文件，并汇总
+`launchd`/`WindowServer`/`loginwindow` 等的 `thr`、`fp`。
+
+之前 `watch-com5.ps1` 只记录「ps answered」就丢弃了内容，导致最有价值的
+证据被扔掉。`boot-monitor.ps1` 的 `Send-Verb` 会把回复追加进 `$raw`，
+所以新一代监视器不会重犯这个错。
+
+**用途**：设备一恢复，先让它跑到卡住（或用 pb102-minimal），
+然后跑这个脚本，就能看到 launchd 到底还有几个线程、footprint 多少、
+有没有子进程被创建。这直接区分「launchd 完全卡死」与
+「launchd 活着但某个子进程失败」。
