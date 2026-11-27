@@ -246,8 +246,8 @@ int tb710fu_gpu_smmu_map(Tb710fuGpuSmmu *smmu, uint32_t bank, uint64_t iova,
         if (!pa || (pa & (kPageBytes - 1)) || length < kPageBytes) {
             return -1;
         }
-        const uint64_t half = (uint64_t)1 << (smmu->outputBits - 1);
-        if (pa >= half) {
+        const uint64_t limit = (smmu->outputBits >= 64) ? ~0ull : ((uint64_t)1 << smmu->outputBits);
+        if (pa >= limit) {
             return -1;
         }
         if (mapPage(smmu, bank, iova + offset, pa, flags) != 0) {
@@ -293,11 +293,16 @@ int tb710fu_gpu_smmu_program(Tb710fuGpuSmmu *smmu, uint32_t bank, uint32_t asid)
 
     uint32_t sctlr = 1, readTcr = 0, readTcr2 = 0, readCbar = 0;
     uint64_t readTtbr = 0;
-    if (tb710fu_gpu_read32(smmu->window, cb, &sctlr) != 0 || sctlr != 0 ||
-        tb710fu_gpu_read32(smmu->window, cb + 0x30, &readTcr) != 0 || readTcr != tcr ||
-        tb710fu_gpu_read32(smmu->window, cb + 0x10, &readTcr2) != 0 || readTcr2 != tcr2 ||
-        tb710fu_gpu_read64(smmu->window, cb + 0x20, &readTtbr) != 0 || readTtbr != ttbr0 ||
-        tb710fu_gpu_read32(smmu->window, gr1 + bank * 4u, &readCbar) != 0 || readCbar != kCbar) {
+    if (tb710fu_gpu_read32(smmu->window, cb, &sctlr) != 0 ||
+        tb710fu_gpu_read32(smmu->window, cb + 0x30, &readTcr) != 0 ||
+        tb710fu_gpu_read32(smmu->window, cb + 0x10, &readTcr2) != 0 ||
+        tb710fu_gpu_read64(smmu->window, cb + 0x20, &readTtbr) != 0 ||
+        tb710fu_gpu_read32(smmu->window, gr1 + bank * 4u, &readCbar) != 0) {
+        return -1;
+    }
+    if ((sctlr & 1u) != 0 || readTcr != tcr || readTcr2 != tcr2 || readTtbr != ttbr0 || readCbar != kCbar) {
+        IOLog("TB710FU GPU: smmu program bank %u mismatch sctlr=0x%x tcr=0x%x(want 0x%x) tcr2=0x%x(want 0x%x) ttbr=0x%llx(want 0x%llx) cbar=0x%x(want 0x%x)\n",
+              bank, sctlr, readTcr, tcr, readTcr2, tcr2, (unsigned long long)readTtbr, (unsigned long long)ttbr0, readCbar, kCbar);
         return -1;
     }
 
