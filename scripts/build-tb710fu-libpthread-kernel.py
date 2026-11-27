@@ -21,7 +21,7 @@ if WORK.exists() and subprocess.check_output(['git', '-C', str(WORK), 'rev-parse
 if not WORK.exists():
     subprocess.run(['git', 'clone', '--shared', str(SOURCE), str(WORK)], check=True)
 
-patch_dir = DEVICE / 'patches/libpthread'
+patch_dir = DEVICE / 'patches/tb710fu-libpthread'
 if patch_dir.is_dir():
     for patch in sorted(patch_dir.glob('*.patch')):
         if subprocess.run(['git', '-C', str(WORK), 'apply', '--reverse', '--check', str(patch)],
