@@ -315,24 +315,48 @@ extern "C" uint64_t native_legacy_surface_stride(OSObject *surface)
     uint64_t stride = surfaceField(surface, TB710FU_GOP_SURFACE_STRIDE, TB710FU_GOP_SURFACE_STRIDE_WIDTH);
     uint32_t planeCount = (uint32_t)surfaceField(surface, TB710FU_GOP_SURFACE_PLANES, TB710FU_GOP_SURFACE_PLANES_WIDTH);
     if (surface && planeCount >= 1) {
-        /* 26C5035r IOSurface::getBytesPerRowOfPlane (0xfffffff00aee2da4):
-         * for one-plane lossless-compressed BGRA ('&BGA', planes=1), +0x68
-         * holds the pixel width (3200) while the real plane-0 bytesPerRow
-         * (12800) lives in the plane table at +0x180 (count at +0x188),
-         * entry +0x20 (baseOffset at +0x28). */
+        /* 26C5035r IOSurface plane table at +0x180 (count at +0x188), 56-byte
+         * entries. The entry layout was resolved symbol-for-symbol from the
+         * pl92 prelinked kernel's IOSurface accessors (each loads one entry
+         * word and falls back to the legacy surface field for plane 0):
+         *   +0x00 getPlaneWidth        +0x08 getPlaneHeight
+         *   +0x10 getPlaneBase         <- kIOSurfacePlaneBase, the baseOffset
+         *   +0x18 getPlaneOffset       <- kIOSurfacePlaneOffset (secondary)
+         *   +0x20 getPlaneBytesPerRow  <- the real row stride (12800)
+         *   +0x28 getPlaneSize         <- kIOSurfacePlaneSize, planeAllocSize
+         *   +0x30 getPlaneBytesPerElement (u16)
+         * pl93-5g-srgb logged plane0_offset=26279936 because +0x28 was read as
+         * the offset; that word is getPlaneSize (the allocation size), NOT the
+         * baseOffset. The baseOffset is +0x10 (getPlaneBase). +0x68 on the
+         * surface itself holds the pixel width (3200), so the plane table's
+         * +0x20 (12800) is the stride scanout must use. */
         uintptr_t planes = surfaceField(surface, 0x180u, 8u);
         uint32_t allocCount = (uint32_t)surfaceField(surface, 0x188u, 4u);
         if (planes && (planes >> 48) == 0xffffull && allocCount >= 1) {
-            uint64_t planeStride = 0;
-            uint64_t planeOffset = 0;
-            memcpy(&planeStride, (const unsigned char *)planes + 0x20u, sizeof(planeStride));
-            memcpy(&planeOffset, (const unsigned char *)planes + 0x28u, sizeof(planeOffset));
+            const unsigned char *plane0 = (const unsigned char *)planes;
+            uint64_t planeStride = 0;   /* +0x20 getPlaneBytesPerRow */
+            uint64_t planeBase = 0;     /* +0x10 getPlaneBase == baseOffset */
+            memcpy(&planeStride, plane0 + 0x20u, sizeof(planeStride));
+            memcpy(&planeBase, plane0 + 0x10u, sizeof(planeBase));
             static bool logged = false;
             if (!logged) {
                 logged = true;
-                printf("TB710FU GopDisplay: planar stride raw=%llu plane0_stride=%llu plane0_offset=%llu\n",
+                /* One-shot dump of every 64-bit word of plane[0] so the exact
+                 * baseOffset is confirmed on hardware, not inferred. */
+                uint64_t w[7] = {};
+                for (unsigned i = 0; i < 7; ++i) {
+                    memcpy(&w[i], plane0 + i * 8u, sizeof(w[i]));
+                }
+                printf("TB710FU GopDisplay: plane0 words +00=%llu +08=%llu +10=%llu "
+                       "+18=%llu +20=%llu +28=%llu +30=%llu\n",
+                       (unsigned long long)w[0], (unsigned long long)w[1],
+                       (unsigned long long)w[2], (unsigned long long)w[3],
+                       (unsigned long long)w[4], (unsigned long long)w[5],
+                       (unsigned long long)w[6]);
+                printf("TB710FU GopDisplay: planar stride raw=%llu plane0_stride=%llu "
+                       "plane0_baseOffset=%llu plane0_size=%llu\n",
                        (unsigned long long)stride, (unsigned long long)planeStride,
-                       (unsigned long long)planeOffset);
+                       (unsigned long long)planeBase, (unsigned long long)w[5]);
             }
             if (planeStride > stride) {
                 stride = planeStride;

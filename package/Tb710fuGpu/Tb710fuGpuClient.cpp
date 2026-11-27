@@ -98,6 +98,7 @@ private:
     IOReturn importBo(const NativeAdrenoAbiBoImport &request, uint8_t *out);
     IOReturn submit(const NativeAdrenoAbiSubmit &request, uint8_t *out);
     IOReturn waitFence(const NativeAdrenoAbiWaitFence &request);
+    void maintainImportedBo(const Bo &bo);
     IOReturn deviceInfo(uint8_t *out);
     IOReturn timestamp(uint8_t *out);
 
@@ -544,6 +545,37 @@ IOReturn AGXDeviceUserClient::importBo(const NativeAdrenoAbiBoImport &request, u
     return kIOReturnSuccess;
 }
 
+/* Clean+invalidate (dc civac) the CPU dcache of one imported IOSurface BO by
+ * physical segment: the CPU draws into cacheable pages while the A750 SMMU
+ * path is non-coherent, so both directions need maintenance. Before submit
+ * (CPU -> GPU) it pushes dirty CPU lines to PoC; after a completed fence
+ * (GPU -> CPU acquire) it also drops the CPU copies so a readback sees the
+ * GPU's pixels and no stale dirty CPU line can later overwrite them.
+ * flush_dcache64 takes an unsigned count, so segments are walked in <=1 GiB
+ * steps. The caller must hold fLock (the Bo table and descriptor stay live). */
+void AGXDeviceUserClient::maintainImportedBo(const Bo &bo)
+{
+    const uint64_t total = bo.bytes;
+    for (IOByteCount off = 0; off < total; ) {
+        IOByteCount segLen = 0;
+        addr64_t phys = bo.memory->getPhysicalSegment(off, &segLen, kIOMemoryMapperNone);
+        if (!phys || !segLen) {
+            break;
+        }
+        IOByteCount chunk = segLen;
+        if (chunk > total - off) {
+            chunk = total - off;
+        }
+        while (chunk > 0) {
+            const unsigned step = chunk > 0x40000000u ? 0x40000000u : static_cast<unsigned>(chunk);
+            flush_dcache64(phys, step, 1);
+            phys += step;
+            chunk -= step;
+        }
+        off += segLen;
+    }
+}
+
 IOReturn AGXDeviceUserClient::submit(const NativeAdrenoAbiSubmit &request, uint8_t *out)
 {
     if (request.reserved || request.buffer_count == 0 ||
@@ -586,25 +618,7 @@ IOReturn AGXDeviceUserClient::submit(const NativeAdrenoAbiSubmit &request, uint8
             continue;
         }
         if (fBo[s].imported) {
-            const uint64_t total = fBo[s].bytes;
-            for (IOByteCount off = 0; off < total; ) {
-                IOByteCount segLen = 0;
-                addr64_t phys = fBo[s].memory->getPhysicalSegment(off, &segLen, kIOMemoryMapperNone);
-                if (!phys || !segLen) {
-                    break;
-                }
-                IOByteCount chunk = segLen;
-                if (chunk > total - off) {
-                    chunk = total - off;
-                }
-                while (chunk > 0) {
-                    const unsigned step = chunk > 0x40000000u ? 0x40000000u : static_cast<unsigned>(chunk);
-                    flush_dcache64(phys, step, 1);
-                    phys += step;
-                    chunk -= step;
-                }
-                off += segLen;
-            }
+            maintainImportedBo(fBo[s]);
             continue;
         }
         IOBufferMemoryDescriptor *buf = OSDynamicCast(IOBufferMemoryDescriptor, fBo[s].memory);
@@ -642,9 +656,30 @@ IOReturn AGXDeviceUserClient::waitFence(const NativeAdrenoAbiWaitFence &request)
     if (!tb710fu_gpu_core_ring_ready()) {
         return kIOReturnNotReady;
     }
+    /* fLock is NOT held here: run() drops it before this call so the sleep
+     * inside tb710fu_gpu_core_wait_fence() never blocks other methods (pl91). */
     if (tb710fu_gpu_core_wait_fence(request.fence, request.timeout_ns, nullptr) != 0) {
         return kIOReturnTimeout;
     }
+    /* GPU -> CPU acquire (pl95): the retired submission wrote through the
+     * non-coherent SMMU path, so clean+invalidate the CPU dcache on every
+     * writable imported IOSurface before the caller reads it back; without
+     * this the CPU keeps stale lines (and stale dirty lines could overwrite
+     * the GPU's pixels later). Read-only imports are never GPU-written, so
+     * they are skipped. Take fLock only for this maintenance pass. */
+    IOLockLock(fLock);
+    bool maintained = false;
+    for (unsigned s = 0; s < kMaxBo; ++s) {
+        if (fBo[s].used && fBo[s].mapped && fBo[s].imported &&
+            !fBo[s].readOnly && fBo[s].memory) {
+            maintainImportedBo(fBo[s]);
+            maintained = true;
+        }
+    }
+    if (maintained) {
+        __asm__ volatile("dsb sy" ::: "memory");
+    }
+    IOLockUnlock(fLock);
     return kIOReturnSuccess;
 }
 
