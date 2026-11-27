@@ -1060,16 +1060,25 @@ int stage8()
     gCore.rbbmStatus = rbbm;
     report->rbbmStatus = rbbm;
 
-    /* 8.3 UCHE/GMEM range and the secure-video door (may be blocked by TZ). */
+    /* 8.3 UCHE/GMEM range, A7xx APRIV/CP prep, and secure-video door. */
     if (gpuWrite64(TBGPU_UCHE_GMEM_RANGE_MIN, TBGPU_GMEM_BASE) != 0 ||
         gpuWrite64(TBGPU_UCHE_GMEM_RANGE_MAX, TBGPU_GMEM_BASE + TBGPU_GMEM_BYTES - 1) != 0 ||
         gpuWrite(TBGPU_UCHE_CACHE_WAYS, 1u << 23) != 0) {
         return -9;
     }
+    gpuWrite(0x00500u * 4u, 1u);       /* RBBM_PERFCTR_CNTL: enable counters */
+    gpuWrite(0x0098du * 4u, 0u);       /* CP_AHB_CNTL */
+    gpuWrite(0x0084fu * 4u, 0u);       /* CP_PROTECT_CNTL: off during bring-up */
+    gpuWrite(0x00844u * 4u, 0x7fu);    /* CP_APRIV_CNTL: privileged ring/IB/RPTR */
+    gpuWrite(0x00ad0u * 4u, 0x7fu);    /* CP_BV_APRIV_CNTL */
+    gpuWrite(0x00b31u * 4u, 0x7fu);    /* CP_LPAC_APRIV_CNTL */
+    gpuWrite(0x00a00u * 4u, 0u);       /* CP_APERTURE_CNTL_HOST */
     gpuWrite(TBGPU_SECVID_TSB_BASE, 0);
     gpuWrite(TBGPU_SECVID_TSB_BASE + 4, 0);
     gpuWrite(TBGPU_SECVID_TSB_SIZE, 0);
     gpuWrite(TBGPU_SECVID_TSB_CNTL, 0);
+    cpuClean(gCore.pwrup.cpu, gCore.pwrup.bytes);
+    cpuClean(gCore.fence.cpu, gCore.fence.bytes);
     report->stage8Step = 3;
 
     /* 8.4 SQE/AQE microcode. */
@@ -1087,12 +1096,13 @@ int stage8()
     }
     report->stage8Step = 4;
 
-    /* 8.5 RB0. */
+    /* 8.5 RB0 + BV RPTR shadow. */
     const uint32_t ringControl = static_cast<uint32_t>(ilog2u(gCore.ring.bytes / 8) & 0x3f) |
                                  (ilog2u(32 / 8) << 8);
     if (gpuWrite64(TBGPU_CP_RB_BASE, TBGPU_RING_IOVA) != 0 ||
         gpuWrite(TBGPU_CP_RB_CNTL, ringControl != 0 ? ringControl : kMsmRbCntl) != 0 ||
         gpuWrite64(TBGPU_CP_RB_RPTR_ADDR, TBGPU_FENCE_IOVA) != 0 ||
+        gpuWrite64(0x00a98u * 4u, TBGPU_FENCE_IOVA + 8u) != 0 ||
         gpuWrite(TBGPU_CP_RB_WPTR, 0) != 0) {
         return -12;
     }
@@ -1270,6 +1280,25 @@ int issueFenceSelfTest(uint32_t *observed)
     }
     gCore.report->cpStep = fetched ? 1u : 0u;
     if (!fetched) {
+        uint32_t st = 0, st3 = 0, int0 = 0, hwf = 0, cpi = 0, sqec = 0, rbBase = 0, rbCntl = 0, wptrRd = 0;
+        uint32_t afc = 0, afs = 0;
+        uint64_t cb0Far = 0;
+        gpuRead(TBGPU_RBBM_STATUS_BYTES, &st);
+        gpuRead(0x00213u * 4u, &st3);
+        gpuRead(0x00201u * 4u, &int0);
+        gpuRead(0x00821u * 4u, &hwf);
+        gpuRead(0x00823u * 4u, &cpi);
+        gpuRead(TBGPU_CP_SQE_CNTL, &sqec);
+        gpuRead(TBGPU_CP_RB_BASE, &rbBase);
+        gpuRead(TBGPU_CP_RB_CNTL, &rbCntl);
+        gpuRead(TBGPU_CP_RB_WPTR, &wptrRd);
+        gmuRead(TBGPU_GMU_AO_AHB_FENCE_CTRL, &afc);
+        gmuRead(TBGPU_GMU_AHB_FENCE_STATUS, &afs);
+        tb710fu_gpu_read64(gCore.smmu.window, gCore.smmu.bankOffset[0] + 0x60u, &cb0Far);
+        IOLog("TB710FU GPU: CP stall rptr=%u wptr=%u(rd=%u) rbbm=0x%x/0x%x int0=0x%x hwf=0x%x cpi=0x%x sqec=0x%x rb=0x%x/0x%x ahb=0x%x/0x%x gfsr=0x%x cb0fsr=0x%x far=0x%llx\n",
+              rptr, writer.dwords, wptrRd, st, st3, int0, hwf, cpi, sqec, rbBase, rbCntl, afc, afs,
+              tb710fu_gpu_smmu_global_fault(&gCore.smmu), tb710fu_gpu_smmu_bank_fault(&gCore.smmu, 0),
+              (unsigned long long)cb0Far);
         return -1;
     }
 
