@@ -403,3 +403,39 @@ elseif ($ps.Length -gt 0) { Log "  ps: answered, no WindowServer" }
 要回答这个，必须在下一次卡住时**真实采集 `ps` 并保存原始字节**。
 `boot-monitor.ps1` 已修好判据（第 8 轮，`54abad9`）并会保存 `-raw/genNN-*.log`，
 `capture-stall-procs.ps1` 会分文件保存 `ps`/`disp`/`help` 的完整回复。
+
+## 第 15 轮：纠正 —— pl49 并未进入完整图形桌面
+
+此前我写「pl49 曾经真的跑起过 WindowServer，所以问题是 pl49 之后的回归」。
+**这个表述需要限定。**
+
+对 `scratch/com5_pl49_ps3.log` 的 117 个进程做逐个核对：
+
+| 进程 | pl49 |
+|---|---|
+| `WindowServer` | **有** |
+| `loginwindow` | **有** |
+| `Dock` | 无 |
+| `Finder` | 无 |
+| `SystemUIServer` | 无 |
+| `SkyLight` / `backboardd` / `WindowManager` | 无 |
+
+即：**pl49 到达了 WindowServer + loginwindow 阶段，但没有 Dock / Finder /
+SystemUIServer，也就是停在登录窗口，而不是完整图形桌面。**
+
+这与 `pl93` 的完整桌面（`first swap accepted reason=0`、583 帧 0 拒帧、
+实拍有菜单栏与壁纸）是**两个不同阶段**。
+
+### 这对结论的影响
+
+- 「pl49 之后引入回归」这个说法只对**到 WindowServer 为止**成立
+- 而当前失败（`dyld cache mapped` 缺失）发生在**更早**的 dyld 阶段，
+  比 pl49 到达的位置还差两个数量级
+- 所以不能简单说「回到 pl49 就好」，但可以说：
+  **pl49 证明 dyld 阶段是可以过的**，这与「偶发」一致
+
+### 仍是事实的部分
+
+pl49 的 `ps` 能列出 117 个进程、`launchd` `thr=9 fp=11564736`，
+说明那一次 `dyld` 成功建立了共享缓存（否则 launchd 起不来，
+更不可能 fork 出 117 个进程）。这一点没变。
