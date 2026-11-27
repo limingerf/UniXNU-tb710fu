@@ -25,7 +25,9 @@
 #include "Tb710fuGpuFirmware.h"
 #include "Tb710fuGpuHw.h"
 #include "Tb710fuGpuSmmu.h"
+#include "../Tb710fuAdsp/QcomMdt.h"
 #include "../Tb710fuAdsp/QcomRpmh.h"
+#include "../Tb710fuAdsp/QcomScm.h"
 #include <IOKit/IOBufferMemoryDescriptor.h>
 #include <IOKit/IOLib.h>
 #include <IOKit/IOKitKeys.h>
@@ -39,6 +41,53 @@ namespace {
 const uint32_t kPageBytes = 4096;
 const uint32_t kSmmuPoolBytes = 2u * 1024u * 1024u;
 IOLock *gCoreLock = nullptr;
+bool gZapReady = false;
+
+struct ZapScmResult { int64_t x0; uint64_t x1; };
+ZapScmResult zapScmCall(uint32_t command, uint32_t arginfo, uint64_t a, uint64_t b, uint64_t c)
+{
+    ZapScmResult result = {-1, 0};
+    for (unsigned busy = 0; busy < 20; ++busy) {
+        uint64_t function = qcom_scm_fn(QCOM_SCM_SVC_PIL, command);
+        uint64_t session = 0;
+        unsigned resumes = 0;
+        for (;;) {
+            register uint64_t x0 __asm__("x0") = function;
+            register uint64_t x1 __asm__("x1") = arginfo;
+            register uint64_t x2 __asm__("x2") = a;
+            register uint64_t x3 __asm__("x3") = b;
+            register uint64_t x4 __asm__("x4") = c;
+            register uint64_t x5 __asm__("x5") = 0;
+            register uint64_t x6 __asm__("x6") = session;
+            register uint64_t x7 __asm__("x7") = 0;
+            __asm__ volatile("smc #0"
+                             : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3), "+r"(x4), "+r"(x5), "+r"(x6), "+r"(x7)
+                             :: "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "memory");
+            result = {(int64_t)x0, x1};
+            if ((int64_t)x0 != QCOM_SCM_INTERRUPTED || ++resumes > 100000) {
+                break;
+            }
+            function = QCOM_SCM_INTERRUPTED;
+            session = x6;
+        }
+        if (result.x0 != QCOM_SCM_V2_EBUSY) {
+            break;
+        }
+        IOSleep(30);
+    }
+    return result;
+}
+
+struct ZapMemCtx { const uint8_t *buf; uint64_t bytes; };
+int zapMemRead(void *context, uint64_t offset, void *to, size_t length)
+{
+    const ZapMemCtx *ctx = static_cast<const ZapMemCtx *>(context);
+    if (!ctx || offset > ctx->bytes || length > ctx->bytes - offset) {
+        return -1;
+    }
+    memcpy(to, ctx->buf + offset, length);
+    return 0;
+}
 
 const uint32_t kPdcEnableValue = 0x80000001u;
 const uint32_t kGmuFenceRange = (1u << 31) | (0x32u << 18) | 0x8a0u;
@@ -1317,7 +1366,160 @@ int issueFenceSelfTest(uint32_t *observed)
         return -1;
     }
 
-    /* 8.6b One real PM4 fence: CP_SCRATCH(2)=seqno, then CP_EVENT_WRITE7
+    /* 8.6b Authenticate gen70900_zap.mbn via SCM PAS_ID=13 at TB710FU's
+     * gpu_microcode_region@9b09a000 (0x2000), exit secure mode with
+     * CP_SET_SECURE_MODE(0), and run K80's verified 25-dword first-context
+     * prefix (ZornGen7HostRing26.cpp + ZornGen7HostGpuTables26.cpp). */
+    gZapReady = false;
+    {
+        const uint32_t kPasGpu = 13u;
+        const uint64_t kZapBase = 0x9b09a000ull;
+        const uint64_t kZapSize = 0x2000ull;
+        void *zapBuf = nullptr;
+        uint64_t zapBytes = 0;
+        int zapRc = tb710fu_gpu_firmware_load(
+            "gen70900_zap.mbn", 12088,
+            "c4f086956467a8bc7a67c3cc5eb8edc17eee6fe9390b9f32dd6305d1e2f0f6cb",
+            &zapBuf, &zapBytes);
+        ZapScmResult sr = {0, 0};
+        if (zapRc == 0) {
+            static QcomMdtImage sZapMdt;
+            memset(&sZapMdt, 0, sizeof(sZapMdt));
+            ZapMemCtx ctx = {static_cast<const uint8_t *>(zapBuf), zapBytes};
+            if (qcom_mdt_parse(&sZapMdt, zapBytes, zapMemRead, &ctx) != 0) {
+                zapRc = -10;
+            } else {
+                const uint64_t metaBytes = qcom_mdt_metadata_size(&sZapMdt);
+                IOBufferMemoryDescriptor *metaDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(
+                    kernel_task,
+                    static_cast<IOOptionBits>(kIODirectionInOut) | static_cast<IOOptionBits>(kIOMemoryPhysicallyContiguous),
+                    static_cast<mach_vm_size_t>(metaBytes), 0xfffffffffffff000ull);
+                if (!metaDesc || metaDesc->prepare() != kIOReturnSuccess) {
+                    zapRc = -11;
+                } else {
+                    uint8_t *metaVa = static_cast<uint8_t *>(metaDesc->getBytesNoCopy());
+                    if (qcom_mdt_metadata(&sZapMdt, zapMemRead, &ctx, metaVa, metaBytes) != 0) {
+                        zapRc = -12;
+                    } else {
+                        cpuClean(metaVa, static_cast<uint32_t>(metaBytes));
+                        const uint64_t metaPa = metaDesc->getPhysicalSegment(0, nullptr, kIOMemoryMapperNone);
+                        sr = zapScmCall(QCOM_SCM_PAS_INIT_IMAGE,
+                                        qcom_scm_args(2, QCOM_SCM_VAL, QCOM_SCM_RW, 0),
+                                        kPasGpu, metaPa, 0);
+                        if (sr.x0 != 0 || sr.x1 != 0) {
+                            zapRc = -13;
+                        } else if (sZapMdt.relocatable) {
+                            sr = zapScmCall(QCOM_SCM_PAS_MEM_SETUP,
+                                            qcom_scm_args(3, 0, 0, 0),
+                                            kPasGpu, kZapBase, qcom_mdt_span(&sZapMdt));
+                            if (sr.x0 != 0 || sr.x1 != 0) {
+                                zapRc = -14;
+                            }
+                        }
+                    }
+                    if (zapRc == 0) {
+                        IOMemoryDescriptor *zapDesc = IOMemoryDescriptor::withPhysicalAddress(
+                            kZapBase, kZapSize, static_cast<IODirection>(kIODirectionOut));
+                        IOMemoryMap *zapMap = zapDesc ? zapDesc->map(kIOMapAnywhere | kIOMapWriteCombineCache) : nullptr;
+                        if (!zapMap) {
+                            zapRc = -15;
+                        } else {
+                            volatile uint8_t *dst = reinterpret_cast<volatile uint8_t *>(zapMap->getVirtualAddress());
+                            for (unsigned i = 0; i < sZapMdt.count && zapRc == 0; ++i) {
+                                const QcomMdtSegment &seg = sZapMdt.segment[i];
+                                if (!seg.load) {
+                                    continue;
+                                }
+                                uint64_t at = 0;
+                                if (qcom_mdt_place(&sZapMdt, i, kZapBase, kZapSize, &at) != 0) {
+                                    zapRc = -16;
+                                    break;
+                                }
+                                const uint8_t *src = ctx.buf + seg.file_offset;
+                                for (uint64_t k = 0; k < seg.file_size; ++k) {
+                                    dst[at + k] = src[k];
+                                }
+                                for (uint64_t k = seg.file_size; k < seg.memory_size; ++k) {
+                                    dst[at + k] = 0;
+                                }
+                            }
+                            tb710fu_gpu_barrier();
+                            zapMap->release();
+                        }
+                        if (zapDesc) {
+                            zapDesc->release();
+                        }
+                    }
+                    if (zapRc == 0) {
+                        sr = zapScmCall(QCOM_SCM_PAS_AUTH_AND_RESET,
+                                        qcom_scm_args(1, 0, 0, 0),
+                                        kPasGpu, 0, 0);
+                        if (sr.x0 != 0 || sr.x1 != 0) {
+                            zapRc = -17;
+                        }
+                    }
+                    metaDesc->complete();
+                }
+                if (metaDesc) {
+                    metaDesc->release();
+                }
+            }
+            tb710fu_gpu_firmware_free(zapBuf, zapBytes);
+        }
+        IOLog("TB710FU GPU: stage8 zap pas=13 rc=%d scm=%lld/%llu\n",
+              zapRc, (long long)sr.x0, (unsigned long long)sr.x1);
+        if (zapRc == 0) {
+            const uint32_t secOff[1] = {0u};
+            if (emit7(&writer, 0x66, secOff, 1) == 0) {
+                gCore.ringWptr = writer.dwords;
+                ringKick(writer.dwords);
+                bool secIdle = false;
+                for (uint32_t i = 0; i < 2000; ++i) {
+                    if (ringRptr() == writer.dwords) {
+                        secIdle = true;
+                        break;
+                    }
+                    tb710fu_gpu_delay_us(100);
+                }
+                if (secIdle) {
+                    const uint64_t ttbr0 = (static_cast<uint64_t>(kGpuAsid) << 48) |
+                        (gCore.smmu.poolPa + static_cast<uint64_t>(gCore.smmu.rootTable[0]) * kPageBytes);
+                    const uint32_t brSync = 0x80000001u, bothSync = 0x80000003u, resetAll = 0xfu;
+                    const uint32_t lrz = 0x26u, inv = 0x31u, both = 3u, markerOn = 0x101u;
+                    const uint32_t tbl[4] = {static_cast<uint32_t>(ttbr0), static_cast<uint32_t>(ttbr0 >> 32), 0u, 0u};
+                    if (emit7(&writer, 0x17, &brSync, 1) == 0 &&
+                        emit7(&writer, 0x17, &bothSync, 1) == 0 &&
+                        emit7(&writer, 0x1f, &resetAll, 1) == 0 &&
+                        emit7(&writer, 0x17, &bothSync, 1) == 0 &&
+                        emit7(&writer, 0x46, &lrz, 1) == 0 &&
+                        emit7(&writer, 0x17, &brSync, 1) == 0 &&
+                        emit7(&writer, 0x53, tbl, 4) == 0 &&
+                        emit7(&writer, 0x17, &brSync, 1) == 0 &&
+                        emit7(&writer, 0x46, &inv, 1) == 0 &&
+                        emit7(&writer, 0x17, &both, 1) == 0 &&
+                        emit7(&writer, 0x65, &markerOn, 1) == 0) {
+                        gCore.ringWptr = writer.dwords;
+                        ringKick(writer.dwords);
+                        bool ctxIdle = false;
+                        for (uint32_t i = 0; i < 2000; ++i) {
+                            if (ringRptr() == writer.dwords) {
+                                ctxIdle = true;
+                                break;
+                            }
+                            tb710fu_gpu_delay_us(100);
+                        }
+                        gZapReady = ctxIdle;
+                        IOLog("TB710FU GPU: stage8 secure-exit=1 first-ctx=%u rptr=%u/%u\n",
+                              ctxIdle ? 1u : 0u, ringRptr(), writer.dwords);
+                    }
+                } else {
+                    IOLog("TB710FU GPU: stage8 secure-exit timeout rptr=%u/%u\n", ringRptr(), writer.dwords);
+                }
+            }
+        }
+    }
+
+    /* 8.6c One real PM4 fence: CP_SCRATCH(2)=seqno, then CP_EVENT_WRITE7
      * CACHE_CLEAN|IRQ writing seqno to fence_iova+4. ringReady is only set by
      * the caller when the fence word in RAM actually changes. */
     if (emitFence(&writer, kScratchFenceSeq) != 0) {
@@ -1542,15 +1744,16 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
         IOLockLock(gCoreLock);
     }
 
-    /* BR-only submission (keeping CONCURRENT_BIN_DISABLE=1 from stage8):
-     * count * 4 IB dwords + 7-dword emitFence (CP_SCRATCH(2) + CP_EVENT_WRITE7(0x31)). */
+    /* When ZAP + secure-exit + first-context succeeded (K80 path), emit full
+     * A7xx framed submit (6-dword prologue + IBs + 31-dword BV/BR fence). */
     const uint32_t ringDwords = gCore.ring.bytes / 4;
     const uint32_t margin = 0x400;
     uint32_t at = gCore.ringWptr & (ringDwords - 1);
     const uint32_t rptr = ringRptr() & (ringDwords - 1);
     const uint32_t used = (gCore.ringWptr + ringDwords - rptr) & (ringDwords - 1);
-    const uint32_t fenceDwords = 7u;
-    uint32_t needed = count * 4u + fenceDwords;
+    const uint32_t prologueDwords = gZapReady ? 6u : 0u;
+    const uint32_t fenceDwords = gZapReady ? 31u : 7u;
+    uint32_t needed = prologueDwords + count * 4u + fenceDwords;
     uint32_t pad = 0;
     if (at + needed > ringDwords) {
         pad = ringDwords - at;   /* CP_NOP fill to the end, then wrap to 0 */
@@ -1570,6 +1773,17 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
     }
 
     RingWriter writer = {reinterpret_cast<uint32_t *>(gCore.ring.cpu), ringDwords, at};
+    if (gZapReady) {
+        const uint32_t brSync = 0x80000001u, both = 3u, markerOn = 0x101u;
+        if (emit7(&writer, 0x17, &brSync, 1) != 0 ||
+            emit7(&writer, 0x17, &both, 1) != 0 ||
+            emit7(&writer, 0x65, &markerOn, 1) != 0) {
+            if (gCoreLock) {
+                IOLockUnlock(gCoreLock);
+            }
+            return -1;
+        }
+    }
     for (uint32_t i = 0; i < count; ++i) {
         if (bytes[i] == 0 || (bytes[i] & 3ull) || (iovas[i] & 3ull) ||
             (bytes[i] / 4ull) > 0xfffffull) {
@@ -1589,7 +1803,35 @@ int tb710fu_gpu_core_submit(const uint64_t *iovas, const uint64_t *bytes, uint32
         }
     }
     const uint32_t seq = gCore.ringSeq + 1;
-    if (emitFence(&writer, seq) != 0) {
+    if (gZapReady) {
+        const uint32_t scratch[1] = {seq};
+        const uint32_t br = 1u, bv = 2u, both = 3u, ccuDepth = 0x18u, ccuColor = 0x19u, markerOff = 0x100u;
+        const uint64_t bvAt = TBGPU_FENCE_IOVA + 12u;
+        const uint64_t fenceAt = TBGPU_FENCE_IOVA + 4u;
+        const uint32_t bvWrite[4] = {0x31u | (1u << 27), static_cast<uint32_t>(bvAt),
+                                     static_cast<uint32_t>(bvAt >> 32), seq};
+        const uint32_t bvWait[4] = {0u, static_cast<uint32_t>(bvAt),
+                                    static_cast<uint32_t>(bvAt >> 32), seq};
+        const uint32_t fenceWrite[4] = {0x31u | (1u << 27) | (1u << 31),
+                                        static_cast<uint32_t>(fenceAt),
+                                        static_cast<uint32_t>(fenceAt >> 32), seq};
+        if (emit4(&writer, TBGPU_CP_SCRATCH(2) / 4u, scratch, 1) != 0 ||
+            emit7(&writer, 0x17, &br, 1) != 0 ||
+            emit7(&writer, 0x46, &ccuDepth, 1) != 0 ||
+            emit7(&writer, 0x46, &ccuColor, 1) != 0 ||
+            emit7(&writer, 0x17, &bv, 1) != 0 ||
+            emit7(&writer, 0x46, bvWrite, 4) != 0 ||
+            emit7(&writer, 0x17, &br, 1) != 0 ||
+            emit7(&writer, 0x14, bvWait, 4) != 0 ||
+            emit7(&writer, 0x46, fenceWrite, 4) != 0 ||
+            emit7(&writer, 0x17, &both, 1) != 0 ||
+            emit7(&writer, 0x65, &markerOff, 1) != 0) {
+            if (gCoreLock) {
+                IOLockUnlock(gCoreLock);
+            }
+            return -1;
+        }
+    } else if (emitFence(&writer, seq) != 0) {
         if (gCoreLock) {
             IOLockUnlock(gCoreLock);
         }
