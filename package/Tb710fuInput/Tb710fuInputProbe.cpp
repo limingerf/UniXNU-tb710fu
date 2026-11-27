@@ -839,10 +839,41 @@ void keys_start(void)
 
 /* ---- entry point used by the boot-time service list ---- */
 
+/* Everything below the argument parse is deferred to a worker thread.
+ *
+ * It must be: tb710fu_input_start() is called on the boot path, before the root
+ * volume is mounted. OSMetaClass::preModLoad/postModLoad, the IOHIDDevice C2
+ * construction and IOResources waits all take IOKit locks that are not
+ * available that early, so doing them inline stalled the boot at the Apple
+ * progress bar with the root volume never mounted (pl97b, keys=1).
+ * Tb710fuEthernet.cpp has always worked this way for the same reason:
+ * tb710fu_ethernet_probe() only spawns ethernetWorker(). */
+void input_worker(void *, wait_result_t)
+{
+    if (gOptions.touch_stage != (int)TB710FU_TOUCH_OFF) {
+        if (!touch_prepare()) {
+            TB710FU_LOG("touch: stopped at stage %d (snapshot)\n", gOptions.touch_stage);
+        } else if (gOptions.touch_stage == (int)TB710FU_TOUCH_SNAPSHOT) {
+            TB710FU_LOG("touch: snapshot stage complete (no writes performed)\n");
+        } else if (!touch_engine()) {
+            TB710FU_LOG("touch: stopped at stage %d (engine)\n", gOptions.touch_stage);
+        } else if (gOptions.touch_stage == (int)TB710FU_TOUCH_ENGINE) {
+            TB710FU_LOG("touch: engine stage complete (no controller traffic)\n");
+        } else {
+            touch_start();
+        }
+    }
+
+    if (gOptions.keys_stage == (int)TB710FU_KEYS_ON) keys_start();
+    TB710FU_LOG("input: worker done\n");
+    thread_terminate(current_thread());
+}
+
 extern "C" int tb710fu_input_start(void)
 {
     const char *boot;
     const char *error = nullptr;
+    thread_t thread = nullptr;
 
     tb710fu_input_options_default(&gOptions);
     gStop = 0;
@@ -883,21 +914,14 @@ extern "C" int tb710fu_input_start(void)
         memset(gBuf, 0, sizeof(InputBuffers));
     }
 
-    if (gOptions.touch_stage != (int)TB710FU_TOUCH_OFF) {
-        if (!touch_prepare()) {
-            TB710FU_LOG("touch: stopped at stage %d (snapshot)\n", gOptions.touch_stage);
-        } else if (gOptions.touch_stage == (int)TB710FU_TOUCH_SNAPSHOT) {
-            TB710FU_LOG("touch: snapshot stage complete (no writes performed)\n");
-        } else if (!touch_engine()) {
-            TB710FU_LOG("touch: stopped at stage %d (engine)\n", gOptions.touch_stage);
-        } else if (gOptions.touch_stage == (int)TB710FU_TOUCH_ENGINE) {
-            TB710FU_LOG("touch: engine stage complete (no controller traffic)\n");
-        } else {
-            touch_start();
-        }
+    if (kernel_thread_start(input_worker, nullptr, &thread) != KERN_SUCCESS) {
+        TB710FU_LOG("input: worker spawn failed\n");
+        return -1;
     }
-
-    if (gOptions.keys_stage == (int)TB710FU_KEYS_ON) keys_start();
+    /* Drop the creation reference; the worker ends itself with
+     * thread_terminate(), exactly as the Ethernet probe does. */
+    thread_deallocate(thread);
+    TB710FU_LOG("input: worker started\n");
     return 0;
 }
 
