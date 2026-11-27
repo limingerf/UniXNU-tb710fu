@@ -116,10 +116,19 @@ lba_bytes = 4096
 #                       instead of requiring one 5 GiB free run.
 # Evidence: docs/MEMORY_MAP_8GB.md, scripts/check-tb710fu-memory-map.py
 [payload]
-# The FatFs volume DarwinBoot mounts from vendor_boot. 56 MiB held the LZMA kernel, the Data seed, the TrustCache and the
-# boot-shim addon with ~10 MiB left; the ADSP firmware addon adds 22.3 MB (zlib of adsp.mbn 34.8 MB + adsp_dtb.mbn 64 KB).
-# 78 MiB keeps the files under 95% of the volume and stays inside the 85,024,768-byte vendor_ramdisk budget.
-size_mib = 78
+# The FatFs volume DarwinBoot mounts from vendor_boot. 86 MiB holds the LZMA kernel (~24.2 MiB),
+# the macOS Data seed (~21.8 MiB), the TrustCache (~451 KiB) and the combined ADSP + GPU Metal
+# addon (~36.6 MiB) while staying inside the vendor_boot partition budget.
+size_mib = 86
+# Force QuartzCore IOMFBDisplay::framebuffer_pixel_format on 26C5035r out of the vmm-present
+# half-float ('RGhA') branch into 8-bit BGRA so WindowServer presents 25.6 MB 8-bit surfaces.
+text_fixups = ["dyld_shared_cache_arm64e.03,5de1134,08060037,1f2003d5"]
+
+[adt.product.string]
+# Override inherited Mac17,11 PROLED XDR gamut (Rec2020 / P3A) so WindowServer does not select
+# 64-bit wide-gamut '&w4a' framebuffers rejected by the 8-bit GOP scanout path.
+artwork-display-gamut = "sRGB"
+ideal-screen-colorspace = "sRGB"
 
 [payload.adt]
 chip_id = "0x6050"

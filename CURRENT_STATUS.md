@@ -1,3 +1,38 @@
+# Current status · 2026-11-27
+
+## 🖥️🏆 重大里程碑：`pl93-5g-srgb` 实机成功进入 **macOS 27.3 图形桌面**（5 GiB 内存 + Adreno 750 多客户端渲染 + 8-bit `'&BGA'` 送显 583 帧 0 拒帧）；`pl94-5g-srgb-input`（导入 IOSurface 缓存刷新 + 触控/按键开启）已编绿刷机验证 · 2026-11-27
+
+- **5.0 GiB 可用内存实机验证（`uefi-lzma.yml` Run [45995333298](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45995333298)，commit `73e14ee`）**：
+  - `out/uefi-5g-45995333298/boot.img`（SHA-256 `988dace74ecd78dbdc3795a03524d50eeaa7c8b487845601d84e548d123f7aa2`）已刷入 `boot_b`。
+  - 实机确认：`pmap_startup() 1240771 page entries`（约 4.73 GiB / 5.0 GiB 可管理内存，无 2 GiB 空洞）。
+- **彻底根除 `WindowServer` 512 KiB 栈溢出 `SIGBUS (status=0xa)`（`pl86` / `pl86b`）**：
+  - `patches/tb710fu-libpthread/0001-tb710fu-workq-4mib-stack.patch`（commit `ff5b343`，Run [45988018756](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45988018756)）：内核 workq 栈扩至 4 MiB。
+  - `patches/adreno-metal/0001-tb710fu-open-and-pipelines-on-large-stack.patch`（commit `6a43196`，`macos-userdata.yml` Run [45991116608](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45991116608)）：`NativeBridgeMetalFrontend.mm` 对 `nmb_device_open` 及管线编译套 16 MiB `onSufficientStack`。
+  - 复用产物：`out/pl86-combined.gpuaddon`（13 条目，`36,568,400` B，SHA-256 `a4e43dce36bbb2bc350a59641e103d448ac3ebdae96e0759fc9dc31d99bf55d1`）与 `out/pl86.trustcache`（6 模块，`451,468` B，SHA-256 `7da9867a9d2ad0fa98def25f2c7b39e0782be4ff9504d4050b121a233dad88bd`）。
+- **Adreno 750 (`gen70900`) 多客户端硬件 GPU 渲染全通（`pl87`–`pl92`）**：
+  - `pl87`（`6423336`，Run `45997328725`）：A7xx per-client `CP_RESET_CONTEXT_STATE(0xf)` + `LRZ_FLUSH_INVALIDATE` + `CACHE_FLUSH7`/`CACHE_INVALIDATE7` + `CP_WAIT_FOR_IDLE`。
+  - `pl88`（`09e36ec`，Run `45999609233`）：`allocBo()` 改用 `kIOMapWriteCombineCache` + 初始 `dc civac`。
+  - `pl89`–`pl90`（`377305e`, `40b642b`，Run `46004464642`）：per-client SMMU Bank 0 VA 切片隔离（保留内核环 `0x70000000` 特权映射）+ `CB0_TLBIALL`/`CB0_TLBSYNC` + SMMU 池扩至 4 MiB。
+  - `pl91`（`0e9fb31`，Run `46007188198`）：`fBo` 堆分配（`IOMallocData`）+ `waitFence` 解锁 `fLock`。
+  - `pl92`（`2747579`，Run [46010593814](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/46010593814)，`kernel.macho` SHA-256 `42ff883e75850fbbd6a2263f3533e4f7506e0d800fcfb4446aca39285da5a6c1`）：`slot 0`（`WindowServer`）VA 切片扩至 **1.75 GiB**（`[0x80000000,+0x70000000)`），`slots 1..8` 各 128 MiB。
+- **macOS 27.3 图形桌面实机点亮（`pl93-5g-srgb`，commit `9308774`，Run [46021085431](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/46021085431)）**：
+  - `kernel.macho` `143,147,008` B（SHA-256 `b4ae4eda03943c1e0476ae6af77d39e2571281d45439c3a21a5277381580f0a5`），镜像 `out/pl16-46021085431-pl93-5g-srgb-signed/`（`vendor_boot.img` `0b1725a1...`，`vbmeta.img` `da1d7555...`）。
+  - 根因与修复：
+    1. ADT `/product` 原继承了 `Rec2020`/`P3A`（XDR 广色域），导致 `WindowServer` 强选 `'&w4a'`（64-bit 广色域，52.5 MB）被 `validateSwap()` 拒收；改为 `artwork-display-gamut=sRGB`、`ideal-screen-colorspace=sRGB` + `text-fixup0=dyld_shared_cache_arm64e.03,5de1134,08060037,1f2003d5` 后，`WindowServer` 切回 8-bit `'&BGA'`（26.2 MB）。
+    2. `package/GopDisplaySupport.cpp` 对 `planes >= 1` 的 `'&BGA'` 从 `26C5035r` `IOSurface` plane 表 `*(surface+0x180) + 0x20` 读取真实行步长 `12800`（原 `+0x68` 为 `3200`）；`Tb710fuGpuClient.cpp` 将 `kMaxBo` 提至 `32768`。
+  - **实机验证结果（`scratch/com5_pl93_5g_srgb_live2.log` + 用户实拍图）**：
+    - `first swap accepted reason=0`（`3200x2000 fmt=26424741 planes=1 stride=12800`），`first transfer ok bytes=25600000`，`disp` 实测稳定送显 **583 帧**（`transfers=583 retire=583 rejected=0 cpu8=583`），**实机进入 macOS 27.3 图形桌面**（GPU 渐变背景与菜单栏图标清晰，CPU 绘制的窗口文字区域出现条纹/残缺）。
+- **导入 IOSurface 缓存刷新 + 触控/按键开启（`pl94-5g-srgb-input`，commit `88edcfa`，Run [46025477175](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/46025477175)）**：
+  - `kernel.macho` `143,147,008` B（SHA-256 `00f71e49cbf47a30462f5a05634fa573f616239825df220129e50734b13b76f5`），镜像 `out/pl16-46025477175-pl94-5g-srgb-input-signed/`（`vendor_boot.img` `d81d6d2f...`，`vbmeta.img` `55cf3162...`）。
+  - `package/Tb710fuGpu/Tb710fuGpuClient.cpp`：GPU `submit()` 前对所有已映射 `imported` IOSurface BO 按物理段执行 `flush_dcache64(phys, step, 1)`（`dc civac`），修复 CPU（CoreGraphics）绘制图层未落盘导致的条纹/残缺。
+  - 开启 `tb710fu-touch=3 tb710fu-keys=1` 的首次实机输入探测结果（`scratch/com5_pl94_5g_srgb_input_live.log`）：
+    - `TB710FU input: keys: PON apid=533 PM8550-GPIO6 apid=559`（SPMI 侧键 APID 识别成功）；
+    - `TB710FU input: keys: IOHIDResource absent`（需加载/启用 `IOHIDFamily` 与 `offline-hid-input=1`）；
+    - `TB710FU input: boot args: tb710fu-touch wants 0..3`（`tb710fu_input_bootargs()` 解析 `tb710fu-touch=3` 边界/尾字符报错，需顺手修复）。
+- **启动参数与配置文档**：完整启动参数表已落地在 `docs/BOOT_ARGS.md`，`board.toml` 已同步记录 `size_mib = 86`、`text_fixups` 与 `[adt.product.string]` `sRGB`。
+
+---
+
 # Current status · 2026-11-26
 
 ## 🔋🏆 重大里程碑：`pl55` 实机一次拉起 **SM8650 ADSP + PMIC GLINK + `qcom_battmgr` + `IOPMPowerSource`**，在 5 GiB 零摇摆零 panic 基线上成功发布真实电量 **`16% 3647 mV -494 mA`**！ · 2026-11-26
