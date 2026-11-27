@@ -52,6 +52,50 @@ volatile uint32_t gMetalPluginNameReads = 0;
 const uint32_t kMarkerRingSize = 512;
 volatile uint16_t gMarkerRing[kMarkerRingSize];
 volatile uint32_t gMarkerWrite = 0;
+volatile uint32_t gMarkerRead = 0;
+
+void dumpPluginMarkers(uint32_t seq)
+{
+    uint32_t opens = tb710fu_gpu_stats[TB710FU_GPU_OPENS];
+    uint32_t wr = __atomic_load_n(&gMarkerWrite, __ATOMIC_ACQUIRE);
+    uint32_t rd = gMarkerRead;
+    printf("TB710FU GPU: MetalPluginName #%u (opens=%u last_type=0x%x markers=%u..%u)\n",
+           seq, opens, tb710fu_gpu_stats[TB710FU_GPU_OPEN_TYPE], rd, wr);
+    char text[96];
+    uint32_t textLen = 0;
+    uint32_t printed = 0;
+    while (rd != wr && printed < 64u) {
+        uint16_t m = gMarkerRing[rd & (kMarkerRingSize - 1u)];
+        rd++;
+        if (m == 0x7fffu || m == 0x7ffeu) {
+            if (textLen > 0) {
+                text[textLen] = '\0';
+                printf("TB710FU GPU: plugin text: %s\n", text);
+                textLen = 0;
+                printed++;
+            }
+        } else if ((m & 0xff00u) == 0x7000u) {
+            char c = static_cast<char>(m & 0xffu);
+            if (c >= 0x20 && c < 0x7f && textLen + 1 < sizeof(text)) {
+                text[textLen++] = c;
+            }
+        } else {
+            if (textLen > 0) {
+                text[textLen] = '\0';
+                printf("TB710FU GPU: plugin text: %s\n", text);
+                textLen = 0;
+                printed++;
+            }
+            printf("TB710FU GPU: plugin marker=0x%04x\n", m);
+            printed++;
+        }
+    }
+    if (textLen > 0) {
+        text[textLen] = '\0';
+        printf("TB710FU GPU: plugin text: %s\n", text);
+    }
+    gMarkerRead = rd;
+}
 }  // namespace
 
 extern "C" volatile uint32_t tb710fu_gpu_stats[TB710FU_GPU_STAT_COUNT] = {};
@@ -132,9 +176,11 @@ OSObject *Tb710fuGpuAccelerator::copyProperty(const OSSymbol *key) const
 {
     const char *name = key ? key->getCStringNoCopy() : nullptr;
     tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] = tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] + 1;
-    if (name && strcmp(name, "MetalPluginName") == 0 &&
-        __atomic_exchange_n(&gMetalPluginNameReads, 1u, __ATOMIC_ACQ_REL) == 0) {
-        printf("TB710FU GPU: discovery read MetalPluginName (accelerator reached)\n");
+    if (name && strcmp(name, "MetalPluginName") == 0) {
+        uint32_t seq = __atomic_fetch_add(&gMetalPluginNameReads, 1u, __ATOMIC_ACQ_REL);
+        if (seq < 4u) {
+            dumpPluginMarkers(seq);
+        }
     }
     return IORegistryEntry::copyProperty(key);
 }
@@ -143,9 +189,11 @@ OSObject *Tb710fuGpuAccelerator::copyProperty(const OSString *key) const
 {
     const char *name = key ? key->getCStringNoCopy() : nullptr;
     tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] = tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] + 1;
-    if (name && strcmp(name, "MetalPluginName") == 0 &&
-        __atomic_exchange_n(&gMetalPluginNameReads, 1u, __ATOMIC_ACQ_REL) == 0) {
-        printf("TB710FU GPU: discovery read MetalPluginName (accelerator reached)\n");
+    if (name && strcmp(name, "MetalPluginName") == 0) {
+        uint32_t seq = __atomic_fetch_add(&gMetalPluginNameReads, 1u, __ATOMIC_ACQ_REL);
+        if (seq < 4u) {
+            dumpPluginMarkers(seq);
+        }
     }
     return IORegistryEntry::copyProperty(key);
 }
@@ -153,9 +201,11 @@ OSObject *Tb710fuGpuAccelerator::copyProperty(const OSString *key) const
 OSObject *Tb710fuGpuAccelerator::copyProperty(const char *key) const
 {
     tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] = tb710fu_gpu_stats[TB710FU_GPU_PROPERTY_READS] + 1;
-    if (key && strcmp(key, "MetalPluginName") == 0 &&
-        __atomic_exchange_n(&gMetalPluginNameReads, 1u, __ATOMIC_ACQ_REL) == 0) {
-        printf("TB710FU GPU: discovery read MetalPluginName (accelerator reached)\n");
+    if (key && strcmp(key, "MetalPluginName") == 0) {
+        uint32_t seq = __atomic_fetch_add(&gMetalPluginNameReads, 1u, __ATOMIC_ACQ_REL);
+        if (seq < 4u) {
+            dumpPluginMarkers(seq);
+        }
     }
     return IORegistryEntry::copyProperty(key);
 }
