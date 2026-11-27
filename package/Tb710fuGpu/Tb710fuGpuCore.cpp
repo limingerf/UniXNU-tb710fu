@@ -1061,10 +1061,11 @@ int stage8()
     report->rbbmStatus = rbbm;
 
     /* 8.3 UCHE/GMEM range, A750 UCHE/UBWC/APRIV/CP prep, and secure-video door. */
+    const uint64_t ucheTrapBase = 0x0001fffffffff000ull;
     if (gpuWrite64(TBGPU_UCHE_GMEM_RANGE_MIN, TBGPU_GMEM_BASE) != 0 ||
         gpuWrite64(TBGPU_UCHE_GMEM_RANGE_MAX, TBGPU_GMEM_BASE + TBGPU_GMEM_BYTES - 1) != 0 ||
-        gpuWrite64(0x00e09u * 4u, TBGPU_UCHE_TRAP_BASE) != 0 ||       /* UCHE_TRAP_BASE */
-        gpuWrite64(0x00e07u * 4u, TBGPU_UCHE_TRAP_BASE) != 0 ||       /* UCHE_WRITE_THRU_BASE */
+        gpuWrite64(0x00e09u * 4u, ucheTrapBase) != 0 ||               /* UCHE_TRAP_BASE */
+        gpuWrite64(0x00e07u * 4u, ucheTrapBase) != 0 ||               /* UCHE_WRITE_THRU_BASE */
         gpuWrite(TBGPU_UCHE_CACHE_WAYS, 1u << 23) != 0 ||
         gpuWrite(0x00e19u * 4u, (1u << 7) | 1u) != 0 ||               /* UCHE_CLIENT_PF */
         gpuWrite(0x00e3cu * 4u, 0x0006690eu) != 0) {                  /* UCHE_CMDQ_CONFIG (A7xx) */
@@ -1675,7 +1676,7 @@ void tb710fu_gpu_core_device_info(Tb710fuGpuCoreDeviceInfo *info)
     info->chipId = TBGPU_CHIPID_A750;
     info->gmemBytes = static_cast<uint32_t>(TBGPU_GMEM_BYTES);
     info->gmemBase = TBGPU_GMEM_BASE;
-    info->ucheTrapBase = 0;
+    info->ucheTrapBase = 0x0001fffffffff000ull;
     info->vaStart = TBGPU_CLIENT_VA_START;
     info->vaSize = TBGPU_CLIENT_VA_SIZE;
     info->highestBankBit = 16;
