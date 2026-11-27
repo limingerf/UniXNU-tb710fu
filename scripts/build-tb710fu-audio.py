@@ -44,7 +44,7 @@ HEADERS = [PACKAGE / name for name in (
     'Tb710fuAcf.h', 'Tb710fuGeniI2c.h', 'Tb710fuAw88461.h', 'Tb710fuGpr.h', 'Tb710fuAudioReach.h',
     'Tb710fuAudioAbi.h', 'Tb710fuAudioEngine.h', 'Tb710fuAudioService.h')]
 TARGET = 'arm64e-apple-ios27.0'
-ENTRY_POINTS = ('_tb710fu_audio_start', '_tb710fu_audio_meta_init')
+ENTRY_POINTS = ('_tb710fu_audio_start', '__GLOBAL__sub_I_Tb710fuAudioService.cpp')
 FAMILY = ('IOAudio',)
 
 
