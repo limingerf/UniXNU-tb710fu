@@ -32,12 +32,15 @@ RECORD_CPP = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/iokit/DEVELOPME
 CPP_SOURCES = [
     PACKAGE / 'Tb710fuGpuAccelerator.cpp',
     PACKAGE / 'Tb710fuGpuPower.cpp',
+    PACKAGE / 'Tb710fuGpuCore.cpp',
+    PACKAGE / 'Tb710fuGpuSmmu.cpp',
     PACKAGE / 'Tb710fuGpuMmio.cpp',
     PACKAGE / 'Tb710fuGpuFirmware.cpp',
     PACKAGE / 'Tb710fuGpuClient.cpp',
 ]
 HEADERS = [PACKAGE / name for name in (
     'Tb710fuGpu.h', 'Tb710fuGpuABI.h', 'Tb710fuGpuHw.h', 'Tb710fuGpuMmio.h', 'Tb710fuGpuFirmware.h',
+    'Tb710fuGpuSmmu.h', 'Tb710fuGpuCore.h',
     'Tb710fuGpuClient.h', 'Tb710fuGpuNativeABI.h')] + [ADSP_PACKAGE / 'Tb710fuAddon.h']
 TARGET = 'arm64e-apple-ios27.0'
 

@@ -52,11 +52,14 @@ enum {
 #define TBGPU_GPUCC_BASE        0x03d90000ull
 #define TBGPU_GPUCC_BYTES       0x0a000ull
 #define TBGPU_SMMU_BASE         0x03da0000ull
-#define TBGPU_SMMU_GR0_BYTES    0x1000u          /* global space 0 only (see docs) */
+#define TBGPU_SMMU_GR0_BYTES    0x1000u          /* global space 0 (M2 inventory) */
+#define TBGPU_SMMU_BYTES        0x40000ull       /* GR0 + GR1 + the context banks (M3) */
 #define TBGPU_GMU_BASE          0x03d68000ull
 #define TBGPU_GMU_BYTES         0x37000ull
 #define TBGPU_GMU_PDC_BASE      0x0b280000ull
 #define TBGPU_GMU_PDC_BYTES     0x10000ull
+#define TBGPU_RSCC_BASE         0x03d50000ull
+#define TBGPU_RSCC_BYTES        0x10000ull
 #define TBGPU_CX_MISC_BASE      0x03d9e000ull
 #define TBGPU_CX_MISC_BYTES     0x2000ull
 #define TBGPU_CX_DBGC_BASE      0x03d61000ull
@@ -155,6 +158,133 @@ enum {
 
 /* a6xx.xml RBBM_STATUS dword 0x0210; register accessors take byte offsets. */
 #define TBGPU_RBBM_STATUS_BYTES      (0x0210u * 4u)
+#define TBGPU_RBBM_SECVID_TRUST_CNTL (0xf400u * 4u)   /* a6xx.xml reg32 0xf400 */
+
+/* Adreno 750 GPU registers (a6xx.xml dwords multiplied by four). */
+#define TBGPU_CP_RB_BASE             0x2000u   /* 0x800/0x801, 64-bit */
+#define TBGPU_CP_RB_CNTL             0x2008u   /* 0x802 */
+#define TBGPU_CP_RB_RPTR_ADDR        0x2010u   /* 0x804/0x805, 64-bit */
+#define TBGPU_CP_RB_RPTR             0x2018u   /* 0x806 */
+#define TBGPU_CP_RB_WPTR             0x201cu   /* 0x807 */
+#define TBGPU_CP_SQE_CNTL            0x2020u   /* 0x808 */
+#define TBGPU_CP_SQE_INSTR_BASE      0x20c0u   /* 0x830/0x831, 64-bit */
+#define TBGPU_CP_SCRATCH(n)          (0x220cu + 4u * (n)) /* 0x883 + n */
+#define TBGPU_CP_IB1_BASE            0x24a0u   /* 0x928/0x929, 64-bit */
+#define TBGPU_CP_IB1_BUFSZ           0x24a8u   /* 0x92a */
+#define TBGPU_CP_IB2_BASE            0x24acu   /* 0x92b/0x92c, 64-bit */
+#define TBGPU_CP_IB2_BUFSZ           0x24b4u   /* 0x92d */
+#define TBGPU_CP_ALWAYS_ON_COUNTER   0x2600u   /* 0x980/0x981, 64-bit */
+#define TBGPU_CP_AQE_INSTR_BASE_0    0x2dc0u   /* 0xb70/0xb71, 64-bit */
+#define TBGPU_UCHE_GMEM_RANGE_MIN    0x382cu   /* 0xe0b/0xe0c, 64-bit */
+#define TBGPU_UCHE_GMEM_RANGE_MAX    0x3834u   /* 0xe0d/0xe0e, 64-bit */
+#define TBGPU_GBIF_QSB_SIDE0         0xf00cu   /* 0x3c03, four a640_gbif words */
+#define TBGPU_GBIF_HALT              0xf114u   /* 0x3c45, GBIF drain (A740 bring-up) */
+#define TBGPU_GBIF_HALT_ACK          0xf118u   /* 0x3c46 */
+#define TBGPU_RBBM_GBIF_HALT         0x58u     /* 0x0016, a7xx hw_init clears both halts */
+#define TBGPU_RBBM_GBIF_CLIENT_QOS_CNTL 0x44u  /* 0x0011 */
+#define TBGPU_UCHE_GBIF_GX_CONFIG     0x38e8u   /* 0x0e3a */
+#define TBGPU_RBBM_PERFCTR_GPU_BUSY_MASKED 0x142cu /* 0x050b */
+#define TBGPU_GMU_AHB_FENCE_STATUS   0x26c4cu  /* 0x23b13: bit0 means CP_RB_WPTR was dropped */
+#define TBGPU_GMU_AHB_FENCE_STATUS_CLR 0x26c50u /* 0x23b14: write 0x7 to clear */
+#define TBGPU_UCHE_CACHE_WAYS        0x385cu   /* 0xe17, BIT(23) on A7xx */
+#define TBGPU_SECVID_TSB_BASE        0x3e000u  /* 0xf800, 64-bit */
+#define TBGPU_SECVID_TSB_SIZE        0x3e008u  /* 0xf802 */
+#define TBGPU_SECVID_TSB_CNTL        0x3e00cu  /* 0xf803 */
+#define TBGPU_GMEM_BASE              0x00100000ull  /* A750 is not a740-family (SZ_1M) */
+#define TBGPU_GMEM_BYTES             0x00300000ull  /* Adreno 750: 3 MiB */
+
+/* GMU registers inside the 0x03d68000 window. a6xx_gmu.xml offsets are dwords
+ * counted from the GPU base 0x03d00000, so the byte offset here is
+ * (xml_dword << 2) - 0x68000 (a6xx_gmu.h GMU_BYTE_OFFSET). */
+#define TBGPU_GMU_ITCM_START         0x5000u   /* 0x1b400 dwords */
+#define TBGPU_GMU_DTCM_START         0x9000u   /* 0x1c400 dwords, 16 KiB */
+#define TBGPU_GMU_CM3_SYSRESET       0x16000u  /* 0x1f800 dwords */
+#define TBGPU_GMU_CM3_BOOT_CONFIG    0x16004u  /* 0x1f801 */
+#define TBGPU_GMU_CM3_FW_INIT_RESULT 0x16070u  /* 0x1f81c */
+#define TBGPU_GMU_CM3_CFG            0x160b4u  /* 0x1f82d */
+#define TBGPU_GMU_FW_VERSION         0xcfe0u   /* DTCM_START + 0xff8 dwords (32 KiB DTCM) */
+#define TBGPU_GMU_ICACHE_CONFIG      0x15000u  /* 0x1f400 */
+#define TBGPU_GMU_DCACHE_CONFIG      0x15004u  /* 0x1f401 */
+#define TBGPU_GMU_SYS_BUS_CONFIG     0x1503cu  /* 0x1f40f */
+#define TBGPU_GMU_HFI_CTRL_STATUS    0x16600u  /* 0x1f980 */
+#define TBGPU_GMU_HFI_QTBL_INFO      0x16610u  /* 0x1f984 */
+#define TBGPU_GMU_HFI_QTBL_ADDR      0x16614u  /* 0x1f985 */
+#define TBGPU_GMU_HFI_CTRL_INIT      0x16618u  /* 0x1f986 */
+#define TBGPU_GMU_GMU2HOST_INTR_CLR  0x16644u  /* 0x1f991 */
+#define TBGPU_GMU_GMU2HOST_INTR_INFO 0x16648u  /* 0x1f992 */
+#define TBGPU_GMU_HOST2GMU_INTR_SET  0x16650u  /* 0x1f994 */
+#define TBGPU_GMU_GENERAL_8          0x16734u  /* 0x1f9cd (A7xx log queue) */
+#define TBGPU_GMU_GENERAL_9          0x16738u  /* 0x1f9ce */
+#define TBGPU_GMU_GENERAL_10         0x1673cu  /* 0x1f9cf, GMU chip id */
+#define TBGPU_GMU_CX_FAL_INTF        0x163c0u  /* 0x1f8f0 */
+#define TBGPU_GMU_CX_FALNEXT_INTF    0x163c4u  /* 0x1f8f1 */
+#define TBGPU_GMU_SPTPRAC_PWR_CLK_STATUS 0x16340u /* 0x1f8d0 */
+#define TBGPU_GMU_CX_GMU_RPMH_POWER_STATE 0x163b0u /* 0x1f8ec */
+#define TBGPU_GMU_AO_AHB_FENCE_CTRL  0x26c40u  /* 0x1d910 */
+#define TBGPU_GMU_AO_AHB_FENCE_RANGE 0x26c44u  /* 0x1d911/0x1d912, 64-bit */
+#define TBGPU_GMU_AO_AHB_FENCE_STATUS 0x26c4cu /* 0x1d913 */
+
+/* SM8650 RSC/PDC (a6xx_gmu.c a6xx_gmu_rpmh_init; offsets are bytes). */
+#define TBGPU_RSCC_STATUS0           0x10u
+#define TBGPU_RSCC_PDC_SEQ_START     0x20u
+#define TBGPU_RSCC_MATCH_LO          0x24u
+#define TBGPU_RSCC_MATCH_HI          0x28u
+#define TBGPU_RSCC_SLAVE_ID          0x2cu
+#define TBGPU_RSCC_HIDDEN_TCS_CMD0_DATA 0x38u
+#define TBGPU_RSCC_HIDDEN_TCS_CMD0_ADDR 0x34u
+#define TBGPU_RSCC_OVERRIDE_START    0x400u
+#define TBGPU_RSCC_SEQ_MEM_0         0x550u   /* A740-family byte offset, NOT used by A750 (GEN3) */
+#define TBGPU_RSCC_SEQ_MEM_0_GENERIC 0x600u   /* A750/GEN3: SEQ_MEM_0_DRV0 (0x180 dword) */
+#define TBGPU_PDC_GPU_ENABLE_PDC     0x4500u
+#define TBGPU_PDC_GPU_SEQ_START_ADDR 0x4520u
+
+/* cx_misc (0x03d9e000): TCM retention, a6xx_gmu_fw_start's A7xx step. */
+#define TBGPU_CX_MISC_TCM_RET_CNTL   (0x39u * 4u)
+
+/* GMU buffer IOVAs (a6xx_gmu_memory_init). */
+#define TBGPU_GMU_ICACHE_IOVA        0x00004000ull
+/* The gen70900 container asks for regions at 0x100000/0x200000/0x300000 in
+ * this aperture (largest 0x24bf8 at 0x300000), so 4 MiB covers every request;
+ * Linux maps SZ_16M - SZ_16K. */
+#define TBGPU_GMU_ICACHE_BYTES       0x00400000ull
+#define TBGPU_GMU_DUMMY_IOVA         0x60000000ull
+#define TBGPU_GMU_LOG_IOVA           0x60004000ull
+#define TBGPU_GMU_HFI_IOVA           0x60008000ull
+#define TBGPU_GMU_DEBUG_IOVA         0x60400000ull
+#define TBGPU_GMU_SMALL_BYTES        0x4000ull
+#define TBGPU_GMU_DEBUG_BYTES        0x7000ull
+
+/* Kernel-owned GPU-side buffers, above the client aperture. */
+#define TBGPU_RING_IOVA              0x70000000ull
+#define TBGPU_RING_BYTES             0x10000ull      /* 64 KiB, 32-byte blocks */
+#define TBGPU_FENCE_IOVA             0x70010000ull
+#define TBGPU_PWRUP_IOVA             0x70011000ull
+#define TBGPU_SQE_IOVA               0x70020000ull
+#define TBGPU_SQE_BYTES              0x00016000ull   /* 85,364 B rounded up */
+#define TBGPU_AQE_IOVA               0x70040000ull
+#define TBGPU_AQE_BYTES              0x00009000ull   /* 33,176 B rounded up */
+
+/* The aperture the user client may map (NativeAdrenoDeviceClientIova). */
+#define TBGPU_CLIENT_VA_START        0x10000000ull
+#define TBGPU_CLIENT_VA_SIZE         0x40000000ull   /* [0x10000000, 0x50000000) */
+
+/* GMU/HFI constants (a6xx_hfi.c/.h). */
+#define TBGPU_HFI_TABLE_DWORDS       168u
+#define TBGPU_HFI_QUEUE_DWORDS       1024u
+#define TBGPU_HFI_DEVICE_QUEUE_TYPE  0xA00u
+#define TBGPU_HFI_MSG_CMD            0u
+#define TBGPU_HFI_MSG_ACK            126u
+#define TBGPU_HFI_MSG_ERROR          100u
+
+#define TBGPU_HFI_MSG_PERF_TABLE     4u
+#define TBGPU_HFI_MSG_BW_TABLE       3u
+#define TBGPU_HFI_MSG_CORE_FW_START  14u
+#define TBGPU_HFI_MSG_FEATURE_CTRL   11u
+#define TBGPU_HFI_MSG_START          10u
+#define TBGPU_HFI_MSG_GX_BW_VOTE     30u
+#define TBGPU_HFI_MSG_PREP_SLUMBER   33u
+
+#define TBGPU_GMU_CHIPID_A750        0x07090100u
 
 /* The Adreno 750 (Gen70900) chip id the ADT reports (docs/GPU_REFERENCE_A750.md, live dump). */
 #define TBGPU_CHIPID_A750            0x43051401u

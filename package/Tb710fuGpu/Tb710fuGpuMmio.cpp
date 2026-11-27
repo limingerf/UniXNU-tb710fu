@@ -77,6 +77,16 @@ int tb710fu_gpu_read64(const Tb710fuGpuWindow *window, uint32_t offset, uint64_t
     return 0;
 }
 
+int tb710fu_gpu_write64(const Tb710fuGpuWindow *window, uint32_t offset, uint64_t value)
+{
+    if (!window || !window->va || (offset & 7u) || offset + 8u > window->bytes) {
+        return -1;
+    }
+    *reinterpret_cast<volatile uint64_t *>(window->va + offset) = value;
+    tb710fu_gpu_barrier();
+    return 0;
+}
+
 void tb710fu_gpu_barrier(void)
 {
     __asm__ volatile("dsb sy" ::: "memory");
@@ -118,6 +128,22 @@ int tb710fu_gpu_mmio_copy(const Tb710fuGpuWindow *window, uint32_t offset, const
     while (at < bytes) {
         *reinterpret_cast<volatile uint8_t *>(window->va + offset + at) = from[at];
         ++at;
+    }
+    tb710fu_gpu_barrier();
+    return 0;
+}
+
+int tb710fu_gpu_mmio_copy32(const Tb710fuGpuWindow *window, uint32_t offset, const void *source, uint32_t bytes)
+{
+    if (!window || !window->va || !source || (offset & 3u) || (bytes & 3u) ||
+        offset + bytes > window->bytes || offset + bytes < offset) {
+        return -1;
+    }
+    const uint8_t *from = static_cast<const uint8_t *>(source);
+    for (uint32_t at = 0; at < bytes; at += 4u) {
+        uint32_t word = 0;
+        __builtin_memcpy(&word, from + at, sizeof(word));
+        *reinterpret_cast<volatile uint32_t *>(window->va + offset + at) = word;
     }
     tb710fu_gpu_barrier();
     return 0;

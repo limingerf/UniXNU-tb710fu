@@ -24,6 +24,7 @@
 // or the device facts table answers kIOReturnUnsupported and is counted, so the
 // caller learns the ring is missing instead of receiving a made-up value.
 #include "Tb710fuGpuClient.h"
+#include "Tb710fuGpuCore.h"
 #include "Tb710fuGpuNativeABI.h"
 #include "Tb710fuGpu.h"
 #include <IOKit/IOBufferMemoryDescriptor.h>
@@ -51,10 +52,14 @@ class AGXDeviceUserClient : public IOUserClient {
     OSDeclareDefaultStructors(AGXDeviceUserClient)
 public:
     struct Bo {
-        IOBufferMemoryDescriptor *memory;
+        IOMemoryDescriptor *memory;
         uint64_t handle;
         uint64_t bytes;
+        uint64_t iova;
         uint32_t used;
+        uint8_t mapped;
+        uint8_t imported;
+        uint8_t prepared;
     };
     struct Meta {
         uint64_t handle;
@@ -86,8 +91,15 @@ private:
     IOReturn setMetadata(const NativeAdrenoAbiMetadata &request);
     IOReturn getMetadata(const NativeAdrenoAbiMetadata &request, uint8_t *out);
     IOReturn createQueue(const NativeAdrenoAbiQueue &request, uint8_t *out);
+    IOReturn mapBo(const NativeAdrenoAbiBoMap &request, uint8_t *out);
+    IOReturn importBo(const NativeAdrenoAbiBoImport &request, uint8_t *out);
+    IOReturn submit(const NativeAdrenoAbiSubmit &request, uint8_t *out);
+    IOReturn waitFence(const NativeAdrenoAbiWaitFence &request);
+    IOReturn deviceInfo(uint8_t *out);
+    IOReturn timestamp(uint8_t *out);
 
     IOLock *fLock = nullptr;
+    task_t fTask = nullptr;
     Bo fBo[kMaxBo] = {};
     Meta fMetadata[kMaxMetadata] = {};
     uint64_t fQueue[kMaxQueues] = {};
@@ -143,7 +155,7 @@ bool AGXDeviceUserClient::initWithTask(task_t owningTask, void *securityID, UInt
     if (!IOUserClient::initWithTask(owningTask, securityID, type, properties)) {
         return false;
     }
-    (void)owningTask;
+    fTask = owningTask;
     (void)type;
     fLock = IOLockAlloc();
     return fLock != nullptr;
@@ -154,7 +166,13 @@ void AGXDeviceUserClient::releaseBo(int slot)
     if (slot < 0 || slot >= (int)kMaxBo) {
         return;
     }
+    if (fBo[slot].mapped && fBo[slot].iova) {
+        tb710fu_gpu_core_unmap_bo(fBo[slot].iova, fBo[slot].bytes);
+    }
     if (fBo[slot].memory) {
+        if (fBo[slot].imported && fBo[slot].prepared) {
+            fBo[slot].memory->complete();
+        }
         fBo[slot].memory->release();
     }
     memset(&fBo[slot], 0, sizeof(fBo[slot]));
@@ -343,6 +361,173 @@ IOReturn AGXDeviceUserClient::createQueue(const NativeAdrenoAbiQueue &request, u
     return kIOReturnSuccess;
 }
 
+IOReturn AGXDeviceUserClient::mapBo(const NativeAdrenoAbiBoMap &request, uint8_t *out)
+{
+    if (request.reserved || (request.permissions & ~3u) || !(request.permissions & 1u) ||
+        request.writeback > 1 || request.shareability < 2 || request.shareability > 3 ||
+        (request.iova & 0xfffull) != 0) {
+        return kIOReturnBadArgument;
+    }
+    const int slot = slotFor(request.handle);
+    if (slot < 0) {
+        return kIOReturnBadArgument;
+    }
+    if (!tb710fu_gpu_core_ring_ready()) {
+        return kIOReturnNotReady;
+    }
+    if (fBo[slot].mapped) {
+        return kIOReturnBusy;
+    }
+    IOReturn result = (IOReturn)tb710fu_gpu_core_map_bo(fBo[slot].memory, request.iova,
+                                                        fBo[slot].bytes, request.permissions,
+                                                        request.writeback, request.shareability);
+    if (result != kIOReturnSuccess) {
+        return result;
+    }
+    fBo[slot].iova = request.iova;
+    fBo[slot].mapped = 1;
+    NativeAdrenoAbiBoMapReply reply = {};
+    reply.iova = request.iova;
+    copyOut(out, sizeof(reply), &reply, sizeof(reply));
+    return kIOReturnSuccess;
+}
+
+IOReturn AGXDeviceUserClient::importBo(const NativeAdrenoAbiBoImport &request, uint8_t *out)
+{
+    if (!fTask || request.bytes == 0 || request.bytes > kMaxBoBytes ||
+        (request.address & 0xfffull) != 0 || (request.bytes & 0xfffull) != 0) {
+        return kIOReturnBadArgument;
+    }
+    const int slot = freeSlot();
+    if (slot < 0) {
+        return kIOReturnNoResources;
+    }
+    IOOptionBits options = static_cast<IOOptionBits>(kIODirectionInOut) |
+                           static_cast<IOOptionBits>(kIOMemoryPersistent);
+    IOOptionBits direction = static_cast<IOOptionBits>(kIODirectionInOut);
+    IOMemoryDescriptor *memory = IOMemoryDescriptor::withAddressRange(
+        request.address, request.bytes, options, fTask);
+    if (!memory) {
+        direction = static_cast<IOOptionBits>(kIODirectionInOut);
+        memory = IOMemoryDescriptor::withAddressRange(request.address, request.bytes, direction, fTask);
+    }
+    if (!memory) {
+        /* A read-only surface cannot satisfy InOut; retry with the matching direction. */
+        direction = static_cast<IOOptionBits>(kIODirectionOut);
+        memory = IOMemoryDescriptor::withAddressRange(request.address, request.bytes,
+                                                      direction, fTask);
+    }
+    if (!memory) {
+        return kIOReturnNoMemory;
+    }
+    if (memory->prepare(direction) != kIOReturnSuccess) {
+        memory->release();
+        return kIOReturnNoResources;
+    }
+    uint64_t handle = ((fSequence + 1) << 8) | (uint64_t)(slot + 1);
+    fSequence = fSequence + 1;
+    fBo[slot].memory = memory;
+    fBo[slot].handle = handle;
+    fBo[slot].bytes = request.bytes;
+    fBo[slot].used = 1;
+    fBo[slot].imported = 1;
+    fBo[slot].prepared = 1;
+    NativeAdrenoAbiBoAllocReply reply = {};
+    reply.handle = handle;
+    copyOut(out, sizeof(reply), &reply, sizeof(reply));
+    tb710fu_gpu_stats[TB710FU_GPU_BO_ALLOCS] = tb710fu_gpu_stats[TB710FU_GPU_BO_ALLOCS] + 1;
+    return kIOReturnSuccess;
+}
+
+IOReturn AGXDeviceUserClient::submit(const NativeAdrenoAbiSubmit &request, uint8_t *out)
+{
+    if (request.reserved || request.buffer_count == 0 ||
+        request.buffer_count > NativeAdrenoAbiMaxBuffers) {
+        return kIOReturnBadArgument;
+    }
+    if (!tb710fu_gpu_core_ring_ready()) {
+        return kIOReturnNotReady;
+    }
+    bool queueFound = false;
+    for (unsigned i = 0; i < kMaxQueues; ++i) {
+        if (fQueue[i] && fQueue[i] == request.queue) {
+            queueFound = true;
+            break;
+        }
+    }
+    if (!queueFound) {
+        return kIOReturnBadArgument;
+    }
+
+    uint64_t iovas[NativeAdrenoAbiMaxBuffers] = {};
+    uint64_t bytes[NativeAdrenoAbiMaxBuffers] = {};
+    for (uint32_t i = 0; i < request.buffer_count; ++i) {
+        const NativeAdrenoAbiSubmitBuffer &buffer = request.buffers[i];
+        const int slot = slotFor(buffer.handle);
+        if (slot < 0 || !fBo[slot].mapped || fBo[slot].iova != buffer.iova ||
+            buffer.bytes == 0 || (buffer.bytes & 3ull) != 0 || buffer.bytes > fBo[slot].bytes) {
+            return kIOReturnBadArgument;
+        }
+        iovas[i] = buffer.iova;
+        bytes[i] = buffer.bytes;
+    }
+    uint64_t fence = 0;
+    if (tb710fu_gpu_core_submit(iovas, bytes, request.buffer_count, request.wait_fence,
+                                request.wait_timeout_ns, &fence) != 0) {
+        return kIOReturnError;
+    }
+    NativeAdrenoAbiSubmitReply reply = {};
+    reply.fence = fence;
+    copyOut(out, sizeof(reply), &reply, sizeof(reply));
+    return kIOReturnSuccess;
+}
+
+IOReturn AGXDeviceUserClient::waitFence(const NativeAdrenoAbiWaitFence &request)
+{
+    if (!request.fence) {
+        return kIOReturnSuccess;
+    }
+    if (!tb710fu_gpu_core_ring_ready()) {
+        return kIOReturnNotReady;
+    }
+    if (tb710fu_gpu_core_wait_fence(request.fence, request.timeout_ns, nullptr) != 0) {
+        return kIOReturnTimeout;
+    }
+    return kIOReturnSuccess;
+}
+
+IOReturn AGXDeviceUserClient::deviceInfo(uint8_t *out)
+{
+    Tb710fuGpuCoreDeviceInfo info = {};
+    tb710fu_gpu_core_device_info(&info);
+    NativeAdrenoAbiDeviceInfo reply = {};
+    reply.chip_id = info.chipId;
+    reply.gmem_bytes = info.gmemBytes;
+    reply.gmem_base = info.gmemBase;
+    reply.uche_trap_base = info.ucheTrapBase;
+    reply.va_start = info.vaStart;
+    reply.va_size = info.vaSize;
+    reply.highest_bank_bit = info.highestBankBit;
+    reply.ubwc_swizzle = info.ubwcSwizzle;
+    reply.macrotile_mode = info.macrotileMode;
+    reply.ubwc_version = info.ubwcVersion;
+    reply.flags = NativeAdrenoDeviceClientIova;
+    if (tb710fu_gpu_core_ring_ready()) {
+        reply.flags |= NativeAdrenoDeviceCachedCoherent;
+    }
+    copyOut(out, sizeof(reply), &reply, sizeof(reply));
+    return kIOReturnSuccess;
+}
+
+IOReturn AGXDeviceUserClient::timestamp(uint8_t *out)
+{
+    NativeAdrenoAbiTimestamp reply = {};
+    reply.ticks = tb710fu_gpu_core_timestamp();
+    copyOut(out, sizeof(reply), &reply, sizeof(reply));
+    return kIOReturnSuccess;
+}
+
+
 IOReturn AGXDeviceUserClient::externalMethod(uint32_t selector, IOExternalMethodArguments *arguments,
                                             IOExternalMethodDispatch *dispatch, OSObject *target,
                                             void *reference)
@@ -399,9 +584,9 @@ IOReturn AGXDeviceUserClient::run(uint32_t method, const uint8_t *in, uint32_t i
     case NativeAdrenoMethodQuery: {
         NativeAdrenoAbiParams reply = {};
         reply.abi_version = NativeAdrenoAbiVersion;
-        reply.input_bits = 0;   /* the client picks its own addresses (BoMap) */
-        reply.output_bits = 0;  /* no aperture yet; the SMMU ID would say it */
-        reply.flags = NativeAdrenoParamsHostImport;
+        reply.input_bits = 32;  /* the SMMU walks 32-bit input addresses */
+        reply.output_bits = 40; /* OAS from the SMMU ID registers */
+        reply.flags = NativeAdrenoParamsHostImport | NativeAdrenoParamsOwnedCoherent;
         reply.max_bo_bytes = kMaxBoBytes;
         copyOut(out, outSize, &reply, sizeof(reply));
         break;
@@ -500,21 +685,32 @@ IOReturn AGXDeviceUserClient::run(uint32_t method, const uint8_t *in, uint32_t i
     case NativeAdrenoMethodWaitFence: {
         NativeAdrenoAbiWaitFence request = {};
         memcpy(&request, in, sizeof(request));
-        if (request.fence != 0) {
-            tb710fu_gpu_stats[TB710FU_GPU_ABI_REFUSED] = tb710fu_gpu_stats[TB710FU_GPU_ABI_REFUSED] + 1;
-            result = kIOReturnUnsupported;
-        }
+        result = waitFence(request);
         break;
     }
-    case NativeAdrenoMethodBoMap:
-    case NativeAdrenoMethodSubmit:
+    case NativeAdrenoMethodBoMap: {
+        NativeAdrenoAbiBoMap request = {};
+        memcpy(&request, in, sizeof(request));
+        result = mapBo(request, out);
+        break;
+    }
+    case NativeAdrenoMethodBoImport: {
+        NativeAdrenoAbiBoImport request = {};
+        memcpy(&request, in, sizeof(request));
+        result = importBo(request, out);
+        break;
+    }
+    case NativeAdrenoMethodSubmit: {
+        NativeAdrenoAbiSubmit request = {};
+        memcpy(&request, in, sizeof(request));
+        result = submit(request, out);
+        break;
+    }
     case NativeAdrenoMethodGetTimestamp:
-    case NativeAdrenoMethodBoImport:
+        result = timestamp(out);
+        break;
     case NativeAdrenoMethodGetDeviceInfo:
-        /* These need a GPU address space / ring / pinned board facts. The refusal
-         * is the honest answer for milestone 2, not a zero-filled success. */
-        tb710fu_gpu_stats[TB710FU_GPU_ABI_REFUSED] = tb710fu_gpu_stats[TB710FU_GPU_ABI_REFUSED] + 1;
-        result = kIOReturnUnsupported;
+        result = deviceInfo(out);
         break;
     default:
         result = kIOReturnUnsupported;
@@ -538,8 +734,8 @@ IOReturn AGXDeviceUserClient::clientMemoryForType(UInt32 type, IOOptionBits *opt
     }
     const unsigned slot = type - 1;
     IOLockLock(fLock);
-    IOBufferMemoryDescriptor *descriptor =
-        (fBo[slot].used && fBo[slot].memory) ? fBo[slot].memory : nullptr;
+    IOMemoryDescriptor *descriptor =
+        (fBo[slot].used && fBo[slot].memory && !fBo[slot].imported) ? fBo[slot].memory : nullptr;
     if (descriptor) {
         descriptor->retain();
         *memory = descriptor;

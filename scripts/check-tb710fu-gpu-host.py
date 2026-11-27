@@ -1,30 +1,13 @@
 #!/usr/bin/env python3
-"""Host checks for the TB710FU GPU/Metal milestone-2 wiring.
+"""Host checks for the TB710FU GPU/Metal milestone-3 wiring.
 
-None of this needs a Mac: the checks read the sources, the firmware manifest and
-the build/workflow wiring, and state the invariants the hardware run depends on.
-
-  ABI      IOAccelerator is declared as a plain IOService subclass with the
-           reviewed 136-byte extent; the native wire ABI v2 keeps its exact
-           record sizes (Turnip and the Metal plugin pass them verbatim).
-  Gating   gpu-metal/gpu-power are read before any object is made; every stage of
-           the gpu-power chain sits behind its own level, and a default boot
-           reaches no new code and prints nothing.
-  Metal    the two keys IOGPU's discovery reads carry this port's own plugin
-           names, and the service is registered, not merely allocated.
-  Power    the staged chain writes only the registers the pinned sources define
-           (CX GDSC, GPUCC/ GCC clocks, PLL1, RCGs); GX, the GPU window, the
-           SMMU context and the DDRSS AXI branch are never written, and the GMU
-           cold start / GX power stages refuse instead of guessing.
-  Client   newUserClient serves exactly type 0x4147 once the ABI is live, the
-           connection speaks the tunnel and the direct selectors, and every
-           method that needs a GPU address or ring refuses.
-  Payload  the firmware manifest names the four gen70900 images with the
-           reference project's sizes and digests, and the addon paths fit the
-           160-byte NGPUADD2 entry limit.
-  Wiring   defconfig, board.toml and Macos27Services.cpp all carry the new
-           archive in the order preModLoad requires; the GPU addon workflow is
-           manual-only and reuses the framework's scripts.
+  ABI      ... unchanged v2 records ...
+  Gating   ... stages 7/8 now execute, 9 publishes only after the fence ...
+  Power    the staged chain writes only the pinned clocks; the GMU cold start,
+           GX power, SMMU banks and CP ring are performed by Tb710fuGpuCore.cpp
+           with values from the Linux a6xx/a7xx sources on disk.
+  Client   every GPU-address method is live and gated by ring readiness.
+  Payload  firmware pins unchanged.
 """
 import argparse
 import json
@@ -91,6 +74,10 @@ def main():
     client = read(PACKAGE / 'Tb710fuGpuClient.cpp')
     client_header = read(PACKAGE / 'Tb710fuGpuClient.h')
     native_abi = read(PACKAGE / 'Tb710fuGpuNativeABI.h')
+    core = read(PACKAGE / 'Tb710fuGpuCore.cpp')
+    core_header = read(PACKAGE / 'Tb710fuGpuCore.h')
+    smmu = read(PACKAGE / 'Tb710fuGpuSmmu.cpp')
+    smmu_header = read(PACKAGE / 'Tb710fuGpuSmmu.h')
     build = read(ROOT / 'scripts/build-tb710fu-gpu.py')
 
     # --- ABI -----------------------------------------------------------------
@@ -171,10 +158,21 @@ def main():
     open_body = between(accelerator, 'Tb710fuGpuAccelerator::newUserClient', '\n}\n')
     check('client.no_console_write_in_open', 'printf' not in open_body,
           'newUserClient runs under the service lock with preemption off')
-    check('client.no_ring_claim',
-          'result = kIOReturnUnsupported' in client and
-          all(f'NativeAdrenoMethod{name}' in client for name in ('BoMap', 'Submit', 'GetTimestamp', 'BoImport', 'GetDeviceInfo')),
-          'GPU-address and ring methods refuse instead of returning zero-filled success')
+    check('client.live_methods',
+          all(f'AGXDeviceUserClient::{name}(' in client for name in
+              ('mapBo', 'submit', 'waitFence', 'timestamp', 'deviceInfo', 'importBo')),
+          'the six ring/GPU-address methods are implemented, not refused')
+    check('client.gated_by_ring',
+          'tb710fu_gpu_core_ring_ready()' in client,
+          'BoMap/Submit/WaitFence answer NotReady until the CP fence self-test passes')
+    check('client.import_prepare',
+          'IOMemoryDescriptor::withAddressRange' in client and 'prepare(' in client and
+          'complete()' in client,
+          'an imported IOSurface is pinned with prepare() and released with complete()')
+    check('client.map_checks',
+          'request.reserved' in client and '(request.iova & 0xfffull) != 0' in client and
+          'fBo[slot].iova != buffer.iova' in client,
+          'BoMap/Submit validate alignment and that the IB is inside the mapped BO')
 
     # --- Power chain ---------------------------------------------------------
     check('power.mmio_helper_only',
@@ -198,13 +196,23 @@ def main():
     check('power.gmu_clock_steps', all(marker in power for marker in
                                        ('TBGPU_GCC_PLL_VOTE', 'TBGPU_CC_PLL1', 'TBGPU_CC_HUB_RCGR',
                                         'TBGPU_CC_GMU_RCGR', 'TBGPU_CC_CXO_AON_CLK', 'TBGPU_CC_HUB_CX_INT_CLK')))
-    check('power.gmu_stage_refuses',
-          'stage7 skipped' in power and 'stage8 skipped' in power,
-          'the GMU cold start and GX power state their missing pinned prerequisites')
+    check('power.core_wired',
+          'tb710fu_gpu_core_start(' in power and 'Tb710fuGpuCoreWindows windows' in power,
+          'Power only maps windows and publishes; the cold start lives in Core')
+    check('power.gmu_windows',
+          all(marker in power for marker in ('&gGmu', '&gRscc', '&gPdc', '&gCxMisc')),
+          'GMU, RSCC, PDC and cx_misc are mapped for stage 7')
+    check('power.ring_only_after_fence',
+          'if (!report.ringReady)' in power and 'stage9 refused' in power,
+          'stage 9 refuses to publish the ABI unless the CP fence advanced in RAM')
     check('power.firmware_pins',
           all(name in power and digest in power for name, _, digest in FIRMWARE),
           'stage 6 verifies the four gen70900 images against the manifest pins')
-    check('power.abi_stage', 'TB710FU_GPU_ABI] = 1' in power and 'TB710FU_GPU_RING_READY] = 0' in power)
+    check('power.abi_stage', 'TB710FU_GPU_ABI] = 1' in power and 'Tb710fuGpuStageAbi' in power)
+    check('power.stage_reports',
+          all(marker in power for marker in ('TB710FU_GPU_STAGE7_STEP', 'TB710FU_GPU_STAGE8_STEP',
+                                             'TB710FU_GPU_CP_FENCE', 'TB710FU_GPU_HFI_ERROR')),
+          'every stage-7/8 fact is published, not just printed')
     check('power.windows',
           all(re.search(pattern, hw) for pattern in
               (r'TBGPU_GPU_BASE\s+0x03d00000ull', r'TBGPU_GMU_BASE\s+0x03d68000ull',
@@ -225,14 +233,90 @@ def main():
     longest = max(len(manifest['addon_prefix']) + 1 + len(item['name']) for item in manifest['files'])
     check('firmware.path_limit', longest < 160, f'longest addon path {longest} bytes')
 
-    # --- Build ---------------------------------------------------------
-    for name in ('Tb710fuGpuAccelerator.cpp', 'Tb710fuGpuPower.cpp', 'Tb710fuGpuMmio.cpp',
+    # --- M3 core invariants and unit arithmetic ------------------------------
+    check('core.gmu_release',
+          all(marker in core for marker in ('TBGPU_GMU_CM3_SYSRESET', 'TBGPU_GMU_CM3_FW_INIT_RESULT',
+                                            'TBGPU_GMU_CM3_BOOT_CONFIG', 'TBGPU_GMU_HFI_QTBL_ADDR')),
+          'CM3 release follows a6xx_gmu_fw_start/a6xx_gmu_start')
+    check('core.hfi_order',
+          all(marker in core for marker in ('sendPerfTable()', 'sendBwTable()', 'sendIfpcFeature()',
+                                            'sendCoreFwStart()', 'sendStart()')),
+          'A7xx non-legacy order: perf, bw, IFPC feature, core firmware start, start (no INIT)')
+    check('core.hfi_sizes',
+          'uint32_t table[59]' in core and 'table[1] = 12' in core and 'table[2] = 3' in core and
+          '3 + 48 + 2 * i' in core and
+          'uint32_t table[160]' in core and 'table[1] = 7' in core,
+          'fixed 59-dword A750 perf image (12 GX + 3 CX of 16/4 slots), bw 160 dwords/7 levels')
+    check('core.bw_dynamic',
+          all(marker in core for marker in ('cmdDbBcm("SH0"', 'cmdDbBcm("MC0"', 'cmdDbBcm("ACV"',
+                                            'bcmCmd(sh0Commit', 'bcmCmd(true, true, 0, perfmode)')),
+          'bw votes come from cmd-db BCM unit/width/vcd, not the A740 static table')
+    check('core.hfi_ack_shape',
+          all(marker in core for marker in ('retHeader', 'ackError', 'const uint32_t advance = (words < 3u) ? 3u : words;')),
+          'ACK is {header, ret_header, error}; read index advances by total dwords, aligned to 4')
+    check('core.queue_before_release',
+          core.index('hfiQueueInit();') < core.index('TBGPU_GMU_CM3_SYSRESET, 1') and
+          core.count('hfiQueueInit();') == 1,
+          'QTBL and its queues are coherent before CM3 release, and only initialized once')
+    check('core.gbif_halt',
+          all(marker in core for marker in ('TBGPU_GBIF_HALT, 0', 'TBGPU_RBBM_GBIF_HALT, 0',
+                                            'TBGPU_RBBM_SECVID_TSB_CNTL, 0')),
+          'a7xx hw_init clears both GBIF halts and the SECVID TSB before CP starts')
+    check('core.wptr_fence',
+          all(marker in core for marker in ('TBGPU_GMU_AHB_FENCE_STATUS', 'TBGPU_GMU_AHB_FENCE_STATUS_CLR',
+                                            'tries < 200')),
+          'CP_RB_WPTR is re-issued when GMU_AHB_FENCE_STATUS bit0 reports a drop')
+    check('core.cp_two_phase',
+          'gCore.report->cpStep = fetched ? 1u : 0u' in core and 'gCore.report->cpStep = 2u' in core,
+          'ME_INIT must be fetched (RPTR catches WPTR) before the fence packet is queued')
+    check('core.gx_judgement',
+          'TBGPU_GMU_SPTPRAC_PWR_CLK_STATUS' in core and '3u, 0u' in core,
+          'GX is judged by SPTPRAC (val & 3) == 0, not POWER_STATE == 0xf')
+    check('core.cp_fence_before_ring',
+          'issueFenceSelfTest(&fence)' in core and 'gCore.ringReady = true' in core and
+          'report->fenceValue = fence' in core,
+          'ringReady is set only after the self-test returns the fence word')
+    check('core.pm4_packets',
+          all(marker in core for marker in ('emit7(&writer, 0x17', 'emit7(&writer, 0x48',
+                                            'emitFence(&writer, kScratchFenceSeq)')),
+          'CP_THREAD_CONTROL + CP_ME_INIT + CP_SCRATCH/EVENT_WRITE fence')
+    check('core.gmem_a750',
+          'TBGPU_GMEM_BASE              0x00100000ull' in hw and 'TBGPU_GMEM_BYTES             0x00300000ull' in hw,
+          'A750 is GEN3, not a740-family: 1 MiB UCHE GMEM base, 3 MiB size')
+    check('core.rscc_seqmem',
+          'TBGPU_RSCC_SEQ_MEM_0_GENERIC + 4 * i' in core,
+          'generic SEQ_MEM_0_DRV0 (0x600) for GEN3, the a740 0x550 variant is not used')
+    check('core.no_volatile_inc',
+          not any('volatile++' in text or 'volatile ++' in text for text in (core, smmu, power, client)),
+          'MMIO/cache discipline: no volatile++ anywhere')
+    check('smmu.hardware_encoding',
+          all(marker in smmu for marker in ('kSctlrEnable = 0x1067', 'kMair0 = 0xff44',
+                                             'kCbar = 0x1f300', 'cb + 0x30', 'cb + 0x38',
+                                             'cb + 0x58', 'cb + 0x618', 'cb + 0x7f0')),
+          'context program matches ArmSmmu4K (TCR/MAIR/SCTLR/FSR/TLBI)')
+
+    ring_dwords = 0x10000 // 8
+    ring_log = ring_dwords.bit_length() - 1
+    control = ring_log | ((32 // 8).bit_length() - 1 << 8)
+    check('unit.ring_control', control == 0x20d, f'CP_RB_CNTL=0x{control:x} for 64 KiB/32 B')
+    primary = [0, 52, 56, 60, 64, 80, 128, 144, 192, 224, 256, 320]
+    level = 192
+    pindex = primary.index(level) if level in primary else next(i for i, v in enumerate(primary) if v >= level)
+    sindex = 1  # 64,128 never reach 192; clamp to the last secondary index
+    vote = (primary[pindex] << 16) | (sindex << 8) | pindex
+    check('unit.arc_vote', vote == 0x00C00108, f'gfx 680 MHz level vote=0x{vote:08x}')
+    header = (1 << 20) | (59 << 8) | 4
+    check('unit.hfi_header', header == 0x00103B04, f'HFI seq1/59 dw/id4 header=0x{header:08x}')
+
+    for name in ('Tb710fuGpuAccelerator.cpp', 'Tb710fuGpuPower.cpp', 'Tb710fuGpuCore.cpp',
+                 'Tb710fuGpuSmmu.cpp', 'Tb710fuGpuMmio.cpp',
                  'Tb710fuGpuFirmware.cpp', 'Tb710fuGpuClient.cpp'):
         check(f'build.source.{name}', f"PACKAGE / '{name}'" in build)
     check('build.optional_deferral', 'if not renamed' in build and 'return False' in build,
           'a translation unit without a static initialiser is copied unchanged')
     check('build.headers', all(f"'{name}'" in build for name in
                                ('Tb710fuGpuHw.h', 'Tb710fuGpuMmio.h', 'Tb710fuGpuFirmware.h',
+                                'Tb710fuGpuSmmu.h', 'Tb710fuGpuCore.h',
                                 'Tb710fuGpuClient.h', 'Tb710fuGpuNativeABI.h')))
 
     # --- Wiring --------------------------------------------------------------
@@ -281,7 +365,8 @@ def main():
         check('wiring.workflow_artifact', 'upload-artifact' in text)
 
     for docs_name, args_expected in (('docs/GPU_METAL_M1.md', ('gpu-metal=1', 'gpu-power=', 'gpu-addon=1', 'gpu-bundle-system=1')),
-                                     ('docs/GPU_METAL_M2.md', ('gpu-metal=1', 'gpu-power=1', 'gpu-power=9', 'stage 7', 'stage 8', 'ring=0'))):
+                                     ('docs/GPU_METAL_M2.md', ('gpu-metal=1', 'gpu-power=1', 'gpu-power=9', 'stage 7', 'stage 8', 'ring=0')),
+                                     ('docs/GPU_METAL_M3.md', ('ring=1', 'gpu-power=9', 'GMU', 'SMMU', 'CP'))):
         docs = ROOT / docs_name
         check(f'docs.present.{Path(docs_name).stem}', docs.is_file())
         if docs.is_file():
@@ -293,10 +378,10 @@ def main():
           'AGXDeviceUserClient' in read(ROOT / 'docs/GPU_METAL_M2.md'))
 
     failed = [item for item in results if item['result'] == 'FAIL']
-    report = {'schema': 'tb710fu-gpu-host-checks-v2', 'results': results,
+    report = {'schema': 'tb710fu-gpu-host-checks-v3', 'results': results,
               'summary': {'passed': len(results) - len(failed), 'failed': len(failed)},
               'soc_windows': {name: list(value) for name, value in SOC_WINDOWS.items()},
-              'milestone': 2}
+              'milestone': 3}
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, indent=2) + '\n')

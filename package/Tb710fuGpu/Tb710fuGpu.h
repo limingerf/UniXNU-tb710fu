@@ -66,7 +66,17 @@ enum {
     TB710FU_GPU_ABI_REFUSED = 27,   /* GPU-address methods refused for wants of the ring */
     TB710FU_GPU_LAST_METHOD = 28,   /* last external method selector */
     TB710FU_GPU_PRIORITY = 29,      /* foreground | background << 8 from SetPriority */
-    TB710FU_GPU_STAT_COUNT = 32
+    TB710FU_GPU_GMU_BOOT = 30,      /* CM3_FW_INIT_RESULT read-back */
+    TB710FU_GPU_HFI_SEQ = 31,       /* last HFI sequence the GMU acknowledged */
+    TB710FU_GPU_HFI_ERROR = 32,     /* HFI error payload (0 none, 0xffffffff timeout) */
+    TB710FU_GPU_GX_POWER = 33,      /* 1 when SPTPRAC says GX is powered and clocked */
+    TB710FU_GPU_GX_STATE = 34,      /* last SPTPRAC_PWR_CLK_STATUS value */
+    TB710FU_GPU_RBBM_STATUS = 35,   /* RBBM_STATUS after GX on */
+    TB710FU_GPU_CP_STEP = 36,       /* 3 when the CP ran the fence packet */
+    TB710FU_GPU_CP_FENCE = 37,      /* the fence word the GPU wrote in RAM */
+    TB710FU_GPU_STAGE7_STEP = 38,   /* last completed GMU cold-start step */
+    TB710FU_GPU_STAGE8_STEP = 39,   /* last completed GX/CP/ring step */
+    TB710FU_GPU_STAT_COUNT = 40
 };
 
 /* Read-only view of what the boot addon carries for this GPU. */

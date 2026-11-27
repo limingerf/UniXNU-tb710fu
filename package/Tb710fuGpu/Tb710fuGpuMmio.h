@@ -27,6 +27,7 @@ void tb710fu_gpu_window_unmap(Tb710fuGpuWindow *window);
 int tb710fu_gpu_read32(const Tb710fuGpuWindow *window, uint32_t offset, uint32_t *value);
 int tb710fu_gpu_write32(const Tb710fuGpuWindow *window, uint32_t offset, uint32_t value);
 int tb710fu_gpu_read64(const Tb710fuGpuWindow *window, uint32_t offset, uint64_t *value);
+int tb710fu_gpu_write64(const Tb710fuGpuWindow *window, uint32_t offset, uint64_t value);
 
 /* dsb sy: every write above is ordered before the next register access. */
 void tb710fu_gpu_barrier(void);
@@ -37,5 +38,9 @@ void tb710fu_gpu_delay_us(uint32_t microseconds);
  * last. Never memcpy: a Device-GRE destination may not be accessed as normal
  * memory on arm64. Returns 0 or -1 (out of window / unaligned). */
 int tb710fu_gpu_mmio_copy(const Tb710fuGpuWindow *window, uint32_t offset, const void *source, uint32_t bytes);
+/* 32-bit stores only: the GMU CM3 ITCM/DTCM windows are 32-bit register
+ * memories (a6xx_gmu.c gmu_write_bulk), so a wide store is not acceptable
+ * there even when the address looks aligned. Returns 0 or -1. */
+int tb710fu_gpu_mmio_copy32(const Tb710fuGpuWindow *window, uint32_t offset, const void *source, uint32_t bytes);
 
 #endif /* TB710FU_GPU_MMIO_H */

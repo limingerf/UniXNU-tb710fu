@@ -34,6 +34,13 @@ struct Tb710fuGpuFirmware {
 int tb710fu_gpu_firmware_verify(const char *name, uint64_t expected_bytes,
                                 const char *expected_hex, struct Tb710fuGpuFirmware *out);
 
+/* The same provenance check, but hands back the verified bytes in an
+ * IOMallocData buffer (ordinary kernel memory; the caller copies them into the
+ * device window itself). 0 on success, the verify() codes otherwise. */
+int tb710fu_gpu_firmware_load(const char *name, uint64_t expected_bytes,
+                              const char *expected_hex, void **image, uint64_t *bytes);
+void tb710fu_gpu_firmware_free(void *image, uint64_t bytes);
+
 #ifdef __cplusplus
 }
 #endif

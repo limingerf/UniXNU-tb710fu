@@ -28,6 +28,7 @@
 // vote clock, the GPU window needs GX (never powered here), and the SMMU scan
 // stays in global space 0 (the apps-SMMU abort on a GR1 read is recorded there).
 #include "Tb710fuGpu.h"
+#include "Tb710fuGpuCore.h"
 #include "Tb710fuGpuFirmware.h"
 #include "Tb710fuGpuHw.h"
 #include "Tb710fuGpuMmio.h"
@@ -78,6 +79,10 @@ Tb710fuGpuWindow gVote;
 Tb710fuGpuWindow gGpucc;
 Tb710fuGpuWindow gSmmu;
 Tb710fuGpuWindow gGpu;
+Tb710fuGpuWindow gGmu;
+Tb710fuGpuWindow gRscc;
+Tb710fuGpuWindow gPdc;
+Tb710fuGpuWindow gCxMisc;
 uint32_t gWrites = 0;
 
 /* Facts the accelerator publishes and the host checks pin. */
@@ -478,11 +483,12 @@ extern "C" void tb710fu_gpu_bring_up(void)
     if (tb710fu_gpu_window_map(&gGpucc, TBGPU_GPUCC_BASE, TBGPU_GPUCC_BYTES, kIOMapInhibitCache) == 0) {
         mapped |= 4u;
     }
-    if (tb710fu_gpu_window_map(&gSmmu, TBGPU_SMMU_BASE, TBGPU_SMMU_GR0_BYTES, kIOMapInhibitCache) == 0) {
+    if (tb710fu_gpu_window_map(&gSmmu, TBGPU_SMMU_BASE, TBGPU_SMMU_BYTES, kIOMapInhibitCache) == 0) {
         mapped |= 8u;
     }
-    /* The GPU window is mapped but never read: RBBM_STATUS is GX-gated. */
-    if (tb710fu_gpu_window_map(&gGpu, TBGPU_GPU_BASE, TBGPU_GPU_PROBE_BYTES, kIOMapInhibitCache) == 0) {
+    /* The full GPU window: stage 7/8 need CP/RBBM/GBIF/UCHE, stage 2 never
+     * reads a GX-gated register through it. */
+    if (tb710fu_gpu_window_map(&gGpu, TBGPU_GPU_BASE, TBGPU_GPU_BYTES, kIOMapInhibitCache) == 0) {
         mapped |= 16u;
     }
     tb710fu_gpu_stats[TB710FU_GPU_MMIO_MAPPED] = mapped;
@@ -802,23 +808,84 @@ extern "C" void tb710fu_gpu_bring_up(void)
         return;
     }
 
-    /* ---- stages 7 and 8: prerequisites that are not pinned yet --------------- */
-    printf("TB710FU GPU: stage7 skipped: GMU cold start needs the GMU SMMU context (bank 1, ArmSmmu4K) "
-           "and the SM8650 RSC/PDC setup (not pinned)\n");
-    printf("TB710FU GPU: stage8 skipped: GX needs HFI startup votes from the AOP command DB tables "
-           "(not derived for SM8650)\n");
-    tb710fu_gpu_stats[TB710FU_GPU_STATUS] = (uint32_t)kIOReturnUnsupported;
-    if (level < 9) {
-        printf("TB710FU GPU: bringup stage=6 of 9 (gpu-power=%u)\n", level);
+    /* ---- stages 7 and 8: GMU cold start and the live CP ring ---------------- */
+
+    uint32_t extra = 0;
+    if (tb710fu_gpu_window_map(&gGmu, TBGPU_GMU_BASE, TBGPU_GMU_BYTES, kIOMapInhibitCache) == 0) {
+        extra |= 1u;
+    }
+    if (tb710fu_gpu_window_map(&gRscc, TBGPU_RSCC_BASE, TBGPU_RSCC_BYTES, kIOMapInhibitCache) == 0) {
+        extra |= 2u;
+    }
+    if (tb710fu_gpu_window_map(&gPdc, TBGPU_GMU_PDC_BASE, TBGPU_GMU_PDC_BYTES, kIOMapInhibitCache) == 0) {
+        extra |= 4u;
+    }
+    if (tb710fu_gpu_window_map(&gCxMisc, TBGPU_CX_MISC_BASE, TBGPU_CX_MISC_BYTES, kIOMapInhibitCache) == 0) {
+        extra |= 8u;
+    }
+    if (extra != 0xfu) {
+        tb710fu_gpu_stats[TB710FU_GPU_STATUS] = (uint32_t)kIOReturnNoResources;
+        printf("TB710FU GPU: stage7 stopped: GMU/RSCC/PDC/cx_misc window map=0x%x\n", extra);
         return;
     }
 
-    /* ---- stage 9: ABI published; the ring still needs 7 and 8 ---------------- */
+    Tb710fuGpuCoreWindows windows = {&gGpu, &gGmu, &gRscc, &gPdc, &gSmmu, &gCxMisc};
+    Tb710fuGpuCoreReport report = {};
+    const int coreStatus = tb710fu_gpu_core_start(&windows, level, &report);
+    tb710fu_gpu_stats[TB710FU_GPU_GMU_BOOT] = report.gmuBoot;
+    tb710fu_gpu_stats[TB710FU_GPU_HFI_SEQ] = report.hfiSeq;
+    tb710fu_gpu_stats[TB710FU_GPU_HFI_ERROR] = report.hfiError;
+    tb710fu_gpu_stats[TB710FU_GPU_GX_POWER] = report.gxPower;
+    tb710fu_gpu_stats[TB710FU_GPU_GX_STATE] = report.gxPowerState;
+    tb710fu_gpu_stats[TB710FU_GPU_RBBM_STATUS] = report.rbbmStatus;
+    tb710fu_gpu_stats[TB710FU_GPU_CP_STEP] = report.cpStep;
+    tb710fu_gpu_stats[TB710FU_GPU_CP_FENCE] = report.fenceValue;
+    tb710fu_gpu_stats[TB710FU_GPU_STAGE7_STEP] = report.stage7Step;
+    tb710fu_gpu_stats[TB710FU_GPU_STAGE8_STEP] = report.stage8Step;
+    printf("TB710FU GPU: stage7 gmu step=%u/12 boot=0x%x fwver=0x%x chip=0x%x hfi_seq=%u hfi_err=%u "
+           "smmu=%08x/%08x/%08x tables=%u\n",
+           report.stage7Step, report.gmuBoot, report.gmuVersion, report.gmuChipId, report.hfiSeq,
+           report.hfiError, report.smmuId0, report.smmuId1, report.smmuId2, report.smmuTables);
+    if (report.stage8Step) {
+        printf("TB710FU GPU: stage8 gx step=%u/7 gx=%u sptprac=0x%x rbbm_status=0x%x cp_step=%u "
+               "fence=%u smmu_fault=0x%x\n",
+               report.stage8Step, report.gxPower, report.gxPowerState, report.rbbmStatus,
+               report.cpStep, report.fenceValue, report.smmuFault);
+    }
+    if (coreStatus != 0) {
+        tb710fu_gpu_stats[TB710FU_GPU_STATUS] = (uint32_t)kIOReturnIOError;
+        tb710fu_gpu_stats[TB710FU_GPU_RING_READY] = 0;
+        tb710fu_gpu_stats[TB710FU_GPU_BRINGUP] = report.stage8Step ? Tb710fuGpuStageGx - 1
+                                                                   : Tb710fuGpuStageColdStart - 1;
+        printf("TB710FU GPU: bringup stopped at stage %u (core=%d, stage7=%u stage8=%u ring=0)\n",
+               report.stage8Step ? 8u : 7u, coreStatus, report.stage7Step, report.stage8Step);
+        return;
+    }
+
+    tb710fu_gpu_stats[TB710FU_GPU_RING_READY] = report.ringReady;
+    tb710fu_gpu_stats[TB710FU_GPU_BRINGUP] =
+        report.ringReady ? Tb710fuGpuStageGx : Tb710fuGpuStageColdStart;
+    printf("TB710FU GPU: stage8 ring=%u cp_step=%u fence=%u\n",
+           report.ringReady, report.cpStep, report.fenceValue);
+    if (level < 9) {
+        printf("TB710FU GPU: bringup stage=%u of 9 (gpu-power=%u)\n",
+               report.ringReady ? 8u : 7u, level);
+        return;
+    }
+
+    /* ---- stage 9: the user client ABI, live only when the ring is real ----- */
+    if (!report.ringReady) {
+        tb710fu_gpu_stats[TB710FU_GPU_STATUS] = (uint32_t)kIOReturnNotReady;
+        printf("TB710FU GPU: stage9 refused: the CP fence self-test did not advance (ring=0)\n");
+        return;
+    }
     tb710fu_gpu_stats[TB710FU_GPU_ABI] = 1;
-    tb710fu_gpu_stats[TB710FU_GPU_RING_READY] = 0;
     tb710fu_gpu_stats[TB710FU_GPU_BRINGUP] = Tb710fuGpuStageAbi;
-    printf("TB710FU GPU: stage9 abi live version=2 ring=0 (Tb710fuGpuClient accepts type=0x4147)\n");
-    printf("TB710FU GPU: bringup stage=9 of 9 ring=0 cx=1 gmu_clocks=1 firmware=4/4 (writes=%u)\n", gWrites);
+    printf("TB710FU GPU: stage9 abi live version=2 ring=1 chip=0x%x gmem=%u va=[0x%llx,0x%llx)\n",
+           report.chipId, report.gmemBytes,
+           (unsigned long long)TBGPU_CLIENT_VA_START,
+           (unsigned long long)(TBGPU_CLIENT_VA_START + TBGPU_CLIENT_VA_SIZE));
+    printf("TB710FU GPU: bringup stage=9 of 9 ring=1 cx=1 gmu_clocks=1 firmware=4/4 (writes=%u)\n", gWrites);
 }
 
 extern "C" void tb710fu_gpu_power_meta_init(void)
@@ -854,6 +921,12 @@ extern "C" void tb710fu_gpu_power_publish(const Tb710fuGpuCensus *census)
     OSNumber *firmware = OSNumber::withNumber(gFirmwareVerified, 32);
     OSNumber *bytes = OSNumber::withNumber(gFirmwareBytes, 32);
     OSNumber *ring = OSNumber::withNumber(tb710fu_gpu_stats[TB710FU_GPU_RING_READY], 32);
+    OSNumber *gmuBoot = OSNumber::withNumber(tb710fu_gpu_stats[TB710FU_GPU_GMU_BOOT], 32);
+    OSNumber *hfiError = OSNumber::withNumber(tb710fu_gpu_stats[TB710FU_GPU_HFI_ERROR], 32);
+    OSNumber *gxPower = OSNumber::withNumber(tb710fu_gpu_stats[TB710FU_GPU_GX_POWER], 32);
+    OSNumber *fence = OSNumber::withNumber(tb710fu_gpu_stats[TB710FU_GPU_CP_FENCE], 32);
+    OSNumber *stage7 = OSNumber::withNumber(tb710fu_gpu_stats[TB710FU_GPU_STAGE7_STEP], 32);
+    OSNumber *stage8 = OSNumber::withNumber(tb710fu_gpu_stats[TB710FU_GPU_STAGE8_STEP], 32);
     OSNumber *bundle = OSNumber::withNumber((uint64_t)census->bundle, 32);
     if (level) { domain->setProperty("Tb710fuGpuPowerLevel", level); level->release(); }
     if (stage) { domain->setProperty("Tb710fuGpuBringUpStage", stage); stage->release(); }
@@ -864,6 +937,12 @@ extern "C" void tb710fu_gpu_power_publish(const Tb710fuGpuCensus *census)
     if (firmware) { domain->setProperty("Tb710fuGpuFirmware", firmware); firmware->release(); }
     if (bytes) { domain->setProperty("Tb710fuGpuFirmwareBytes", bytes); bytes->release(); }
     if (ring) { domain->setProperty("Tb710fuGpuRingReady", ring); ring->release(); }
+    if (gmuBoot) { domain->setProperty("Tb710fuGpuGmuBoot", gmuBoot); gmuBoot->release(); }
+    if (hfiError) { domain->setProperty("Tb710fuGpuHfiError", hfiError); hfiError->release(); }
+    if (gxPower) { domain->setProperty("Tb710fuGpuGxPower", gxPower); gxPower->release(); }
+    if (fence) { domain->setProperty("Tb710fuGpuCpFence", fence); fence->release(); }
+    if (stage7) { domain->setProperty("Tb710fuGpuStage7Step", stage7); stage7->release(); }
+    if (stage8) { domain->setProperty("Tb710fuGpuStage8Step", stage8); stage8->release(); }
     if (bundle) { domain->setProperty("Tb710fuGpuBundle", bundle); bundle->release(); }
     domain->setName("Tb710fuGpuPower");
     IOService *platform = IOService::getPlatform();

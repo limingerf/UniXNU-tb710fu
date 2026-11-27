@@ -139,6 +139,61 @@ bool digestMatches(const uint8_t digest[32], const char *hex)
 }
 }  // namespace
 
+extern "C" int tb710fu_gpu_firmware_load(const char *name, uint64_t expected_bytes,
+                                         const char *expected_hex, void **image, uint64_t *bytes)
+{
+    if (!name || !expected_hex || !image || !bytes || !expected_bytes ||
+        expected_bytes > 0xffffffffull) {
+        return -5;
+    }
+    *image = nullptr;
+    *bytes = 0;
+    char path[192];
+    void *handle = nullptr;
+    uint64_t size = 0;
+    if (!joinPath(path, sizeof(path), kAddonDirectory, name) ||
+        tb710fu_fw_open_addon_path(path, &handle, &size) != 0) {
+        if (!joinPath(path, sizeof(path), kDataVolume, name) ||
+            tb710fu_fw_open(path, &handle, &size) != 0) {
+            return -1;
+        }
+    }
+    int result = 0;
+    if (size != expected_bytes) {
+        result = -2;
+    } else {
+        uint8_t *loaded = static_cast<uint8_t *>(IOMallocData((vm_size_t)size));
+        if (!loaded) {
+            result = -4;
+        } else {
+            uint8_t digest[32];
+            if (tb710fu_fw_read(handle, 0, loaded, (size_t)size) != 0) {
+                result = -2;
+            } else {
+                sha256(loaded, (uint32_t)size, digest);
+                if (!digestMatches(digest, expected_hex)) {
+                    result = -3;
+                }
+            }
+            if (result == 0) {
+                *image = loaded;
+                *bytes = size;
+            } else {
+                IOFreeData(loaded, (vm_size_t)size);
+            }
+        }
+    }
+    tb710fu_fw_close(handle);
+    return result;
+}
+
+extern "C" void tb710fu_gpu_firmware_free(void *image, uint64_t bytes)
+{
+    if (image && bytes) {
+        IOFreeData(image, (vm_size_t)bytes);
+    }
+}
+
 extern "C" int tb710fu_gpu_firmware_verify(const char *name, uint64_t expected_bytes,
                                             const char *expected_hex, struct Tb710fuGpuFirmware *out)
 {
