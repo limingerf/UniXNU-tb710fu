@@ -196,7 +196,8 @@ def main():
     archive = OUT / 'libTb710fuAudio.a'
     archive.unlink(missing_ok=True)
     objects, commands, deferred = [], {}, []
-    includes = [PACKAGE, tree / '.cache/xnu-work/osfmk', tree / '.cache/xnu-work/libkern']
+    includes = [PACKAGE, DEVICE / 'package/Tb710fuPower', DEVICE / 'package/Tb710fuAdsp',
+                tree / '.cache/xnu-work/osfmk', tree / '.cache/xnu-work/libkern']
 
     for source in C_SOURCES:
         output = OUT / (source.stem + '.o')
