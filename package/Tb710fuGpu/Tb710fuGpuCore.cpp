@@ -1326,7 +1326,8 @@ int issueFenceSelfTest(uint32_t *observed)
     return -1;
 }
 
-/* Copies one verified firmware image into a mapped buffer. */
+/* Copies one verified Adreno microcode image (skipping the 4-byte container
+ * header, matching Linux adreno_fw_create_bo) into a mapped buffer. */
 int writeFirmwareToBuffer(const char *name, uint64_t expectedBytes, const char *sha,
                           Buffer *buffer)
 {
@@ -1335,11 +1336,11 @@ int writeFirmwareToBuffer(const char *name, uint64_t expectedBytes, const char *
     if (tb710fu_gpu_firmware_load(name, expectedBytes, sha, &image, &bytes) != 0) {
         return -1;
     }
-    if (bytes > buffer->bytes) {
+    if (bytes <= 4u || (bytes - 4u) > buffer->bytes) {
         tb710fu_gpu_firmware_free(image, bytes);
         return -1;
     }
-    memcpy(buffer->cpu, image, bytes);
+    memcpy(buffer->cpu, static_cast<const uint8_t *>(image) + 4u, bytes - 4u);
     tb710fu_gpu_firmware_free(image, bytes);
     cpuClean(buffer->cpu, buffer->bytes);
     return 0;
