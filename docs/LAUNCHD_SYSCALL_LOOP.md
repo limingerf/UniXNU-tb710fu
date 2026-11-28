@@ -173,3 +173,67 @@ TB710FU PID1: sc=54 in=1 cur=92 arg0=0x4 arg1=0x61
 - GPU 驱动：pl103（无）、pl104、pl105（GPU stage 9/9 全通）三者
   `thr=1 fp=182656 procs=1` 完全相同
 - `text-fixup0`：pl103/pl104 都到 launchd，此前的"退化"结论已撤回
+
+## 第 27 轮：排除 4K 页对齐，并确认进度条来自 UEFI
+
+### 4K 页对齐假设 —— 已排除
+
+怀疑点原本是：`fcntl(F_ADDFILESIGS_RETURN)` 在内核里对签名 blob 做页舍入
+（`kern_descrip.c:4184-4187` 注释 "kernel_blob_size rounded to a page size"），
+若 4K 内核与 16K 排布的缓存签名不一致，就会让 dyld 判定签名无效。
+
+逐个查证结果：
+
+| 环节 | 实现 | 是否引入 4K/16K 差异 |
+|---|---|---|
+| `ubc_cs_blob_pagewise_allocate` | `ubc_subr.c:931` | **否** — 未定义 `CODE_SIGNING_MONITOR` 时恒返回 `false` |
+| `ubc_cs_blob_allocate` | `ubc_subr.c:3143` | **否** — 走 `kalloc_data_tag`，不调用 `round_page` |
+| `resid` 处理 | `kern_descrip.c:4184` | **否** — 仅当 `resid != 0` 才 memset，而无页对齐时 `resid` 为 0 |
+
+所以 `F_ADDFILESIGS_RETURN` 在本机内核里**不做任何页舍入**，
+这条路径与 4K 页适配无关。该假设证伪。
+
+### 进度条来自 UEFI，不是内核
+
+`disp` 动词在卡住状态下返回：
+
+```
+TB710FU GopDisplay: disp clients=0 frames=0 transfers=0 retire=0 vsync_send=0 ...
+TB710FU GopDisplay: swap validated=0 kicks=0 inflight=0 ...
+TB710FU GopDisplay: formats bgra=0 abgr=0 half=0 refused=0 lastfmt=00000000 ...
+TB710FU GopDisplay: scanout flips=0 mapped=0 mapfail=0 released=0 copies=0 bootflips=0 ...
+```
+
+**每一个计数器都是 0。** 内核从未向面板提交过任何一帧。
+
+这有两层含义：
+
+1. 用户看到的"苹果进度条走到 1-2%"是 **UEFI 画的**，不是内核画的。
+   所以它不能用来判断内核进度。
+2. `GopDisplay` 虽已初始化（能应答 `disp`），但 `clients=0` 说明
+   没有任何用户态进程连上来——与 `launchd` 从未 fork 任何子进程一致。
+
+### 当前根因表述（收敛后）
+
+`launchd` 在 dyld 引导阶段陷入活锁：
+
+```
+openat → fstat64 → pread → fcntl(F_ADDFILESIGS_RETURN) → mmap → munmap → 重来
+```
+
+六步全部返回 0（成功），没有一次失败。`shared_region_map_and_slide_2_np`
+（syscall 536）在整个环中从未出现。
+
+已排除的解释：
+
+- 缓存文件缺失/损坏（ls / stat / header 逐字节核验通过）
+- 4K 页对齐（本轮证伪，见上）
+- GPU 驱动（pl103/104/105 三者 launchd 状态完全一致）
+- `text-fixup0`（pl103/104 都到 launchd，此前结论已撤回）
+
+仍在候选中的解释：
+
+- `mmap` 的 flags 与缓存内部段对齐（16K）不匹配，映射后校验失败
+- `F_ADDFILESIGS_RETURN` 返回的 end offset 与 cache header 的
+  `codeSignatureOffset/Size` 不符
+- dyld 自身在 4K 页环境下的其它地址计算（例如 slide 计算依赖 16K 粒度）
