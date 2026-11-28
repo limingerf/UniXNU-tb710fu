@@ -511,3 +511,82 @@ vbmeta_sha256         : ecac2cc7e0c54c657000db531d4e04efb04aede07ccc41b0fb5aa82e
 
 **设备不启动不能归因于刷机或打包错误。** 剩下三种可能仍未排除且无法远程区分：
 UEFI 菜单等待 / 电池耗尽 / reset 后未启动。
+
+## 第 31 轮：实机决定性证据 —— launchd 只有 1 个线程、178 KB
+
+镜像 `pl103-liveqr`（pl100 内核 + live-checkpoints）刷入后，设备**首次**走完了
+根卷挂载，并在 COM5 上给出完整状态。这是本会话拿到的第一个能直接看到
+launchd 内部状态的观测。
+
+### 启动推进到哪
+
+```
+disk7s1 mount-complete volume Macintosh HD
+disk2s1 mount-complete volume Data
+disk3s1 mount-complete volume FizzSeedUpdate26C5035r.arm64eSystemCryptex
+disk5s1 mount-complete volume AppCryptex
+vm: initializing swap
+VM Swap Subsystem is ON
+exit: pid 1 init status 0
+exec: pid 1 launchd
+shared_region: [1(launchd)] check_np(...) returned 0x1
+shared_region: [1(launchd)] check_np(...) returned 0x1
+dyld[1]: result from check_np(): -1, errno 12
+ASP: AMFI pointer initialized
+exit: pid 1 init status 0
+```
+
+即 `bsd_init.c:1108` 的 `load_init_program(p)` 成功执行，`launchd` 被 exec 起来。
+之前 pl94/95/97b 连根卷都没挂上。
+
+### `ps` 给出的决定性数据
+
+```
+TB710FU PS: pid=1 ppid=0 name=launchd thr=1 fp=182656
+TB710FU PS: end count=1
+TB710FU PID1: sc=42 in=1 cur=92 arg0=0x2 arg1=0x61
+TB710FU PID1 RING: 4:0 4:0 4:0 6:0 463:2 470:0 463:0 339:0 153:0 92:0 197:0 73:0 153:0 463:0 33
+```
+
+关键三个数：
+
+| 指标 | 本次（失败） | pl49（曾到 WindowServer） |
+|---|---|---|
+| 进程总数 | **1** | 117 |
+| launchd 线程 | **1** | 9 |
+| launchd footprint | **182,656 B（178 KB）** | 11,564,736 B（11.5 MB） |
+
+**launchd 起来后一个进程都没 fork，自己只有 1 个线程、178 KB。**
+它连 dyld 初始化都没走完，谈不上执行任何 job。
+
+### SRMAP 从未打印
+
+在所有 pl103 捕获里检索 `TB710FU SRMAP`：**零命中**。
+
+补丁 0052 的打印点就在 `shared_region_map_and_slide_2_np` 入口。零命中意味着：
+
+> **dyld 根本没有调用 `shared_region_map_and_slide_2_np`。**
+
+不是调用后失败，是**没被调用**。所以问题在 dyld 决定调用它之前：
+读到共享缓存文件、校验、构造 mappings 参数这一段的某一步。
+
+### 与 `errno 12` 的关系（此前已澄清）
+
+`check_np` 返回 `-1 / errno 12` 本身是正常的（"shared region is empty"，
+成功案例也有）。正常流程是：拿到 ENOMEM 后 dyld 去调 `map_and_slide` 建立映射。
+本机的情况是：拿到 ENOMEM 后**没有走到那一步**。
+
+### 结论
+
+失败边界从"`check_np` 与 `map_and_slide` 之间"进一步收紧为：
+
+> **dyld 收到 `check_np` 的 ENOMEM 之后、调用 `map_and_slide` 之前。**
+
+下一步该查的是 dyld 这段前置逻辑：从哪个路径读 dyld shared cache
+（`/System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/` 之类）、
+文件是否存在、可否打开、header 校验是否通过。
+
+### 证据文件
+
+- `scratch/pl103_com5_131701.log`（23,393 B，完整启动）
+- `scratch/pl103_ps_snapshot.txt`（ps 快照与解读）

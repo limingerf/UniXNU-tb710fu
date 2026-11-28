@@ -1,0 +1,29 @@
+﻿pl103 launchd state (2026-11-28 13:18, COM5 ps)
+================================================
+
+TB710FU PS: start watchdog_policy=0 aes_kat=1 aes_reg=1 aes_done=3 aes_nonce=0
+TB710FU PID1: sc=42 in=1 cur=92 arg0=0x2 arg1=0x61
+TB710FU PID1 RING: 4:0 4:0 4:0 6:0 463:2 470:0 463:0 339:0 153:0 92:0 197:0 73:0 153:0 463:0 33
+TB710FU PS: pid=1 ppid=0 name=launchd thr=1 fp=182656
+TB710FU PS: end count=1
+
+Interpretation
+--------------
+- count=1 : launchd is the ONLY process. Nothing was forked.
+- thr=1   : launchd has a single thread. It never got past dyld bootstrap.
+- fp=182656 (178 KB) : versus the pl49 run that reached WindowServer,
+  which had thr=9 fp=11564736 (11.5 MB). So launchd has done essentially
+  no work at all.
+- cur=92 : the last syscall it entered is 92. The ring shows it reached
+  92 after the check_np pair.
+- The console right before showed:
+      dyld[1]: result from check_np(): -1, errno 12
+      ASP: AMFI pointer initialized
+      exit: pid 1 init status 0
+
+So: launchd starts, asks dyld to map the shared cache, gets "empty",
+and then never proceeds. It does not fork, does not spawn logd or
+anything else, and never calls shared_region_map_and_slide_2_np.
+
+This is the same failure signature the earlier captures showed, now
+confirmed with the process table rather than inferred from log order.
