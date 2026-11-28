@@ -130,7 +130,9 @@ pl105（GPU 全通）的 launchd 停滞状态完全一致（`thr=1 fp=182656`）
 | `classify-boot.ps1` | 启动判据（unnest + mapped） |
 | `boot-monitor.ps1` | 无人值守监视器（结束强制 edl） |
 
-**git 分支**：`cdc-smmu-claim`，最新提交 `18082c2`（pl112 head 捕获）。
+**git 分支**：`main`（原 `cdc-smmu-claim` 支线已于 2026-11-28 16:53 提升为主线并推送；
+所有其它本地与远端分支已剪除）。最新提交 `d5fb8f9`（交接文档；探针最新代码提交 `18082c2`，
+pl112 head 捕获）。完整历史备份在 `D:\unixnu-tb710fu-clean-backup-20261128.bundle`。
 CI 额度无限，仓库公开，放心构建。
 
 ---
