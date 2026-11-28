@@ -1,0 +1,29 @@
+docs: pre-write how to read the DYLDPROBE output
+
+The probe is built and verified in the image (pl109, 12/12 checks), but the
+serial port has been dead since 15:09 so it has not run. Rather than guess
+again once data arrives, this records the interpretation up front.
+
+Three things it pins down:
+
+1. What absence looks like. idx=0 means launchd never reached those syscalls,
+   which is different from "probe linked but not called" -- the two need
+   different follow-ups.
+
+2. What partial data looks like. Only MMAP/MUNM with no OATN/FNCT is exactly the
+   pl107 symptom (branches optimised out). Seeing it again on pl109 would mean
+   noinline did not take effect, which is checkable against the image.
+
+3. What the fields mean. MMAP's (prot<<32|flags), the returned address, and
+   FNCT's (fd, cmd, return) together decide the main question: whether dyld
+   munmaps because the returned address is not 16 KiB aligned while every
+   mapping in dyld_shared_cache_arm64e.map ends on a 0x4000 boundary.
+
+It also states a real limitation of the current probe: OATN stores the path
+*pointer*, not the string, so the ring can prove "the same fd is opened, signed
+and mapped repeatedly" but cannot name the file. Naming it needs a copyinstr in
+the probe, which is a separate change.
+
+And it records the three branches that follow from the data, with an explicit
+warning not to pick one in advance: three earlier predictions in this
+investigation were wrong, and each cost several builds.
