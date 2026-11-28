@@ -1,0 +1,34 @@
+diag: record the mmap/fcntl arguments dyld throws away (patch 0053)
+
+launchd spins in
+
+    openat -> fstat64 -> pread -> fcntl(F_ADDFILESIGS_RETURN) -> mmap -> munmap
+
+and every one of those six calls returns 0. shared_region_map_and_slide_2_np
+(syscall 536) is never invoked, which patch 0052 independently confirms by
+printing nothing at its entry. So dyld gives up inside itself, after a
+successful mmap, and we have no record of why.
+
+Patch 0043 kept only (code, error) per ring slot. That was enough to find the
+loop but it discarded exactly the arguments needed to explain it. This adds a
+64-slot ring of (tag, argA, argB, argC) groups for pid 1 only:
+
+  openat  path, flags, returned fd
+  mmap    (prot<<32|flags), fd, returned address
+  fcntl   fd, cmd, return value        <- cmd 0x61 is F_ADDFILESIGS_RETURN
+  munmap  addr, len
+
+Three hypotheses stay indistinguishable without this:
+
+  A. mmap returns an address dyld rejects (e.g. not 16K aligned, while every
+     mapping in dyld_shared_cache_arm64e.map ends on a 0x4000 boundary)
+  B. the fd behind F_ADDFILESIGS_RETURN is a sub-cache whose header does not
+     match what dyld expects for that slot
+  C. the flags dyld passes make the mapping unusable for the slide it wants
+
+Reading side: new CDC verb `probe` (cmd 12) dumps the ring oldest-first and
+reports how many groups were written. The symbols are looked up weakly so the
+verb still answers on a kernel without 0053.
+
+Patch generated from a pristine detached worktree at ac9718f and verified with
+git apply --check (APPLY_CHECK_PASS).
