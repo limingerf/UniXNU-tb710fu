@@ -1,0 +1,18 @@
+TB710FU CDC: configured=1 dtr=0
+TB710FU CDC: rearm ep0=0/0 cancel=0/0 defer=0 abort=0 orphan=0 stale=0
+TB710FU CDC: configured=1 dtr=1
+TB710FU CDC: rearm ep0=0/0 cancel=0/0 defer=0 abort=0 orphan=0 stale=0
+TB710FU CDC: cmd=ps rx=4
+TB710FU PS: begin watchdog_policy=0 aes_kat=1 aes_reg=1 aes_done=3 aes_nonce=0
+TB710FU PID1: sc=42 in=1 cur=92 arg0=0x2 arg1=0x61
+TB710FU PID1 RING: 4:0 4:0 4:0 6:0 463:2 470:0 463:0 339:0 153:0 92:0 197:0 73:0 153:0 463:0 339:0 153:0TB710FU DYLDPROBE: idx=24 groups=6
+TB710FU DYLDPROBE: OATN a=0x16f4f24a0 b=0x0 c=0x0
+TB710FU DYLDPROBE: OATN a=0x16f4f24a0 b=0x0 c=0x1
+TB710FU DYLDPROBE: FNCT a=0x1 b=0x61 c=0x0
+TB710FU DYLDPROBE: MMAP a=0x500040002 b=0x1 c=0x9a0000
+TB710FU DYLDPROBE: MUNM a=0x1009a0000 b=0x4000 c=0x0
+TB710FU DYLDPROBE: OATN a=0x16f4f24b8 b=0x0 c=0x2
+TB710FU DYLDPROBE: end
+
+TB710FU PS: pid=1 ppid=0 name=launchd thr=1 fp=182656
+TB710FU PS: end count=1

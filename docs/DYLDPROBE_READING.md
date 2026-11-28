@@ -177,3 +177,81 @@ syscall 返回路径上对 pid 1 记录，dump 只在 `ps` 时执行，
 
 更可能的解释是这次启动运气不好（偶发性），或者电量/供电问题。
 需要再启动一次看是否复现。
+
+## 第 50 轮：探针首次拿到真实数据 —— dyld 的完整调用序列
+
+### 原始数据（15:44:49，pl109 实机）
+
+```
+TB710FU DYLDPROBE: idx=24 groups=6
+TB710FU DYLDPROBE: OATN a=0x16f4f24a0 b=0x0 c=0x0
+TB710FU DYLDPROBE: OATN a=0x16f4f24a0 b=0x0 c=0x1
+TB710FU DYLDPROBE: FNCT a=0x1 b=0x61 c=0x0
+TB710FU DYLDPROBE: MMAP a=0x500040002 b=0x1 c=0x9a0000
+TB710FU DYLDPROBE: MUNM a=0x1009a0000 b=0x4000 c=0x0
+TB710FU DYLDPROBE: OATN a=0x16f4f24b8 b=0x0 c=0x2
+TB710FU DYLDPROBE: end
+```
+
+同时 `ps`：
+
+```
+TB710FU PS: pid=1 ppid=0 name=launchd thr=1 fp=182656
+TB710FU PS: end count=1
+TB710FU PID1: sc=42 in=1 cur=92 arg0=0x2 arg1=0x61
+TB710FU PID1 RING: 4:0 4:0 4:0 6:0 463:2 470:0 463:0 339:0 153:0 92:0 197:0 73:0 ...
+```
+
+### 字段解读
+
+| 记录 | 字段 | 值 | 含义 |
+|---|---|---|---|
+| `OATN` #1 | a | 0x16f4f24a0 | path 用户态指针 |
+| | b | 0x0 | flags = O_RDONLY |
+| | c | 0x0 | 返回 fd = 0 |
+| `OATN` #2 | a | 0x16f4f24a0 | **同一路径**（指针相同） |
+| | c | 0x1 | 返回 fd = 1 |
+| `FNCT` | a | 0x1 | fd = 1（与上面第二次 open 一致） |
+| | b | **0x61** | **`F_ADDFILESIGS_RETURN`** ← 确认 |
+| | c | **0x0** | **签名成功** |
+| `MMAP` | a | 0x500040002 | prot=0x5 (READ\|EXEC)，flags=0x40002 |
+| | b | 0x1 | fd = 1 |
+| | c | **0x9a0000** | 返回地址 |
+| `MUNM` | a | **0x1009a0000** | 被解除的地址 |
+| | b | 0x4000 | 长度 = 16384 = **16 KiB** |
+| `OATN` #3 | a | 0x16f4f24b8 | 另一个路径（指针差 0x18） |
+| | c | 0x2 | fd = 2 |
+
+### 已确认的事实
+
+1. **`F_ADDFILESIGS_RETURN` 确实被调用**（`b=0x61`），且**成功返回 0**
+2. dyld 用 **同一个路径** 打开了**两次**（获 fd 0 和 fd 1）
+3. 对 fd 1 做了签名挂载，成功了
+4. 用 fd 1 做了 `mmap`，prot=READ|EXEC，flags=0x40002
+5. `munmap` 的长度是 **0x4000 = 16 KiB**
+
+### 两个待解的矛盾
+
+**矛盾一：MMAP 返回地址 0x9a0000，MUNM 解除的却是 0x1009a0000**
+
+差值恰好是 `0x100000000`（4 GiB）。可能性：
+
+- (a) 探针记录错位：`MMAP` 的 `c` 是返回值，`MUNM` 的 `a` 是用户传的地址 —— 若 dyld
+  传的地址带了某个 slide 基址，两者本就不同
+- (b) dyld 映射到低地址，然后 unmap 一个高地址的旧映射
+- (c) 我对 `uu_rval[0]` 的解释有误
+
+**不能凭这一个样本下结论。** 需要更多记录确认这个偏移是否恒定。
+
+**矛盾二：`OATN` 的返回 fd 是 0 和 1**
+
+fd 0/1/2 通常是 stdin/stdout/stderr。dyld 在 `launchd` 里拿到 fd 0 和 1 说明：
+它可能关闭了原有 fd，或者这个进程的 fd 表本来就是空的。
+
+### 下一步
+
+1. 再查几次 `ps`，看 `idx` 是否增长、记录模式是否重复
+2. 若 `MMAP c` 与 `MUNM a` 的差值恒定 → 说明是固定的编码差异，不是问题
+3. 若不恒定 → 探针的字段解释需要修正
+
+**这次的判据在第 49 轮的判读表里已经预设过，现在按表执行，不临时改解释。**
