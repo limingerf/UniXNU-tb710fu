@@ -237,3 +237,57 @@ openat → fstat64 → pread → fcntl(F_ADDFILESIGS_RETURN) → mmap → munmap
 - `F_ADDFILESIGS_RETURN` 返回的 end offset 与 cache header 的
   `codeSignatureOffset/Size` 不符
 - dyld 自身在 4K 页环境下的其它地址计算（例如 slide 计算依赖 16K 粒度）
+
+## 第 28 轮：子缓存 header 实测（并纠正一个错误联想）
+
+### 实测数据
+
+用 CDC `cat` 读取三个缓存的 header，转义还原后按同一布局解析：
+
+| 文件 | mappingOffset | mappingCount | uuid@0x58 |
+|---|---|---|---|
+| `dyld_shared_cache_arm64e`（主） | 0x238 | 1 | `8b1e17c672d6301791a4916022e3612e` |
+| `dyld_shared_cache_arm64e.03` | 0x238 | 1 | `12c09024bd03321f989a28512b5971dd` |
+| `dyld_shared_cache_arm64e.25.dylddata` | 0x238 | **7** | `c191e072a69937968f02d65c5cf6be4e` |
+
+三个文件的 header 结构一致（mappingOffset 都是 0x238），
+`.dylddata` 的 mappingCount=7 符合"数据段分片"的新格式。
+
+### 一个必须记录的纠错
+
+我一度想用"主缓存与子缓存 UUID 不同"来解释 dyld 拒绝缓存。
+**这是错的，已放弃。** 每个子缓存本来就有自己的 cacheUUID，
+这是正常设计，不是缺陷。拿它当根因会把排查引向死路。
+
+同理，`.25.dylddata` 解出的 `platform=538` 是**解码偏移错误**：
+不同子类型的 header 在 0x68 之后的字段布局不同，不能直接套用主缓存的偏移。
+
+### 现有观测能力的边界（已穷尽）
+
+CDC shell 动词只有：
+`edl` `reboot` `bootloader` `recovery` `ps` `help` `ls` `cat` `stat` `ioreg` `disp`
+
+`cat` 固定从 offset 0 读 4096 字节
+（`vn_rdwr(..., TB710FU_SHELL_CAT_BYTES /*4096*/, 0, ...)`），
+不支持偏移读。因此**无法**：
+
+- 读取 `.03` 在 `0x5de1134` 处的实际字节
+- 读取 `launchd` 的 fd 表或 VM 映射
+- 读取任何 `mmap` 参数
+
+### 结论：必须加内核侧观测
+
+要区分下面三种可能，只能在内核里记录完整参数：
+
+| 假设 | 需要的证据 |
+|---|---|
+| A. `mmap` 成功但 flags/anchor 让 dyld 事后拒绝 | `mmap` 的 prot/flags/fd/offset 与返回值 |
+| B. `F_ADDFILESIGS_RETURN` 返回的 end offset 与 cache header 不一致 | fcntl 的输入结构与内核回写字段 |
+| C. fd=4 指向的子缓存 header 与主缓存不匹配 | `openat` 的路径 + 该 fd 后续调用序列 |
+
+已写好生成器 `scratch/gen-0053.sh`（补丁 0053），在
+`bsd/dev/arm/systemcalls.c` 的 `unix_syscall()` 里对 pid 1 记录
+`openat`/`mmap`/`fcntl`/`munmap` 的完整参数与返回值，
+输出到 `tb710fu_dyld_probe[64]`，供扩展 `ps` 动词读出。
+
+尚未生成补丁文件、尚未编译、尚未验证 —— 需要一次 CI 构建。
