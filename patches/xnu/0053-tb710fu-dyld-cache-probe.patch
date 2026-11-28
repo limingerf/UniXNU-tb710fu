@@ -1,26 +1,26 @@
 diff --git a/bsd/dev/arm/systemcalls.c b/bsd/dev/arm/systemcalls.c
-index 0906700..87a3600 100644
+index 0906700..1fa13c0 100644
 --- a/bsd/dev/arm/systemcalls.c
 +++ b/bsd/dev/arm/systemcalls.c
-@@ -42,6 +42,32 @@ extern void dtrace_systrace_syscall_return(unsigned short, int, int *);
- #endif  /* CONFIG_DTRACE */
+@@ -79,6 +79,88 @@ __XNU_PRIVATE_EXTERN    int             syscalls_log[SYS_MAXSYSCALL];
+ extern int mach_trap_count;
+ #endif
  
- extern void
 +/*
 + * tb710fu: capture the exact arguments of the syscalls launchd loops on while
 + * dyld refuses the shared cache. See docs/LAUNCHD_SYSCALL_LOOP.md.
 + *
-+ * Patch 0043 recorded only (code, error). That proved the six-call loop exists
++ * Patch 0043 recorded only (code, error), which proved the six-call loop exists
 + * and that every call succeeds, but it cannot explain why dyld munmaps after a
 + * successful mmap. These records keep the arguments and the return value.
 + *
 + * Written round-robin as groups of four u64 in a 64-slot ring:
 + *   [0] tag, [1] argA, [2] argB, [3] argC
 + */
-+volatile uint64_t tb710fu_dyld_probe[64];
-+volatile uint32_t tb710fu_dyld_probe_idx;
++volatile uint64_t tb710fu_dyld_probe[64] = { 0 };
++volatile uint32_t tb710fu_dyld_probe_idx = 0;
 +
-+static void
++static inline void
 +tb710fu_dyld_probe_put(uint32_t tag, uint64_t a, uint64_t b, uint64_t c)
 +{
 +	uint32_t slot = __atomic_fetch_add(&tb710fu_dyld_probe_idx, 4u,
@@ -32,13 +32,6 @@ index 0906700..87a3600 100644
 +	tb710fu_dyld_probe[(slot + 3u) & 63u] = c;
 +}
 +
- unix_syscall(struct arm_saved_state * regs, thread_t thread_act, struct proc * proc);
- 
- static int      arm_get_syscall_args(uthread_t, struct arm_saved_state *, const struct sysent *);
-@@ -79,6 +105,62 @@ __XNU_PRIVATE_EXTERN    int             syscalls_log[SYS_MAXSYSCALL];
- extern int mach_trap_count;
- #endif
- 
 +#if DEVELOPMENT || DEBUG
 +volatile uint32_t tb710fu_pid1_sc_count = 0;
 +volatile uint32_t tb710fu_pid1_sc_in = 0;
@@ -137,7 +130,7 @@ index 0906700..87a3600 100644
 +			tb710fu_dyld_probe_put(0x4D554E4Du,
 +			    (uint64_t)uthread->uu_arg[0],
 +			    (uint64_t)uthread->uu_arg[1],
-+			    0u);
++			    (uint64_t)0);
 +			break;
 +		default:
 +			break;
