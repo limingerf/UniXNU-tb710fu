@@ -1,75 +1,87 @@
 # TB710FU macOS 27 移植 · 当前真实状态与交接
 
-**更新**：2026-11-28 04:05
-**目的**：记录实际验证到的事实，以及**已被证伪的假设**，避免后来者重走。
+**更新**：2026-11-28 16:40
+**目的**：记录实际验证到的事实与已被证伪的假设，避免后来者重走。
+**详尽的原始记录**：`docs/LAUNCHD_STALL_ROOTCAUSE.md`、
+`docs/LAUNCHD_SYSCALL_LOOP.md`、`docs/DYLDPROBE_READING.md`、
+`docs/HID_CHANGE_REVIEW.md`、`docs/GPU_RENDER_DIAGNOSTICS.md`。
 
 ---
 
 ## 一、当前阻塞（最重要）
 
-平板自 2026-11-28 03:47 刷入 `pl100-srmap` 后，**18 分钟以上完全没有 USB 枚举**：
+启动停在 `launchd` 的 dyld 阶段：**dyld 反复重试同一个共享缓存请求，
+内核侧全部成功，但用户态拒绝，永不调用 `shared_region_map_and_slide_2_np`。**
 
-- 无 `COM5`（CDC）
-- 无 `9008`（Qualcomm EDL）
-- USB 总线上连"未知设备"都没有
+判定判据（实机反复验证）：
 
-这与用户描述的"卡初始化会自己重启"**不符**——重启循环里至少会短暂出现
-`COM5` 或 `9008`。可能原因（无法远程区分）：
+```
+exec: pid 1 launchd
+shared_region: [1(launchd)] check_np(...) x2
+dyld[1]: result from check_np(): -1, errno 12     ← 正常，成功案例也有
+ASP: AMFI pointer initialized
+[之后没有 dyld cache mapped，没有 unnest of range]
+```
 
-1. 停在 UEFI 菜单等待选择（菜单不枚举 USB）
-2. 电池耗尽（刷机前电量 88-90%，且长期高负载）
-3. `pl100` 内核在 USB 初始化前就挂死
+`TB710FU SRMAP`（补丁 0052 在 syscall 536 入口的打印）**始终零输出**，
+这是"map_and_slide 从未被调用"的独立证据。
 
-**需要人工**：看一眼屏幕；若黑屏先长按电源确认是否开机。
+**当前设备**：`pl112` 已刷入。16:31 与 16:33 两次抓取都停在
+`SystemCryptex` 挂载之后、**没有** `boot-policy` / `VM Swap` / `launchd`，
+比 pl110 更早。尚不能区分是偶发（pl109/pl110 也出现过停在更早位置、
+重刷即恢复）还是 pl112 新增的 head 捕获引入的回归。**需要再观察几次确认。**
+
+电量约 36%，`-1893 mA` 持续放电；若条件允许先插充电器，否则实验不可靠。
 
 ---
 
 ## 二、已确认为事实的结论
 
-### 2.1 pl49 曾经真正跑起过 WindowServer
+### 2.1 内核侧完全正确（探针实测，pl110）
 
-`scratch/com5_pl49_ps3.log` 有 117 个进程的完整清单：
-
-```
-TB710FU PS: pid=1   ppid=0 name=launchd       thr=9  fp=11564736
-TB710FU PS: pid=164 ppid=1 name=WindowServer  thr=2  fp=2237632
-TB710FU PS: pid=166 ppid=1 name=loginwindow   thr=2  fp=1655808
-```
-
-这不是僵尸进程，是完整 macOS 用户空间。**所以问题是 pl49 之后的回归，
-不是板子固有缺陷。**
-
-### 2.2 判据：`unnest of range` + `dyld cache mapped`
-
-已验证 9 份完整启动日志，无例外：
-
-| 日志 | unnest 行数 | mapped | 结论 |
-|---|---|---|---|
-| pl86b | 35 | 1 | 用户空间 |
-| pl89 | 42 | 1 | 用户空间 |
-| pl92 | 28 | 1 | 用户空间 |
-| pl93 | 50 | 1 | 用户空间 |
-| pl96(02:06) | 28 | 1 | 用户空间 |
-| pl49_ps3 | 31 | 0 | 用户空间（WindowServer 在跑） |
-| pl94 | 0 | 0 | 卡住 |
-| pl95 | 0 | 0 | 卡住 |
-| pl97b | 0 | 0 | 卡住 |
-| pl96-rollback | 0 | 0 | 卡住 |
-
-工具：`scratch/classify-boot.ps1`
-
-### 2.3 失败模式的精确位置
-
-失败启动停在（`scratch/com5_pl97b_20261128-023120.log`，492 行后静默）：
+pl110 的 64 位探针给出的完整记录，逐项核验全部正确：
 
 ```
-420| exec: pid 1 launchd
-423| shared_region: [1(launchd)] check_np(...) returned 0x1
-424| shared_region: [1(launchd)] check_np(...) returned 0x1
-425| dyld[1]: result from check_np(): -1, errno 12
-426| ASP: AMFI pointer initialized
-     [之后没有 dyld cache mapped，也没有 unnest]
+OATN  a=0x16ec504b8 b=0x0 c=0x2/0x3/0x4/0x5/0x6   同一路径，每次 open 成功
+FNCT  a=<fd> b=0x61 c=0x0                          F_ADDFILESIGS_RETURN，成功
+MMAP  a=0x500040002 b=<fd> c=0x101240000           READ|EXEC, 16 KiB 对齐
+MUNM  a=0x101240000 b=0x4000 c=0x0                 与 mmap 一致，长度 16 KiB
 ```
+
+| 检查项 | 实测 | 判定 |
+|---|---|---|
+| mmap 返回地址 | `0x101240000` | 16 KiB 对齐 ✓ |
+| munmap 地址 | `0x101240000` | 与 mmap 一致 ✓ |
+| munmap 长度 | `0x4000` | 正是 16 KiB ✓ |
+| prot / flags | `0x5` / `0x40002` | READ\|EXEC / MAP_PRIVATE\|MAP_UNIX03，标准 ✓ |
+| fcntl cmd / 返回 | `0x61` / `0x0` | 签名挂载成功 ✓ |
+| 循环模式 | 所有字段恒定，仅 fd 递增 | 完美重复同一失败 |
+
+**结论：dyld 在用户态第 4 步（读 header 做校验）失败，第 5 步
+（调 map_and_slide）从未发生。这不是内核 bug。**
+
+### 2.2 GPU 驱动是好的
+
+pl105（GPU 组开启）实测 `TB710FU GPU: bringup stage=9/9`：GMU 固件 4/4 加载、
+HFI 序列完成、GX 上电、CP ring 就绪、SMMU 零故障。且 pl103（无 GPU）、
+pl105（GPU 全通）的 launchd 停滞状态完全一致（`thr=1 fp=182656`）。
+**GPU 与卡启动无关；GPU 渲染这条目标项已部分实证。**
+
+### 2.3 探针链完整可用
+
+- 补丁 0053：pid 1 的 openat/mmap/fcntl/munmap 完整参数记录（`noinline` + 字符串 tag）
+- `BootWatchdogPolicy.c` 的 `tb710fu_dump_procs()`：`ps` 输出 `TB710FU DYLDPROBE:` 行
+- pl112 额外把 mmap 映射的前 32 字节 dump 出来（HEAD/HEADASCII），
+  用于验证"映射内容是否与文件一致"——**尚未拿到实机数据**
+
+镜像验证工具：`scratch/verify-pl109.py`（pl109 通过 12/12）。
+内核确认工具：`scratch/compare-probe-images.py`、`scratch/check-tag-encoding.py`。
+
+### 2.4 抓取顺序铁律（血泪教训）
+
+内核 console 环形缓冲容量有限，`ps` 的输出（探针 16 组 + 进程表）会把启动序列挤掉。
+**刷机后必须先纯读 30-60 秒抓启动序列，再发 `ps` 抓探针**，两次分别存盘。
+先发 `ps` 会导致启动序列永久丢失（第 49/53 轮踩过）。
 
 ---
 
@@ -77,62 +89,68 @@ TB710FU PS: pid=166 ppid=1 name=loginwindow   thr=2  fp=1655808
 
 | 假设 | 证伪依据 |
 |---|---|
-| `errno 12` 是错误 | 它是 `shared_region_check_np` 文档化的 "shared region is empty"，**5 个成功案例全都有** |
-| `initproc` 退出了 | 补丁 0046 会在 `p==initproc` 时打印 `TB710FU INITEXIT` 并 hold 120s，失败日志里**都没有** |
-| `exit: pid 1 init status 0` 是崩溃点 | 成功案例与失败案例**各有 2 次**，位置都在 launchd exec 前后 |
-| 内存不足 | 失败与成功的 `pmap_startup() 1240770 page entries` **完全一致** |
-| GPU 卡住桌面 | `GopDisplay` 在 launchd 卡住**之后**才由 CDC 8 秒 fallback 触发，是**结果**非原因 |
-| `text-fixup0` 有影响 | pl86b/pl89/pl92 **没有**它照样成功；pl93 **有**它也成功 |
-| 4K slide 补丁漂移 | pl49(176) 与 pl55(177) 补丁集 `Compare-Object` **只差 0051**（纯诊断） |
-| `ml-timeout-sched-preemption=0` 等调度参数 | pl93 **带着**它也成功 |
-| 数据卷参数 | 所有镜像都是 `no-reset`/`sheng-persist=2`/`data-persist=2` |
-| `GopDisplay` kext 加载铺路 | 失败案例里 GopDisplay **同样完整跑完** `kext load=0` → `registered` |
-| 固定延时 settle 窗口 | 我写的 `d90e9a4` 直接卡死内核丢 COM5，已 revert（`4c28463`） |
+| `errno 12` 是错误 | 文档化的 "shared region is empty"，成功案例也有 |
+| GPU 修坏了 | pl105 GPU stage 9/9 全通，launchd 状态与无 GPU 一致 |
+| `text-fixup0` 导致退化 | pl103/pl104 都过 launchd，boot-args 逐字相同 |
+| mmap 返回地址不对齐 | 实测 `0x101240000`，低 14 位为 0 |
+| munmap 地址与 mmap 不符 | 64 位修正后实测完全一致（此前 4 GiB 差值是只读低 32 位的假象） |
+| munmap 长度不是 16K | 实测 `0x4000` |
+| prot/flags 异常 | `READ\|EXEC` + `MAP_PRIVATE\|MAP_UNIX03`，标准值 |
+| `F_ADDFILESIGS_RETURN` 失败 | 实测返回 0 |
+| fd 泄漏是病根 | fd 递增是重试的结果，不是原因 |
+| 循环已停止 | 只是慢（约 1 分钟 1 轮），idx 从 24 一路涨到 424 |
+| pl49 进过完整桌面 | 只有 WindowServer+loginwindow，无 Dock/Finder/SystemUIServer，停在登录窗口 |
+| 4K shared-region 补丁回归 | 那些补丁从未进 series |
+| 固定延时 settle | `d90e9a4` 卡死内核丢 COM5，已 revert |
+| 调度参数 / 数据卷参数 / GopDisplay 铺路 | pl93 带着它们照样成功 |
 
 ---
 
-## 四、已就位的诊断（设备一通就能用）
+## 四、可用镜像与关键脚本
 
-**补丁 `0052-tb710fu-shared-region-map-trace.patch`**
-在 `shared_region_map_and_slide_2_np()`（syscall 536）入口/出口无条件打印：
-
-```
-TB710FU SRMAP[<pid>]: enter files=<n> mappings=<n>
-TB710FU SRMAP[<pid>]: exit kr=0x<x> files=<n> mappings=<n>
-```
-
-已独立复核 `out/pl100/kernel.macho` 含这两条格式串。`printf` only，无副作用。
-
-**它能一劳永逸回答**：dyld 到底有没有调用 `map_and_slide`；若调用了，`kr` 是多少。
-
----
-
-## 五、可用镜像
+**镜像**（`out/` 下）：
 
 | 镜像 | 用途 |
 |---|---|
-| `out/tb710fu-pl16-46058104010-pl100-srmap-signed.zip` | 含 0052 诊断（**已刷入，当前卡住的那个**） |
-| `out/tb710fu-pl16-46058104010-pl102-minimal-signed.zip` | 内核同上，但 boot-args 无任何可选子系统，用于区分"菜单等待"vs"内核早死" |
-| `out/pl16-46021085431-pl93-5g-srgb-signed/` | 最后一次确认进桌面的版本（583 帧 0 拒帧） |
-| `out/pl16-45623265343-pl49-cdc-signed/` | WindowsServer 确认跑起来的版本 |
+| `tb710fu-pl16-46125126722-pl112-head-signed.zip` | 当前刷入，含 head 捕获 |
+| `tb710fu-pl16-46122815206-pl110-probe64-signed.zip` | 64 位探针，数据最完整可信 |
+| `tb710fu-pl16-46121210251-pl109-probe-signed.zip` | 首个实机探针（返回值只有低 32 位） |
+| `tb710fu-pl16-46058104010-pl100-srmap-signed.zip` | 0052 原始追踪 |
+| `pl16-46021085431-pl93-5g-srgb-signed/` | 最后一次确认进桌面（583 帧 0 拒帧） |
+
+**脚本**（`scratch/` 下）：
+
+| 脚本 | 用途 |
+|---|---|
+| `gen-0053-v7.py` | 0053 补丁生成器（**改补丁必须先改它**） |
+| `get-kernel.py` / `poll-0053.py` / `dispatch-0053.py` | 构建下载/轮询/触发 |
+| `verify-pl109.py` / `compare-probe-images.py` | 镜像完整性验证 |
+| `analyse-probe-loop.py` | 探针数据结构化分析 |
+| `package-pl112.sh` | 打包脚本（照抄改 run/tag/kernel 即可） |
+| `classify-boot.ps1` | 启动判据（unnest + mapped） |
+| `boot-monitor.ps1` | 无人值守监视器（结束强制 edl） |
+
+**git 分支**：`cdc-smmu-claim`，最新提交 `18082c2`（pl112 head 捕获）。
+CI 额度无限，仓库公开，放心构建。
 
 ---
 
-## 六、无人值守铁律
+## 五、无人值守铁律
 
-1. **不抓日志时平板必须在 EDL**（`9008`）。卡启动会持续发热伤电池。
-2. **绝不让桌面久留**：该板在渲染异常下久留会背光黑屏，COM5 仍枚举但不再响应，
-   串口永久丢失。
+1. **不抓日志时平板必须在 EDL**（`9008`）。卡启动持续发热伤电池。
+2. **绝不让桌面久留**：该板渲染异常下久留会背光黑屏、COM5 枚举但不响应，串口永久丢失。
 3. 监视器 `scratch/boot-monitor.ps1` 每代启动结束**强制发 `edl`**。
 
 ---
 
-## 七、下一步（设备恢复后，按序）
+## 六、下一步（按序）
 
-1. 刷 `pl102-minimal` 或 `pl100-srmap`，观察是否出现 COM5
-2. 一旦有 COM5，**立即**抓日志并搜 `TB710FU SRMAP`：
-   - 有 `enter` + `exit kr=0x...` → 直接定位失败码
-   - 有 `enter` 无 `exit` → 卡在 `map_and_slide` 内部
-   - **无任何 SRMAP** → dyld 根本没走到 syscall 536，问题在更早的缓存解析/读文件
-3. 用 `scratch/classify-boot.ps1` 判定是否进用户空间
-4. 拿到数据前**不要再提新假设**——本轮已连错三次（调度参数、数据卷、GopDisplay）
+1. **先确认 pl112 是否引入回归**：再启动 2-3 次，看是否总停在
+   `SystemCryptex` 后。若恢复过 launchd，则是偶发（电量/运气），
+   直接抓 HEAD 数据；若三次都停，回退到 pl110（head 捕获惹的祸）。
+2. **拿到 `TB710FU DYLDPROBE HEAD:` 数据后**，与第 32 轮 `cat` 读到的
+   `dyld_v1  arm64e` / `mappingOffset=0x238` / `mappingCount=1` 对比。
+   - 不一致 → 4K 页映射没有按 16K 布局暴露文件字节，这是根因
+   - 一致 → dyld 拒绝的是 header 的其他字段，需要再扩展探针
+3. **永恒警告**：本会话推翻过 6 个自己预设的假设（对齐、长度、flags、
+   签名、fd 耗尽、循环停止）。**拿到数据前不要预设结论。**
