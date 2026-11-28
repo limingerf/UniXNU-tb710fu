@@ -1,21 +1,18 @@
 diff --git a/bsd/dev/arm/systemcalls.c b/bsd/dev/arm/systemcalls.c
-index 0906700..1fa13c0 100644
+index 0906700..6fc973e 100644
 --- a/bsd/dev/arm/systemcalls.c
 +++ b/bsd/dev/arm/systemcalls.c
-@@ -79,6 +79,88 @@ __XNU_PRIVATE_EXTERN    int             syscalls_log[SYS_MAXSYSCALL];
+@@ -79,6 +79,85 @@ __XNU_PRIVATE_EXTERN    int             syscalls_log[SYS_MAXSYSCALL];
  extern int mach_trap_count;
  #endif
  
 +/*
-+ * tb710fu: capture the exact arguments of the syscalls launchd loops on while
-+ * dyld refuses the shared cache. See docs/LAUNCHD_SYSCALL_LOOP.md.
++ * tb710fu: capture the exact arguments of the syscalls launchd loops on
++ * while dyld refuses the shared cache. See docs/LAUNCHD_SYSCALL_LOOP.md.
 + *
-+ * Patch 0043 recorded only (code, error), which proved the six-call loop exists
-+ * and that every call succeeds, but it cannot explain why dyld munmaps after a
-+ * successful mmap. These records keep the arguments and the return value.
-+ *
-+ * Written round-robin as groups of four u64 in a 64-slot ring:
-+ *   [0] tag, [1] argA, [2] argB, [3] argC
++ * Patch 0043 recorded only (code, error), which proved the six-call loop
++ * exists and that every call succeeds, but it cannot explain why dyld
++ * munmaps after a successful mmap. These records keep the arguments.
 + */
 +volatile uint64_t tb710fu_dyld_probe[64] = { 0 };
 +volatile uint32_t tb710fu_dyld_probe_idx = 0;
@@ -91,7 +88,7 @@ index 0906700..1fa13c0 100644
  /*
   * Function:	unix_syscall
   *
-@@ -178,7 +260,54 @@ unix_syscall(
+@@ -178,7 +257,52 @@ unix_syscall(
  #endif /* CONFIG_DEBUG_SYSCALL_REJECTION */
  
  	AUDIT_SYSCALL_ENTER(code, proc, uthread);
@@ -136,8 +133,6 @@ index 0906700..1fa13c0 100644
 +			break;
 +		}
 +	}
-+
-+
 +#if DEVELOPMENT || DEBUG
 +	if (pid == 1) {
 +		tb710fu_pid1_sc_exit(code, error, (uint64_t)uthread->uu_arg[0], (uint64_t)uthread->uu_arg[1], (uint64_t)uthread->uu_arg[4]);
