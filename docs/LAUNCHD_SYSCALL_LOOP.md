@@ -341,3 +341,85 @@ pl104 比 pl103 多 4,160 字节（= 4096 + 64，即一个 4K 页加 64 字节�
 - 再扩一个 CDC 动词读出
 
 需要一次 CI 构建。**用户尚未批准，不要擅自消耗额度。**
+
+## 第 34 轮：写 XNU 补丁的两个必踩坑（0053 实战记录）
+
+补丁 0053 连续两次构建失败，原因都不是探针逻辑，而是**补丁上下文**。
+
+### 坑一：不能对着裸 feed 生成
+
+第一次在 `ac9718f` 裸 feed 上 `git diff`：
+
+```
+error: patch failed: bsd/dev/arm/systemcalls.c:179
+error: bsd/dev/arm/systemcalls.c: patch does not apply
+```
+
+因为 0053 要改的 dispatch 行，**0043 已经在同一处插入了自己的
+enter/exit hook**。对着裸 feed 生成的上下文在实际构建时不存在。
+
+反例说明：0052 能成功，是因为它改 `bsd/vm/vm_unix.c`，
+那个文件前面的补丁都没动过。
+
+### 坑二：锚点不能用 `unix_syscall(`
+
+第二次改成先应用 0043 再注入，仍然失败，但行号变了：
+
+```
+error: patch failed: bsd/dev/arm/systemcalls.c:79
+```
+
+因为 `src.index('unix_syscall(')` 匹配到的是**前向声明**：
+
+```c
+extern void
+unix_syscall(
+```
+
+插入点落在 `extern void` 和函数名之间，既破坏了声明，又让 hunk 79 的
+上下文对不上。
+
+### 正确做法
+
+0043 的插入锚点是：
+
+```c
+extern int mach_trap_count;
+#endif
+<空行>
+```
+
+在自己的声明块**紧跟这个空行**插入。这样两个补丁的 hunk 上下文一致，
+hunk 头变成 `@@ -79,6 +79,88 @@`，与 0043 完全对齐。
+
+### 生成 0053 的可靠流程
+
+```python
+# 1. 干净 worktree
+git worktree add --detach <wt> ac9718f
+
+# 2. 只应用会碰同一个文件的补丁（这里是 0043）
+git -C <wt> apply patches/xnu/0043-tb710fu-pid1-syscall-ring.patch
+
+# 3. 注入，锚点与 0043 相同
+src.replace('extern int mach_trap_count;\n#endif\n',
+            'extern int mach_trap_count;\n#endif\n' + decls, 1)
+
+# 4. git diff 输出，用 pathlib 写字节（PowerShell 重定向会写出 UTF-16 BOM）
+
+# 5. 验证
+git -C <wt> checkout -- <file>
+git -C <wt> apply --check <patch>   # 必须 PASS
+```
+
+### 附带发现
+
+- **PowerShell 的 `>` 重定向写出 UTF-16 BOM**，`git apply` 会报
+  "No valid patches in input"。必须用 Python/`io` 写字节。
+- `git apply --check` **只能验证上下文匹配**，不能代替真实构建。
+  前两次都是 check 通过、构建失败——因为 check 时用的树和构建时的树不同。
+
+### 实现文件
+
+- `scratch/gen-0053-v3.py` — 最终可用的生成器
+- `patches/xnu/0053-tb710fu-dyld-cache-probe.patch` — 5013 字节
