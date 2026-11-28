@@ -760,3 +760,70 @@ series 共 **52 个补丁**。
 但已查证它作用在 `mac_proc_check_launch_constraints`（exec 时的启动约束），
 而 `launchd` 的 exec 已成功（日志有 `exec: pid 1 launchd`），
 所以 `no-lc` **不太可能**是 dyld 阶段卡死的原因。保留为低优先级。
+
+## 第 31 轮：确认 4 KiB 页内核 + dyld 要求 16 KiB 对齐
+
+### 4K 页已在镜像里实测确认
+
+用 `scratch/check-page-size.py` 从 `.local/prelink-kernel.macho` 读符号初值：
+
+```
+symbols found:
+  arm_hardware_page_size   0xfffffff0071a11b0
+  PAGE_SHIFT_CONST         0xfffffff007dda120
+
+arm_hardware_page_size: file 0x19d1b0 in __PRELINK_TEXT  u32=4095 (0xfff)
+```
+
+**`arm_hardware_page_size = 0xFFF = FOURK_PAGE_MASK`。** 这台设备确实是
+4 KiB 页内核。这一点此前一直被当作既定前提，现在有镜像内实测值了。
+
+（`PAGE_SHIFT_CONST` 读到 0，因为它在 `__DATA_CONST` 里由
+`__mod_init_func` 启动时填充，静态文件里尚未写入——与之前读
+`gMetaClass` 遇到的情况相同。）
+
+### dyld 自身要求 16 KiB 对齐
+
+从设备上 `cat /usr/lib/dyld` 取 FAT header 解析：
+
+```
+fat magic: 0xcafebabe   nfat_arch: 3
+  arch0: cputype=0x01000007 (x86_64)  offset=0x4000    size=0x11a610  align=2^14 (16384)
+  arch1: cputype=0x0100000c (arm64e)  offset=0x120000  size=0x16c530  align=2^14 (16384)
+  arch2: cputype=0x0100000c (arm64e)  offset=0x290000  size=0x1644c0  align=2^14 (16384)
+```
+
+三个切片全部要求 **2^14 = 16 KiB** 的文件偏移对齐。
+
+### 已检查且不构成阻断的两处
+
+1. `vm_unix.c:2045-2047` 的 slide 掩码在 arm64 上固定用
+   `~SIXTEENK_PAGE_MASK`，`SIXTEENK_PAGE_MASK` 定义正确为 `0x3FFF`
+   （`osfmk/vm/vm_protos.h:182`）。slide 随机值仍是 16K 对齐，符合 dyld 期望。
+
+2. `vm_unix.c:2115` 的 offset 校验：
+   ```c
+   if (__improbable(0 != (offset & vm_map_page_mask(map)))) {
+           return KERN_INVALID_ARGUMENT;
+   }
+   ```
+   运行时 `vm_map_page_mask` 是 `0xFFF`（4K），而 dyld 传的 offset 是 16K
+   对齐的，16K 对齐天然满足 4K 对齐，**该检查会通过**。
+
+### 仍未解释的核心事实
+
+补丁 0052 在 `shared_region_map_and_slide_2_np` 入口打印，**输出为零**。
+所以无论上面这些检查是否通过，**这个函数从未被调用**。
+
+`launchd` 的 syscall 环停在
+`openat → fstat64 → pread → fcntl(F_ADDFILESIGS_RETURN) → mmap → munmap`，
+六步全部返回 0，然后重来。
+
+即：dyld 在**自己内部**就决定了不调用 `map_and_slide`，而不是内核拒绝了它。
+矛盾点在于 `mmap` 成功了它为什么还要重来——这只能靠记录 `mmap`
+的实际参数与返回值来解释，也就是补丁 0053 要做的事。
+
+### 工具
+
+- `scratch/check-page-size.py` — 从预链接镜像读页大小常量
+- `scratch/decode-dyld-fat.ps1` — 解析 CDC 抓回的 dyld FAT header
