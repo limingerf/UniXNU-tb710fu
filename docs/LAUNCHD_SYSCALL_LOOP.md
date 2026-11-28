@@ -695,3 +695,79 @@ run 46120267827，conclusion=success。
 
 四个 tag 都在镜像里，但**recorder 是否真的被调用、参数是否正确**只有实机能证明。
 串口仍处于 `Open()` 失败状态，无法刷机。
+
+## 第 46 轮：pl109 完整就绪（recorder + dump 双向验证通过）
+
+### 修复的缺口
+
+第 45 轮发现：pl108 内核里有 recorder，但 `BootWatchdogPolicy.c` 的 dump 代码
+只存在于工作区、从未提交，所以 pl108 里**没有任何代码把环形缓冲打印出来**。
+即使刷入，探针会默默记录，而 `ps` 输出里看不到。
+
+### pl109 的 12 项验证（scratch/verify-pl109.py）
+
+```
+recorder tag OATN              count=1   OK
+recorder tag FNCT              count=1   OK
+recorder tag MMAP              count=11  OK
+recorder tag MUNM              count=4   OK
+helper symbol (noinline)       count=1   OK
+ring global                    count=1   OK
+ring index global              count=1   OK
+dump header format             count=1   OK
+dump per-entry format          count=1   OK
+dump terminator                count=1   OK
+control 0043 ring              count=1   OK
+control 0052 srmap             count=2   OK
+```
+
+**12/12 通过。** recorder 会记录，dump 会打印，两端都在镜像里。
+
+### 三个镜像的演进
+
+| 镜像 | recorder | dump | sha256 |
+|---|---|---|---|
+| pl107 | 只有 MMAP/MUNM（OATN/FNCT 被优化掉） | 无 | 5dbd127a... |
+| pl108 | 四个 tag 齐全 + noinline 符号 | 无 | a80b2466... |
+| **pl109** | 四个 tag + noinline | **有** | bc8abb4e... |
+
+### 镜像
+
+```
+out/tb710fu-pl16-46121210251-pl109-probe-signed.zip   75,674,842 bytes
+kernel.macho sha256 = bc8abb4e5f4bb3c94140693b97f40689b101221c5834f977845d713967be2af4
+boot-args 与 pl105 一致（GPU stage 9/9 全通）
+```
+
+### 刷入后的预期输出
+
+`ps` 动词会多出这些行（数据来自 launchd 的真实调用序列）：
+
+```
+TB710FU DYLDPROBE: idx=<n> groups=<n/4>
+TB710FU DYLDPROBE: OATN a=<path> b=<flags> c=<fd>
+TB710FU DYLDPROBE: MMAP a=<prot<<32|flags> b=<fd> c=<返回地址>
+TB710FU DYLDPROBE: FNCT a=<fd> b=<cmd> c=<返回值>
+TB710FU DYLDPROBE: MUNM a=<addr> b=<len>
+TB710FU DYLDPROBE: end
+```
+
+这三个值能回答从第 27 轮悬置至今的问题：
+
+- `FNCT` 的 `a`（fd）配合 `OATN` 的 `c`（返回的 fd）→ 定位是哪个缓存文件
+- `FNCT` 的 `b` 若是 0x61 → 确认是 `F_ADDFILESIGS_RETURN`
+- `MMAP` 的 `c`（返回地址）低位 → 是否 16K 对齐（`dyld_shared_cache_arm64e.map`
+  里所有 mapping 都落在 0x4000 边界）
+- `MMAP` 的 `a` → prot/flags 组合
+
+### 卡点
+
+串口驱动自 15:09 卡死至今（15:36），所有软件手段无效：
+
+- `Open()` → "A device attached to the system is not functioning"
+- `Disable-PnpDevice` → 常规故障
+- `Enable-PnpDevice` → 成功但串口仍坏
+- `pnputil /remove-device` → Failed to remove device
+- `pnputil /scan-devices` → Failed to scan for devices
+
+**只能物理拔插 USB 或重启系统。**
