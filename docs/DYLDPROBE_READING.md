@@ -619,3 +619,63 @@ dyld 用 4 KiB 页内核映射了文件，但 header 里描述的段布局是按
 2. 与 cat 读到的文件 header 对比——若不一致，就证明映射内容错位
 
 这是可行的（探针已经能拿到返回地址，只需再 copyin 一次）。
+
+## 第 57 轮：pl112 启动停在 SystemCryptex 之后，比 pl110 更早
+
+### 两次独立抓取都停在同一位置
+
+| 抓取 | 字符数 | 最后一个内核动作 |
+|---|---|---|
+| pl112_boot_163100.log | 26394 | `disk3s1 mount-complete volume ...SystemCryptex` |
+| pl112_boot3_163327.log | 26229 | 同上 |
+
+两次都是：
+
+```
+nx_volume_group_update:706: disk3s1 Volume FizzSeedUpdate26C5035r.arm64eSystemCryptex role
+apfs_log_op_with_proc:3290: disk3s1 mount-complete volume FizzSeedUpdate26C5035r.arm64eSystemCryptex
+TB710FU CDC: configured=1 dtr=1
+TB710FU CDC: rearm ...
+TB710FU battery: published 36% 3774 mV -1893 mA charging=0
+```
+
+**没有 `TB710FU boot-policy:` 行，没有 `VM Swap Subsystem`，没有 `launchd`。**
+
+### 与 pl110 的对比
+
+pl110 那次（16:05）抓到了完整序列：
+
+```
+VM Swap Subsystem is ON        ✅
+load_init_program              ✅
+exec: pid 1 launchd            ✅
+check_np                       ✅
+AMFI pointer                   ✅
+```
+
+pl112 两次都停在 **`SystemCryptex` 挂载之后、`VM Swap Subsystem` 之前**。
+
+### 两批代码的差异
+
+pl112 相比 pl110 只多了 head 捕获：
+- `tb710fu_dyld_probe_head[32]` + `_ok` 两个全局
+- `munmap` 分支里的 `copyin` 调用
+- dump 端的两行 printf
+
+这些都在 syscall hook 里，**理论上不该影响 `bsd_init` 阶段**。
+但 pl112 两次都在同一位置停下，这不像偶发。
+
+### 需要排除的可能
+
+1. **偶发**：pl109/pl110 也出现过停在更早位置的情况（第 49 轮 pl109
+   停在 `init`/18KB，第 50 轮重刷就到了 launchd）。pl112 可能只是运气差。
+2. **head 捕获引入的问题**：虽然代码在 syscall 路径，但增加了
+   `copyin` 调用，可能在某些情况下出错。
+
+**两者的区分方法：再启动几次，看是否总停在同一位置。**
+若三次以上都停在这里 → 是代码问题；若有时能过 → 是偶发。
+
+### 电量
+
+36%，-1893 mA，持续放电。已观察到多次因电量导致的启动异常，
+不排除供电不稳是本次失败的因素之一。

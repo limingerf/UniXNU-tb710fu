@@ -1,0 +1,438 @@
+Darwin Kernel Version 25.5.0: Sat Nov 28 08:25:02 UTC 2026; runner:ios-obj/DEVELOPMENT_ARM64_BCM2837
+pmap: excluded memory 0xa00000000..0xa00004000 (16 KB)
+pmap_startup() init/release time: 272499 microsec
+pmap_startup() 1240769 page entries, 4 of them excluded memory, 1 unused
+vm_page_bootstrap: 1240765 free pages, 69951 wired pages
+VM bootstrap: 30 maps, 128 entries and 16 nodes available
+Enable all vm_debug options with boot-arg vm_debug=1
+Maximum number of VM swap files: 5
+compressor              : 0xfffffff15e1ce000 - 0xfffffff3de2f5000 (10G)
+ipc_kernel_map          : 0xfffffff3de2f5000 - 0xfffffff3e02f5000 (32M)
+zone_meta               : 0xfffffff3e02f5000 - 0xfffffff3e5185000 (78M)
+zones                   : 0xfffffff3e5185000 - 0xfffffff7e5185000 (16G)
+bsd_pageable            : 0xfffffff7e5185000 - 0xfffffff7e9307000 (65M)
+bufferhdr               : 0xfffffff7e9307000 - 0xfffffff7e9abf000 (7M)
+gIOKitPageableFixed     : 0xfffffff7e9abf000 - 0xfffffff849abf000 (1536M)
+ipc_kernel_copy_map     : 0xfffffff849abf000 - 0xfffffff84a2bf000 (8M)
+mb                      : 0xfffffff84a2bf000 - 0xfffffff8502bf000 (96M)
+kmem_ptr_range_0        : 0xfffffff8502bf000 - 0xfffffff975629000 (4691M)
+kmem_data_private_range : 0xfffffff975629000 - 0xfffffffa9a992000 (4691M)
+kmem_data_shared_range  : 0xfffffffa9a992000 - 0xfffffffbbfcfb000 (4691M)
+kmem_io                 : 0xfffffffbbfcfb000 - 0xfffffffbffcfb000 (1024M)
+vm: "vm_compressor_mode" is 4
+zone_init: map VM    0xfffffff3e5185000:0xfffffff47eb1d000 (2457M, 2457M usable)
+zone_init: map RO    0xfffffff47eb1d000:0xfffffff4b1e5a000 (819M, 819M usable)
+zone_init: map GEN0  0xfffffff4b1e5a000:0xfffffff54b7f3000 (2457M, 2457M usable)
+zone_init: map GEN1  0xfffffff54b7f3000:0xfffffff5e518c000 (2457M, 2457M usable)
+zone_init: map GEN2  0xfffffff5e518c000:0xfffffff67eb25000 (2457M, 2457M usable)
+zone_init: map GEN3  0xfffffff67eb25000:0xfffffff7184be000 (2457M, 2457M usable)
+zone_init: map DATA  0xfffffff7184be000:0xfffffff7e5185000 (3276M, 3276M usable)
+zone_init: metadata  0xfffffff3e0305000:0xfffffff3e4305000 (64M)
+zone_init: metabits  0xfffffff3e4305000:0xfffffff3e5175000 (14M)
+zone_init: extra     0:0 (0B)
+Unable to find vm tag  for btlog
+VM bootstrap done: 28 maps, 104 entries and 12 nodes left
+standard timeslicing quantum is 10000 us
+standard background quantum is 2500 us
+Long logs support configured: size: 16384
+Firehose configured: 16 chunks, 8 io pages
+Log queues configured: slot count: 54, per-slot size: 32768, total size: 1769472
+OSLog stream configured: stream: 8192 bytes, cache: 2112 bytes
+OSLog stream verification: 0
+[trap_telemetry] trap_telemetry_init
+mig_table_max_displ = 90 mach_kobj_count = 381
+debug_log_init: Error!! gPanicBase is still not initialized
+debug_log_init: Error!! gPanicBase is still not initialized
+kdp_core zlib memory 0x7000
+Serial requested, consistent debug disabled or debug boot arg not present, configuring debugging over serial
+iBoot version: 
+iBoot Stage 2 version: 
+IONVRAM.cpp:start:1447 - ...
+IONVRAM.cpp:initImageFormat:1586 - NVRAM size is 8192 bytes
+IONVRAM.cpp:getNVRAMProperties:1340 - _bankSize=0x2000, _bankCount=0x1, _currentBank=0
+IONVRAMCHRPHandler.cpp:unserializeImage:487 - NVRAM : commonPartitionOffset - 0x30, commonPartitionSize - 0x800, systemPartitionOffset - 0xffffffff, systemPartitionSize - 0
+IONVRAMCHRPHandler.cpp:unserializeVariables:584 - _commonSize 0x800, _systemSize 0
+IONVRAM.cpp:handleEphDM:1373 - ephemeral-data-mode not supported
+vm: creating swapout thread
+vm: creating swapfile creation thread
+vm: creating swapfile GC thread
+memory outside the span: 0 pages adopted, 0 refused
+lockdown_mode: lockdown mode in nvram is off
+Darwin Image4 Extension Version 7.0.0: Fri Oct 30 01:13:25 PDT 2026; root:AppleImage4-374~17088/AppleImage4/RELEASE_ARM64E
+calling mpo_policy_init for AppleImage4
+Security policy loaded: AppleImage4 hooks (AppleImage4)
+AppleImage4: no legacy blob present
+AppleImage4: magazine[pdmg]: failed to read nonce slot data: 2
+AppleImage4: magazine[cptx]: failed to read nonce slot data: 2
+AppleImage4: magazine[dvdi]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1bt]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1ab]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1gn]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1sm]: failed to read nonce slot data: 2
+AppleImage4: magazine[d1ma]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1ge]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1er]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1ai]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1al]: failed to read nonce slot data: 2
+AppleImage4: root power domain not yet available: 19
+AMFI: UDID support enabled: 2
+AMFI: queried model name from device tree: Mac17,11
+calling mpo_policy_init for AMFI
+Security policy loaded: Apple Mobile File Integrity (AMFI)
+calling mpo_policy_init for Sandbox
+Security policy loaded: Seatbelt sandbox policy (Sandbox)
+calling mpo_policy_init for Quarantine
+Security policy loaded: Quarantine policy (Quarantine)
+ASP: initializing bastion sandbox callback
+calling mpo_policy_init for EndpointSecurity
+Security policy loaded: Endpoint Security Kernel Extension (EndpointSecurity)
+calling mpo_policy_init for vnguard
+Security policy loaded: Guarded vnode policy (vnguard)
+attempting to load 6 external trust cache modules
+loaded external trust cache module: 0
+loaded external trust cache module: 1
+loaded external trust cache module: 2
+loaded external trust cache module: 3
+loaded external trust cache module: 4
+loaded external trust cache module: 5
+completed loading external trust cache modules
+No POST boot-arg set.
+IOServicePH::kIOMessageSystemCapabilityChange: will 0xf->0xf
+IOServicePH::systemPowerChange to 0x30
+IOServicePH::kIOMessageSystemCapabilityChange: did 0xf->0xf
+IOG flags 0x3 (0x51)
+AppleARMBootPerf: Error: profile handoff region not found (1)
+AppleARMBootPerf: Error: failed to publish profile data (1)
+AppleARMSFRManifest: Starting
+AppleARMSFRManifest: Error: Failed to open reg-entry /chosen/secure-boot-hashes
+AppleARMSFRManifest: Error: Failed to find property boot-manifest-hash
+AppleARMSFRManifest: Error: Failed to find manifest hash
+AppleARMSFRManifest: Error: Failed to locate manifest information
+AppleARMSFRManifest: Error: Failed to find entry /chosen/iBoot
+AppleARMSFRManifest: Error: Failed to publish sfr manifest
+virtual bool CoreAnalyticsHub::start(IOService *)::150:CoreAnalyticsHub start
+Registered CoreAnalyticsHub functions with xnu.
+virtual bool CoreAnalyticsHub::start(IOService *)::229:CoreAnalyticsHub start completed
+Copyright (c) 1982, 1986, 1989, 1991, 1993
+	The Regents of the University of California. All rights reserved.
+
+MAC Framework successfully initialized
+IOCPUInterruptController: not registry member at registerService()
+using 16384 buffer headers and 10240 cluster IO buffer headers
+TB710FU CDC: worker queued gic=1 timer=16 irq=1
+ktriage_register_subsystem_strings: set subsystem 8 strings
+TB710FU SourceStorage: gate-passed
+TB710FU SourceStorage: kext-ioStorage-begin
+TB710FU SourceStorage: kext-ioStorage-done
+TB710FU SourceStorage: base-class-lookup-begin
+TB710FU SourceStorage: base-class-lookup-done
+TB710FU SourceStorage: root-policy-begin
+TB710FU SourceStorage: root-policy-done
+TB710FU SourceStorage: kext-apfs-begin
+apfs_module_start:3369: load: com.apple.filesystems.apfs, v3288.60.7, apfs-3288.60.7, 2026/10/30
+ktriage_register_subsystem_strings: set subsystem 7 strings
+TB710FU SourceStorage: kext-apfs-done
+TB710FU SourceStorage: premodload-begin
+TB710FU SourceStorage: premodload-done
+TB710FU SourceStorage: class-reg-base-begin
+TB710FU SourceStorage: class-reg-base-done
+TB710FU SourceStorage: class-reg-ufs-begin
+TB710FU SourceStorage: class-reg-ufs-done
+TB710FU SourceStorage: class-reg-ram-begin
+TB710FU SourceStorage: class-reg-ram-done
+TB710FU SourceStorage: postmodload-begin
+TB710FU SourceStorage: postmodload-done
+TB710FU SourceStorage: wait-platform-begin
+TB710FU SourceStorage: wait-platform-done
+TB710FU SourceStorage: ufs-create-begin
+TB710FU SourceStorage: ufs-create-done
+TB710FU SourceStorage: ufs-init-begin
+TB710FU SourceStorage: ufs-init-done
+TB710FU SourceStorage: ufs-attach-begin
+TB710FU SourceStorage: ufs-attach-done
+TB710FU SourceStorage: ufs-start-begin
+NativeUfs: start-enter provider=0xfffffff71845b660
+NativeUfs: start-args probe=0 root=1
+NativeUfs: start-options-ok
+NativeUfs: start-diag=0
+NativeUfs: start-dispatch-root
+NativeUfs: root bring-up-begin
+NativeUfs: host gcc-map-begin
+NativeUfs: host gcc-map-done
+NativeUfs: host gcc-state gdsc=f822f800 axi=00000001 ahb=80000003
+NativeUfs: host gcc-state-accepted
+NativeUfs: host controller-map-begin
+NativeUfs: host controller-map-done
+NativeUfs: host dma-alloc-begin bytes=139264
+NativeUfs: host dma-ready phys=8d1183000 contig=139264
+NativeUfs: host smmu-map-begin
+NativeUfs: host smmu-map-done
+NativeUfs: host queue-snapshot-begin
+NativeUfs: host queue-snapshot-done
+NativeUfs: host queue-stop-begin
+NativeUfs: host queue-stop-done
+NativeUfs: host queue-start-begin
+NativeUfs: host queue-start-done
+NativeUfs: host nop-begin
+NativeUfs: host nop-done
+NativeUfs: host power-query-begin
+NativeUfs: host power-query-done power=00000033
+NativeUfs: host wake-begin
+NativeUfs: host wake-done
+NativeUfs: host wake-settle-begin
+NativeUfs: host wake-settle-spin now=399068723
+NativeUfs: host wake-settle-done elapsed=1179480
+NativeUfs: host lun-ready-begin
+NativeUfs: host lun-ready-attempt=0
+NativeUfs: host lun-ready-done attempt=0
+NativeUfs: root bring-up-done
+NativeUfs: root layout-begin
+NativeUfs: root layout-done first=165e5a8 last=3a8bffa manifest=0 windows=3
+NativeUfs: root settle delay 1000 ms (default)
+TB710FU CDC: worker gic=1 timer=144 cntv_ctl=1 irq=1
+AMFI: developer mode is force enabled on this platform
+NativeUfs: root ioservice-start-begin
+NativeUfs: root prepare-begin windows=3
+NativeUfs: root window 0 attach-begin
+NativeUfs: root window 0 attach-done
+NativeUfs: root window 1 attach-begin
+NativeUfs: root window 1 attach-done
+NativeUfs: root window 2 attach-begin
+NativeUfs: root window 2 attach-done
+NativeUfs: root window 0 identity-begin
+NativeUfs: root window 0 identity-done
+NativeUfs: root window 1 identity-begin
+NativeUfs: root window 1 identity-done
+NativeUfs: root window 2 identity-begin
+NativeUfs: root window 2 identity-done
+NativeUfs: root prepare-done phase=0 window=3
+TB710FU SourceStorage: ufs-start-done
+TB710FU SourceStorage: ramdisk-start-begin
+TB710FU SourceStorage: ramdisk-start-done
+TB710FU SourceStorage: started
+TB710FU Services: IOAESAccelerator load=0 meta=0xfffffff00cc205c0 size=0x120
+TB710FU GPU: IOAccelerator size=0x88, base resolved
+TB710FU GPU: Tb710fuGpuAccelerator metaclass installed (client AGXDeviceUserClient)
+TB710FU GPU: Tb710fuGpuPower metaclass installed
+TB710FU Backlight: AppleARMBacklight size=0x368, parent resolved
+TB710FU Services: AppleKeyStore started
+TB710FU Services: SoftwareAES started kat=1 reg=1 iface=1
+TB710FU battery: ADT has no /soc/qcom,pmic_glink; the DSP battery channel is not described
+TB710FU GPU: ADT has no /soc/qcom,kgsl-3d0; the A750 node is not described
+TB710FU GPU: ADT kgsl-3d0 model=- chipid=0 compatible=- smmu=0 gmu=0 power=9
+TB710FU GPU: ADT windows gpu=0x3d00000/0x40000 gmu=0x3d68000/0x37000 gpucc=0x3d90000/0xa000 smmu=0x3da0000/0x1000
+TB710FU GPU: addon bundle=1 publish=1 firmware=4/4 stage=0
+TB710FU GPU: stage2 gcc cfg_ahb=0x80000003 memnoc=0x80000003 dvm=0x80000001 gpll0_vote=0xe0257f
+TB710FU GPU: stage2 gpucc cx=0x22f801 gx=0x888801 ahb=0x0 smmu_vote=0x80000000 cx_gmu=0x80002001 cxo=0x80000001 hub_cx=0x80000001 demet=0x1
+TB710FU GPU: stage2 smmu skipped: CX is off (use gpu-power>=3)
+TB710FU GPU: stage2 gpu skipped: GX is off (the GMU owns it)
+TB710FU GPU: stage3 cx on gdscr=0xf822f800 hw_ctrl=0x80000202 ahb=0x0 smmu_vote=0x1 (writes=5)
+TB710FU GPU: stage4 smmu scr0=0x2c0406 id0=0x4c017e18 id1=0x40000016 id2=0x5511 oas=20 gfsr=0x0 smrs=0/24 first=-1 smr=0x0 s2cr=0x0
+TB710FU GPU: stage4 smmu programmed=none (contexts need the pinned ArmSmmu4K tables)
+TB710FU GPU: stage5 gmu_clocks step=7/7 failed=0 pll1_mode=0xc0000004 opmode=0x0 hub_cfg=0x505 gmu_cfg=0x303 cx_gmu=0x2001 ddrs_axi=0x200003 (writes=44)
+TB710FU GPU: stage6 fw gmu_gen70900.bin=ok bytes=78588 source=addon digest=9685f62c
+TB710FU GPU: stage6 fw gen70900_sqe.fw=ok bytes=85364 source=addon digest=f756bafe
+TB710FU GPU: stage6 fw gen70900_aqe.fw=ok bytes=33176 source=addon digest=25237c16
+TB710FU GPU: stage6 fw gen70900_zap.mbn=ok bytes=12088 source=addon digest=c4f08695
+TB710FU GPU: stage6 firmware=4/4 bytes=209216 addon=4
+warning: creating writable mapping from IOMemoryDescriptor(kIODirectionOut) - use kIOMapReadOnly or change direction
+Backtrace 0xfffffff00c1597cc 0xfffffff00c15bf14 0xfffffff00c2a757c 0xfffffff00c2a4cfc 0xfffffff00c2a3e80 0xfffffff00c2a2b8c 0xfffffff00c2a08e4
+TB710FU GPU: stage8 zap pas=13 rc=0 scm=0/0
+TB710FU GPU: stage8 secure-exit=1 first-ctx=1 rptr=37/37
+TB710FU GPU: stage7 gmu step=12/12 boot=0x100 fwver=0x40020014 chip=0x7090100 hfi_seq=6 hfi_err=0 smmu=4c017e18/40000016/00005511 tables=11
+TB710FU GPU: stage8 gx step=7/7 gx=1 sptprac=0x0 rbbm_status=0x1 cp_step=3 fence=1 smmu_fault=0x0
+TB710FU GPU: stage8 ring=1 cp_step=3 fence=1
+TB710FU GPU: stage9 abi live version=2 ring=1 chip=0x43051401 gmem=3145728 va=[0x10000000,0x50000000)
+TB710FU GPU: bringup stage=9 of 9 ring=1 cx=1 gmu_clocks=1 firmware=4/4 (writes=44)
+TB710FU GPU: power domain node registered (level=9 stage=9)
+TB710FU GPU: prop[0]=IOBusyInterest
+TB710FU GPU: accelerator registered plugin=NativeAdrenoMetal class=NativeAdrenoMetalDevice bundle=1 firmware=4 (1) bringup=9 ring=1 abi=2
+TB710FU Ethernet: worker started
+TB710FU input: options touch=0 keys=0 fuse=0 irq=0 verbose=0 frames=0
+TB710FU input: disabled (boot with tb710fu-touch=1..3 / tb710fu-keys=1)
+TB710FU audio: not requested (add audio=1..4)
+TB710FU BT: not requested (add bt=1..4)
+TB710FU Services: GopDisplay deferred to the CDC worker
+mbinit: done [96 MB total pool size, (64/32) split]
+New aio workqueue implementation selected
+TB710FU DLIL: SUM16 self-test begin
+TB710FU DLIL: SUM16 self-test done
+TB710FU DLIL: main input thread create begin
+TB710FU DLIL: main input thread create done
+TB710FU DLIL: detacher thread create begin
+TB710FU DLIL: detacher thread create done
+TB710FU DLIL: waiting for main input and detacher
+TB710FU CDC: image pl22
+TB710FU CDC: map-clock
+TB710FU CDC: rpmh-map
+TB710FU CDC: rpmh-irq
+TB710FU CDC: spmi-map
+TB710FU CDC: gcc-reset
+TB710FU CDC: gcc-gdsc
+TB710FU CDC: gcc-branches
+TB710FU CDC: wrapper-xo
+TB710FU CDC: core-id
+TB710FU CDC: smmu-route
+TB710FU CDC: dma-alloc
+TB710FU CDC: smmu-route
+TB710FU CDC: qscratch-utmi
+TB710FU CDC: vbus
+TB710FU CDC: qscratch gen=00000004->0000000d hs=10000000->10100000
+TB710FU CDC: dwc-pre
+TB710FU CDC: dwc pre pectl=030c1002 dctl=00f00000 gctl=00102000 pcfg=00102500 gsts=7e800000 dsts=00d2000c
+TB710FU CDC: dwc3-start
+TB710FU CDC: dwc reset stage=1 adopt=0 dctl=00f00000/40f00000 gctl=00102000 pcfg=00102400 gsts=7e800000 dsts=00d2002c
+TB710FU CDC: dwc probe forced=0 dcfg=00080800 devten=00000a07 evt=dc3e8000/00000008 dsts=00820001 pectl=030c1002
+TB710FU CDC: stage=ready failure=-
+TB710FU CDC: gcc bcr=00000000 gdscr=f822f800 sts=04070000 m=00000001 s=00000001 u=00000001 cfg=00000001 ag=00000001 xo=00000001
+TB710FU CDC: phy rst=00000000 ref=00000001 ctl0=01010101 ctl5=00000000 common0=4b4b4b4b ctl2=17171717
+TB710FU CDC: power rails=1f repeater=80 spmi-apid=593
+TB710FU CDC: bcm flags=0f cn0=60000001 sn2=60710528 acv=60000001 mc0=600cc253
+TB710FU CDC: dwc id=33313130 gctl=00102000 role=2 bits=64 smmu scr0=002b0406 id0=4c017e6b streams=1
+TB710FU CDC: smmu claimed=1 slot=0 bank=62 masked=0 tries=1/1 open=0 smr=80000040 s2cr=0000003e cbar=00010000 cba2r=00000001 sctlr=00000000
+TB710FU CDC: smmu probe slot=0 pre_smr=00000060 pre_s2cr=00020000 keep=00000000 fault=00000000 bypass=00000000 smr=00000000 acr=00000000 gfsr=00000000 scr0=00000000
+TB710FU CDC: dwc-state
+TB710FU CDC: dwc state dctl=80000000 dsts=00820001 devten=00000a07 dalepn=00000003
+TB710FU CDC: dwc evt want=dc3e8000 lo=dc3e8000 hi=00000008 sz=80001000 cnt=00000000
+TB710FU CDC: poll-start irq=1 guctl1=04001808
+TB710FU CDC: platform up dma=8dc3e8000/4000, waiting for enumeration and host DTR
+TB710FU CDC: beat #1 r=50 dsts=008e0001 cnt=00000000 ev=0 last=00000000 req=0 conn=0 cfg=0 dtr=0
+TB710FU CDC: beat #2 r=100 dsts=000e0001 cnt=00000000 ev=1 last=00000101 req=0 conn=0 cfg=0 dtr=0
+TB710FU CDC: connect-done maxpacket=512
+TB710FU CDC: beat #3 r=150 dsts=00826570 cnt=00000000 ev=2 last=00000201 req=0 conn=1 cfg=0 dtr=0
+TB710FU CDC: first EP0 SETUP
+TB710FU CDC: beat #4 r=200 dsts=00827258 cnt=00000000 ev=30 last=0000c040 req=7 conn=1 cfg=0 dtr=0
+TB710FU CDC: configured=1 dtr=0
+TB710FU CDC: rearm ep0=0/0 cancel=0/0 defer=0 abort=0 orphan=0 stale=0
+TB710FU CDC: woke after yield irq=1
+NativeUfs: starting SystemOS window
+NativeUfs: published SystemOS
+NativeUfs: waiting for SystemOS volume 6678E466-2F88-4C56-9408-DC7361BAA0BA
+TB710FU GPU: prop[1]=IORematchPersonalityTB710FU Ethernet: IOEthernetController already prelinked
+TB710FU Ethernet: meta=0xfffffff00cc45908 size=0x118 expected=0x118
+TB710FU Ethernet: metaclass=0xfffffff00cafe560 postModLoad=0 slide=1f000000000
+TB710FU Ethernet: start MAC be:bb:e9:49:e9:d1
+TB710FU Ethernet: en0 interface attached & registered (0xfffffff5e510e1d0)
+TB710FU Ethernet: registered en0 controller (0xfffffff54b6cb800)
+TB710FU DLIL: main input startup acknowledged
+TB710FU DLIL: detacher thread entered
+TB710FU DLIL: main input and detacher ready
+ifnet_attach: All kernel threads created for interface lo0 have been scheduled at least once. Proceeding.
+skip attaching fsw to lo0 using legacy TX model
+
+cryptoAlloc:629: Using 64 buffers with size 16384, 512 buffers size 65536
+TB710FU GPU: prop[2]=IOBusyInterest
+AppleImage4: magazine[cptx]: magazine data cannot be written: 30
+AppleImage4: magazine[zine]: magazine write failed; may be expected: 30
+[System Event] [458171097] [INFO] [Subsystem: nvram] [Event: sync] triggered
+IONVRAMCHRPHandler.cpp:serializeVariables:633 - No _nvramController
+IONVRAMCHRPHandler.cpp:sync:928 - serializeVariables failed, ret=0xe00002d8[System Event] [458173792] [INFO] [Subsystem: nvram] [Event: sync] completed with ret=e00002d8
+com.apple.AppleFSCompressionTypeDataless kmod start
+com.apple.AppleFSCompressionTypeZlib kmod start
+com.apple.AppleFSCompressionTypeDataless load succeeded
+com.apple.AppleFSCompressionTypeZlib load succeeded
+Setting up notifier for CoreAnalyticsHub
+calling mpo_policy_init for ASP
+calling mpo_policy_initbsd for ASP
+ASP: NVRAM pointer initialized
+ASP: No recovery key set
+Security policy loaded: Apple System Policy (ASP)
+apfs_sysctl_register:1328: done registering sysctls.
+swcrypto_threadpool_init:1130: Starting ThreadPool
+swcrypto_threadpool_init:1152: 4 threads would be used for the ThreadPool
+specread_work_queue_init:155: number of threads used for specread work queue 3
+dev_init:296: disk0 device accelerated crypto: 0 (compiled @ Oct 30 2026 01:13:02)
+dev_init:299: disk0 device_handle block size 4096 block count 31457280 features 0 internal 
+nx_mount:1181: disk0 initializing cache w/hash_size 8192 and cache size 23552
+nx_mount:1506: disk0 checkpoint search: largest xid 8, best xid 8 @ 1
+nx_mount:1533: disk0 stable checkpoint indices: desc 0 data 0
+is_arv_enabled:3538: ================ ARV enabled ================
+import_iboot_forwarded_roothash:3701: importing root hash (basesystem ? 0)...
+apfs_extract_root_hash_arm:13743: could not retrieve system-volume-auth-blob from device tree
+import_iboot_forwarded_roothash:3706: apfs_extract_root_hash_and_manifest failed with error: No such file or directory (2)
+Waiting on <dict ID="0"><key>IOProviderClass</key><string ID="1">IOMedia</string><key>IOPropertyMatch</key><dict ID="2"><key>UUID</key><string ID="3">84581E99-85BE-4957-AC53-2947E887B3E4</string></dict></dict>
+cryptoAlloc:629: Using 64 buffers with size 16384, 512 buffers size 65536
+dev_init:296: disk2 device accelerated crypto: 0 (compiled @ Oct 30 2026 01:13:02)
+dev_init:299: disk2 device_handle block size 4096 block count 712192 features 0 internal 
+nx_mount:1181: disk2 initializing cache w/hash_size 2048 and cache size 7168
+TB710FU CDC: COM5 opened (dtr=1), holding GopDisplay until a live drain
+TB710FU CDC: configured=1 dtr=1
+TB710FU CDC: rearm ep0=0/0 cancel=0/0 defer=0 abort=0 orphan=0 stale=0
+TB710FU CDC: COM5 drained 20495 live bytes, queueing GopDisplay (settle window applies)
+TB710FU CDC: display thread queued (dtr-drain)
+TB710FU CDC: display thread running (cfg=1 dtr=1 req=42 tx=20495)
+TB710FU CDC: GopDisplay holding 4825 ms for the post-root settle window
+TB710FU battery: channel up
+nx_mount:1506: disk2 checkpoint search: largest xid 23, best xid 23 @ 7
+nx_mount:1533: disk2 stable checkpoint indices: desc 6 data 14
+NativeUfs: SystemOS volume 6678E466-2F88-4C56-9408-DC7361BAA0BA ready
+NativeUfs: starting App window
+NativeUfs: published App
+NativeUfs: waiting for App volume F2AEA010-C8EB-4AF8-92A9-4B90781CD668
+cryptoAlloc:629: Using 64 buffers with size 16384, 512 buffers size 65536
+dev_init:296: disk4 device accelerated crypto: 0 (compiled @ Oct 30 2026 01:13:02)
+dev_init:299: disk4 device_handle block size 4096 block count 13312 features 0 internal 
+nx_mount:1181: disk4 initializing cache w/hash_size 1024 and cache size 4096
+nx_mount:1506: disk4 checkpoint search: largest xid 18, best xid 18 @ 7
+nx_mount:1533: disk4 stable checkpoint indices: desc 6 data 32
+NativeUfs: App volume F2AEA010-C8EB-4AF8-92A9-4B90781CD668 ready
+NativeUfs: starting OS window
+NativeUfs: published OS
+NativeUfs: waiting for OS volume 84581E99-85BE-4957-AC53-2947E887B3E4
+cryptoAlloc:629: Using 64 buffers with size 16384, 512 buffers size 65536
+dev_init:296: disk6 device accelerated crypto: 0 (compiled @ Oct 30 2026 01:13:02)
+dev_init:299: disk6 device_handle block size 4096 block count 3538432 features 0 internal 
+nx_mount:1181: disk6 initializing cache w/hash_size 8192 and cache size 23552
+TB710FU GopDisplay: disabled (boot with tb710fu-gop=1 to register the display)
+TB710FU CDC: GopDisplay start returned
+nx_mount:1506: disk6 checkpoint search: largest xid 690, best xid 690 @ 3
+nx_mount:1533: disk6 stable checkpoint indices: desc 2 data 4
+Got boot device = IOService:/NativeUfs/NativeUfsBlock/IOBlockStorageDriver/Native OS Media/AppleAPFSContainerScheme/AppleAPFSMedia/AppleAPFSContainer/Macintosh HD@1
+BSD root: disk7s1, major 1, minor 11
+NativeUfs: OS volume 84581E99-85BE-4957-AC53-2947E887B3E4 ready
+spec_open : si_devbsdunit initialized to (6), throttle_mask is (0xc0), isssd is (0)
+bufattr_get_apfs:8758: Volume not mounted
+disk7s1: device is not readable.
+hfs_mountfs: buf_meta_bread failed with 13
+hfs_mount: hfs_mountfs returned error=13 for device unknown-dev
+hfs_mountroot failed: 13
+apfs_vfsop_mountroot:3156: apfs: mountroot called!
+spec_open : si_devbsdunit initialized to (6), throttle_mask is (0xc0), isssd is (0)
+dev_init:296: disk7 device accelerated crypto: 0 (compiled @ Oct 30 2026 01:13:02)
+dev_init:299: disk7 device_handle block size 4096 block count 3538432 features 0 internal 
+nx_mount:1181: disk7 initializing cache w/hash_size 8192 and cache size 23552
+nx_mount:1506: disk7 checkpoint search: largest xid 690, best xid 690 @ 3
+nx_mount:1533: disk7 stable checkpoint indices: desc 2 data 4
+er_state_obj_get_for_recovery:8480: disk7s1 No ER state object for volume Macintosh HD - rolling is not happening, nothing to recover.
+fs_lookup_root_snapshot_name:375: disk7s1 failed to get root-snapshot-name from DT
+apfs_find_named_root_snapshot_xid:2153: disk7s1 failed to retrieve default root snapshot xid: No such file or directory (2)
+apfs_find_named_root_snapshot_xid:2191: disk7s1 The global payload bytes pointer is NULL
+apfs_vfsop_mount:2914: disk7s1 failed to find named root snapshot: Need authenticator (81)
+apfs_log_op_with_proc:3290: disk7s1 mounting volume Macintosh HD, requested by: kernel_task (pid 0); parent: kernel_task (pid 0)
+handle_mount:893: disk7s1 vol-uuid: 84581E99-85BE-4957-AC53-2947E887B3E4 block size: 4096 block count: 3538432 (unencrypted; flags: 0x1; features: 1.0.12)
+handle_mount:906: disk7s1 setting dev block size to 4096 from 512
+nx_volume_group_update:712: disk7s1 Volume Macintosh HD is not in a volume group
+apfs_log_op_with_proc:3290: disk7s1 mount-complete volume Macintosh HD, requested by: kernel_task (pid 0); parent: kernel_task (pid 0)
+is_root_hash_authentication_required_osx:445: disk7s1 Release kext with internal build: 0, ARV disabled: 1, booting xid: 0
+is_root_hash_authentication_required:611: disk7s1 Root Volume, root hash authentication is required
+vm: Demand swap-in transient I/O priority disabled
+vm: initializing swap
+vm: starting swapout thread
+vm: starting swapfile creation thread
+vm: starting swapfile GC thread
+VM Swap Subsystem is ON
+No POST boot-arg set.
+spec_open : si_devbsdunit initialized to (2), throttle_mask is (0xc), isssd is (0)
+spec_open : si_devbsdunit initialized to (2), throttle_mask is (0xc), isssd is (0)
+dev_init:296: disk3 device accelerated crypto: 0 (compiled @ Oct 30 2026 01:13:02)
+dev_init:299: disk3 device_handle block size 4096 block count 712192 features 0 internal 
+nx_mount:1181: disk3 initializing cache w/hash_size 2048 and cache size 7168
+nx_mount:1506: disk3 checkpoint search: largest xid 23, best xid 23 @ 7
+nx_mount:1533: disk3 stable checkpoint indices: desc 6 data 14
+er_state_obj_get_for_recovery:8480: disk3s1 No ER state object for volume FizzSeedUpdate26C5035r.arm64eSystemCryptex - rolling is not happening, nothing to recover.
+apfs_log_op_with_proc:3290: disk3s1 mounting volume FizzSeedUpdate26C5035r.arm64eSystemCryptex, requested by: init (pid 1); parent: kernel_task (pid 0)
+handle_mount:893: disk3s1 vol-uuid: 6678E466-2F88-4C56-9408-DC7361BAA0BA block size: 4096 block count: 712192 (unencrypted; flags: 0x1; features: 21.0.2)
+handle_mount:906: disk3s1 setting dev block size to 4096 from 512
+nx_volume_group_update:706: disk3s1 Volume FizzSeedUpdate26C5035r.arm64eSystemCryptex role 0x0 is not a System or Data volume
+apfs_log_op_with_proc:3290: disk3s1 mount-complete volume FizzSeedUpdate26C5035r.arm64eSystemCryptex, requested by: init (pid 1); parent: kernel_task (pid 0)
+TB710FU battery: published 36% 3780 mV -1835 mA charging=0
