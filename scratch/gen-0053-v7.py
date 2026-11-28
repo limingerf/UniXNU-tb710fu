@@ -190,21 +190,6 @@ hook = '''#if DEVELOPMENT || DEBUG
 \t\t\t    ((uint64_t)uthread->uu_arg[3] & 0xffffffffu),
 \t\t\t    (uint64_t)uthread->uu_arg[4],
 \t\t\t    ((uint64_t)(uint32_t)uthread->uu_rval[0] | ((uint64_t)(uint32_t)uthread->uu_rval[1] << 32)));
-\t\t\t{
-\t\t\t\tuint64_t mp = (uint64_t)(uint32_t)uthread->uu_rval[0] |
-\t\t\t\t    ((uint64_t)(uint32_t)uthread->uu_rval[1] << 32);
-\t\t\t\tuint8_t head[32];
-
-\t\t\t\tif (mp && copyin((user_addr_t)mp, head,
-\t\t\t\t    sizeof(head)) == 0) {
-\t\t\t\t\tfor (uint32_t k = 0; k < sizeof(head); ++k) {
-\t\t\t\t\t\ttb710fu_dyld_probe_head[k] = head[k];
-\t\t\t\t\t}
-\t\t\t\t\ttb710fu_dyld_probe_head_ok = 1;
-\t\t\t\t} else {
-\t\t\t\t\ttb710fu_dyld_probe_head_ok = 0;
-\t\t\t\t}
-\t\t\t}
 \t\t\tbreak;
 \t\tcase 92: /* fcntl(fd, cmd, arg) */
 \t\t\ttb710fu_dyld_probe_put("FNCT",
@@ -217,6 +202,24 @@ hook = '''#if DEVELOPMENT || DEBUG
 \t\t\t    (uint64_t)uthread->uu_arg[0],
 \t\t\t    (uint64_t)uthread->uu_arg[1],
 \t\t\t    (uint64_t)0);
+\t\t\t{
+\t\t\t\tuint64_t ua = (uint64_t)uthread->uu_arg[0];
+\t\t\t\tuint8_t head[32];
+
+\t\t\t\t/* Read the mapping before it goes away. Sampling here
+\t\t\t\t * rather than in the mmap arm means the page has
+\t\t\t\t * usually been touched already, so copyin is unlikely
+\t\t\t\t * to fault inside the syscall-exit path. */
+\t\t\t\tif (ua && copyin((user_addr_t)ua, head,
+\t\t\t\t    sizeof(head)) == 0) {
+\t\t\t\t\tfor (uint32_t k = 0; k < sizeof(head); ++k) {
+\t\t\t\t\t\ttb710fu_dyld_probe_head[k] = head[k];
+\t\t\t\t\t}
+\t\t\t\t\ttb710fu_dyld_probe_head_ok = 1;
+\t\t\t\t} else {
+\t\t\t\t\ttb710fu_dyld_probe_head_ok = 0;
+\t\t\t\t}
+\t\t\t}
 \t\t\tbreak;
 \t\tdefault:
 \t\t\tbreak;
