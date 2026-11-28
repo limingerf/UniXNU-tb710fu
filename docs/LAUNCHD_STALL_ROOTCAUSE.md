@@ -648,3 +648,64 @@ mapping_info[0] @0x238:
 值得直接做一次单变量实验：**去掉 `text-fixup0` 重打包**
 （它改写的正是 dyld 缓存代码段，若目标字节不匹配可能让 dyld
 在构造 mappings 时提前放弃）。
+
+## 第 33 轮：单变量实验确认 text-fixup0 是启动退化的直接原因
+
+### 实验设计
+
+pl103（能过 launchd）与 pl100（停在 swap 后）之间差很多 boot-args。
+本轮只加回**一个**参数，其余全部保持 pl103：
+
+| 镜像 | text-fixup0 | 其他差异 |
+|---|---|---|
+| pl103 | 无 | 基准（首次过 launchd） |
+| **pl104** | **有（相同值）** | 与 pl103 完全一致 |
+
+`text-fixup0=dyld_shared_cache_arm64e.03,5de1134,08060037,1f2003d5`
+
+### 结果（决定性）
+
+| 标记 | pl103 | pl104 |
+|---|---|---|
+| 根卷 + cryptex 挂载 | ✅ | ✅ |
+| `VM Swap Subsystem is ON` | ✅ | ✅ |
+| **`exec: pid 1 launchd`** | **✅ 有** | **❌ 无** |
+| `check_np` | ✅ | ❌ |
+| `AMFI pointer initialized` | ✅ | ❌ |
+| `TB710FU SRMAP` | ❌ | ❌ |
+
+只多了这一个参数，launchd 就从"能 exec"退化为"根本起不来"。
+
+### 为什么 text-fixup0 会造成这个后果
+
+该参数让内核在 dyld 共享缓存 `.03` 文件的 **偏移 0x5de1134** 处：
+
+- 期望读到 `08 06 00 37`
+- 改写为 `1f 20 03 d5`（NOP）
+
+如果设备上 `.03` 在该偏移的实际字节**不是** `08060037`，那么：
+
+1. 改写要么不匹配（fixup 拒绝/无效），
+2. 要么改坏了真实指令，使 dyld 在解析共享缓存时遇到无效代码，
+3. 结果就是 dyld 在建立 mapping 之前就放弃 —— 与"`map_and_slide` 从未被调用"完全吻合。
+
+### 已知边界
+
+`tb710fu_shell_cat` 只读 offset 0 的 4096 字节，**无法直接核验该偏移的实际字节**。
+但结论不依赖这个核验：去掉 fixup 启动推进、加回 fixup 启动退化，
+这一组对照本身已足以判定该参数在本机是有害的。
+
+### 结论与下一步
+
+**`text-fixup0` 应当从基线中移除。** 它原本的用途是把
+`IOMFBDisplay::framebuffer_pixel_format` 的 `'RGhA'` 分支 NOP 掉以强制 8-bit BGRA，
+属于显示优化；它不该以牺牲启动为代价。
+
+下一步：以 **pl103 的参数集为基线**（无 text-fixup0、无 gpu-*、无 tb710fu-gop），
+在此基础上逐步加回 GPU/显示相关参数，每次只加一组，用 `exec: pid 1 launchd`
+与 `unnest of range` 作为判据。
+
+### 证据文件
+
+- `scratch/pl104_com5_133708.log`（23,386 B，停在 VM Swap Subsystem）
+- `scratch/pl103_com5_131701.log`（23,393 B，过了 launchd）
