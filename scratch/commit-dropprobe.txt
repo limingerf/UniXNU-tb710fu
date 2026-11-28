@@ -1,0 +1,19 @@
+ci: drop the probe verb so the export run can link
+
+Two attempts to keep the verb linkable without patch 0053 both failed:
+
+    Undefined symbols for architecture arm64e.kernel:
+      "_tb710fu_dyld_probe", referenced from:
+          _cdc_exec_pending_cmd in libTb710fuCdcLog.a[7](CdcXnu.o)
+
+First with 'if (&arr[0])', then with 'if (&scalar)' matching
+BootWatchdogPolicy.c's pattern. Neither produced a weak reference here, so the
+linker still demanded the symbol.
+
+Rather than keep guessing at weak-symbol semantics, remove the verb. Its only
+purpose was to read the ring that patch 0053 fills, and 0053 is parked right
+now anyway. The export run needs to link so the artifact carries the real
+post-0043 systemcalls.c -- that file is what the patch must be generated
+against, and it is the only thing still blocking progress.
+
+The verb comes back once 0053 applies and the ring actually exists.

@@ -704,7 +704,7 @@ static unsigned cdc_verb(const char *verb)
 {
     static const char *const names[] = {
         NULL, "edl", "reboot", "bootloader", "recovery", "ps",
-        "help", "ls", "cat", "stat", "ioreg", "disp", "probe"
+        "help", "ls", "cat", "stat", "ioreg", "disp"
     };
     for (unsigned id = 1u; id < sizeof(names) / sizeof(names[0]); ++id) {
         const char *name = names[id];
@@ -885,7 +885,6 @@ static void cdc_shell_help(void)
     cdc_log("TB710FU SHELL:   ioreg <text>    IORegistry services matching text\n");
     cdc_log("TB710FU SHELL:   ps              dump BSD processes\n");
     cdc_log("TB710FU SHELL:   disp            GopDisplay clients/frames/swap summary\n");
-    cdc_log("TB710FU SHELL:   probe           dyld-cache syscall probe (patch 0053)\n");
     cdc_log("TB710FU SHELL:   edl             3 s hands-free EDL reset\n");
     cdc_log("TB710FU SHELL:   reboot          PSCI SYSTEM_RESET\n");
     cdc_log("TB710FU SHELL:   bootloader      reboot into the bootloader\n");
@@ -925,43 +924,6 @@ static void cdc_exec_pending_cmd(void)
         cdc_log("TB710FU CDC: cmd=disp\n");
         if (tb710fu_gop_display_report) tb710fu_gop_display_report();
         else cdc_log("TB710FU SHELL: disp unavailable\n");
-        return;
-    } else if (cmd == 12u) {
-        /* pl106: dump the dyld-cache probe (patch 0053).  launchd (pid 1)
-         * spins in openat -> fstat64 -> pread -> fcntl(F_ADDFILESIGS_RETURN)
-         * -> mmap -> munmap with every call returning 0, and never reaches
-         * shared_region_map_and_slide_2_np.  The probe keeps the arguments
-         * that patch 0043 discarded, which is what distinguishes "mmap came
-         * back with an address dyld dislikes" from "the fd or flags are
-         * wrong".  Sixteen groups of four u64, oldest first.
-         *
-         * The symbols are weak so this verb still answers on a kernel built
-         * without patch 0053.  Test them the way BootWatchdogPolicy.c tests
-         * its weak imports: address-of on the symbol itself, reads inside. */
-        extern volatile uint64_t tb710fu_dyld_probe[64] __attribute__((weak_import));
-        extern volatile uint32_t tb710fu_dyld_probe_idx __attribute__((weak_import));
-        cdc_log("TB710FU CDC: cmd=probe\n");
-        if (&tb710fu_dyld_probe_idx) {
-            uint32_t idx = tb710fu_dyld_probe_idx;
-            cdc_log("TB710FU PROBE: idx=%u (groups written=%u)\n",
-                idx, idx / 4u);
-            for (uint32_t g = 0; g < 16u; ++g) {
-                uint32_t s = (idx + g * 4u) & 63u;
-                uint64_t tag = tb710fu_dyld_probe[s];
-                if (tag == 0) {
-                    continue;
-                }
-                cdc_log("TB710FU PROBE: %c%c%c%c a=0x%llx b=0x%llx c=0x%llx\n",
-                    (char)(tag >> 24), (char)(tag >> 16),
-                    (char)(tag >> 8), (char)tag,
-                    (unsigned long long)tb710fu_dyld_probe[(s + 1u) & 63u],
-                    (unsigned long long)tb710fu_dyld_probe[(s + 2u) & 63u],
-                    (unsigned long long)tb710fu_dyld_probe[(s + 3u) & 63u]);
-            }
-            cdc_log("TB710FU PROBE: end\n");
-        } else {
-            cdc_log("TB710FU PROBE: unavailable (patch 0053 not in this kernel)\n");
-        }
         return;
     } else if (cmd >= 7u && cmd <= 10u) {
         const char *arg = gRxArg[0] != '\0' ? gRxArg : NULL;
