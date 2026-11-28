@@ -423,3 +423,100 @@ git -C <wt> apply --check <patch>   # 必须 PASS
 
 - `scratch/gen-0053-v3.py` — 最终可用的生成器
 - `patches/xnu/0053-tb710fu-dyld-cache-probe.patch` — 5013 字节
+
+## 第 39-40 轮：补丁 0053 构建成功，以及八次失败的方法论教训
+
+### 结果
+
+`a7224d4` 的 prelink 构建 **conclusion=success**（run 46118781364）：
+
+```
+kernel/kernel.macho  143147008 bytes
+sha256 = 5dbd127aeaf40a7f082e05e4c1c29a7040fdbab828d25247a07df0328582ff33
+probe symbol present in kernel: YES
+```
+
+补丁应用、编译、链接、prelink 全部通过。这是本会话第一次让 0053 走完构建。
+
+### 八次失败的完整谱系（全部是补丁上下文，不是探针代码）
+
+| # | 做法 | 失败点 |
+|---|---|---|
+| 1 | 对着裸 feed `ac9718f` 生成 | `hunk 179`：0043 已改同一行，上下文不存在 |
+| 2 | 改锚点为 `unix_syscall(` | `hunk 79`：匹配到前向声明，插在 `extern void` 和函数名之间 |
+| 3 | 换成 0043 的锚点 `extern int mach_trap_count;` | `hunk 79`：该锚点后紧跟的是 0043 的整块，不是函数注释 |
+| 4 | 按行分割/重写文件 | 变成整文件重写（713+/584-），会覆盖 0043 |
+| 5 | 字节级插入，只增不删 | `hunk 79`：仍是猜的上下文 |
+| 6 | 假设文件是 CRLF，做特例 | `hunk 79`：**真实文件是 LF**，特例毫无意义 |
+| 7 | 从 artifact 取真实文件作为基线 | **编译错误**：`function definition is not allowed here` —— 声明块插进了 `unix_syscall` 函数体内 |
+| 8 | 用花括号深度验证插入点 | **成功** |
+
+### 第 7 次失败的根因（最有价值的一条）
+
+脚本想找"0043 声明块的 `#endif`"，但：
+
+```c
+#if CONFIG_DEBUG_SYSCALL_REJECTION
+extern int mach_trap_count;
+#endif        <- 这个 #endif 关闭的是上面的 guard
+```
+
+所以"`extern int mach_trap_count;` 之后的第一个 `#endif`"指向的是**条件编译守卫**，
+而不是 0043 声明块的结尾。插入点整体落到了 `unix_syscall` 函数体内，
+于是编译器报 `function definition is not allowed here`，后续
+`tb710fu_dyld_probe_put` 也就成了未声明函数。
+
+### 有效的做法
+
+1. **从失败构建的 artifact 取真实源码**。`Export the patched sources` 步骤带
+   `if: always()`，所以即使构建失败也会产出 `patched-sources/systemcalls.c`。
+   这是唯一可靠的基线。
+
+2. **用花括号深度验证插入点**，而不是依赖锚点字符串的直觉位置：
+
+```python
+depth = 0
+for line in lines[:insert_at]:
+    depth += line.count('{') - line.count('}')
+assert depth == 0   # 文件作用域
+assert depth == 1   # unix_syscall 函数体内
+```
+
+3. **拒绝删除任何行的补丁**：`if minus != 0: sys.exit('REFUSING')`。
+   整文件重写会静默抹掉前面补丁的改动。
+
+4. **PowerShell 的 `>` 重定向写出 UTF-16 BOM**，`git apply` 会报
+   "No valid patches in input"。必须用 Python 写字节。
+
+5. **`git apply --check` 通过不等于构建会通过**。前六次本地 check 全 PASS，
+   构建全失败——因为 check 用的树和构建时的树不同。要验证上下文，
+   只能用构建机产出的真实文件。
+
+### 仍未验证
+
+探针本身一次都没在实机跑过。`pl107` 镜像已打包：
+
+```
+out/tb710fu-pl16-46118781364-pl107-probe-signed.zip
+```
+
+boot-args 与 pl105（GPU stage 9/9 全通那版）完全一致，唯一新增是探针。
+
+### 第 40 轮：Windows 串口驱动卡死
+
+刷入前 COM5 打不开：
+
+```
+USB 串口设备 (COM5)  Status=OK
+Open() -> "A device attached to the system is not functioning"
+```
+
+依次尝试全部失败：
+
+- `Disable-PnpDevice` → "常规故障"
+- `Enable-PnpDevice` → 成功，设备重新枚举，但串口仍打不开
+- `pnputil /remove-device` → "Failed to remove device"
+- `pnputil /scan-devices` → "Failed to scan for devices"
+
+设备枚举状态始终 OK，但句柄不可用。**只能物理拔插 USB 或重启系统。**
+这不是设备问题，是 Windows 串口驱动层的状态卡死。
