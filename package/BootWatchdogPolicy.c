@@ -227,6 +227,9 @@ extern volatile uint32_t tb710fu_pid1_sc_cur __attribute__((weak_import));
 extern volatile uint64_t tb710fu_pid1_sc_arg0 __attribute__((weak_import));
 extern volatile uint64_t tb710fu_pid1_sc_arg1 __attribute__((weak_import));
 extern volatile uint32_t tb710fu_pid1_sc_ring[16] __attribute__((weak_import));
+/* patch 0053: full-argument ring for the dyld cache retry loop. */
+extern volatile uint64_t tb710fu_dyld_probe[64] __attribute__((weak_import));
+extern volatile uint32_t tb710fu_dyld_probe_idx __attribute__((weak_import));
 extern volatile uint32_t tb710fu_pid1_sc_idx __attribute__((weak_import));
 
 void
@@ -252,6 +255,32 @@ tb710fu_dump_procs(void)
                 printf(" %u:%u", v >> 16, v & 0xffffu);
             }
         }
+    if (&tb710fu_dyld_probe_idx) {
+        /* Groups of four u64 written round-robin by patch 0053, oldest
+         * first. Tag chars spell what the call was; the fields differ per
+         * tag, so decode with the tag in hand:
+         *   OATN  openat : a=path, b=flags, c=returned fd
+         *   MMAP  mmap   : a=(prot<<32)|flags, b=fd, c=returned address
+         *   FNCT  fcntl  : a=fd, b=cmd, c=return value
+         *   MUNM  munmap : a=addr, b=len
+         */
+        uint32_t di = tb710fu_dyld_probe_idx;
+        printf("TB710FU DYLDPROBE: idx=%u groups=%u\n", di, di / 4u);
+        for (uint32_t g = 0; g < 16u; ++g) {
+            uint32_t s = (di + g * 4u) & 63u;
+            uint64_t tag = tb710fu_dyld_probe[s];
+            if (tag == 0) {
+                continue;
+            }
+            printf("TB710FU DYLDPROBE: %c%c%c%c a=0x%llx b=0x%llx c=0x%llx\n",
+                   (char)(tag >> 24), (char)(tag >> 16),
+                   (char)(tag >> 8), (char)tag,
+                   (unsigned long long)tb710fu_dyld_probe[(s + 1u) & 63u],
+                   (unsigned long long)tb710fu_dyld_probe[(s + 2u) & 63u],
+                   (unsigned long long)tb710fu_dyld_probe[(s + 3u) & 63u]);
+        }
+        printf("TB710FU DYLDPROBE: end\n");
+    }
         printf("\n");
     }
     for (int pid = 1; pid <= 256; ++pid) {

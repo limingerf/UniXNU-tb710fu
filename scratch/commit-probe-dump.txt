@@ -1,0 +1,30 @@
+feat(cdc): dump the dyld probe ring from ps
+
+Patch 0053 records openat/mmap/fcntl/munmap arguments for pid 1, but nothing
+read the ring back. pl108 carries the recorder (verified: all four tags and the
+noinline helper symbol are in the image) yet has no way to print it -- so the
+probe would have collected data nobody could see.
+
+This adds the dump to tb710fu_dump_procs(), which the existing 'ps' verb already
+calls, so no new verb and no new link surface:
+
+  TB710FU DYLDPROBE: idx=<n> groups=<n/4>
+  TB710FU DYLDPROBE: OATN a=0x.. b=0x.. c=0x..
+  ...
+  TB710FU DYLDPROBE: end
+
+Field meanings, per tag:
+  OATN  openat : a=path pointer, b=flags, c=returned fd
+  MMAP  mmap   : a=(prot<<32)|flags, b=fd, c=returned address
+  FNCT  fcntl  : a=fd, b=cmd, c=return value    (cmd 0x61 = F_ADDFILESIGS_RETURN)
+  MUNM  munmap : a=addr, b=len
+
+The tag packing matches the recorder exactly:
+  write: tag[0]<<24 | tag[1]<<16 | tag[2]<<8 | tag[3]
+  read : tag>>24, tag>>16, tag>>8, tag
+
+Symbols are declared weak_import in this translation unit, which is the pattern
+that already works here for tb710fu_pid1_sc_ring. Two earlier attempts to do the
+same from CdcXnu.c failed to link with
+  Undefined symbols: "_tb710fu_dyld_probe"
+so the dump belongs in this file.
