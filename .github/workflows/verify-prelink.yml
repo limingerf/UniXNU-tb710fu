@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       source_run_id:
-        description: Completed native-plus-prelink run whose fileset artifact should be verified without recompiling
+        description: Completed native or strict-prelink run whose fileset artifact should be verified without recompiling
         required: true
 permissions:
   contents: read

@@ -5,13 +5,15 @@
 - 仓库基线为 `main`，开始本轮时 HEAD 是 `c1031d5`。较早的 pl95 序列化锁已由 `73f47dc` 移除，因为 pl95 观测到启动停在 `ASP: AMFI pointer initialized`。当前序列中的 `0052` 是 `shared_region_map_and_slide_2_np` 诊断补丁，`0053` 是 dyld 系统调用与映射头部探针。
 - 最新已记录的设备镜像是 pl112。16:31 和 16:33 的两份捕获停在 SystemCryptex 挂载后，未出现 boot-policy、VM Swap 或 launchd。pl112 的映射头部数据尚未取得。pl110 曾记录 `openat`、`fstat64`、`pread`、`fcntl`、`mmap` 和 `munmap` 成功返回并重复执行，未记录 `shared_region_map_and_slide_2_np`。根因仍未确认。
 - `CdcXnu.c` 的 10 秒显示等待和 `GopDisplayStart.cpp` 的 IOSurfaceRoot 重试仍在当前代码中，但没有解释 pl112 的早期停点，也未验证为稳定启动修复。
-- 当前工作树增加了 HID boot-arg、报告提交和 IOSurface plane base offset 的源码检查。输入主机套件通过 353 项，plane 布局测试通过 11 项，生成显示代码检查通过 6 项，GPU 主机检查通过 135 项。还没有 native 编译、prelink 或本轮实机验证。
+- commit `9f1752427e6ab8c1205b66e9f664c8a16f9e877e` 的 macOS native run [46144557916](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/46144557916) 成功。严格 prelink run [46145738121](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/46145738121) 使用该 native artifact 成功，prelinked kernel 为 `143,147,008` 字节，SHA-256 `7e15d37338be4484e6cb088c63c7907811492bbc264f82312588a66d51d8a337`。`mapping_complete=true`、`missing={}`、`stubbed={}`、`allow_missing=false`；`hardware_boot_verified=false`、`runtime_qualified=false`。
+- prelink artifact ZIP SHA-256 为 `2d7baa5d973d29ae734b26d962ef09c287a2d29a51caf933af1f1332440dcd4f`。使用 pinned DarwinBoot `5243c68ec332a227fe3680cd5da6d5a0e127035c` 的 production parser 在本地验证该 kernel 通过。另行运行的 `verify-prelink` workflow [46148475165](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/46148475165) 在 source-run 格式检查失败，因为它只接收 `macos-kernel.yml` 的 source run；并未运行其 production parser 步骤。这不改变成功的 native/prelink 结果。
+- 输入主机套件通过 353 项，plane 布局测试通过 11 项，生成显示代码检查通过 6 项，GPU 主机检查通过 135 项。新 kernel 尚未刷入或实机运行。
 - 设备显示的最新用户描述为大部分画面黑色，只有灰色密码框和白色状态栏图标清楚，时间区域间歇出现绿色损坏像素。是否已经进入登录后的完整桌面仍待确认。pl93 的 583 次已接受并送出的 swap 不能证明画面像素正确。
 - 最新设备输入实测仍是 pl94。其 boot-arg 解析与 `IOHIDResource` 观察早于当前代码中的 NUL 终止、`IOResources` 服务匹配、键盘 HID 用途和 worker 延迟修复，后续实机验证尚未进行。
 
 ## 下一步
 
-先在支持的 macOS runner 上编译当前最小内核目标并确认生成阶段，再为当前源码安排有界 prelink。后续设备验证需先确认稳定走过 launchd，再记录真实 IOSurface 格式、plane 数、stride 和 base offset；显示阶段同时检查 loginwindow、Dock、Finder 与 SystemUIServer 是否运行。HID 先用 `tb710fu-touch=0 tb710fu-keys=1` 独立验证侧键，再单独处理需要 GENI SPI4 的触摸屏。当前代码仍未通过内核编译或设备验收。
+后续设备验证需先确认稳定走过 launchd，再记录真实 IOSurface 格式、plane 数、stride 和 base offset；显示阶段同时检查 loginwindow、Dock、Finder 与 SystemUIServer 是否运行。HID 先用 `tb710fu-touch=0 tb710fu-keys=1` 独立验证侧键，再单独处理需要 GENI SPI4 的触摸屏。当前源码已 native 编译并 prelink，但显示、输入与重启稳定性仍未实机验收。
 
 ---
 # Current status · 2026-11-27

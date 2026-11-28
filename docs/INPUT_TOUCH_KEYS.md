@@ -9,8 +9,10 @@ comes from, how it is switched on in stages, what the host tests actually
 prove, and what still has to be measured. pl94 ran an earlier input revision
 on hardware and observed the PON/GPIO APIDs, but HID publication and input
 events were not confirmed. The current source includes later boot-argument,
-IOResources, HID matching and worker-thread changes. Its integrated archive and
-kernel have not yet been built on the supported macOS runner.
+IOResources, HID matching and worker-thread changes. Commit
+`9f1752427e6ab8c1205b66e9f664c8a16f9e877e` passed macOS native and strict
+prelink runs `46144557916` and `46145738121`. That prelinked kernel has not been
+run on hardware, so touch and key event delivery remain unverified.
 
 ## Deliverables
 
@@ -239,9 +241,9 @@ Coverage, by group:
 | SPMI/keys | arbiter layout, APID discovery for PID `0x13` and `0x8D`, observer read path, two-sample filter, repeat disabled, mapping to HID bits, power/volume polarity per DTS |
 | firmware | real blob parse (offsets, SRAM addresses, lengths), vendor CRC-32 over the DLM payload, rejection of truncated and inconsistent images |
 
-The suite compiles the C layer with
+The suite compiles the C layer and checks selected C++ probe contracts with
 `-std=c11 -O2 -Wall -Wextra -Werror -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wvla -fno-strict-aliasing`,
-so it also proves the headers are self-contained and warning-clean.
+so it also proves the portable headers are self-contained and warning-clean.
 
 ## Firmware image: validated, never uploaded
 
@@ -299,11 +301,9 @@ up. No firmware is uploaded. The default boot keeps touch and keys disabled.
 - **Volume-up polarity** rests on `GPIO_ACTIVE_LOW` in the board DTS plus the
   PMIC GPIO convention (RT_STS bit 0 low = pressed). If the key reads inverted
   on hardware, one bit in `Tb710fuKeys.c` is the fix.
-- **Integrated build and device behavior remain unverified.** The host suite
-  compiles the portable C layer and checks the IOKit probe contract
-  structurally. The supported macOS runner must compile the arm64e IOKit
-  translation unit before any new device result can be attributed to this
-  source revision.
+- **Input behavior remains unverified on hardware.** The arm64e IOKit archive
+  compiled in the strict prelink run. Host tests check the IOKit probe contract
+  structurally, while actual `IOHIDDevice` event routing needs a device test.
 
 ## Out of scope
 

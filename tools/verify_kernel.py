@@ -77,11 +77,23 @@ def main():
     token = gh.credential(None)
     base = 'repos/' + os.environ['GITHUB_REPOSITORY']
     run = gh.api(token, 'GET', f'{base}/actions/runs/{args.run_id}')
-    require(run['status'] == 'completed' and run['path'] == '.github/workflows/macos-kernel.yml', 'Wrong source workflow or incomplete run')
-    jobs = gh.api(token, 'GET', f'{base}/actions/runs/{args.run_id}/jobs')['jobs']
-    require(any(step['name'] == 'Build and verify the native arm64e kernel' and step['conclusion'] == 'success' for job in jobs for step in job['steps']), 'Source run did not complete native compilation')
+    require(run['status'] == 'completed' and run['conclusion'] == 'success',
+            'Source run is incomplete or unsuccessful')
+    source_path = run['path']
+    require(source_path in ('.github/workflows/macos-kernel.yml',
+                            '.github/workflows/macos-prelink.yml'),
+            'Wrong source workflow')
     artifacts = gh.api(token, 'GET', f'{base}/actions/runs/{args.run_id}/artifacts')['artifacts']
-    artifact = next((item for item in artifacts if item['name'] == f'tb710fu-prelink-{args.run_id}' and not item['expired']), None)
+    if source_path == '.github/workflows/macos-kernel.yml':
+        jobs = gh.api(token, 'GET', f'{base}/actions/runs/{args.run_id}/jobs')['jobs']
+        require(any(step['name'] == 'Build and verify the native arm64e kernel' and
+                    step['conclusion'] == 'success' for job in jobs for step in job['steps']),
+                'Source run did not complete native compilation')
+        expected_artifact_name = f'tb710fu-prelink-{args.run_id}'
+    else:
+        expected_artifact_name = f'tb710fu-strict-prelink-{args.run_id}'
+    artifact = next((item for item in artifacts if item['name'] == expected_artifact_name and
+                     not item['expired']), None)
     require(artifact is not None, 'Missing or expired source prelink artifact')
     archive = ROOT / '.work/prelinked-input.zip'
     gh.download(token, f'{base}/actions/artifacts/{artifact["id"]}/zip', archive)
@@ -111,6 +123,28 @@ def main():
         require(pairing.get('matcher_version') == official['matcher_version'] and pairing.get('matcher_signature') == official['matcher_signature'], 'Prelink matcher identity differs between reports')
         require(pairing.get('conflicts') == [], 'Prelink symbol-map conflicts remain')
         require(pairing.get('stats', {}).get('conflicts') == {}, 'Prelink symbol-map conflict statistics remain')
+        native_source_run_id = None
+        if source_path == '.github/workflows/macos-prelink.yml':
+            native_input = json.loads(bundle.read('native-input.json'))
+            require(native_input.get('configuration_and_patches_match') is True and
+                    native_input.get('native_recompiled') is False,
+                    'Strict prelink did not preserve the verified native inputs')
+            native_source_run_id = int(native_input['native_run_id'])
+            native_run = gh.api(token, 'GET', f'{base}/actions/runs/{native_source_run_id}')
+            require(native_run['status'] == 'completed' and native_run['conclusion'] == 'success' and
+                    native_run['path'] == '.github/workflows/macos-kernel.yml' and
+                    native_run['head_sha'] == native_input['native_run_revision'],
+                    'Strict prelink native source run identity does not match')
+            native_artifacts = gh.api(
+                token, 'GET', f'{base}/actions/runs/{native_source_run_id}/artifacts')['artifacts']
+            native_artifact = next((item for item in native_artifacts
+                                    if item['id'] == native_input['native_artifact_id'] and
+                                    item['name'] == f'tb710fu-native-{native_source_run_id}' and
+                                    not item['expired']), None)
+            require(native_artifact is not None,
+                    'Strict prelink native artifact is missing, expired or mismatched')
+            require(native_input['native_sha256'] == official['inputs']['native_sha256'],
+                    'Strict prelink native image hash differs from the fileset input')
         (output / 'kernel.macho').write_bytes(data)
         (output / 'kernel.json').write_bytes(bundle.read('kernel/kernel.json'))
         (output / 'source-status.json').write_bytes(bundle.read('status.json'))
@@ -122,6 +156,8 @@ def main():
                      'candidate_sha256': official['candidate_sha256'],
                      'missing': {}, 'stubbed': {}, 'allow_missing': False,
                      'native_recompiled': False})
+    if native_source_run_id is not None:
+        verified['native_source_run_id'] = native_source_run_id
     (output / 'verification.json').write_text(json.dumps(verified, indent=2) + '\n')
     print(json.dumps(verified, indent=2))
     summary = os.environ.get('GITHUB_STEP_SUMMARY')
