@@ -1,8 +1,8 @@
 diff --git a/bsd/dev/arm/systemcalls.c b/bsd/dev/arm/systemcalls.c
-index 1fb7821..a4f0e75 100644
+index 1fb7821..7281b77 100644
 --- a/bsd/dev/arm/systemcalls.c
 +++ b/bsd/dev/arm/systemcalls.c
-@@ -92,6 +92,55 @@ int tb710fu_pid1_last_mib[4] = { 0 };
+@@ -92,6 +92,63 @@ int tb710fu_pid1_last_mib[4] = { 0 };
  int tb710fu_pid1_last_sysctl_err = 0;
  char tb710fu_pid1_last_open[96] = { 0 };
  
@@ -24,6 +24,14 @@ index 1fb7821..a4f0e75 100644
 + */
 +volatile uint64_t tb710fu_dyld_probe[64] = { 0 };
 +volatile uint32_t tb710fu_dyld_probe_idx = 0;
++/*
++ * First 32 bytes of the most recent successful mmap, captured while the mapping
++ * is still live (the matching munmap follows immediately). Compared against the
++ * file header read with cat: a difference would prove the 4K-page mapping does
++ * not expose the bytes the 16K-page cache layout describes.
++ */
++volatile uint8_t tb710fu_dyld_probe_head[32] = { 0 };
++volatile uint32_t tb710fu_dyld_probe_head_ok = 0;
 +
 +/*
 + * noinline so the function leaves a symbol in the image. That makes its
@@ -58,7 +66,7 @@ index 1fb7821..a4f0e75 100644
  static inline void
  tb710fu_pid1_sc_enter(unsigned short code, uint64_t arg0, uint64_t arg1)
  {
-@@ -244,6 +293,39 @@ unix_syscall(
+@@ -244,6 +301,54 @@ unix_syscall(
  	if (pid == 1) {
  		tb710fu_pid1_sc_exit(code, error, (uint64_t)uthread->uu_arg[0], (uint64_t)uthread->uu_arg[1], (uint64_t)uthread->uu_arg[4]);
  	}
@@ -78,6 +86,21 @@ index 1fb7821..a4f0e75 100644
 +			    ((uint64_t)uthread->uu_arg[3] & 0xffffffffu),
 +			    (uint64_t)uthread->uu_arg[4],
 +			    ((uint64_t)(uint32_t)uthread->uu_rval[0] | ((uint64_t)(uint32_t)uthread->uu_rval[1] << 32)));
++			{
++				uint64_t mp = (uint64_t)(uint32_t)uthread->uu_rval[0] |
++				    ((uint64_t)(uint32_t)uthread->uu_rval[1] << 32);
++				uint8_t head[32];
++
++				if (mp && copyin((user_addr_t)mp, head,
++				    sizeof(head)) == 0) {
++					for (uint32_t k = 0; k < sizeof(head); ++k) {
++						tb710fu_dyld_probe_head[k] = head[k];
++					}
++					tb710fu_dyld_probe_head_ok = 1;
++				} else {
++					tb710fu_dyld_probe_head_ok = 0;
++				}
++			}
 +			break;
 +		case 92: /* fcntl(fd, cmd, arg) */
 +			tb710fu_dyld_probe_put("FNCT",

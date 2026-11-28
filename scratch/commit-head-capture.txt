@@ -1,0 +1,36 @@
+feat(0053): capture the bytes dyld actually reads from its mapping
+
+Round 54 settled the kernel side: every value dyld receives is correct.
+
+    MMAP a=0x500040002 b=0x2 c=0x101240000     READ|EXEC, 16 KiB aligned
+    MUNM a=0x101240000 b=0x4000 c=0x0          same address, exactly 16 KiB
+    FNCT a=0x2 b=0x61 c=0x0                    F_ADDFILESIGS_RETURN succeeded
+    OATN ... c=0x2,0x3,0x4,0x5,0x6             every open succeeded
+
+and yet dyld munmaps and retries with identical arguments, and
+shared_region_map_and_slide_2_np is never reached (patch 0052 still prints
+nothing). So the rejection happens in user space, after a successful mmap.
+
+The remaining question this probe answers: does the mapping contain the bytes
+the cache header describes? A 4 KiB-page kernel mapping a file whose internal
+layout assumes 16 KiB pages could expose different offsets than dyld expects,
+in which case dyld reads an inconsistent header and gives up.
+
+Implementation:
+
+  * the mmap arm copies the first 32 bytes of the returned address with
+    copyin, while the mapping is still live -- the matching munmap follows
+    immediately, so the read cannot be deferred
+  * two globals hold the bytes and a validity flag
+  * `ps` prints them as hex and as the first 8 characters, which is enough to
+    check the magic 'dyld_v1 ', mappingOffset at 0x10 and mappingCount at 0x14
+
+Comparison target: the same fields already read from the file with cat in
+round 32, which produced
+
+    dyld_v1  arm64e    mappingOffset=0x238   mappingCount=1
+
+If the captured head disagrees, the mapping is not exposing the file the way
+the header claims, and that is the defect.
+
+Result: 4793 bytes, 105 added, 0 removed, APPLY_CHECK_PASS.

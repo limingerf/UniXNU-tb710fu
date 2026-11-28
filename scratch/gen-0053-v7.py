@@ -114,6 +114,14 @@ decl_block = '''
  */
 volatile uint64_t tb710fu_dyld_probe[64] = { 0 };
 volatile uint32_t tb710fu_dyld_probe_idx = 0;
+/*
+ * First 32 bytes of the most recent successful mmap, captured while the mapping
+ * is still live (the matching munmap follows immediately). Compared against the
+ * file header read with cat: a difference would prove the 4K-page mapping does
+ * not expose the bytes the 16K-page cache layout describes.
+ */
+volatile uint8_t tb710fu_dyld_probe_head[32] = { 0 };
+volatile uint32_t tb710fu_dyld_probe_head_ok = 0;
 
 /*
  * noinline so the function leaves a symbol in the image. That makes its
@@ -182,6 +190,21 @@ hook = '''#if DEVELOPMENT || DEBUG
 \t\t\t    ((uint64_t)uthread->uu_arg[3] & 0xffffffffu),
 \t\t\t    (uint64_t)uthread->uu_arg[4],
 \t\t\t    ((uint64_t)(uint32_t)uthread->uu_rval[0] | ((uint64_t)(uint32_t)uthread->uu_rval[1] << 32)));
+\t\t\t{
+\t\t\t\tuint64_t mp = (uint64_t)(uint32_t)uthread->uu_rval[0] |
+\t\t\t\t    ((uint64_t)(uint32_t)uthread->uu_rval[1] << 32);
+\t\t\t\tuint8_t head[32];
+
+\t\t\t\tif (mp && copyin((user_addr_t)mp, head,
+\t\t\t\t    sizeof(head)) == 0) {
+\t\t\t\t\tfor (uint32_t k = 0; k < sizeof(head); ++k) {
+\t\t\t\t\t\ttb710fu_dyld_probe_head[k] = head[k];
+\t\t\t\t\t}
+\t\t\t\t\ttb710fu_dyld_probe_head_ok = 1;
+\t\t\t\t} else {
+\t\t\t\t\ttb710fu_dyld_probe_head_ok = 0;
+\t\t\t\t}
+\t\t\t}
 \t\t\tbreak;
 \t\tcase 92: /* fcntl(fd, cmd, arg) */
 \t\t\ttb710fu_dyld_probe_put("FNCT",

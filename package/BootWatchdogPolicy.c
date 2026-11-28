@@ -230,6 +230,8 @@ extern volatile uint32_t tb710fu_pid1_sc_ring[16] __attribute__((weak_import));
 /* patch 0053: full-argument ring for the dyld cache retry loop. */
 extern volatile uint64_t tb710fu_dyld_probe[64] __attribute__((weak_import));
 extern volatile uint32_t tb710fu_dyld_probe_idx __attribute__((weak_import));
+extern volatile uint8_t tb710fu_dyld_probe_head[32] __attribute__((weak_import));
+extern volatile uint32_t tb710fu_dyld_probe_head_ok __attribute__((weak_import));
 extern volatile uint32_t tb710fu_pid1_sc_idx __attribute__((weak_import));
 
 void
@@ -278,6 +280,27 @@ tb710fu_dump_procs(void)
                    (unsigned long long)tb710fu_dyld_probe[(s + 1u) & 63u],
                    (unsigned long long)tb710fu_dyld_probe[(s + 2u) & 63u],
                    (unsigned long long)tb710fu_dyld_probe[(s + 3u) & 63u]);
+        }
+        if (&tb710fu_dyld_probe_head_ok && tb710fu_dyld_probe_head_ok) {
+            /* First 32 bytes of the most recent mmap. Compare with the file
+             * header read via cat: 'dyld_v1  arm64e' should appear at offset
+             * 0, mappingOffset at 0x10 and mappingCount at 0x14. */
+            printf("TB710FU DYLDPROBE HEAD:");
+            for (uint32_t k = 0; k < 32u; ++k) {
+                printf(" %02x", (unsigned)tb710fu_dyld_probe_head[k]);
+            }
+            printf("\n");
+            printf("TB710FU DYLDPROBE HEADASCII: %c%c%c%c%c%c%c%c\n",
+                   (char)tb710fu_dyld_probe_head[0],
+                   (char)tb710fu_dyld_probe_head[1],
+                   (char)tb710fu_dyld_probe_head[2],
+                   (char)tb710fu_dyld_probe_head[3],
+                   (char)tb710fu_dyld_probe_head[4],
+                   (char)tb710fu_dyld_probe_head[5],
+                   (char)tb710fu_dyld_probe_head[6],
+                   (char)tb710fu_dyld_probe_head[7]);
+        } else {
+            printf("TB710FU DYLDPROBE HEAD: none\n");
         }
         printf("TB710FU DYLDPROBE: end\n");
     }
