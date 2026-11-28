@@ -709,3 +709,54 @@ pl103（能过 launchd）与 pl100（停在 swap 后）之间差很多 boot-args
 
 - `scratch/pl104_com5_133708.log`（23,386 B，停在 VM Swap Subsystem）
 - `scratch/pl103_com5_131701.log`（23,393 B，过了 launchd）
+
+## 第 30 轮：纠正 —— 4K 共享区域补丁从未参与构建
+
+### 被推翻的说法
+
+第 29 轮我写过：「`pl49` 之后引入了 4K 共享区域适配的补丁，
+如果它们把 dyld 的映射路径改坏了，就能完美解释现状。」
+
+**这是错的。** 逐个查 `patches/xnu/series`：
+
+| 补丁 | 在 series 中 |
+|---|---|
+| `native-4k-shared-region-slide.patch` | **否** |
+| `native-4k-block-split.patch` | **否** |
+| `native-4k-signature-hash-cache.patch` | **否** |
+| `native-4k-user-abi.patch` | **否** |
+| `native-4k-bootstrap-capacity.patch` | **否** |
+| `darwin26-shared-region.patch` | **否** |
+| `macos-shared-region-size.patch` | **否** |
+
+这些文件存在于 `patches/xnu/` 目录，但**没有一条被 series 引用**，
+因此从未参与任何一次构建。不能把它们当作回归来源。
+
+### series 里与启动/共享区域相关的实际只有四条
+
+```
+5:  0005-native-4k-bootstrap-pool-9g.patch
+20: 0020-tb710fu-bootstrap-phase-checkpoints.patch
+23: 0023-tb710fu-bootstrap-suboperation-checkpoints.patch
+52: 0052-tb710fu-shared-region-map-trace.patch
+```
+
+- `0005` 是 bootstrap 内存池（9 GiB），与 dyld 映射无关
+- `0020` / `0023` 只 instrument `osfmk/kern/startup.c` 的阶段检查点，
+  输出 `TB710FU boot: <stage> <event>`，与 dyld 无关
+- `0052` 是本会话新增的追踪补丁，只在 `map_and_slide` 入口打印
+
+series 共 **52 个补丁**。
+
+### 因此
+
+「pl49 能跑、现在不能跑」这个差异**不能归因于 4K 共享区域补丁**。
+要为这个差异找解释，得去比对 pl49 与当前内核的**实际二进制差异**
+或**运行时环境差异**（Data 卷内容、缓存文件本身），而不是补丁集。
+
+### 一条尚未验证但可查的线索
+
+`pl49` 的 boot-args 里有 `no-lc=1`，当前镜像没有。
+但已查证它作用在 `mac_proc_check_launch_constraints`（exec 时的启动约束），
+而 `launchd` 的 exec 已成功（日志有 `exec: pid 1 launchd`），
+所以 `no-lc` **不太可能**是 dyld 阶段卡死的原因。保留为低优先级。
