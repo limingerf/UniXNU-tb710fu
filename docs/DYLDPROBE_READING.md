@@ -115,3 +115,65 @@ mapping  EX  208KB 0x188068000 -> 0x18809C000
 3. **没有 `FNCT` 记录** → dyld 根本不做签名验证，流程理解有误
 
 **不要在没有数据前预设哪一条是对的。** 前 27 轮里我预设过三次，全错。
+
+## 第 49 轮：pl109 首次实机运行 —— 探针工作正常，但停在更早的位置
+
+### 实测数据（15:40:07）
+
+```
+TB710FU PS: begin watchdog_policy=-1 aes_kat=1 aes_reg=1 aes_done=3 aes_nonce=0
+TB710FU PID1: sc=0 in=0 cur=0 arg0=0x0 arg1=0x0
+TB710FU PID1 RING:
+TB710FU DYLDPROBE: idx=0 groups=0
+TB710FU DYLDPROBE: end
+TB710FU PS: pid=1 ppid=0 name=init thr=1 fp=18624
+TB710FU PS: end count=1
+TB710FU battery: published 35% 3774 mV -1983 mA charging=0
+```
+
+### 探针本身工作正常
+
+`DYLDPROBE: idx=0 groups=0` + `end` **是正确输出**：探针链接成功、
+dump 路径执行了、只是环形缓冲还没有数据（因为 launchd 还没跑起来）。
+
+这证明第 45-46 轮做的两件事都成功了：
+- recorder 编译进内核（pl108 验证）
+- dump 代码编译进内核并被执行（本轮实机验证）
+
+### 但这次启动停在比 pl105 更早的位置
+
+| 标记 | pl105 | pl109（本次） |
+|---|---|---|
+| `VM Swap Subsystem is ON` | ✅ | ✅ |
+| `exec: pid 1 launchd` | ✅ | **❌** |
+| `load_init_program` | ✅ | **❌** |
+| `TB710FU GPU: bringup` | ✅ stage9/9 | ✅ |
+| 进程名 | `launchd` thr=1 fp=182656 | **`init` thr=1 fp=18624** |
+
+`name=init` 而不是 `launchd`，`fp` 只有 18 KB（对比 182 KB），
+说明 `bsd_init` 走完了卷挂载和 swap，但**没走到 `load_init_program`**。
+
+### 两个可疑点
+
+1. **`watchdog_policy=-1`**
+   前几次 successful 启动这里是 `watchdog_policy=0`。
+   `-1` 表示 `tb710fu_watchdog_policy` 写入失败。而 boot-args 里有
+   `disable-watchdogd=1`，一旦策略没写成功，watchdogd 仍会启动，
+   而它的 brk #1 退出会 panic 内核（0050 补丁就是为这个加的）。
+
+2. **电量 35%，-1983 mA 放电中**
+   比上次记录的 26% 回升了，但仍在大电流放电。不排除供电不稳。
+
+### 与 pl105 的关键差异
+
+pl109 与 pl105 的 boot-args 完全相同（`--extra-args` 逐字一致），
+内核只差两处补丁内容：
+- 0053 的 recorder + dump（本次新增）
+- `BootWatchdogPolicy.c` 的 dump 代码（本次新增）
+
+**需要排除是这两处新增代码导致启动退化。** 但 note: 0053 只在
+syscall 返回路径上对 pid 1 记录，dump 只在 `ps` 时执行，
+两者都不该影响 `load_init_program` 之前的行为。
+
+更可能的解释是这次启动运气不好（偶发性），或者电量/供电问题。
+需要再启动一次看是否复现。
