@@ -1,0 +1,28 @@
+fix(0053): regenerate against the file the build actually compiles
+
+Six builds rejected this patch at hunks 179 and 79. The cause was never the
+probe code: I kept generating the diff against a guessed tree.
+
+The workflow's 'Export the patched sources' step runs with if: always(), so the
+last failing run still produced patched-sources/systemcalls.c. Extracting it
+settled every open question at once:
+
+  * line endings are LF, not CRLF (I had built a CRLF special case)
+  * patch 0043's declaration block occupies lines 82-206
+  * 0043's exit hook sits at lines 243-247, immediately after the dispatch call
+  * 'extern int mach_trap_count;' + '#endif' is followed by 0043's block, not by
+    the function comment, so the old anchor put the insert in the wrong place
+
+The new generator takes that artifact as its baseline, commits it, then inserts
+in two precise places:
+
+  after 0043's closing #endif (line 206)  -> the probe ring and helper
+  after 0043's exit #endif  (line 273)    -> the recorder switch
+
+Result: 2534 bytes, 59 added, 0 removed,
+  @@ -204,6 +204,32 @@
+  @@ -244,6 +270,39 @@
+APPLY_CHECK_PASS on the same tree the build uses.
+
+The 'probe' CDC verb stays out for now; it returns once this patch lands and
+the ring it reads actually exists.

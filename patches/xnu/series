@@ -50,4 +50,4 @@
 0050-tb710fu-watchdogd-critical-exit.patch
 0051-tb710fu-windowserver-abort-diag.patch
 0052-tb710fu-shared-region-map-trace.patch
-# TEMP-DISABLED-FOR-EXPORT 0053-tb710fu-dyld-cache-probe.patch
+0053-tb710fu-dyld-cache-probe.patch

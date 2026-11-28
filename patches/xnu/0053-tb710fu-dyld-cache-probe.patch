@@ -1,18 +1,22 @@
 diff --git a/bsd/dev/arm/systemcalls.c b/bsd/dev/arm/systemcalls.c
-index 0906700..6fc973e 100644
+index 1fb7821..ee05690 100644
 --- a/bsd/dev/arm/systemcalls.c
 +++ b/bsd/dev/arm/systemcalls.c
-@@ -79,6 +79,85 @@ __XNU_PRIVATE_EXTERN    int             syscalls_log[SYS_MAXSYSCALL];
- extern int mach_trap_count;
+@@ -204,6 +204,32 @@ unix_syscall(
+ 		syscalls_log[code]++;
+ 	}
  #endif
- 
++
 +/*
-+ * tb710fu: capture the exact arguments of the syscalls launchd loops on
-+ * while dyld refuses the shared cache. See docs/LAUNCHD_SYSCALL_LOOP.md.
++ * tb710fu: capture the exact arguments of the syscalls launchd loops on while
++ * dyld refuses the shared cache. See docs/LAUNCHD_SYSCALL_LOOP.md.
 + *
-+ * Patch 0043 recorded only (code, error), which proved the six-call loop
-+ * exists and that every call succeeds, but it cannot explain why dyld
-+ * munmaps after a successful mmap. These records keep the arguments.
++ * Patch 0043 recorded only (code, error), which proved the six-call loop exists
++ * and that every call succeeds, but it cannot explain why dyld munmaps after a
++ * successful mmap. These records keep the arguments and the return value.
++ *
++ * Written round-robin as groups of four u64 in a 64-slot ring:
++ *   [0] tag, [1] argA, [2] argB, [3] argC
 + */
 +volatile uint64_t tb710fu_dyld_probe[64] = { 0 };
 +volatile uint32_t tb710fu_dyld_probe_idx = 0;
@@ -28,80 +32,15 @@ index 0906700..6fc973e 100644
 +	tb710fu_dyld_probe[(slot + 2u) & 63u] = b;
 +	tb710fu_dyld_probe[(slot + 3u) & 63u] = c;
 +}
-+
-+#if DEVELOPMENT || DEBUG
-+volatile uint32_t tb710fu_pid1_sc_count = 0;
-+volatile uint32_t tb710fu_pid1_sc_in = 0;
-+volatile uint32_t tb710fu_pid1_sc_cur = 0;
-+volatile uint64_t tb710fu_pid1_sc_arg0 = 0;
-+volatile uint64_t tb710fu_pid1_sc_arg1 = 0;
-+volatile uint32_t tb710fu_pid1_sc_ring[16] = { 0 };
-+volatile uint32_t tb710fu_pid1_sc_idx = 0;
-+char tb710fu_pid1_last_sysctl[96] = { 0 };
-+int tb710fu_pid1_last_mib[4] = { 0 };
-+int tb710fu_pid1_last_sysctl_err = 0;
-+char tb710fu_pid1_last_open[96] = { 0 };
-+
-+static inline void
-+tb710fu_pid1_sc_enter(unsigned short code, uint64_t arg0, uint64_t arg1)
-+{
-+	tb710fu_pid1_sc_cur = (uint32_t)code;
-+	tb710fu_pid1_sc_arg0 = arg0;
-+	tb710fu_pid1_sc_arg1 = arg1;
-+	tb710fu_pid1_sc_in = 1;
-+	__atomic_fetch_add(&tb710fu_pid1_sc_count, 1u, __ATOMIC_RELAXED);
-+	if (code == 441 || code == 5 || code == 398) {
-+		size_t done = 0;
-+		char tmp[96];
-+		if (copyinstr((user_addr_t)arg0, tmp, sizeof(tmp), &done) == 0) {
-+			tmp[sizeof(tmp) - 1] = '\0';
-+			memcpy(tb710fu_pid1_last_open, tmp, sizeof(tmp));
-+		}
-+	}
-+}
-+
-+static inline void
-+tb710fu_pid1_sc_exit(unsigned short code, int error, uint64_t arg0, uint64_t arg1, uint64_t arg4)
-+{
-+	uint32_t slot = __atomic_fetch_add(&tb710fu_pid1_sc_idx, 1u, __ATOMIC_RELAXED) & 15u;
-+	tb710fu_pid1_sc_ring[slot] = ((uint32_t)code << 16) | ((uint32_t)error & 0xffffu);
-+	tb710fu_pid1_sc_in = 0;
-+	if (code == 202 && error != 0) {
-+		int mib[4] = { 0, 0, 0, 0 };
-+		uint32_t n = (arg1 > 4) ? 4u : (uint32_t)arg1;
-+		if (n > 0 && copyin((user_addr_t)arg0, mib, n * sizeof(int)) == 0) {
-+			memcpy(tb710fu_pid1_last_mib, mib, sizeof(mib));
-+			tb710fu_pid1_last_sysctl_err = error;
-+			if (mib[0] == 0 && mib[1] == 3 && arg4 != 0) {
-+				size_t done = 0;
-+				char tmp[96];
-+				if (copyinstr((user_addr_t)arg4, tmp, sizeof(tmp), &done) == 0) {
-+					tmp[sizeof(tmp) - 1] = '\0';
-+					memcpy(tb710fu_pid1_last_sysctl, tmp, sizeof(tmp));
-+				}
-+			}
-+		}
-+	}
-+}
-+#endif /* DEVELOPMENT || DEBUG */
-+
- /*
-  * Function:	unix_syscall
-  *
-@@ -178,7 +257,52 @@ unix_syscall(
- #endif /* CONFIG_DEBUG_SYSCALL_REJECTION */
+ 	pid = proc_pid(proc);
  
- 	AUDIT_SYSCALL_ENTER(code, proc, uthread);
-+#if DEVELOPMENT || DEBUG
-+	if (pid == 1) {
-+		tb710fu_pid1_sc_enter(code, (uint64_t)uthread->uu_arg[0], (uint64_t)uthread->uu_arg[1]);
-+	}
+ #ifdef CONFIG_IOCOUNT_TRACE
+@@ -244,6 +270,39 @@ unix_syscall(
+ 	if (pid == 1) {
+ 		tb710fu_pid1_sc_exit(code, error, (uint64_t)uthread->uu_arg[0], (uint64_t)uthread->uu_arg[1], (uint64_t)uthread->uu_arg[4]);
+ 	}
 +#endif
- 	error = (*(callp->sy_call))(proc, &uthread->uu_arg[0], &(uthread->uu_rval[0]));
-+	/*
-+	 * tb710fu: full-argument capture for the dyld cache retry loop.
-+	 * pid 1 only, so nothing else is perturbed.
-+	 */
++#if DEVELOPMENT || DEBUG
 +	if (pid == 1) {
 +		switch (code) {
 +		case 463: /* openat(dirfd, path, flags, mode) */
@@ -133,11 +72,6 @@ index 0906700..6fc973e 100644
 +			break;
 +		}
 +	}
-+#if DEVELOPMENT || DEBUG
-+	if (pid == 1) {
-+		tb710fu_pid1_sc_exit(code, error, (uint64_t)uthread->uu_arg[0], (uint64_t)uthread->uu_arg[1], (uint64_t)uthread->uu_arg[4]);
-+	}
-+#endif
+ #endif
  	AUDIT_SYSCALL_EXIT(code, proc, uthread, error);
  
- #if CONFIG_MACF
