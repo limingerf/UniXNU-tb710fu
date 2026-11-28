@@ -590,3 +590,61 @@ TB710FU PID1 RING: 4:0 4:0 4:0 6:0 463:2 470:0 463:0 339:0 153:0 92:0 197:0 73:0
 
 - `scratch/pl103_com5_131701.log`（23,393 B，完整启动）
 - `scratch/pl103_ps_snapshot.txt`（ps 快照与解读）
+
+## 第 32 轮：实机排查 —— dyld 共享缓存文件本身完全健康
+
+设备停在 launchd（`thr=1 fp=182656 count=1`）期间，通过 CDC shell 实测：
+
+### 缓存目录存在且完整
+
+```
+ls /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld  -> entries=86 eof=1
+ls /System/Library/dyld                                      -> entries=86 eof=1  (firmlink 正常)
+```
+
+含 `.01`..`.81`、`.dylddata`、`.dyldreadonly`、`.dyldlinkedit`、`.map`、`.atlas`。
+
+### 主缓存文件 stat
+
+```
+dyld_shared_cache_arm64e      type=reg mode=0755 uid=0 gid=80 size=753,664
+dyld_shared_cache_arm64e.03   type=reg mode=0755 uid=0 gid=80 size=131,268,608
+```
+
+### 主缓存 header 逐字节核验（CDC cat，转义后还原）
+
+```
+0000: 64 79 6c 64 5f 76 31 20 20 61 72 6d 36 34 65 00   "dyld_v1  arm64e"
+0010: 38 02 00 00              mappingOffset     = 0x238
+0014: 01 00 00 00              mappingCount      = 1
+0018: 00 00 00 00              imagesOffsetOld   = 0
+0020: 00 00 00 00 00 00 00 00  dyldBaseAddress   = 0
+0028: 00 40 0b 00 00 00 00 00  codeSignatureOffset = 0xb4000
+0030: 00 40 00 00 00 00 00 00  codeSignatureSize   = 0x4000
+0058: 8b 1e 17 c6 72 d6 30 17  uuid
+0068: 02 00 00 00              platform = 2
+
+mapping_info[0] @0x238:
+  fileOffset = 0x0000000180000000   (新格式的跨子文件全局偏移)
+  size       = 0x00000000000b4000   (737,280 ≈ stat 的 753,664 减签名)
+  vmOffset   = 0
+  maxProt/initProt = 5 / 5
+```
+
+**结论：dyld 共享缓存文件、目录、header、mapping 全部正常。**
+不是"文件缺失/损坏"这类问题。
+
+### 排查手段的边界
+
+`tb710fu_shell_cat` 只从 offset 0 读 4096 字节
+（`vn_rdwr(..., gShellCatBuf, TB710FU_SHELL_CAT_BYTES /*4096*/, 0, ...)`），
+**没有偏移读能力**，因此无法直接核验 `text-fixup0` 指向的
+`.03 @ 0x5de1134` 处字节（已确认该偏移在文件范围内：
+98,439,476 < 131,268,608）。
+
+### 下一步
+
+既然文件层面全健康，而 `map_and_slide` 从未被调用，
+值得直接做一次单变量实验：**去掉 `text-fixup0` 重打包**
+（它改写的正是 dyld 缓存代码段，若目标字节不匹配可能让 dyld
+在构造 mappings 时提前放弃）。
