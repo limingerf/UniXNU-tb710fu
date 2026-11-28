@@ -1,8 +1,8 @@
 diff --git a/bsd/dev/arm/systemcalls.c b/bsd/dev/arm/systemcalls.c
-index 1fb7821..dc65fc7 100644
+index 1fb7821..a4f0e75 100644
 --- a/bsd/dev/arm/systemcalls.c
 +++ b/bsd/dev/arm/systemcalls.c
-@@ -92,6 +92,50 @@ int tb710fu_pid1_last_mib[4] = { 0 };
+@@ -92,6 +92,55 @@ int tb710fu_pid1_last_mib[4] = { 0 };
  int tb710fu_pid1_last_sysctl_err = 0;
  char tb710fu_pid1_last_open[96] = { 0 };
  
@@ -14,6 +14,11 @@ index 1fb7821..dc65fc7 100644
 + * and that every call succeeds, but it cannot explain why dyld munmaps after a
 + * successful mmap. These records keep the arguments and the return value.
 + *
++ *
++ * Return values are 64-bit and the kernel splits them across uu_rval[0] and
++ * uu_rval[1] (see the ss64 save path in this same file), so both halves are
++ * combined. Reading only uu_rval[0] reported mmap's 0x1009a0000 as 0x9a0000,
++ * which looked like dyld unmapping a different address than it mapped.
 + * Written round-robin as groups of four u64 in a 64-slot ring:
 + *   [0] tag, [1] argA, [2] argB, [3] argC
 + */
@@ -53,7 +58,7 @@ index 1fb7821..dc65fc7 100644
  static inline void
  tb710fu_pid1_sc_enter(unsigned short code, uint64_t arg0, uint64_t arg1)
  {
-@@ -244,6 +288,39 @@ unix_syscall(
+@@ -244,6 +293,39 @@ unix_syscall(
  	if (pid == 1) {
  		tb710fu_pid1_sc_exit(code, error, (uint64_t)uthread->uu_arg[0], (uint64_t)uthread->uu_arg[1], (uint64_t)uthread->uu_arg[4]);
  	}
@@ -65,20 +70,20 @@ index 1fb7821..dc65fc7 100644
 +			tb710fu_dyld_probe_put("OATN",
 +			    (uint64_t)uthread->uu_arg[1],
 +			    (uint64_t)uthread->uu_arg[2],
-+			    (uint64_t)(long)uthread->uu_rval[0]);
++			    ((uint64_t)(uint32_t)uthread->uu_rval[0] | ((uint64_t)(uint32_t)uthread->uu_rval[1] << 32)));
 +			break;
 +		case 197: /* mmap(addr, len, prot, flags, fd, off) */
 +			tb710fu_dyld_probe_put("MMAP",
 +			    ((uint64_t)uthread->uu_arg[2] << 32) |
 +			    ((uint64_t)uthread->uu_arg[3] & 0xffffffffu),
 +			    (uint64_t)uthread->uu_arg[4],
-+			    (uint64_t)(long)uthread->uu_rval[0]);
++			    ((uint64_t)(uint32_t)uthread->uu_rval[0] | ((uint64_t)(uint32_t)uthread->uu_rval[1] << 32)));
 +			break;
 +		case 92: /* fcntl(fd, cmd, arg) */
 +			tb710fu_dyld_probe_put("FNCT",
 +			    (uint64_t)uthread->uu_arg[0],
 +			    (uint64_t)uthread->uu_arg[1],
-+			    (uint64_t)(long)uthread->uu_rval[0]);
++			    ((uint64_t)(uint32_t)uthread->uu_rval[0] | ((uint64_t)(uint32_t)uthread->uu_rval[1] << 32)));
 +			break;
 +		case 73: /* munmap(addr, len) */
 +			tb710fu_dyld_probe_put("MUNM",

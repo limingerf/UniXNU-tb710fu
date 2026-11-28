@@ -1,0 +1,36 @@
+fix(0053): read the full 64-bit syscall return, not just the low half
+
+The first hardware run exposed a bug in my recorder, not in dyld. pl109
+reported:
+
+    MMAP a=0x500040002 b=0x1 c=0x9a0000
+    MUNM a=0x1009a0000 b=0x4000 c=0x0
+
+mmap's return looked like 0x9a0000 while dyld unmapped 0x1009a0000, and the
+0x100000000 gap was identical in all six recorded groups. A constant
+discrepancy across every group is a readout problem, not kernel behaviour.
+
+bsd/sys/user.h declares
+
+    int uu_rval[2];
+
+and bsd/dev/arm/systemcalls.c hands a 64-bit result to user space as two
+halves:
+
+    ss64->x[0] = uthread->uu_rval[0];   /* low  32 */
+    ss64->x[1] = uthread->uu_rval[1];   /* high 32 */
+
+The recorder only read uu_rval[0]. Reassembling 0x9a0000 | (0x1u << 32) gives
+exactly 0x1009a0000 -- the address munmap received. So the probe was right and
+my interpretation of its output was wrong.
+
+The recorder now combines both halves for openat, mmap and fcntl (munmap passes
+a literal 0, so it has nothing to combine).
+
+Result: 3937 bytes, 82 added, 0 removed, APPLY_CHECK_PASS.
+
+What the corrected data should settle: whether mmap's real return address is
+16 KiB aligned. dyld_shared_cache_arm64e.map ends every mapping on a 0x4000
+boundary, so an unaligned return would explain the immediate munmap. The pl109
+data already hints at alignment (0x1009a0000 & 0x3fff == 0), which would mean
+alignment is NOT the cause and the retry has some other reason.

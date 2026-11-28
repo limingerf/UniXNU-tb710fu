@@ -104,6 +104,11 @@ decl_block = '''
  * and that every call succeeds, but it cannot explain why dyld munmaps after a
  * successful mmap. These records keep the arguments and the return value.
  *
+ *
+ * Return values are 64-bit and the kernel splits them across uu_rval[0] and
+ * uu_rval[1] (see the ss64 save path in this same file), so both halves are
+ * combined. Reading only uu_rval[0] reported mmap's 0x1009a0000 as 0x9a0000,
+ * which looked like dyld unmapping a different address than it mapped.
  * Written round-robin as groups of four u64 in a 64-slot ring:
  *   [0] tag, [1] argA, [2] argB, [3] argC
  */
@@ -169,20 +174,20 @@ hook = '''#if DEVELOPMENT || DEBUG
 \t\t\ttb710fu_dyld_probe_put("OATN",
 \t\t\t    (uint64_t)uthread->uu_arg[1],
 \t\t\t    (uint64_t)uthread->uu_arg[2],
-\t\t\t    (uint64_t)(long)uthread->uu_rval[0]);
+\t\t\t    ((uint64_t)(uint32_t)uthread->uu_rval[0] | ((uint64_t)(uint32_t)uthread->uu_rval[1] << 32)));
 \t\t\tbreak;
 \t\tcase 197: /* mmap(addr, len, prot, flags, fd, off) */
 \t\t\ttb710fu_dyld_probe_put("MMAP",
 \t\t\t    ((uint64_t)uthread->uu_arg[2] << 32) |
 \t\t\t    ((uint64_t)uthread->uu_arg[3] & 0xffffffffu),
 \t\t\t    (uint64_t)uthread->uu_arg[4],
-\t\t\t    (uint64_t)(long)uthread->uu_rval[0]);
+\t\t\t    ((uint64_t)(uint32_t)uthread->uu_rval[0] | ((uint64_t)(uint32_t)uthread->uu_rval[1] << 32)));
 \t\t\tbreak;
 \t\tcase 92: /* fcntl(fd, cmd, arg) */
 \t\t\ttb710fu_dyld_probe_put("FNCT",
 \t\t\t    (uint64_t)uthread->uu_arg[0],
 \t\t\t    (uint64_t)uthread->uu_arg[1],
-\t\t\t    (uint64_t)(long)uthread->uu_rval[0]);
+\t\t\t    ((uint64_t)(uint32_t)uthread->uu_rval[0] | ((uint64_t)(uint32_t)uthread->uu_rval[1] << 32)));
 \t\t\tbreak;
 \t\tcase 73: /* munmap(addr, len) */
 \t\t\ttb710fu_dyld_probe_put("MUNM",
