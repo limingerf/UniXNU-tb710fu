@@ -1,8 +1,8 @@
 diff --git a/bsd/dev/arm/systemcalls.c b/bsd/dev/arm/systemcalls.c
-index 1fb7821..47e5c93 100644
+index 1fb7821..dc65fc7 100644
 --- a/bsd/dev/arm/systemcalls.c
 +++ b/bsd/dev/arm/systemcalls.c
-@@ -92,6 +92,32 @@ int tb710fu_pid1_last_mib[4] = { 0 };
+@@ -92,6 +92,50 @@ int tb710fu_pid1_last_mib[4] = { 0 };
  int tb710fu_pid1_last_sysctl_err = 0;
  char tb710fu_pid1_last_open[96] = { 0 };
  
@@ -20,22 +20,40 @@ index 1fb7821..47e5c93 100644
 +volatile uint64_t tb710fu_dyld_probe[64] = { 0 };
 +volatile uint32_t tb710fu_dyld_probe_idx = 0;
 +
-+static inline void
-+tb710fu_dyld_probe_put(uint32_t tag, uint64_t a, uint64_t b, uint64_t c)
++/*
++ * noinline so the function leaves a symbol in the image. That makes its
++ * presence verifiable by name instead of by searching for materialised
++ * immediates: an earlier inline form lost the openat and fcntl arms entirely
++ * (0x4F41544E and 0x464E4354 absent at every offset in pl107), which would have
++ * silently hidden the two calls that identify the file and the fd being signed.
++ *
++ * Tags are byte strings for the same reason -- a 4-byte immediate can be
++ * assembled with movz/movk or folded away, a string cannot.
++ */
++__attribute__((noinline))
++static void
++tb710fu_dyld_probe_put(const char tag[4], uint64_t a, uint64_t b, uint64_t c)
 +{
-+	uint32_t slot = __atomic_fetch_add(&tb710fu_dyld_probe_idx, 4u,
-+	    __ATOMIC_RELAXED) & 63u;
++	uint32_t slot;
 +
-+	tb710fu_dyld_probe[slot] = tag;
++	__asm__ __volatile__("" ::: "memory");
++	slot = __atomic_fetch_add(&tb710fu_dyld_probe_idx, 4u,
++	    __ATOMIC_RELAXED) & 63u;
++	tb710fu_dyld_probe[slot] =
++	    ((uint64_t)(unsigned char)tag[0] << 24) |
++	    ((uint64_t)(unsigned char)tag[1] << 16) |
++	    ((uint64_t)(unsigned char)tag[2] << 8) |
++	     (uint64_t)(unsigned char)tag[3];
 +	tb710fu_dyld_probe[(slot + 1u) & 63u] = a;
 +	tb710fu_dyld_probe[(slot + 2u) & 63u] = b;
 +	tb710fu_dyld_probe[(slot + 3u) & 63u] = c;
++	__asm__ __volatile__("" ::: "memory");
 +}
 +
  static inline void
  tb710fu_pid1_sc_enter(unsigned short code, uint64_t arg0, uint64_t arg1)
  {
-@@ -244,6 +270,39 @@ unix_syscall(
+@@ -244,6 +288,39 @@ unix_syscall(
  	if (pid == 1) {
  		tb710fu_pid1_sc_exit(code, error, (uint64_t)uthread->uu_arg[0], (uint64_t)uthread->uu_arg[1], (uint64_t)uthread->uu_arg[4]);
  	}
@@ -44,26 +62,26 @@ index 1fb7821..47e5c93 100644
 +	if (pid == 1) {
 +		switch (code) {
 +		case 463: /* openat(dirfd, path, flags, mode) */
-+			tb710fu_dyld_probe_put(0x4F41544Eu,
++			tb710fu_dyld_probe_put("OATN",
 +			    (uint64_t)uthread->uu_arg[1],
 +			    (uint64_t)uthread->uu_arg[2],
 +			    (uint64_t)(long)uthread->uu_rval[0]);
 +			break;
 +		case 197: /* mmap(addr, len, prot, flags, fd, off) */
-+			tb710fu_dyld_probe_put(0x4D4D4150u,
++			tb710fu_dyld_probe_put("MMAP",
 +			    ((uint64_t)uthread->uu_arg[2] << 32) |
 +			    ((uint64_t)uthread->uu_arg[3] & 0xffffffffu),
 +			    (uint64_t)uthread->uu_arg[4],
 +			    (uint64_t)(long)uthread->uu_rval[0]);
 +			break;
 +		case 92: /* fcntl(fd, cmd, arg) */
-+			tb710fu_dyld_probe_put(0x464E4354u,
++			tb710fu_dyld_probe_put("FNCT",
 +			    (uint64_t)uthread->uu_arg[0],
 +			    (uint64_t)uthread->uu_arg[1],
 +			    (uint64_t)(long)uthread->uu_rval[0]);
 +			break;
 +		case 73: /* munmap(addr, len) */
-+			tb710fu_dyld_probe_put(0x4D554E4Du,
++			tb710fu_dyld_probe_put("MUNM",
 +			    (uint64_t)uthread->uu_arg[0],
 +			    (uint64_t)uthread->uu_arg[1],
 +			    (uint64_t)0);

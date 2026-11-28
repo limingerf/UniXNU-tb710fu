@@ -110,16 +110,34 @@ decl_block = '''
 volatile uint64_t tb710fu_dyld_probe[64] = { 0 };
 volatile uint32_t tb710fu_dyld_probe_idx = 0;
 
-static inline void
-tb710fu_dyld_probe_put(uint32_t tag, uint64_t a, uint64_t b, uint64_t c)
+/*
+ * noinline so the function leaves a symbol in the image. That makes its
+ * presence verifiable by name instead of by searching for materialised
+ * immediates: an earlier inline form lost the openat and fcntl arms entirely
+ * (0x4F41544E and 0x464E4354 absent at every offset in pl107), which would have
+ * silently hidden the two calls that identify the file and the fd being signed.
+ *
+ * Tags are byte strings for the same reason -- a 4-byte immediate can be
+ * assembled with movz/movk or folded away, a string cannot.
+ */
+__attribute__((noinline))
+static void
+tb710fu_dyld_probe_put(const char tag[4], uint64_t a, uint64_t b, uint64_t c)
 {
-\tuint32_t slot = __atomic_fetch_add(&tb710fu_dyld_probe_idx, 4u,
-\t    __ATOMIC_RELAXED) & 63u;
+\tuint32_t slot;
 
-\ttb710fu_dyld_probe[slot] = tag;
+\t__asm__ __volatile__("" ::: "memory");
+\tslot = __atomic_fetch_add(&tb710fu_dyld_probe_idx, 4u,
+\t    __ATOMIC_RELAXED) & 63u;
+\ttb710fu_dyld_probe[slot] =
+\t    ((uint64_t)(unsigned char)tag[0] << 24) |
+\t    ((uint64_t)(unsigned char)tag[1] << 16) |
+\t    ((uint64_t)(unsigned char)tag[2] << 8) |
+\t     (uint64_t)(unsigned char)tag[3];
 \ttb710fu_dyld_probe[(slot + 1u) & 63u] = a;
 \ttb710fu_dyld_probe[(slot + 2u) & 63u] = b;
 \ttb710fu_dyld_probe[(slot + 3u) & 63u] = c;
+\t__asm__ __volatile__("" ::: "memory");
 }'''.split('\n')
 
 lines = lines[:decl_at + 1] + decl_block + lines[decl_at + 1:]
@@ -148,26 +166,26 @@ hook = '''#if DEVELOPMENT || DEBUG
 \tif (pid == 1) {
 \t\tswitch (code) {
 \t\tcase 463: /* openat(dirfd, path, flags, mode) */
-\t\t\ttb710fu_dyld_probe_put(0x4F41544Eu,
+\t\t\ttb710fu_dyld_probe_put("OATN",
 \t\t\t    (uint64_t)uthread->uu_arg[1],
 \t\t\t    (uint64_t)uthread->uu_arg[2],
 \t\t\t    (uint64_t)(long)uthread->uu_rval[0]);
 \t\t\tbreak;
 \t\tcase 197: /* mmap(addr, len, prot, flags, fd, off) */
-\t\t\ttb710fu_dyld_probe_put(0x4D4D4150u,
+\t\t\ttb710fu_dyld_probe_put("MMAP",
 \t\t\t    ((uint64_t)uthread->uu_arg[2] << 32) |
 \t\t\t    ((uint64_t)uthread->uu_arg[3] & 0xffffffffu),
 \t\t\t    (uint64_t)uthread->uu_arg[4],
 \t\t\t    (uint64_t)(long)uthread->uu_rval[0]);
 \t\t\tbreak;
 \t\tcase 92: /* fcntl(fd, cmd, arg) */
-\t\t\ttb710fu_dyld_probe_put(0x464E4354u,
+\t\t\ttb710fu_dyld_probe_put("FNCT",
 \t\t\t    (uint64_t)uthread->uu_arg[0],
 \t\t\t    (uint64_t)uthread->uu_arg[1],
 \t\t\t    (uint64_t)(long)uthread->uu_rval[0]);
 \t\t\tbreak;
 \t\tcase 73: /* munmap(addr, len) */
-\t\t\ttb710fu_dyld_probe_put(0x4D554E4Du,
+\t\t\ttb710fu_dyld_probe_put("MUNM",
 \t\t\t    (uint64_t)uthread->uu_arg[0],
 \t\t\t    (uint64_t)uthread->uu_arg[1],
 \t\t\t    (uint64_t)0);
@@ -183,7 +201,7 @@ result = '\n'.join(lines)
 
 # ---- structural assertions ----------------------------------------------
 assert 'volatile uint64_t tb710fu_dyld_probe[64]' in result
-assert 'tb710fu_dyld_probe_put(0x4F41544Eu' in result
+assert 'tb710fu_dyld_probe_put("OATN"' in result
 
 # the declaration block must be BEFORE the unix_syscall definition
 def_pos = result.index('volatile uint64_t tb710fu_dyld_probe[64]')
