@@ -322,3 +322,73 @@ dyld 在循环里做的是：
 3. 那个失败点就是真正的障碍
 
 **这次不再预设原因，等数据。**
+
+## 第 52 轮：结构化分析确认 —— dyld 在完美重复同一个失败
+
+### 分析结果（scratch/analyse-probe-loop.py）
+
+对 ring 里保留的 16 条记录做分类统计：
+
+```
+OATN records: 4   path 0x16f4f24b8: opened 4x, fds 0x11..0x14
+MMAP records: 4   distinct return addresses: ['0x9a0000']
+                  distinct (prot<<32|flags): ['0x500040002']
+                  distinct fds mapped: ['0x10','0x11','0x12','0x13']
+MUNM records: 4   distinct unmap addresses: ['0x1009a0000']
+                  distinct unmap lengths:   ['0x4000']
+```
+
+**每个字段在所有记录里完全相同**（fd 除外，它单调递增）。
+
+### 这排除了"逐步推进"的可能
+
+如果 dyld 在逐步加载（比如映射完 A 段再映射 B 段），参数会变化。
+**参数恒定意味着：dyld 请求同一件事，得到同样的结果，判断不满足，重来。**
+
+这是一个纯粹的重复失败循环，不是加载进度。
+
+### 同时纠正第 51 轮的"fd 泄漏"表述
+
+第 51 轮我写"fd 泄漏"，暗示这是**原因**。更准确的表述是：
+
+- fd 确实单调递增（0 → 0x1b），且从不 close
+- 但它是**结果**而非原因：dyld 每次重试都 open 一次，失败后不 close 就重来
+- fd 迟早会耗尽，那时 `openat` 失败、循环终止。但**耗尽只是终点，不是病根**
+
+病根在"为什么同一个请求总是被拒"。
+
+### 已被数据排除的解释
+
+| 假设 | 证据 | 结论 |
+|---|---|---|
+| mmap 返回地址不对齐 | munmap 地址 0x1009a0000 低 14 位为 0 | **已排除**（16K 对齐） |
+| munmap 长度不是 16K | 每次都是 0x4000 | 已排除（正是 16 KiB） |
+| dyld 在扫描多个文件 | 只出现过 2 个 path，之后固定 1 个 | 已排除 |
+| prot/flags 每次不同 | 每次都是 0x500040002 | 已排除 |
+| F_ADDFILESIGS_RETURN 失败 | 每次 c=0x0 | 已排除（成功） |
+
+### 剩下的唯一方向
+
+所有内核侧调用**都成功**，参数**完全相同**，dyld 仍拒绝。
+
+这意味着判断发生在**用户态**：dyld 拿到成功的返回值后，检查某个它期待的东西，
+发现不符，于是 munmap 重来。候选：
+
+1. **缓存 header 的某个字段与 dyld 的预期不符**
+   （例如 `dyldCacheHeaderSize`、`platform`、`cacheSubType`）
+2. **mmap 出来的内容 dyld 读不懂**（比如 offset 语义在 4K 内核下错位）
+3. **`F_ADDFILESIGS_RETURN` 返回的 end offset 与 header 的
+   `codeSignatureOffset/Size` 对不上**
+
+第 3 条现在最有可能是可验证的：探针记录了 fcntl 的 `c`（返回值），
+但只存了 64 位合并后的值，没存 `fs_blob_size` 之类的输出结构。
+若要做，需要扩展探针去 copyout 那个结构。
+
+### 一个更直接的验证思路
+
+`prot=0x5` = READ|EXEC，`flags=0x40002`。解出来：
+- prot = 5 = PROT_READ(1) | PROT_EXEC(4)
+- flags = 0x40002 = MAP_PRIVATE(0x02) | 0x40000
+
+**0x40000 是 MAP_NOCACHE 还是别的？** 需要查 sys/mman.h 确认这个 flag。
+如果是非常规 flag，可能正是 dyld 后续读取失败的原因。
