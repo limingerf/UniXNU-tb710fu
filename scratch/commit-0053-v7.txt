@@ -1,0 +1,38 @@
+fix(0053): verify the insertion point with a brace-depth scan
+
+The 7th build finally applied the patch and failed in the compiler instead:
+
+    systemcalls.c:224:1: error: function definition is not allowed here
+    224 | {
+    systemcalls.c:278:4: error: call to undeclared function 'tb710fu_dyld_probe_put'
+
+The emitted hunk was
+
+    @@ -204,6 +204,32 @@ unix_syscall(
+            syscalls_log[code]++;
+        }
+    #endif
+    +<our declarations and helper definition>
+
+which is inside unix_syscall's body. The scan meant to find the '#endif' that
+closes 0043's declaration block, but 'extern int mach_trap_count;' sits inside a
+'#if CONFIG_DEBUG_SYSCALL_REJECTION' guard, so the first '#endif' after it
+closed that guard instead. Everything landed one function too deep.
+
+The anchor is now 0043's own last declaration, which occurs once:
+
+    char tb710fu_pid1_last_open[96] = { 0 };
+
+and, more importantly, the generator now counts braces up to each insertion
+point and refuses to emit unless:
+
+  declarations  -> depth 0 (file scope)
+  recorder      -> depth 1 (inside unix_syscall)
+
+It also asserts the declarations precede the unix_syscall definition in the
+resulting text. A misplaced insert can no longer reach the compiler.
+
+Result: 2644 bytes, 59 added, 0 removed,
+  @@ -92,6 +92,32 @@ int tb710fu_pid1_last_mib[4] = { 0 };
+  @@ -244,6 +270,39 @@ unix_syscall(
+APPLY_CHECK_PASS.

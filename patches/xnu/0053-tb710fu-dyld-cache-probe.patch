@@ -1,12 +1,11 @@
 diff --git a/bsd/dev/arm/systemcalls.c b/bsd/dev/arm/systemcalls.c
-index 1fb7821..ee05690 100644
+index 1fb7821..47e5c93 100644
 --- a/bsd/dev/arm/systemcalls.c
 +++ b/bsd/dev/arm/systemcalls.c
-@@ -204,6 +204,32 @@ unix_syscall(
- 		syscalls_log[code]++;
- 	}
- #endif
-+
+@@ -92,6 +92,32 @@ int tb710fu_pid1_last_mib[4] = { 0 };
+ int tb710fu_pid1_last_sysctl_err = 0;
+ char tb710fu_pid1_last_open[96] = { 0 };
+ 
 +/*
 + * tb710fu: capture the exact arguments of the syscalls launchd loops on while
 + * dyld refuses the shared cache. See docs/LAUNCHD_SYSCALL_LOOP.md.
@@ -32,9 +31,10 @@ index 1fb7821..ee05690 100644
 +	tb710fu_dyld_probe[(slot + 2u) & 63u] = b;
 +	tb710fu_dyld_probe[(slot + 3u) & 63u] = c;
 +}
- 	pid = proc_pid(proc);
- 
- #ifdef CONFIG_IOCOUNT_TRACE
++
+ static inline void
+ tb710fu_pid1_sc_enter(unsigned short code, uint64_t arg0, uint64_t arg1)
+ {
 @@ -244,6 +270,39 @@ unix_syscall(
  	if (pid == 1) {
  		tb710fu_pid1_sc_exit(code, error, (uint64_t)uthread->uu_arg[0], (uint64_t)uthread->uu_arg[1], (uint64_t)uthread->uu_arg[4]);
