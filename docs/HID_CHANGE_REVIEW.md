@@ -64,3 +64,53 @@ TB710FU input: TB710FU Keys started        <- 或 TB710FU Touchscreen started
 
 - 不要在设备恢复前再改 HID 代码（当前已是 fail-safe 形态）
 - 不要为了"验证 0xD0"去反汇编 C2 推算对象大小——运行时会自己告诉我们
+
+## 第 47 轮：触摸代码在 pl109 中的完整性核验
+
+### 一个用错的判据
+
+先用 `"TB710FU Keys started"` 和 `"TB710FU Touchscreen started"` 搜镜像，
+两者都是 0 命中，看起来像"触摸代码没编进去"。
+
+**这是我判据错了。** 源码第 474 行是：
+
+```c
+TB710FU_LOG("%s started\n", product);
+```
+
+`TB710FU_LOG` 展开成 `IOLog("TB710FU input: " fmt, ...)`，
+所以编译产物里只有模板 `"TB710FU input: %s started"` 和作为实参的
+`"TB710FU Keys"` / `"TB710FU Touchscreen"`，不会有拼接好的整句。
+
+### 正确的核验结果（pl109）
+
+| 字符串 | 存在 |
+|---|---|
+| `TB710FU input: %s started` | ✅ |
+| `TB710FU input: hid: runtime metaclass` | ✅ |
+| `TB710FU input: hid: IOHIDDevice extent` | ✅ |
+| `TB710FU input: hid: allocation failed` | ✅ |
+| `TB710FU input: hid: attach failed` | ✅ |
+| `TB710FU input: touch: SE4 identity failed` | ✅ |
+| `TB710FU Keys`（%s 实参） | ✅ |
+| `TB710FU Touchscreen`（%s 实参） | ✅ |
+
+**触摸/按键路径的代码与日志字符串都在镜像里。**
+失败路径（metaclass absent / extent 不符 / allocation / attach 失败）
+和成功路径（`%s started`）的字符串齐全，说明：
+无论实机走哪条分支，都能从日志看出走到了哪里。
+
+### 仍未验证的
+
+触摸**功能本身**一次都没在实机跑过。`0xD0` 实例大小、运行时 metaclass
+注册、C2 调用这些只做过静态审查（见 `docs/HID_CHANGE_REVIEW.md`：
+两处 `getClassSize()` 闸门保证猜错也不会越界，只会让触摸不工作）。
+
+实机刷入 pl109 后，触摸相关的第一行日志将是：
+
+```
+TB710FU input: hid: runtime metaclass=0x... super=0x... size=0xd0 postModLoad=0
+```
+
+有这行且 `size=0xd0` → 子类注册成功；紧接着 `TB710FU Keys started`
+或 `TB710FU Touchscreen started` → 设备真的起来了。
