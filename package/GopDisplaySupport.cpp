@@ -366,6 +366,21 @@ extern "C" uint64_t native_legacy_surface_stride(OSObject *surface)
     return stride;
 }
 
+extern "C" uint64_t native_legacy_surface_base_offset(OSObject *surface)
+{
+    const uint32_t planeCount = (uint32_t)surfaceField(
+        surface, TB710FU_GOP_SURFACE_PLANES, TB710FU_GOP_SURFACE_PLANES_WIDTH);
+
+    if (!surface || planeCount == 0u) return 0;
+    const uintptr_t planes = surfaceField(surface, 0x180u, 8u);
+    const uint32_t allocCount = (uint32_t)surfaceField(surface, 0x188u, 4u);
+    if (!planes || (planes >> 48) != 0xffffull || allocCount == 0u) return UINT64_MAX;
+
+    uint64_t baseOffset = 0;
+    memcpy(&baseOffset, (const unsigned char *)planes + 0x10u, sizeof(baseOffset));
+    return baseOffset;
+}
+
 extern "C" uint64_t native_legacy_surface_allocation(OSObject *surface)
 {
     IOMemoryDescriptor *memory = native_legacy_surface_descriptor(surface);

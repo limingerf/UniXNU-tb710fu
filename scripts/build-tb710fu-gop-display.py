@@ -300,6 +300,11 @@ public:
 
 def transform_display(source):
     text = source.read_text()
+    request_include = '#include "NativeLegacyRequest.h"\n'
+    if text.count(request_include) != 1:
+        raise SystemExit('NativeLegacyDisplay.cpp request include changed')
+    text = text.replace(request_include,
+                        request_include + '#include "GopDisplayLayout.h"\n', 1)
     macro = 'OSDefineMetaClassAndStructors(NativeLegacyDisplay,IOMobileFramebufferLegacy)'
     if text.count(macro) != 1:
         raise SystemExit('NativeLegacyDisplay.cpp metaclass macro changed')
@@ -496,6 +501,80 @@ OSDefineOperatorMethods(NativeLegacyDisplay)'''
         if text.count(before) != 1:
             raise SystemExit('NativeLegacyDisplay.cpp start patch anchor changed: ' + before.split('\n')[0])
         text = text.replace(before, after, 1)
+
+    layout_patches = (
+        ('extern "C" uint64_t native_legacy_surface_stride(OSObject *),native_legacy_surface_allocation(OSObject *);\n',
+         'extern "C" uint64_t native_legacy_surface_stride(OSObject *),native_legacy_surface_allocation(OSObject *);\n'
+         'extern "C" uint64_t native_legacy_surface_base_offset(OSObject *);\n'),
+        ('        uint64_t sourceStride=native_legacy_surface_stride(surface);\n'
+         '        uint64_t allocation=native_legacy_surface_allocation(surface);\n',
+         '        uint64_t sourceStride=native_legacy_surface_stride(surface);\n'
+         '        uint64_t sourceBaseOffset=native_legacy_surface_base_offset(surface);\n'
+         '        uint64_t allocation=native_legacy_surface_allocation(surface);\n'),
+        ('        if(!memory || !memory->metaCast("IOMemoryDescriptor") || !native_legacy_surface_bounds(width,height,sourceStride,allocation,memory->getLength()) ||\n',
+         '        if(!memory || !memory->metaCast("IOMemoryDescriptor") || !native_legacy_surface_bounds(width,height,sourceStride,allocation,memory->getLength()) ||\n'
+         '           !tb710fu_gop_plane_span(sourceBaseOffset,sourceStride,height,memory->getLength(),nullptr,nullptr) ||\n'),
+        ('                const uint64_t offset=(uint64_t)(height/2)*sourceStride+(uint64_t)(width/2)*8;\n',
+         '                const uint64_t offset=(uint64_t)(height/2)*sourceStride+(uint64_t)(width/2)*8;\n'),
+        ('                if(descriptor && offset+8<=descriptor->getLength() && descriptor->readBytes(offset,pixel,8)==8) {\n',
+         '                if(descriptor && sourceBaseOffset<=descriptor->getLength() && offset+8<=descriptor->getLength()-sourceBaseOffset &&\n'
+         '                   descriptor->readBytes(sourceBaseOffset+offset,pixel,8)==8) {\n'),
+        ('            if(slot>=0) {\n'
+         '                native_legacy_swap_stage(1);\n'
+         '                flip(directSlots[slot].iova,uint32_t(sourceStride));directBoot=false;\n',
+         '            uint32_t planeIova=0;\n'
+         '            if(slot>=0 && tb710fu_gop_plane_iova(directSlots[slot].iova,sourceBaseOffset,memory->getLength(),&planeIova)) {\n'
+         '                native_legacy_swap_stage(1);\n'
+         '                flip(planeIova,uint32_t(sourceStride));directBoot=false;\n'),
+        ('        IOMemoryMap *source=memory->map(kIOMapAnywhere|kIOMapReadOnly|kIOMapCopybackCache);\n'
+         '        if(!source || !source->getVirtualAddress() || source->getLength()<allocation) {\n'
+         '            OSSafeReleaseNULL(source);native_legacy_transfer_observed(kIOReturnNoMemory,request,0);return;\n'
+         '        }\n'
+         '        flush_dcache64((addr64_t)source->getVirtualAddress(),(unsigned)source->getLength(),false);\n',
+         '        IOMemoryMap *source=memory->map(kIOMapAnywhere|kIOMapReadOnly|kIOMapCopybackCache);\n'
+         '        if(!source || !source->getVirtualAddress() || source->getLength()<allocation) {\n'
+         '            OSSafeReleaseNULL(source);native_legacy_transfer_observed(kIOReturnNoMemory,request,0);return;\n'
+         '        }\n'
+         '        uint64_t sourceOffset=0,sourceBytes=0;\n'
+         '        const uintptr_t sourceAddress=(uintptr_t)source->getVirtualAddress();\n'
+         '        if(!tb710fu_gop_plane_span(sourceBaseOffset,sourceStride,height,source->getLength(),&sourceOffset,&sourceBytes) ||\n'
+         '           sourceOffset>UINTPTR_MAX-sourceAddress) {\n'
+         '            OSSafeReleaseNULL(source);native_legacy_transfer_observed(kIOReturnBadArgument,request,0);return;\n'
+         '        }\n'
+         '        const void *sourcePixels=(const void *)(sourceAddress+sourceOffset);\n'
+         '        flush_dcache64((addr64_t)source->getVirtualAddress(),(unsigned)source->getLength(),false);\n'),
+        ('                reinterpret_cast<const void *>(source->getVirtualAddress()),source->getLength(),sourceStride,width,height)) {\n',
+         '                sourcePixels,sourceBytes,sourceStride,width,height)) {\n'),
+        ('                    bootMapping->getLength(),video.v_rowBytes,reinterpret_cast<const void *>(source->getVirtualAddress()),\n'
+         '                    source->getLength(),sourceStride,width,height,shadow,shadowValid);\n',
+         '                    bootMapping->getLength(),video.v_rowBytes,sourcePixels,\n'
+         '                    sourceBytes,sourceStride,width,height,shadow,shadowValid);\n'),
+        ('                bootMapping->getLength(),video.v_rowBytes,reinterpret_cast<const void *>(source->getVirtualAddress()),\n'
+         '                source->getLength(),sourceStride,width,height)) {\n',
+         '                bootMapping->getLength(),video.v_rowBytes,sourcePixels,\n'
+         '                sourceBytes,sourceStride,width,height)) {\n'),
+        ('        if(!source || PE_current_console(&video) || video.v_baseAddr!=bootMapping->getPhysicalAddress() || video.v_width!=width || video.v_height!=height)return;\n'
+         '        uint8_t *out=reinterpret_cast<uint8_t *>(bootMapping->getVirtualAddress());\n'
+         '        for(uint32_t y=0;y<height && uint64_t(y+1)*video.v_rowBytes<=bootMapping->getLength();++y)\n'
+         '            if(source->readBytes(uint64_t(y)*shownStride,out+uint64_t(y)*video.v_rowBytes,uint64_t(width)*4)!=uint64_t(width)*4)return;\n',
+         '        uint64_t sourceOffset=0,sourceBytes=0;\n'
+         '        const uint64_t baseOffset=native_legacy_surface_base_offset(directSlots[shownSlot].surface);\n'
+         '        if(!source || PE_current_console(&video) || video.v_baseAddr!=bootMapping->getPhysicalAddress() || video.v_width!=width || video.v_height!=height ||\n'
+         '           !tb710fu_gop_plane_span(baseOffset,shownStride,height,source->getLength(),&sourceOffset,&sourceBytes))return;\n'
+         '        uint8_t *out=reinterpret_cast<uint8_t *>(bootMapping->getVirtualAddress());\n'
+         '        for(uint32_t y=0;y<height && uint64_t(y+1)*video.v_rowBytes<=bootMapping->getLength();++y)\n'
+         '            if(source->readBytes(sourceOffset+uint64_t(y)*shownStride,out+uint64_t(y)*video.v_rowBytes,uint64_t(width)*4)!=uint64_t(width)*4)return;\n'),
+        ('                       native_legacy_surface_bounds(width,height,native_legacy_surface_stride(surface),\n'
+         '                           native_legacy_surface_allocation(surface),memory->getLength())) {\n',
+         '                       native_legacy_surface_bounds(width,height,native_legacy_surface_stride(surface),\n'
+         '                           native_legacy_surface_allocation(surface),memory->getLength()) &&\n'
+         '                       tb710fu_gop_plane_span(native_legacy_surface_base_offset(surface),\n'
+         '                           native_legacy_surface_stride(surface),height,memory->getLength(),nullptr,nullptr)) {\n'),
+    )
+    for before, after in layout_patches:
+        if text.count(before) != 1:
+            raise SystemExit('NativeLegacyDisplay.cpp plane-layout patch anchor changed: ' + before.split('\n')[0])
+        text = text.replace(before, after, 1)
     return text
 
 
@@ -542,7 +621,8 @@ def main():
     gen_display = output / DISPLAY_SOURCE
     gen_display.write_text(transform_display(gop_dir / DISPLAY_SOURCE))
 
-    includes = [output, gop_dir, tree / '.cache/xnu-work/osfmk', tree / '.cache/xnu-work/libkern']
+    includes = [output, gop_dir, device / 'package', tree / '.cache/xnu-work/osfmk',
+                tree / '.cache/xnu-work/libkern']
     objects = []
     for path, extra_flags in ((gen_display, ['-DNATIVE_LEGACY_MACOS=1']),):
         obj = output / (path.stem + '.o')
@@ -648,6 +728,7 @@ def main():
     (output / 'build-report.json').write_text(json.dumps({
         'archive': str(archive),
         'archive_sha256': digest,
+        'layout_header_sha256': sha(device / 'package/GopDisplayLayout.h'),
         'gop_revision': expected_gop,
         'fixture_sha256': report.get('fixture_sha256', sha(fixture_path)),
         'instance_size': report.get('instance_size', abi['instance_size']),

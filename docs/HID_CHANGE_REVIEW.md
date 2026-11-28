@@ -114,3 +114,16 @@ TB710FU input: hid: runtime metaclass=0x... super=0x... size=0xd0 postModLoad=0
 
 有这行且 `size=0xd0` → 子类注册成功；紧接着 `TB710FU Keys started`
 或 `TB710FU Touchscreen started` → 设备真的起来了。
+
+## 更新 · 2026-11-28
+
+以上审查早于当前 `main` 中的 `90defcb`、`522311e`、`2d30066`、`0b7abfe`
+和 `199af3f`。当前代码已改为 NUL 终止 boot-arg 值、附加到 `IOResources`、
+为键盘使用 `(1,6)` Generic Desktop Keyboard 用途、注册运行时 `IOHIDDevice`
+子类，并把 IOKit 初始化延迟到 worker。当前工作树还会在 metaclass 注册
+失败时停止创建设备，并在成功提交后才更新报告缓存，使首次空报告可以发送，
+失败的报告可以重试。
+
+新的输入主机测试通过 353 项，覆盖 boot-arg 与 HID 描述符语义。当前内核归档
+仍未在 macOS runner 编译，pl94 之后没有新的触摸或按键实机结果。原文的
+“暂不改 HID”建议对应旧测试阶段，当前源码应按这份更新后的状态继续验证。

@@ -136,6 +136,9 @@ InputBuffers *gBuf = nullptr;
 
 bool gTouchVtableReady = false;
 bool gKeysVtableReady = false;
+bool gHidMetaAttempted = false;
+bool gTouchReportSent = false;
+bool gKeysReportSent = false;
 
 thread_t gTouchThread = nullptr;
 thread_t gKeysThread = nullptr;
@@ -350,6 +353,8 @@ uintptr_t kernel_slide()
 const OSMetaClass *ensure_hid_metaclass()
 {
     if (gHidMetaClass) return gHidMetaClass;
+    if (gHidMetaAttempted) return nullptr;
+    gHidMetaAttempted = true;
 
     const OSMetaClass *super = find_meta_class("IOHIDDevice");
     if (!super) {
@@ -366,15 +371,21 @@ const OSMetaClass *ensure_hid_metaclass()
         return nullptr;
     }
     void *modHandle = OSMetaClass::preModLoad(g_kernel_kmod_info.name);
+    if (!modHandle) {
+        TB710FU_LOG("hid: preModLoad failed for runtime metaclass\n");
+        return nullptr;
+    }
     Tb710fuHidMetaClass *meta = new (gHidMetaStorage) Tb710fuHidMetaClass(
         "Tb710fuHidDevice", super, (unsigned int)sizeof(Tb710fuHidObj));
     const OSReturn status = OSMetaClass::postModLoad(modHandle);
-    gHidMetaClass = meta;
-    /* Logged, not gated: the object is still constructed against `meta`, and
-     * the class-size check above already proved the family matches. */
     TB710FU_LOG("hid: runtime metaclass=%p super=%p size=0x%x postModLoad=%x\n",
                 (const void *)meta, (const void *)super,
                 (unsigned)sizeof(Tb710fuHidObj), (unsigned)status);
+    if (status != kOSReturnSuccess) {
+        TB710FU_LOG("hid: runtime metaclass registration failed, refusing devices\n");
+        return nullptr;
+    }
+    gHidMetaClass = meta;
     return meta;
 }
 
@@ -614,10 +625,13 @@ void touch_submit(const struct tb710fu_track_point *points, int count)
     length = tb710fu_hid_touch_report(contacts, (unsigned)(count > 0 ? count : 0), report,
                                       sizeof(report));
     if (length == 0u) return;
-    if (memcmp(report, gLastTouch, length) == 0) return;
-    memcpy(gLastTouch, report, length);
-    if (submit_report(gTouchDevice, gBuf->touchVtable, gTouchReport, report, length) != kIOReturnSuccess)
+    if (gTouchReportSent && memcmp(report, gLastTouch, length) == 0) return;
+    if (submit_report(gTouchDevice, gBuf->touchVtable, gTouchReport, report, length) != kIOReturnSuccess) {
         TB710FU_LOG("touch: report rejected\n");
+        return;
+    }
+    memcpy(gLastTouch, report, length);
+    gTouchReportSent = true;
 }
 
 void touch_loop(void)
@@ -722,6 +736,7 @@ void touch_start(void)
     tb710fu_tracker_init(&gTracker, (int32_t)TB710FU_HID_TOUCH_LOGICAL_X,
                          (int32_t)TB710FU_HID_TOUCH_LOGICAL_Y);
     memset(gLastTouch, 0, sizeof(gLastTouch));
+    gTouchReportSent = false;
     /* One empty report so the system knows the digitizer is live before the
      * first finger arrives. */
     touch_submit(nullptr, 0);
@@ -752,11 +767,14 @@ void keys_submit(unsigned keys)
 
     if (!gKeysReport || !gKeysVtableReady || !gKeysDevice) return;
     if (tb710fu_hid_key_report(keys, report, sizeof(report)) == 0u) return;
-    if (memcmp(report, gLastKeys, sizeof(gLastKeys)) == 0) return;
-    memcpy(gLastKeys, report, sizeof(gLastKeys));
+    if (gKeysReportSent && memcmp(report, gLastKeys, sizeof(gLastKeys)) == 0) return;
     if (submit_report(gKeysDevice, gBuf->keysVtable, gKeysReport, report, sizeof(report)) !=
-        kIOReturnSuccess)
+        kIOReturnSuccess) {
         TB710FU_LOG("keys: report rejected\n");
+        return;
+    }
+    memcpy(gLastKeys, report, sizeof(gLastKeys));
+    gKeysReportSent = true;
 }
 
 void keys_loop(void)
@@ -825,6 +843,7 @@ void keys_start(void)
     }
     tb710fu_key_filter_reset(&gKeyFilter);
     memset(gLastKeys, 0, sizeof(gLastKeys));
+    gKeysReportSent = false;
 
     if (kernel_thread_start(keys_thread_entry, nullptr, &gKeysThread) != KERN_SUCCESS) {
         TB710FU_LOG("keys: poll thread did not start\n");
@@ -886,6 +905,7 @@ extern "C" int tb710fu_input_start(void)
          * subsystem still needs an explicit switch. */
         int touch = 0;
         int keys = 0;
+        int value = 0;
 
         if (PE_parse_boot_argn("tb710fu-touch", &touch, sizeof(touch)) && touch >= 0 &&
             touch <= (int)TB710FU_TOUCH_FULL)
@@ -893,6 +913,17 @@ extern "C" int tb710fu_input_start(void)
         if (PE_parse_boot_argn("tb710fu-keys", &keys, sizeof(keys)) && keys >= 0 &&
             keys <= (int)TB710FU_KEYS_ON)
             gOptions.keys_stage = keys;
+        if (PE_parse_boot_argn("tb710fu-touch-fuse", &value, sizeof(value)) &&
+            (value == 0 || value == 1))
+            gOptions.fuse_probe = value;
+        if (PE_parse_boot_argn("tb710fu-touch-irq", &value, sizeof(value)) &&
+            (value == 0 || value == 1))
+            gOptions.use_irq = value;
+        if (PE_parse_boot_argn("tb710fu-input-verbose", &value, sizeof(value)) &&
+            (value == 0 || value == 1))
+            gOptions.verbose = value;
+        if (PE_parse_boot_argn("tb710fu-input-frames", &value, sizeof(value)) && value >= 0)
+            gOptions.frame_limit = value > 100000 ? 100000 : value;
     }
 
     TB710FU_LOG("options touch=%d keys=%d fuse=%d irq=%d verbose=%d frames=%d\n",

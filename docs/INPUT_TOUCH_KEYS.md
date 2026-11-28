@@ -6,10 +6,11 @@ power key, the PON RESIN volume-down key and the PM8550 GPIO6 volume-up key.
 
 This document records what the port is, which pinned file each hardware fact
 comes from, how it is switched on in stages, what the host tests actually
-prove, and what still has to be wired in and measured. **Nothing in this
-subsystem has run on hardware.** The archive has not even been compiled here:
-the build recipe needs the supported macOS runner with `xcrun` and the minimal
-XNU build tree. Everything below that is claimed as passing is a host claim.
+prove, and what still has to be measured. pl94 ran an earlier input revision
+on hardware and observed the PON/GPIO APIDs, but HID publication and input
+events were not confirmed. The current source includes later boot-argument,
+IOResources, HID matching and worker-thread changes. Its integrated archive and
+kernel have not yet been built on the supported macOS runner.
 
 ## Deliverables
 
@@ -144,22 +145,22 @@ undefined symbols this fileset does not export (the same problem
 `package/Tb710fuEthernet.cpp` solves for `IOEthernetController`). The port uses
 the live class instead of a declaration:
 
-1. `OSMetaClass::allocClassWithName("IOHIDDevice")` returns an instance built by
-   the shipped class (its own constructor and field initialisers). The instance
-   extent must be `0xD0`; a mismatch refuses the device.
-2. The live vtable is read from the object itself, stripped with
-   `ptrauth_key_cxx_vtable_pointer`, and every one of its 334 entries is
-   stripped with `ptrauth_key_function_pointer` and required to land in kernel
-   text. Any poisoned entry refuses the device instead of calling through it.
-3. Every entry is re-signed for its new slot address:
+1. The live `IOHIDDevice` metaclass must exist and report an instance extent of
+   `0xD0`. The abstract base is not allocated directly.
+2. The probe registers a runtime subclass through `OSMetaClass::preModLoad()`
+   and `postModLoad()`. Registration failure refuses HID publication.
+3. The probe allocates the `0xD0` instance, calls the pinned class constructor
+   `IOHIDDevice::C2` with the runtime metaclass, and checks the live vtable.
+   Every one of its 334 entries must strip to kernel text.
+4. Every entry is re-signed for its new slot address:
    `ptrauth_sign_unauthenticated(raw, ptrauth_key_function_pointer, blend(&table[i], diversity[i]))`.
-4. Exactly one slot is replaced: 284 `newReportDescriptor`, which selects the
+5. Exactly one slot is replaced: 284 `newReportDescriptor`, which selects the
    touch or key descriptor by comparing `this` with the two published devices.
    `start`/`stop` are not overridden, so the family's own bring-up runs.
-5. The vptr is signed with `ptrauth_key_cxx_vtable_pointer` and the
+6. The vptr is signed with `ptrauth_key_cxx_vtable_pointer` and the
    `OSMetaClassBase` diversity `0xcda1` blended with the object address, the
    convention `Tb710fuEthernet.cpp` uses.
-6. Reports go out through slot 285 `handleReport`, re-authenticated with that
+7. Reports go out through slot 285 `handleReport`, re-authenticated with that
    slot's own diversity before the call.
 
 The table in `Tb710fuInputHidSlots.h` is generated from this board's prelinked
@@ -217,12 +218,12 @@ python3 scripts/check-tb710fu-input-host.py \
   --firmware .tmp-fw/lib/firmware/novatek/novatek_nt36532_fw.bin
 ```
 
-Result on 2026-11-27:
+Result on 2026-11-28:
 
 ```
-PASS 322 checks
+PASS 353 checks
 hid slot table re-proved against .../.local/prelink-kernel.macho
-firmware parse=0 bytes=245760 ilm=0x000200+130615@0x000000 dlm=0x022000+82439@0x100000 dlm-crc=ok
+firmware image absent; synthetic firmware headers checked
 PASS
 ```
 
@@ -233,7 +234,8 @@ Coverage, by group:
 | GENI | register model: identity words, protocol/FIFO decode, `IF_DISABLE` only under `probe_fuse`, command packing, TX/RX length words, completion/error bits, timeout, recovery, refusal when the window reads all-ones |
 | NVT | page-select framing, 0x80/0x40 opcodes, chunked writes, identify without reset, frame burst length (`+1` status byte), header marker/complement check, 60x40 matrix decode, node centres and clamping |
 | tracker | id stability across frames, radius gate, `max_missing` ageing, jitter suppression, clamp to logical max |
-| HID | descriptor byte-for-byte expectations, report lengths (61 bytes / 10 contacts, 1 byte / keys), report-bit accounting (488 and 8 bits), contact packing and null-array guard |
+| HID | descriptor bytes and top-level usages, report lengths (61 bytes / 10 contacts, 1 byte / keys), report-bit accounting (488 and 8 bits), contact packing and null-array guard |
+| boot arguments | touch/key stages, trailing token boundary, duplicates, unknown names, malformed levels, frame count and optional flags |
 | SPMI/keys | arbiter layout, APID discovery for PID `0x13` and `0x8D`, observer read path, two-sample filter, repeat disabled, mapping to HID bits, power/volume polarity per DTS |
 | firmware | real blob parse (offsets, SRAM addresses, lengths), vendor CRC-32 over the DLM payload, rejection of truncated and inconsistent images |
 
@@ -269,37 +271,18 @@ may pack the blob as an addon entry and call
 `tb710fu_input_firmware_check(image, bytes)` to fingerprint it; that call
 parses and checks the DLM CRC and never writes to the controller.
 
-## Merge wiring (not done here, by rule)
+## Integration state
 
-This PR touches only `package/Tb710fuInput/`, `scripts/build-tb710fu-input.py`,
-`scripts/check-tb710fu-input-host.py` and this document. Three items belong to
-the merge owner:
-
-1. **`board.toml` `[kernel] archives`** — add `"build-tb710fu-input.py"` (after
-   `"build-tb710fu-power.py"` is a natural place). The framework turns each
-   entry into a `-Wl,-force_load,<tree>/build/tb710fu-input/libTb710fuInput.a`.
-2. **`package/Macos27Services.cpp`** — add a weak declaration next to the
-   existing ones
-   (`extern "C" int tb710fu_input_start(void) __attribute__((weak_import));`)
-   and a guarded call in the probe section next to `tb710fu_ethernet_probe()`.
-   Weak import keeps a build without this archive working, which is why the
-   archive is a separate entry rather than extra objects in the services
-   archive.
-3. **Optional firmware addon** — if `novatek_nt36532_fw.bin` is packed like the
-   ADSP blobs (`package/Tb710fuAdsp/Tb710fuAddon.h` is the pattern), call
-   `tb710fu_input_firmware_check()` once after the addon is mapped.
-
-There is no per-archive registry in `package/Kit.toml` in this tree (it only
-carries kit name/version/description), and no `scripts/build-tb710fu-package.py`
-exists here; the archive list in `board.toml` is the actual mechanism, as it
-already is for power, GPU, display, CDC and storage.
+The archive is listed in `board.toml`, and `package/Macos27Services.cpp` calls
+the weak-imported `tb710fu_input_start()` after the platform services are set
+up. No firmware is uploaded. The default boot keeps touch and keys disabled.
 
 ## Open items and risks
 
 - **Coordinates need calibration.** Node centres assume a 60x40 grid spread
   evenly over 3200x2000. Touch may be offset or scaled; that needs a finger on
   the panel and a one-line correction in `tb710fu_nvt_node_x/y`.
-- **`handleReport` parameters and device properties are unproven.** The call
+- **HID event delivery remains unverified on the current source revision.** The call
   uses report type 0, options 0, plus `Built-In`, `DisplayIntegrated`,
   `HIDDefaultBehavior`, `PrimaryUsagePage`/`PrimaryUsage` and `Transport`
   properties. Whether that is enough for backboardd to open the digitizer can
@@ -316,11 +299,11 @@ already is for power, GPU, display, CDC and storage.
 - **Volume-up polarity** rests on `GPIO_ACTIVE_LOW` in the board DTS plus the
   PMIC GPIO convention (RT_STS bit 0 low = pressed). If the key reads inverted
   on hardware, one bit in `Tb710fuKeys.c` is the fix.
-- **Archive never compiled.** The C layer is compiled by the host check; the
-  IOKit translation unit has only been reviewed against the in-tree XNU headers
-  and the patterns that already compile here (`Tb710fuEthernet.cpp`,
-  `GopDisplayStart.cpp`, `SourceStorage.cpp`). First macOS runner build is the
-  real compiler gate.
+- **Integrated build and device behavior remain unverified.** The host suite
+  compiles the portable C layer and checks the IOKit probe contract
+  structurally. The supported macOS runner must compile the arm64e IOKit
+  translation unit before any new device result can be attributed to this
+  source revision.
 
 ## Out of scope
 

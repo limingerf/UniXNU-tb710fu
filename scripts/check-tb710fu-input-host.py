@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEVICE = Path(__import__('os').environ.get('UNIXNU_DEVICE', ROOT)).resolve()
 PACKAGE = DEVICE / 'package/Tb710fuInput'
 TESTS = PACKAGE / 'host/Tb710fuInputHostTests.c'
+PROBE = PACKAGE / 'Tb710fuInputProbe.cpp'
 OUT = ROOT / 'build/tb710fu-input-host'
 
 SOURCES = [PACKAGE / name for name in (
@@ -153,6 +154,25 @@ def check_firmware(cc, image):
             'parser': run.stdout.strip()}
 
 
+def check_probe_contract():
+    """Keep the IOKit report cache and runtime metaclass paths fail-closed."""
+    text = PROBE.read_text()
+    checks = {
+        'metaclass_registration_status': ('if (status != kOSReturnSuccess)' in text and
+                                           'if (!modHandle)' in text),
+        'touch_first_report': 'if (gTouchReportSent && memcmp(report, gLastTouch, length) == 0)' in text,
+        'keys_first_report': 'if (gKeysReportSent && memcmp(report, gLastKeys, sizeof(gLastKeys)) == 0)' in text,
+        'fallback_all_input_options': all(
+            f'PE_parse_boot_argn("{name}"' in text for name in (
+                'tb710fu-touch-fuse', 'tb710fu-touch-irq',
+                'tb710fu-input-verbose', 'tb710fu-input-frames')),
+    }
+    failed = [name for name, passed in checks.items() if not passed]
+    if failed:
+        raise SystemExit('IOKit probe contract failed: ' + ', '.join(failed))
+    return checks
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--kernel', type=Path, default=KERNEL_IMAGE,
@@ -182,9 +202,11 @@ def main():
         'compiler': compiled.args[0],
         'compiler_version': subprocess.check_output([compiled.args[0], '--version'], text=True).splitlines()[0],
         'command': command,
-        'sources': {str(path.relative_to(DEVICE)): sha(path) for path in SOURCES + [TESTS] + HEADERS},
+        'sources': {str(path.relative_to(DEVICE)): sha(path)
+                    for path in SOURCES + [TESTS, PROBE] + HEADERS},
         'result': 'PASS',
         'checks': tested.stdout.strip(),
+        'probe_contract': check_probe_contract(),
     }
     if args.kernel.is_file():
         report['hid_slots'] = check_slots(args.kernel)

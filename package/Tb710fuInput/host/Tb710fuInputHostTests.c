@@ -14,6 +14,7 @@
 
 #include "Tb710fuGeni.h"
 #include "Tb710fuHid.h"
+#include "Tb710fuInputConfig.h"
 #include "Tb710fuInputHardware.h"
 #include "Tb710fuKeys.h"
 #include "Tb710fuNvt.h"
@@ -27,6 +28,18 @@
 
 static int g_checks;
 static int g_failures;
+
+static int contains_bytes(const uint8_t *bytes, size_t byte_count,
+                          const uint8_t *sequence, size_t sequence_count)
+{
+    size_t offset;
+
+    if (!bytes || !sequence || sequence_count == 0u || sequence_count > byte_count) return 0;
+    for (offset = 0u; offset <= byte_count - sequence_count; ++offset) {
+        if (memcmp(bytes + offset, sequence, sequence_count) == 0) return 1;
+    }
+    return 0;
+}
 
 #define CHECK(condition)                                                               \
     do {                                                                               \
@@ -610,6 +623,21 @@ static void test_hid(void)
     CHECK_EQ(tb710fu_hid_report_bits(tb710fu_hid_keys_descriptor,
                                      tb710fu_hid_keys_descriptor_bytes, 0u),
              TB710FU_HID_KEY_BYTES * 8u);
+    {
+        static const uint8_t touch_application[] = {0x05u, 0x0du, 0x09u, 0x04u, 0xa1u, 0x01u};
+        static const uint8_t key_application[] = {0x05u, 0x01u, 0x09u, 0x06u, 0xa1u, 0x01u};
+        static const uint8_t consumer_collection[] = {0x05u, 0x0cu, 0x09u, 0x01u, 0xa1u, 0x02u};
+        static const uint8_t consumer_usages[] = {0x09u, 0x30u, 0x09u, 0xe9u, 0x09u, 0xeau};
+
+        CHECK(contains_bytes(tb710fu_hid_touch_descriptor, tb710fu_hid_touch_descriptor_bytes,
+                             touch_application, sizeof(touch_application)));
+        CHECK(contains_bytes(tb710fu_hid_keys_descriptor, tb710fu_hid_keys_descriptor_bytes,
+                             key_application, sizeof(key_application)));
+        CHECK(contains_bytes(tb710fu_hid_keys_descriptor, tb710fu_hid_keys_descriptor_bytes,
+                             consumer_collection, sizeof(consumer_collection)));
+        CHECK(contains_bytes(tb710fu_hid_keys_descriptor, tb710fu_hid_keys_descriptor_bytes,
+                             consumer_usages, sizeof(consumer_usages)));
+    }
     CHECK_EQ(tb710fu_hid_report_bits(tb710fu_hid_keys_descriptor, 4u, 0u), 0u);
 
     /* The logical maxima really are the panel extent, in two-byte items. */
@@ -676,6 +704,58 @@ static void test_hid(void)
                                     sizeof(keys)), 1u);
     CHECK_EQ(keys[0], 0x05u);
     CHECK_EQ(tb710fu_hid_key_report(TB710FU_HID_KEY_POWER, keys, 0u), 0u);
+}
+
+/* ============================== boot arguments ============================= */
+
+static void test_input_bootargs(void)
+{
+    struct tb710fu_input_options options;
+    const char *error = NULL;
+    int applied;
+
+    applied = tb710fu_input_bootargs("tb710fu-touch=3 tb710fu-keys=1", &options, &error);
+    CHECK_EQ(applied, 2);
+    CHECK_EQ(options.touch_stage, TB710FU_TOUCH_FULL);
+    CHECK_EQ(options.keys_stage, TB710FU_KEYS_ON);
+    CHECK(error == NULL);
+
+    applied = tb710fu_input_bootargs("tb710fu-touch=3 ", &options, &error);
+    CHECK_EQ(applied, 1);
+    CHECK_EQ(options.touch_stage, TB710FU_TOUCH_FULL);
+    CHECK(error == NULL);
+
+    applied = tb710fu_input_bootargs("other=7 tb710fu-touch=2 tb710fu-touch=3", &options, &error);
+    CHECK_EQ(applied, 2);
+    CHECK_EQ(options.touch_stage, TB710FU_TOUCH_FULL);
+    CHECK_EQ(options.keys_stage, TB710FU_KEYS_OFF);
+    CHECK(error == NULL);
+
+    applied = tb710fu_input_bootargs("tb710fu-touch=4 tb710fu-keys=2", &options, &error);
+    CHECK_EQ(applied, 2);
+    CHECK_EQ(options.touch_stage, TB710FU_TOUCH_OFF);
+    CHECK_EQ(options.keys_stage, TB710FU_KEYS_OFF);
+    CHECK(error != NULL);
+
+    applied = tb710fu_input_bootargs("tb710fu-input-frames=123 tb710fu-input-verbose=1 "
+                                     "tb710fu-touch-fuse=1 tb710fu-touch-irq=0",
+                                     &options, &error);
+    CHECK_EQ(applied, 4);
+    CHECK_EQ(options.frame_limit, 123);
+    CHECK_EQ(options.verbose, 1);
+    CHECK_EQ(options.fuse_probe, 1);
+    CHECK_EQ(options.use_irq, 0);
+    CHECK(error == NULL);
+
+    applied = tb710fu_input_bootargs("tb710fu-input-frames=1234567890123456", &options, &error);
+    CHECK_EQ(applied, 1);
+    CHECK_EQ(options.frame_limit, 0);
+    CHECK(error != NULL);
+
+    applied = tb710fu_input_bootargs("   ", &options, &error);
+    CHECK_EQ(applied, 0);
+    CHECK_EQ(options.touch_stage, TB710FU_TOUCH_OFF);
+    CHECK(error == NULL);
 }
 
 /* ================================ SPMI + keys =============================== */
@@ -894,6 +974,7 @@ int main(void)
     test_nvt();
     test_tracker();
     test_hid();
+    test_input_bootargs();
     test_spmi_and_keys();
     test_firmware();
 

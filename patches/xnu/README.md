@@ -213,29 +213,17 @@ scrollback nobody can recover. The hook waits at most 20 ms for the worker to
 report, which keeps the boot log ordered without ever waiting on a host. Its
 second hunk carries 0033 context and must stay after it in the series.
 
-## Serialize 4 KiB shared-region part slides (pl95 reboot fix)
+## Shared-region diagnosis (2026-11-28)
 
-`0052-tb710fu-shared-region-slide-serialize.patch` adds a sleepable per-pager
-`lck_mtx_t srp_slide_lock` (existing `shared_region_pager_lck_grp`), initialized
-in `shared_region_pager_create()` and destroyed in
-`shared_region_pager_deallocate_internal()` before the pager is freed.
-`shared_region_pager_data_request()` holds it around the outermost
-`shared_region_pager_slide_part()` call added by the pinned official
-`native-4k-shared-region-slide.patch` — strictly after `src_page` and `top_page`
-are released, and dropped immediately after the call on every return path.
-Two threads sliding different 4 KiB parts of one 16 KiB v5 slide page both
-peek earlier parts from the file; APFS verifies a whole block with one UPL,
-so concurrent resolution can deadlock on each other's busy file pages in the
-dyld shared-cache pager window (intermittent early `launchd` stall/reboot).
-`slide_part()` never recurses into the pager (peek faults the backing vnode
-object), so there is no recursive acquisition.
+The pl95 per-pager serialization experiment is not active. Commit `73f47dc`
+removed it after the pl95 build stopped at `ASP: AMFI pointer initialized` on
+every observed boot. Do not reintroduce it based on the earlier APFS/UPL
+deadlock theory.
 
-Verification: built from pristine pinned XNU
-`ac9718fb1af618d5ce8678d0dc6e8a58f252216f` plus the official patch (the prepared
-file is byte-identical to the earlier `xnu-patch-lf-clean` fixture, SHA-256
-`3d658d57695f7e59b73b822c4b513cc8b2129f296c84eb2fde056e6ab9d42d6b`); the emitted
-patch passed `git apply --check` and a real apply with a byte-identical
-roundtrip (result SHA-256
-`91de8f2ebd36499d3147781c1dc15ffce12a3cba05776305b07cc0adc52a345c`). No device
-patch 0001–0051 touches this file. This is a patch-application check, not a
-compiler or device test; the kernel must be rebuilt and hardware-verified.
+Current `0052-tb710fu-shared-region-map-trace.patch` traces calls to
+`shared_region_map_and_slide_2_np()`. Current `0053-tb710fu-dyld-cache-probe.patch`
+records the dyld syscalls and mapped cache header. The latest handoff records
+two pl112 captures stopping before launchd, while pl110 showed successful
+kernel calls followed by dyld retrying header validation. The pl112 header
+capture remains unobserved. See `docs/HANDOFF_CURRENT_STATE.md` for the capture
+sequence and current hardware evidence.

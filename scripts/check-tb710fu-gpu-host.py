@@ -132,7 +132,11 @@ def main():
     # --- Metal discovery -----------------------------------------------------
     check('metal.plugin_name', 'setProperty("MetalPluginName", "NativeAdrenoMetal")' in accelerator)
     check('metal.plugin_class', 'setProperty("MetalPluginClassName", "NativeAdrenoMetalDevice")' in accelerator)
-    check('metal.sandbox_grant', 'setProperty("NativeSandboxGrantProcess", "*")' in accelerator)
+    check('metal.sandbox_grant',
+          '"NativeSandboxGrantProcess"' in accelerator and
+          '"WindowServer,loginwindow,Dock,Finder,ControlCenter,SystemUIServer,"' in accelerator and
+          'System Settings");' in accelerator,
+          'the service publishes the client allow-list read by the pinned XNU grant patch')
     check('metal.registered', 'accelerator->registerService();' in accelerator)
     check('metal.attached_to_platform', 'IOService::getPlatform()' in accelerator and 'accelerator->attach(platform)' in accelerator)
     check('metal.no_start_override', '::start(' not in accelerator,
@@ -171,8 +175,10 @@ def main():
           'an imported IOSurface is pinned with prepare() and released with complete()')
     check('client.map_checks',
           'request.reserved' in client and '(request.iova & 0xfffull) != 0' in client and
-          'fBo[slot].iova != buffer.iova' in client,
-          'BoMap/Submit validate alignment and that the IB is inside the mapped BO')
+          'request.iova + fBo[slot].bytes < request.iova' in client and
+          'buffer.iova < fBo[slot].iova' in client and
+          'buffer.bytes > fBo[slot].bytes - (buffer.iova - fBo[slot].iova)' in client,
+          'BoMap/Submit validate alignment, overflow and that the IB is inside the mapped BO')
 
     # --- Power chain ---------------------------------------------------------
     check('power.mmio_helper_only',

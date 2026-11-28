@@ -1,21 +1,22 @@
 # Current status · 2026-11-28
 
-## 🩹 pl95 间歇性早期 `launchd` 停摆/重启修复（分支 `doubao/fix-reboot-pl95`，仅源码 + 主机验证，未编译/未刷机/未派发 CI）
+## 当前代码与设备状态
 
-- **根因回顾**：`COM5 drained ... starting GopDisplay` 在 DTR 排空后立即启动显示，`IOMobileGraphicsFamily`/`IOSurface` 在根卷挂载与 `launchd` dyld 共享缓存分页窗口之前加载（`IOSurfaceRoot=0`）；成功启动样本全部是 10 s fallback 之后（`ASP: AMFI pointer initialized` 之后）才启动显示。另一风险：官方 `native-4k-shared-region-slide.patch` 的 16 KiB→4 KiB 分片 slide 在多线程并发解析同一 16 KiB 页时，`shared_region_pager_peek()` 与 APFS 整块校验 UPL 互相等待对方 busy 的文件页（跨线程死锁）。
-- **修复 1（显示时序）**：`package/Tb710fuUsbCdc/CdcXnu.c` 新增 `gDisplaySafeStart`（`tb710fu_cdc_start()` 在创建 worker 前武装，默认 CDC 启动后 10 s，`tb710fu-gop-settle=<ms>` 可覆盖，见 `docs/BOOT_ARGS.md`）；`cdc_display_thread()` 在调用 `native_tb710fu_gop_display_start()` 前可睡眠地等到该期限（排空/fallback 门与 settle 门两者都满足才启动；platform-failed 路径同样受控）。`package/GopDisplayStart.cpp` `wait_for_surface_root()` 改为最多 6 轮（每轮 5 s 匹配 + 1 s 间歇）干净重试并返回 bool；仍拿不到 `IOSurfaceRoot` 时释放对象并放弃注册，绝不以 `IOSurfaceRoot=0` 继续 `start()`。
-- **修复 2（XNU 补丁）**：新增 `patches/xnu/0052-tb710fu-shared-region-slide-serialize.patch`（已登记 `series`）：每 pager 一个可睡眠 `lck_mtx_t srp_slide_lock`（复用 `shared_region_pager_lck_grp`，create 时 `lck_mtx_init`、deallocate 释放前 `lck_mtx_destroy`），在 `shared_region_pager_data_request()` 中 `src_page`/`top_page` 释放之后、最外层 `shared_region_pager_slide_part()` 调用两侧加锁/解锁，覆盖全部返回路径；`slide_part()` 不会递归进入本 pager（peek 走 backing vnode 对象），无递归加锁。
-- **验证（全部主机侧，`hardware_verified=false`）**：
-  - 0052 补丁基线 = 纯净 pinned XNU `ac9718fb1af618d5ce8678d0dc6e8a58f252216f` + 官方 `native-4k-shared-region-slide.patch`（与既有 `xnu-patch-lf-clean` 预置文件逐字节一致，SHA-256 `3d658d57695f7e59b73b822c4b513cc8b2129f296c84eb2fde056e6ab9d42d6b`）；`git apply --check` + 实际套用往返逐字节一致（结果 SHA-256 `91de8f2ebd36499d3147781c1dc15ffce12a3cba05776305b07cc0adc52a345c`）。设备补丁 0001–0051 均不触及该文件。
-  - WSL Debian（gcc 14.2 / clang 19.1）：修改后的 `cdc_display_thread`/`tb710fu_cdc_start`/`wait_for_surface_root` 逐字提取 + 钉住头文件原型的桩编译 `-Wall -Wextra -Werror -pedantic -Wformat=2 -fsyntax-only` 全过（语法/类型检查，非内核编译）。
-  - `scripts/check_usb_cdc_protocol.py`、`check_usb_cdc_hardware.py`、`check_usb_cdc_transport.py`（gcc，ASan+UBSan）与 `check-gop-display-abi.py`（结构校验）全过。
-- **下一步**：按常规流程派发一次有界 native/prelink 构建，实机确认早排空样本出现 `GopDisplay holding ... ms for the post-root settle window` 且 `IOSurfaceRoot` 非 0、连续重启不再停在 `AMFI pointer initialized` 后 ~33 KB 处。本条目不代表已编译或实机验证。
+- 仓库基线为 `main`，开始本轮时 HEAD 是 `c1031d5`。较早的 pl95 序列化锁已由 `73f47dc` 移除，因为 pl95 观测到启动停在 `ASP: AMFI pointer initialized`。当前序列中的 `0052` 是 `shared_region_map_and_slide_2_np` 诊断补丁，`0053` 是 dyld 系统调用与映射头部探针。
+- 最新已记录的设备镜像是 pl112。16:31 和 16:33 的两份捕获停在 SystemCryptex 挂载后，未出现 boot-policy、VM Swap 或 launchd。pl112 的映射头部数据尚未取得。pl110 曾记录 `openat`、`fstat64`、`pread`、`fcntl`、`mmap` 和 `munmap` 成功返回并重复执行，未记录 `shared_region_map_and_slide_2_np`。根因仍未确认。
+- `CdcXnu.c` 的 10 秒显示等待和 `GopDisplayStart.cpp` 的 IOSurfaceRoot 重试仍在当前代码中，但没有解释 pl112 的早期停点，也未验证为稳定启动修复。
+- 当前工作树增加了 HID boot-arg、报告提交和 IOSurface plane base offset 的源码检查。输入主机套件通过 353 项，plane 布局测试通过 11 项，生成显示代码检查通过 6 项，GPU 主机检查通过 135 项。还没有 native 编译、prelink 或本轮实机验证。
+- 设备显示的最新用户描述为大部分画面黑色，只有灰色密码框和白色状态栏图标清楚，时间区域间歇出现绿色损坏像素。是否已经进入登录后的完整桌面仍待确认。pl93 的 583 次已接受并送出的 swap 不能证明画面像素正确。
+- 最新设备输入实测仍是 pl94。其 boot-arg 解析与 `IOHIDResource` 观察早于当前代码中的 NUL 终止、`IOResources` 服务匹配、键盘 HID 用途和 worker 延迟修复，后续实机验证尚未进行。
+
+## 下一步
+
+先在支持的 macOS runner 上编译当前最小内核目标并确认生成阶段，再为当前源码安排有界 prelink。后续设备验证需先确认稳定走过 launchd，再记录真实 IOSurface 格式、plane 数、stride 和 base offset；显示阶段同时检查 loginwindow、Dock、Finder 与 SystemUIServer 是否运行。HID 先用 `tb710fu-touch=0 tb710fu-keys=1` 独立验证侧键，再单独处理需要 GENI SPI4 的触摸屏。当前代码仍未通过内核编译或设备验收。
 
 ---
-
 # Current status · 2026-11-27
 
-## 🖥️🏆 重大里程碑：`pl93-5g-srgb` 实机成功进入 **macOS 27.3 图形桌面**（5 GiB 内存 + Adreno 750 多客户端渲染 + 8-bit `'&BGA'` 送显 583 帧 0 拒帧）；`pl94-5g-srgb-input`（导入 IOSurface 缓存刷新 + 触控/按键开启）已编绿刷机验证 · 2026-11-27
+## 🖥️🏆 `pl93-5g-srgb` 图形输出已实机验证，完整桌面状态待复核（5 GiB 内存 + Adreno 750 多客户端渲染 + 8-bit `'&BGA'` 送显 583 帧 0 拒帧）；`pl94-5g-srgb-input`（导入 IOSurface 缓存刷新 + 触控/按键开启）已编绿刷机验证 · 2026-11-27
 
 - **5.0 GiB 可用内存实机验证（`uefi-lzma.yml` Run [45995333298](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/45995333298)，commit `73e14ee`）**：
   - `out/uefi-5g-45995333298/boot.img`（SHA-256 `988dace74ecd78dbdc3795a03524d50eeaa7c8b487845601d84e548d123f7aa2`）已刷入 `boot_b`。
@@ -30,13 +31,13 @@
   - `pl89`–`pl90`（`377305e`, `40b642b`，Run `46004464642`）：per-client SMMU Bank 0 VA 切片隔离（保留内核环 `0x70000000` 特权映射）+ `CB0_TLBIALL`/`CB0_TLBSYNC` + SMMU 池扩至 4 MiB。
   - `pl91`（`0e9fb31`，Run `46007188198`）：`fBo` 堆分配（`IOMallocData`）+ `waitFence` 解锁 `fLock`。
   - `pl92`（`2747579`，Run [46010593814](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/46010593814)，`kernel.macho` SHA-256 `42ff883e75850fbbd6a2263f3533e4f7506e0d800fcfb4446aca39285da5a6c1`）：`slot 0`（`WindowServer`）VA 切片扩至 **1.75 GiB**（`[0x80000000,+0x70000000)`），`slots 1..8` 各 128 MiB。
-- **macOS 27.3 图形桌面实机点亮（`pl93-5g-srgb`，commit `9308774`，Run [46021085431](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/46021085431)）**：
+- **macOS 27.3 图形输出实机验证（`pl93-5g-srgb`，commit `9308774`，Run [46021085431](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/46021085431)）**：
   - `kernel.macho` `143,147,008` B（SHA-256 `b4ae4eda03943c1e0476ae6af77d39e2571281d45439c3a21a5277381580f0a5`），镜像 `out/pl16-46021085431-pl93-5g-srgb-signed/`（`vendor_boot.img` `0b1725a1...`，`vbmeta.img` `da1d7555...`）。
   - 根因与修复：
     1. ADT `/product` 原继承了 `Rec2020`/`P3A`（XDR 广色域），导致 `WindowServer` 强选 `'&w4a'`（64-bit 广色域，52.5 MB）被 `validateSwap()` 拒收；改为 `artwork-display-gamut=sRGB`、`ideal-screen-colorspace=sRGB` + `text-fixup0=dyld_shared_cache_arm64e.03,5de1134,08060037,1f2003d5` 后，`WindowServer` 切回 8-bit `'&BGA'`（26.2 MB）。
     2. `package/GopDisplaySupport.cpp` 对 `planes >= 1` 的 `'&BGA'` 从 `26C5035r` `IOSurface` plane 表 `*(surface+0x180) + 0x20` 读取真实行步长 `12800`（原 `+0x68` 为 `3200`）；`Tb710fuGpuClient.cpp` 将 `kMaxBo` 提至 `32768`。
   - **实机验证结果（`scratch/com5_pl93_5g_srgb_live2.log` + 用户实拍图）**：
-    - `first swap accepted reason=0`（`3200x2000 fmt=26424741 planes=1 stride=12800`），`first transfer ok bytes=25600000`，`disp` 实测稳定送显 **583 帧**（`transfers=583 retire=583 rejected=0 cpu8=583`），**实机进入 macOS 27.3 图形桌面**（GPU 渐变背景与菜单栏图标清晰，CPU 绘制的窗口文字区域出现条纹/残缺）。
+    - `first swap accepted reason=0`（`3200x2000 fmt=26424741 planes=1 stride=12800`），`first transfer ok bytes=25600000`，`disp` 实测 **583 帧**（`transfers=583 retire=583 rejected=0 cpu8=583`）。这些计数证明 swap 被接受并传送，不能确认图像像素正确。
 - **导入 IOSurface 缓存刷新 + 触控/按键开启（`pl94-5g-srgb-input`，commit `88edcfa`，Run [46025477175](https://github.com/limingerf/UniXNU-tb710fu/actions/runs/46025477175)）**：
   - `kernel.macho` `143,147,008` B（SHA-256 `00f71e49cbf47a30462f5a05634fa573f616239825df220129e50734b13b76f5`），镜像 `out/pl16-46025477175-pl94-5g-srgb-input-signed/`（`vendor_boot.img` `d81d6d2f...`，`vbmeta.img` `55cf3162...`）。
   - `package/Tb710fuGpu/Tb710fuGpuClient.cpp`：GPU `submit()` 前对所有已映射 `imported` IOSurface BO 按物理段执行 `flush_dcache64(phys, step, 1)`（`dc civac`），修复 CPU（CoreGraphics）绘制图层未落盘导致的条纹/残缺。
