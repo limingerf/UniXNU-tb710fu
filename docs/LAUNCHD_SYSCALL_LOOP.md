@@ -520,3 +520,54 @@ Open() -> "A device attached to the system is not functioning"
 
 设备枚举状态始终 OK，但句柄不可用。**只能物理拔插 USB 或重启系统。**
 这不是设备问题，是 Windows 串口驱动层的状态卡死。
+
+## 第 41 轮：pl107 内核离线验证
+
+串口仍未恢复（`Open()` 报 "A device attached to the system is not functioning"），
+无法刷机。改用纯离线方式验证 pl107 内核确实带了探针。
+
+### 二进制证据
+
+在 `out/pl107/kernel.macho` 中搜索：
+
+| 目标 | 出现次数 | 说明 |
+|---|---|---|
+| `tb710fu_dyld_probe` | **2** | 探针环形缓冲的符号名，已进镜像 |
+| `tb710fu_dyld_probe_idx` | **1** | 写索引符号名 |
+| `MMAP` 立即数 | 11 | recorder 里的 mmap 分支 |
+| `MUNM` 立即数 | 3 | recorder 里的 munmap 分支 |
+| `OATN` / `FNCT` | 0 | 被编译器优化掉或在别处编码 |
+| `TB710FU SRMAP`（对照，0052） | 2 | 控制组，证明搜索方法有效 |
+
+`tb710fu_dyld_probe_put` 本身搜不到是**正常**的：它是 `static inline`，
+被内联进调用点后不留符号名。
+
+### 补丁结构复核
+
+```
+@@ -92,6 +92,32 @@ int tb710fu_pid1_last_mib[4] = { 0 };
+  int tb710fu_pid1_last_sysctl_err = 0;
+  char tb710fu_pid1_last_open[96] = { 0 };
+  
+ +/* ... 探针声明 ... */
+```
+
+第一处插入紧跟 0043 的最后一条声明，在**文件作用域**（生成器断言花括号深度为 0）。
+第二处在 `unix_syscall` 内 0043 的 sc_exit 之后（深度 1）。
+
+### 结论与边界
+
+- 探针的**数据结构**确实进了内核镜像
+- recorder 的**分支**存在（MMAP/MUNM 立即数命中）
+- 但 **recorder 是否真的被调用、参数是否正确**，只有实机能证明
+
+`OATN`/`FNCT` 缺失是个待观察点：如果实机跑起来后 `openat`/`fcntl`
+的记录缺失，说明这两条分支被优化掉了，需要改用 `volatile` 或
+`__attribute__((noinline))` 强制保留。
+
+### 镜像
+
+```
+out/tb710fu-pl16-46118781364-pl107-probe-signed.zip
+kernel.macho sha256 = 5dbd127aeaf40a7f082e05e4c1c29a7040fdbab828d25247a07df0328582ff33
+```
