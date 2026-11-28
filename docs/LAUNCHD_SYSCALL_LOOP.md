@@ -291,3 +291,53 @@ CDC shell 动词只有：
 输出到 `tb710fu_dyld_probe[64]`，供扩展 `ps` 动词读出。
 
 尚未生成补丁文件、尚未编译、尚未验证 —— 需要一次 CI 构建。
+
+## 第 32 轮：静态分析到极限，等待构建决策
+
+### 本轮验证的数据点（意义有限，记录备查）
+
+三个镜像的 launchd footprint：
+
+| 镜像 | boot-args 差异 | fp |
+|---|---|---|
+| pl103 | 无 GPU、无 text-fixup0 | 182,656 |
+| pl104 | 有 text-fixup0 | 186,816（+4,160） |
+| pl105 | 完整 GPU 组 | 182,656 |
+
+pl104 比 pl103 多 4,160 字节（= 4096 + 64，即一个 4K 页加 64 字节），
+可能来自 text-fixup0 让 dyld 多保留了一个页的映射。
+但这不能解释卡死——pl105 的 fp 与 pl103 完全相同，而它 GPU 全通。
+
+### 已彻底穷尽的手段
+
+| 手段 | 结论 |
+|---|---|
+| CDC `ls` / `stat` / `cat` | 缓存目录、文件大小、header 全部核验通过 |
+| CDC `ps` | 得到 launchd `thr=1 fp=182656 procs=1`，flat |
+| CDC `disp` | 得到全部帧计数器为 0（屏幕由 UEFI 画） |
+| CDC `ioreg` | 得到 109 个 IOService 节点，可用 |
+| PID1 syscall ring | 得到 `openat→fstat64→pread→fcntl→mmap→munmap` 活锁 |
+| 预链接镜像符号读取 | 确认 `arm_hardware_page_size = 0xFFF`（4K 页） |
+| dyld FAT header 解析 | 确认三个切片全部要求 2^14 对齐 |
+| 内核源码走查 | slide 掩码、offset 校验、cs blob 分配三处均无 4K 障碍 |
+| 补丁集审计 | 4K shared-region 补丁从未进 series；`no-lc` 作用在 exec 阶段 |
+
+### 卡点
+
+所有证据指向同一个未解问题：
+
+> `mmap` 返回 0（成功），dyld 却立刻 `munmap` 并重新 `openat`。
+
+要回答这个问题，必须知道 `mmap` 的 `addr/len/prot/flags/fd/offset` 与返回值。
+现有观测层拿不到这些。
+
+### 唯一的下一步
+
+补丁 0053（生成器已写好 `scratch/gen-0053.sh`，未执行）：
+
+- 在 `bsd/dev/arm/systemcalls.c` 的 `unix_syscall()` 里
+- 对 pid 1 记录 `openat` / `mmap` / `fcntl` / `munmap` 的完整参数
+- 写入 `tb710fu_dyld_probe[64]`
+- 再扩一个 CDC 动词读出
+
+需要一次 CI 构建。**用户尚未批准，不要擅自消耗额度。**
