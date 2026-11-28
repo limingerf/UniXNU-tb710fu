@@ -1,0 +1,4 @@
+TB710FU CDC: configured=1 dtr=0
+TB710FU CDC: rearm ep0=0/0 cancel=0/0 defer=0 abort=0 orphan=0 stale=0
+TB710FU CDC: configured=1 dtr=1
+TB710FU CDC: rearm ep0=0/0 cancel=0/0 defer=0 abort=0 orphan=0 stale=0
