@@ -933,18 +933,24 @@ static void cdc_exec_pending_cmd(void)
          * shared_region_map_and_slide_2_np.  The probe keeps the arguments
          * that patch 0043 discarded, which is what distinguishes "mmap came
          * back with an address dyld dislikes" from "the fd or flags are
-         * wrong".  Sixteen groups of four u64, oldest first. */
-        extern volatile uint64_t tb710fu_dyld_probe[] __attribute__((weak_import));
+         * wrong".  Sixteen groups of four u64, oldest first.
+         *
+         * The symbols are weak so this verb still answers on a kernel built
+         * without patch 0053.  Test them the way BootWatchdogPolicy.c tests
+         * its weak imports: address-of on the symbol itself, reads inside. */
+        extern volatile uint64_t tb710fu_dyld_probe[64] __attribute__((weak_import));
         extern volatile uint32_t tb710fu_dyld_probe_idx __attribute__((weak_import));
         cdc_log("TB710FU CDC: cmd=probe\n");
-        if (&tb710fu_dyld_probe[0]) {
+        if (&tb710fu_dyld_probe_idx) {
             uint32_t idx = tb710fu_dyld_probe_idx;
             cdc_log("TB710FU PROBE: idx=%u (groups written=%u)\n",
                 idx, idx / 4u);
             for (uint32_t g = 0; g < 16u; ++g) {
                 uint32_t s = (idx + g * 4u) & 63u;
                 uint64_t tag = tb710fu_dyld_probe[s];
-                if (tag == 0) continue;
+                if (tag == 0) {
+                    continue;
+                }
                 cdc_log("TB710FU PROBE: %c%c%c%c a=0x%llx b=0x%llx c=0x%llx\n",
                     (char)(tag >> 24), (char)(tag >> 16),
                     (char)(tag >> 8), (char)tag,

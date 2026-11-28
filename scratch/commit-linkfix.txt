@@ -1,0 +1,17 @@
+fix(cdc): make the probe verb link without patch 0053
+
+The export run failed to link because the verb referenced the probe symbols
+directly:
+
+    Undefined symbols for architecture arm64e.kernel:
+      "_tb710fu_dyld_probe", referenced from:
+          _cdc_exec_pending_cmd in libTb710fuCdcLog.a[7](CdcXnu.o)
+
+weak_import alone was not enough: I had written 'if (&tb710fu_dyld_probe[0])',
+and taking the address of an undefined array element produces a strong
+reference.
+
+BootWatchdogPolicy.c links fine with the same attribute because it tests
+'&scalar', which stays weak. Now the verb follows that pattern exactly --
+weak declarations, address-of on the scalar index, reads inside the guard --
+so a kernel without 0053 still links and 'probe' answers 'unavailable'.
