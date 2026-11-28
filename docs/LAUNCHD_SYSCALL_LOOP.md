@@ -639,3 +639,59 @@ volatile 全局，但如果编译器把整个 helper 当成无副作用而省略
 ```
 Open() -> "A device attached to the system is not functioning"
 ```
+
+## 第 44 轮：noinline 修复确认有效
+
+### 前后对比（同一构建链，只差探针写法）
+
+| 项 | pl107（inline + 32 位立即数） | pl108（noinline + 字符串 tag） |
+|---|---|---|
+| `OATN` openat | **0** | **1** |
+| `FNCT` fcntl | **0** | **1** |
+| `MMAP` | 11（含无关字符串） | 11 |
+| `MUNM` | 3 | 4 |
+| `_tb710fu_dyld_probe_put` | **0** | **1** |
+| `_tb710fu_dyld_probe` | 1 | 1 |
+| `_tb710fu_dyld_probe_idx` | 1 | 1 |
+
+**结论：`__attribute__((noinline))` + 字符串 tag 让两个被优化掉的分支回来了。**
+
+pl107 里 `OATN`/`FNCT` 在任意字节偏移都是 0 命中，说明编译器确实删掉了
+`case 463` 和 `case 92`。加 noinline 后两者各出现 1 次，helper 也留下了符号。
+
+### 为什么之前会被删
+
+原写法：
+
+```c
+static inline void
+tb710fu_dyld_probe_put(uint32_t tag, ...)   /* tag 是 32 位立即数 */
+```
+
+内联后，`0x4F41544E` 需要用 movz+movk 两条指令拼出来。编译器在
+`#if DEVELOPMENT || DEBUG` 下判断部分 case 无副作用就整段省掉。
+改成字符串后：
+
+```c
+__attribute__((noinline))
+static void
+tb710fu_dyld_probe_put(const char tag[4], ...)
+```
+
+函数独立存在、字符串无法折叠、两道 `__asm__ __volatile__("" ::: "memory")`
+阻止重排。三个措施叠加，分支就稳住了。
+
+### 当前镜像
+
+```
+out/pl108/kernel.macho
+sha256 = a80b24662caf58e1f2c332699b7f2862dd803a81b4215f67a2594b518ca65fd9
+143147008 bytes
+```
+
+run 46120267827，conclusion=success。
+
+### 仍待实机验证
+
+四个 tag 都在镜像里，但**recorder 是否真的被调用、参数是否正确**只有实机能证明。
+串口仍处于 `Open()` 失败状态，无法刷机。
