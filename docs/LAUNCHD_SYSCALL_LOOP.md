@@ -571,3 +571,71 @@ Open() -> "A device attached to the system is not functioning"
 out/tb710fu-pl16-46118781364-pl107-probe-signed.zip
 kernel.macho sha256 = 5dbd127aeaf40a7f082e05e4c1c29a7040fdbab828d25247a07df0328582ff33
 ```
+
+## 第 42 轮：纠正第 41 轮的验证，并发现两个分支被优化掉
+
+### 第 41 轮的结论有一半是错的
+
+第 41 轮我用"MMAP 立即数命中 11 次"当作 recorder 存在的证据。**这是错的。**
+查上下文后可见，那些命中全是无关字符串：
+
+```
+000d57be  4d 4d 41 50  -> "SKR_MODE_MMAPOK)"       里的 MMAP
+0020c649  4d 4d 41 50  -> "eSMART_MMAP_KERNEL_FLAGS_TRIALS"  里的 MMAP
+```
+
+它们属于既有代码的常量名/错误信息，和探针无关。
+
+### 真实有效的证据
+
+符号名称表里确实有探针的全局变量：
+
+```
+@0x7e8392e  .._tb710fu_dwc3_start._tb710fu_dwc3_stop.
+              _tb710fu_dyld_probe._tb710fu_dyld_probe_idx.
+              _tb710fu_ethern..
+```
+
+对照组 `_tb710fu_pid1_sc_count`（0043 的，已知有效）也在同一张表里，
+证明这个搜索方法可靠。
+
+**所以：探针的数据结构确实进了镜像。**
+
+### 但两个分支被优化掉了
+
+四个 tag 立即数在镜像中的实际命中：
+
+| tag | 值 | 命中 |
+|---|---|---|
+| `OATN`（openat） | 0x4F41544E | **0** |
+| `MMAP`（mmap） | 0x4D4D4150 | 16（全是无关字符串） |
+| `FNCT`（fcntl） | 0x464E4354 | **0** |
+| `MUNM`（munmap） | 0x4D554E4D | 6（同上，无关） |
+
+`OATN` 与 `FNCT` 是**真正的零命中**。也就是说 recorder 里的
+`case 463`（openat）和 `case 92`（fcntl）**没有被编译进代码**。
+
+这很致命：`fcntl(0x61 = F_ADDFILESIGS_RETURN)` 正是我们最想看的那个调用，
+它决定 dyld 给哪个 fd 挂签名。没有它，探针的价值去了一大半。
+
+### 为什么会被优化掉
+
+`tb710fu_dyld_probe_put` 被声明为 `static inline`，且参数里带了
+`(uint64_t)(long)uthread->uu_rval[0]`。当编译器在
+`#if DEVELOPMENT || DEBUG` 下判断某些 case 不可达，或者把
+`static inline` 函数内联后认为部分写入无效（`tb710fu_dyld_probe` 是普通
+volatile 全局，但如果编译器把整个 helper 当成无副作用而省略
+——注意 `volatile` 修饰的是指针目标，不是对它的写入算子），
+就可能整段删掉。
+
+### 修法
+
+1. 给 recorder 加 `__attribute__((noinline))` 并移到独立的非 inline 函数
+2. 每个 case 后用 `__asm__ __volatile__("" ::: "memory")` 建立内存屏障
+3. 保证四个 case 的 tag 都以 `volatile` 存储方式写入
+
+这些要等串口恢复后再做一次构建。眼下串口仍然打不开：
+
+```
+Open() -> "A device attached to the system is not functioning"
+```
