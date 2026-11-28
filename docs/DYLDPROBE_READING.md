@@ -457,3 +457,78 @@ MUNM records: 4   distinct unmap addresses: ['0x1009a0000']
 
 要分析 dyld 需要另一条通路（比如让内核把文件分块 dump 到 console，
 或者改 cat 支持 offset 参数）。
+
+## 第 54 轮：pl110 完整启动序列抓到了，与探针数据对上
+
+### 正确的抓取顺序奏效了
+
+刷 pl110 后**先纯读 30 秒、不发任何命令**，拿到：
+
+第一次（16:03:52，13020 字符）—— 从内核入口开始：
+
+```
+Darwin Kernel Version 25.5.0: Sat Nov 28 07:54:14 UTC 2026
+pmap: excluded memory 0xa00000000..0xa00004000 (16 KB)
+pmap_startup() 1240769 page entries
+vm_page_bootstrap: 1240765 free pages, 69951 wired pages
+...
+TB710FU CDC: COM5 drained 12629 live bytes, queueing GopDisplay
+TB710FU CDC: GopDisplay holding 5533 ms for the post-root settle window
+TB710FU GopDisplay: disabled (boot with tb710fu-gop=1 to register the display)
+```
+
+第二次（16:05:21，17843 字符）—— 关键序列：
+
+```
+load_init_program: attempting to load /usr/appleinternal/sbin/launchd.development
+load_init_program: attempting to load /sbin/launchd
+exit: pid 1 init status 0
+exec: pid 1 launchd
+exit: pid 1 init status 0
+shared_region: 0xab7802bdc49d1e23 [1(launchd)] check_np(0x16ec608e8) vm_shared_region_st...
+shared_region: 0xab7802bdc49d1e23 [1(launchd)] check_np(0x16ec5ff48) vm_shared_region_st...
+dyld[1]: result from check_np(): -1, errno 12
+ASP: AMFI pointer initialized
+```
+
+### 标记对照
+
+| 标记 | pl110 |
+|---|---|
+| `VM Swap Subsystem is ON` | ✅ |
+| `TB710FU GPU: bringup` | ✅ |
+| `load_init_program` | ✅ |
+| `exec: pid 1 launchd` | ✅ |
+| `check_np` x2 | ✅ |
+| `dyld[1]: check_np(): -1, errno 12` | ✅ |
+| `ASP: AMFI pointer initialized` | ✅ |
+| **`dyld cache mapped`** | **❌** |
+| **`unnest of range`** | **❌** |
+
+### 与探针数据的对应关系
+
+现在两批数据能拼起来了：
+
+**启动序列显示**：launchd 起来 → check_np 返回 errno 12（正常，"shared region empty"）
+→ AMFI 初始化 → **然后没有 `dyld cache mapped`**
+
+**探针数据显示**：同一时期 dyld 在
+`openat → fcntl(0x61) → mmap → munmap` 循环，参数恒定，fd 递增
+
+**合起来**：dyld 在 AMFI 之后开始尝试映射共享缓存，进入这个循环，
+但始终没有走到 `shared_region_map_and_slide_2_np`（补丁 0052 的
+`TB710FU SRMAP` 从未打印），所以 `dyld cache mapped` 永远不出现。
+
+### 仍然未知
+
+`check_np` 返回 `errno 12` 是**正常**的（成功启动的案例也有）。
+问题是之后 dyld 为什么要循环。
+
+探针证明了内核侧全部成功、参数恒定。**dyld 在用户态拒绝了什么。**
+
+### 下一步可做的事
+
+1. 等 pl110 的探针数据（64 位修正后），确认 mmap 返回地址的完整值
+2. 检查是否有 `TB710FU SRMAP` 打印（应该没有，验证 0052 与 0053 一致）
+3. 若确认 mmap 地址完全正确而 dyld 仍拒绝，则问题在 dyld 对
+   cache header 的校验，需要另找观测点

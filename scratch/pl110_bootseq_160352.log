@@ -1,0 +1,247 @@
+Darwin Kernel Version 25.5.0: Sat Nov 28 07:54:14 UTC 2026; runner:ios-obj/DEVELOPMENT_ARM64_BCM2837
+pmap: excluded memory 0xa00000000..0xa00004000 (16 KB)
+pmap_startup() init/release time: 274678 microsec
+pmap_startup() 1240769 page entries, 4 of them excluded memory, 1 unused
+vm_page_bootstrap: 1240765 free pages, 69951 wired pages
+VM bootstrap: 30 maps, 128 entries and 16 nodes available
+Enable all vm_debug options with boot-arg vm_debug=1
+Maximum number of VM swap files: 5
+ipc_kernel_copy_map     : 0xfffffff179991000 - 0xfffffff17a191000 (8M)
+zones                   : 0xfffffff17a191000 - 0xfffffff57a191000 (16G)
+ipc_kernel_map          : 0xfffffff57a191000 - 0xfffffff57c191000 (32M)
+zone_meta               : 0xfffffff57c191000 - 0xfffffff581021000 (78M)
+compressor              : 0xfffffff581021000 - 0xfffffff801148000 (10G)
+kmem_data_shared_range  : 0xfffffff801148000 - 0xfffffff91d21b000 (4544M)
+bufferhdr               : 0xfffffff91d21b000 - 0xfffffff91d9d3000 (7M)
+kmem_io                 : 0xfffffff91d9d3000 - 0xfffffff95d9d3000 (1024M)
+gIOKitPageableFixed     : 0xfffffff95d9d3000 - 0xfffffff9bd9d3000 (1536M)
+bsd_pageable            : 0xfffffff9bd9d3000 - 0xfffffff9c1b55000 (65M)
+mb                      : 0xfffffff9c1b55000 - 0xfffffff9c7b55000 (96M)
+kmem_ptr_range_0        : 0xfffffff9c7b55000 - 0xfffffffae3c29000 (4544M)
+kmem_data_private_range : 0xfffffffae3c29000 - 0xfffffffbffcfc000 (4544M)
+vm: "vm_compressor_mode" is 4
+zone_init: map VM    0xfffffff17a191000:0xfffffff213b29000 (2457M, 2457M usable)
+zone_init: map RO    0xfffffff213b29000:0xfffffff246e66000 (819M, 819M usable)
+zone_init: map GEN0  0xfffffff246e66000:0xfffffff2e07ff000 (2457M, 2457M usable)
+zone_init: map GEN1  0xfffffff2e07ff000:0xfffffff37a198000 (2457M, 2457M usable)
+zone_init: map GEN2  0xfffffff37a198000:0xfffffff413b31000 (2457M, 2457M usable)
+zone_init: map GEN3  0xfffffff413b31000:0xfffffff4ad4ca000 (2457M, 2457M usable)
+zone_init: map DATA  0xfffffff4ad4ca000:0xfffffff57a191000 (3276M, 3276M usable)
+zone_init: metadata  0xfffffff57c1a1000:0xfffffff5801a1000 (64M)
+zone_init: metabits  0xfffffff5801a1000:0xfffffff581011000 (14M)
+zone_init: extra     0:0 (0B)
+Unable to find vm tag  for btlog
+VM bootstrap done: 28 maps, 104 entries and 12 nodes left
+standard timeslicing quantum is 10000 us
+standard background quantum is 2500 us
+Long logs support configured: size: 16384
+Firehose configured: 16 chunks, 8 io pages
+Log queues configured: slot count: 54, per-slot size: 32768, total size: 1769472
+OSLog stream configured: stream: 8192 bytes, cache: 2112 bytes
+OSLog stream verification: 0
+[trap_telemetry] trap_telemetry_init
+mig_table_max_displ = 90 mach_kobj_count = 381
+debug_log_init: Error!! gPanicBase is still not initialized
+debug_log_init: Error!! gPanicBase is still not initialized
+kdp_core zlib memory 0x7000
+Serial requested, consistent debug disabled or debug boot arg not present, configuring debugging over serial
+iBoot version: 
+iBoot Stage 2 version: 
+IONVRAM.cpp:start:1447 - ...
+IONVRAM.cpp:initImageFormat:1586 - NVRAM size is 8192 bytes
+IONVRAM.cpp:getNVRAMProperties:1340 - _bankSize=0x2000, _bankCount=0x1, _currentBank=0
+IONVRAMCHRPHandler.cpp:unserializeImage:487 - NVRAM : commonPartitionOffset - 0x30, commonPartitionSize - 0x800, systemPartitionOffset - 0xffffffff, systemPartitionSize - 0
+IONVRAMCHRPHandler.cpp:unserializeVariables:584 - _commonSize 0x800, _systemSize 0
+IONVRAM.cpp:handleEphDM:1373 - ephemeral-data-mode not supported
+vm: creating swapout thread
+vm: creating swapfile creation thread
+vm: creating swapfile GC thread
+memory outside the span: 0 pages adopted, 0 refused
+lockdown_mode: lockdown mode in nvram is off
+Darwin Image4 Extension Version 7.0.0: Fri Oct 30 01:13:25 PDT 2026; root:AppleImage4-374~17088/AppleImage4/RELEASE_ARM64E
+calling mpo_policy_init for AppleImage4
+Security policy loaded: AppleImage4 hooks (AppleImage4)
+AppleImage4: no legacy blob present
+AppleImage4: magazine[pdmg]: failed to read nonce slot data: 2
+AppleImage4: magazine[cptx]: failed to read nonce slot data: 2
+AppleImage4: magazine[dvdi]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1bt]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1ab]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1gn]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1sm]: failed to read nonce slot data: 2
+AppleImage4: magazine[d1ma]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1ge]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1er]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1ai]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1al]: failed to read nonce slot data: 2
+AppleImage4: root power domain not yet available: 19
+AMFI: UDID support enabled: 2
+AMFI: queried model name from device tree: Mac17,11
+calling mpo_policy_init for AMFI
+Security policy loaded: Apple Mobile File Integrity (AMFI)
+calling mpo_policy_init for Sandbox
+Security policy loaded: Seatbelt sandbox policy (Sandbox)
+calling mpo_policy_init for Quarantine
+Security policy loaded: Quarantine policy (Quarantine)
+ASP: initializing bastion sandbox callback
+calling mpo_policy_init for EndpointSecurity
+Security policy loaded: Endpoint Security Kernel Extension (EndpointSecurity)
+calling mpo_policy_init for vnguard
+Security policy loaded: Guarded vnode policy (vnguard)
+attempting to load 6 external trust cache modules
+loaded external trust cache module: 0
+loaded external trust cache module: 1
+loaded external trust cache module: 2
+loaded external trust cache module: 3
+loaded external trust cache module: 4
+loaded external trust cache module: 5
+completed loading external trust cache modules
+No POST boot-arg set.
+IOG flags 0x3 (0x51)
+Copyright (c) 1982, 1986, 1989, 1991, 1993
+	The Regents of the University of California. All rights reserved.
+
+MAC Framework successfully initialized
+using 16384 buffer headers and 10240 cluster IO buffer headers
+IOServicePH::kIOMessageSystemCapabilityChange: will 0xf->0xf
+IOServicePH::systemPowerChange to 0x30
+AMFI: developer mode is force enabled on this platform
+IOServicePH::kIOMessageSystemCapabilityChange: did 0xf->0xf
+IOCPUInterruptController: not registry member at registerService()
+AppleARMBootPerf: Error: profile handoff region not found (1)
+AppleARMBootPerf: Error: failed to publish profile data (1)
+AppleARMSFRManifest: Starting
+AppleARMSFRManifest: Error: Failed to open reg-entry /chosen/secure-boot-hashes
+AppleARMSFRManifest: Error: Failed to find property boot-manifest-hash
+AppleARMSFRManifest: Error: Failed to find manifest hash
+AppleARMSFRManifest: Error: Failed to locate manifest information
+AppleARMSFRManifest: Error: Failed to find entry /chosen/iBoot
+AppleARMSFRManifest: Error: Failed to publish sfr manifest
+virtual bool CoreAnalyticsHub::start(IOService *)::150:CoreAnalyticsHub start
+Registered CoreAnalyticsHub functions with xnu.
+virtual bool CoreAnalyticsHub::start(IOService *)::229:CoreAnalyticsHub start completed
+TB710FU CDC: worker queued gic=1 timer=17 irq=1
+TB710FU CDC: worker gic=1 timer=17 cntv_ctl=1 irq=1
+ktriage_register_subsystem_strings: set subsystem 8 strings
+TB710FU SourceStorage: gate-passed
+TB710FU SourceStorage: kext-ioStorage-begin
+TB710FU SourceStorage: kext-ioStorage-done
+TB710FU SourceStorage: base-class-lookup-begin
+TB710FU SourceStorage: base-class-lookup-done
+TB710FU SourceStorage: root-policy-begin
+TB710FU SourceStorage: root-policy-done
+TB710FU SourceStorage: kext-apfs-begin
+apfs_module_start:3369: load: com.apple.filesystems.apfs, v3288.60.7, apfs-3288.60.7, 2026/10/30
+ktriage_register_subsystem_strings: set subsystem 7 strings
+TB710FU SourceStorage: kext-apfs-done
+TB710FU SourceStorage: premodload-begin
+TB710FU SourceStorage: premodload-done
+TB710FU SourceStorage: class-reg-base-begin
+TB710FU SourceStorage: class-reg-base-done
+TB710FU SourceStorage: class-reg-ufs-begin
+TB710FU SourceStorage: class-reg-ufs-done
+TB710FU SourceStorage: class-reg-ram-begin
+TB710FU SourceStorage: class-reg-ram-done
+TB710FU SourceStorage: postmodload-begin
+TB710FU SourceStorage: postmodload-done
+TB710FU SourceStorage: wait-platform-begin
+TB710FU SourceStorage: wait-platform-done
+TB710FU SourceStorage: ufs-create-begin
+TB710FU SourceStorage: ufs-create-done
+TB710FU SourceStorage: ufs-init-begin
+TB710FU SourceStorage: ufs-init-done
+TB710FU SourceStorage: ufs-attach-begin
+TB710FU SourceStorage: ufs-attach-done
+TB710FU SourceStorage: ufs-start-begin
+NativeUfs: start-enter provider=0xfffffff37a22bba0
+NativeUfs: start-args probe=0 root=1
+NativeUfs: start-options-ok
+NativeUfs: start-diag=0
+NativeUfs: start-dispatch-root
+NativeUfs: root bring-up-begin
+NativeUfs: host gcc-map-begin
+NativeUfs: host gcc-map-done
+NativeUfs: host gcc-state gdsc=f822f800 axi=00000001 ahb=80000003
+NativeUfs: host gcc-state-accepted
+NativeUfs: host controller-map-begin
+NativeUfs: host controller-map-done
+NativeUfs: host dma-alloc-begin bytes=139264
+NativeUfs: host dma-ready phys=8d1183000 contig=139264
+NativeUfs: host smmu-map-begin
+NativeUfs: host smmu-map-done
+NativeUfs: host queue-snapshot-begin
+NativeUfs: host queue-snapshot-done
+NativeUfs: host queue-stop-begin
+NativeUfs: host queue-stop-done
+NativeUfs: host queue-start-begin
+NativeUfs: host queue-start-done
+NativeUfs: host nop-begin
+NativeUfs: host nop-done
+NativeUfs: host power-query-begin
+NativeUfs: host power-query-done power=00000033
+NativeUfs: host wake-begin
+NativeUfs: host wake-done
+NativeUfs: host wake-settle-begin
+NativeUfs: host wake-settle-spin now=382314672
+NativeUfs: host wake-settle-done elapsed=960778
+NativeUfs: host lun-ready-begin
+NativeUfs: host lun-ready-attempt=0
+NativeUfs: host lun-ready-done attempt=0
+NativeUfs: root bring-up-done
+NativeUfs: root layout-begin
+NativeUfs: root layout-done first=165e5a8 last=3a8bffa manifest=0 windows=3
+NativeUfs: root settle delay 1000 ms (default)
+NativeUfs: root ioservice-start-begin
+NativeUfs: root prepare-begin windows=3
+TB710FU CDC: image pl22
+TB710FU CDC: map-clock
+TB710FU CDC: rpmh-map
+TB710FU CDC: rpmh-irq
+TB710FU CDC: spmi-map
+TB710FU CDC: gcc-reset
+TB710FU CDC: gcc-gdsc
+TB710FU CDC: gcc-branches
+TB710FU CDC: wrapper-xo
+TB710FU CDC: core-id
+TB710FU CDC: smmu-route
+TB710FU CDC: dma-alloc
+TB710FU CDC: smmu-route
+TB710FU CDC: qscratch-utmi
+TB710FU CDC: vbus
+TB710FU CDC: qscratch gen=00000004->0000000d hs=10000000->10100000
+TB710FU CDC: dwc-pre
+TB710FU CDC: dwc pre pectl=030c1002 dctl=00f00000 gctl=00102000 pcfg=00102500 gsts=7e800000 dsts=00d2000c
+TB710FU CDC: dwc3-start
+TB710FU CDC: dwc reset stage=1 adopt=0 dctl=00f00000/40f00000 gctl=00102000 pcfg=00102400 gsts=7e800000 dsts=00d20024
+TB710FU CDC: dwc probe forced=0 dcfg=00080800 devten=00000a07 evt=d1808000/00000008 dsts=00820001 pectl=030c1002
+TB710FU CDC: stage=ready failure=-
+TB710FU CDC: gcc bcr=00000000 gdscr=f822f800 sts=04070000 m=00000001 s=00000001 u=00000001 cfg=00000001 ag=00000001 xo=00000001
+TB710FU CDC: phy rst=00000000 ref=00000001 ctl0=01010101 ctl5=00000000 common0=4b4b4b4b ctl2=17171717
+TB710FU CDC: power rails=1f repeater=80 spmi-apid=593
+TB710FU CDC: bcm flags=0f cn0=60000001 sn2=60710528 acv=60000001 mc0=600cc253
+TB710FU CDC: dwc id=33313130 gctl=00102000 role=2 bits=64 smmu scr0=002a0406 id0=4c017e6b streams=1
+TB710FU CDC: smmu claimed=1 slot=0 bank=62 masked=0 tries=1/1 open=0 smr=80000040 s2cr=0000003e cbar=00010000 cba2r=00000001 sctlr=00000000
+TB710FU CDC: smmu probe slot=0 pre_smr=00000060 pre_s2cr=00020000 keep=00000000 fault=00000000 bypass=00000000 smr=00000000 acr=00000000 gfsr=00000000 scr0=00000000
+TB710FU CDC: dwc-state
+TB710FU CDC: dwc state dctl=80000000 dsts=00820001 devten=00000a07 dalepn=00000003
+TB710FU CDC: dwc evt want=d1808000 lo=d1808000 hi=00000008 sz=80001000 cnt=00000000
+TB710FU CDC: poll-start irq=1 guctl1=04001808
+TB710FU CDC: platform up dma=8d1808000/4000, waiting for enumeration and host DTR
+TB710FU CDC: beat #1 r=50 dsts=008e0001 cnt=00000000 ev=0 last=00000000 req=0 conn=0 cfg=0 dtr=0
+TB710FU CDC: beat #2 r=100 dsts=000e0001 cnt=00000000 ev=1 last=00000101 req=0 conn=0 cfg=0 dtr=0
+TB710FU CDC: connect-done maxpacket=512
+TB710FU CDC: beat #3 r=150 dsts=0082d360 cnt=00000000 ev=2 last=00000201 req=0 conn=1 cfg=0 dtr=0
+TB710FU CDC: first EP0 SETUP
+TB710FU CDC: beat #4 r=200 dsts=0082e040 cnt=00000000 ev=32 last=0000c040 req=7 conn=1 cfg=0 dtr=0
+TB710FU CDC: configured=1 dtr=0
+TB710FU CDC: rearm ep0=0/0 cancel=0/0 defer=0 abort=0 orphan=0 stale=0
+TB710FU CDC: woke after yield irq=1
+TB710FU CDC: COM5 opened (dtr=1), holding GopDisplay until a live drain
+TB710FU CDC: configured=1 dtr=1
+TB710FU CDC: rearm ep0=0/0 cancel=0/0 defer=0 abort=0 orphan=0 stale=0
+TB710FU CDC: COM5 drained 12629 live bytes, queueing GopDisplay (settle window applies)
+TB710FU CDC: display thread queued (dtr-drain)
+TB710FU CDC: display thread running (cfg=1 dtr=1 req=42 tx=12629)
+TB710FU CDC: GopDisplay holding 5533 ms for the post-root settle window
+TB710FU GopDisplay: disabled (boot with tb710fu-gop=1 to register the display)
+TB710FU CDC: GopDisplay start returned
