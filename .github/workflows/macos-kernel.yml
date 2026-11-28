@@ -185,6 +185,7 @@ jobs:
           cp "$work/tree/.cache/xnu-work/osfmk/kern/tb710fu_live_log.h" "$out/tb710fu_live_log.h"
           cp "$work/tree/.cache/xnu-work/bsd/dev/dtrace/sdt.c" "$out/sdt.c"
           cp "$work/tree/.cache/xnu-work/bsd/dev/dtrace/lockstat.c" "$out/lockstat.c"
+          cp "$work/tree/.cache/xnu-work/bsd/dev/arm/systemcalls.c" "$out/systemcalls.c"
           sha256sum "$out"/* | tee "$out/SHA256SUMS"
       - name: Exercise actual pinned Mu encoding and the native QR adapter
         run: |
